@@ -1,0 +1,115 @@
+# Roadmap: MyOriShop
+
+## Overview
+
+MyOriShop goes from empty repo to a daily-usable local inventory app in six phases. Phase 1 locks in every irreversible decision (append-only operations ledger, UUID keys, integer-cents money, UTC timestamps) inside a runnable FastAPI + HTMX skeleton. Phases 2–5 then build the operator's workflow in dependency order: catalog and instant search, goods receipts (with automated backup shipping before real data entry begins), sales with customer linking and correct profit snapshots, and the remaining stock operations with full history. Phase 6 closes the loop with period reports and CSV export, so the operator always knows stock levels and profit — the core value.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Foundation & Ledger Core** - Runnable app skeleton with append-only operations ledger and sync-ready schema
+- [ ] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search
+- [ ] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry
+- [ ] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history
+- [ ] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing
+- [ ] **Phase 6: Reports & Data Export** - Period reports (sales, profit, stock, write-offs, top/stale products) and CSV export
+
+## Phase Details
+
+### Phase 1: Foundation & Ledger Core
+**Goal**: The app runs locally in the browser on a data foundation where every stock change is an immutable ledger entry and no schema decision blocks future sync
+**Mode:** mvp
+**Depends on**: Nothing (first phase)
+**Requirements**: FND-01, FND-02, FND-03
+**Success Criteria** (what must be TRUE):
+  1. Operator can start the app with run.bat and open it in the browser at localhost with no internet connection
+  2. Every stock-changing operation is stored as an append-only ledger row, and current stock quantity can be recomputed from the ledger alone
+  3. Every recorded operation shows who performed it and when
+  4. Database inspection confirms money as integer minor units, timestamps as UTC, and UUID identifiers on all records
+**Plans**: TBD
+
+### Phase 2: Catalog, Dictionary & Search
+**Goal**: Operator can maintain the product catalog and find any product in seconds by code or name
+**Mode:** mvp
+**Depends on**: Phase 1
+**Requirements**: CAT-01, CAT-02, CAT-03, CAT-04
+**Success Criteria** (what must be TRUE):
+  1. Operator can create and edit a product card with code, name, category, cost price, sale price, and catalog price, leaving optional fields empty
+  2. Typing a known product code auto-fills the product name from the reference dictionary
+  3. Operator finds a product by partial code or name with instant search/autocomplete results
+  4. After changing a product's prices, the previous values remain visible as price history
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 3: Goods Receipt & Backup
+**Goal**: Operator can put stock on the shelf through the ledger, and the database is protected by automated backups before real daily data entry begins
+**Mode:** mvp
+**Depends on**: Phase 2
+**Requirements**: RCP-01, RCP-02, BCK-01
+**Success Criteria** (what must be TRUE):
+  1. Operator can register a goods receipt by product code with quantity, cost price, catalog price, and sale price, and stock increases accordingly
+  2. Product name auto-fills from the dictionary while entering a receipt
+  3. A completed receipt appears in the operations ledger with the entered prices captured
+  4. Database is backed up automatically using VACUUM INTO, and operator can restore from a backup (restore verified at least once)
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 4: Sales & Customers
+**Goal**: Operator can sell products — optionally to a known customer — with stock decremented, oversells warned, and profit data frozen correctly at sale time
+**Mode:** mvp
+**Depends on**: Phase 3
+**Requirements**: SAL-01, SAL-02, SAL-03, SAL-04, SAL-05, CST-01, CST-02
+**Success Criteria** (what must be TRUE):
+  1. Operator can register a sale by product code with quantity; stock decreases and the sale is saved to history
+  2. Operator can override the sale price on any sale line
+  3. Operator can create and edit customer profiles (name, surname, consultant number) and link a sale to a customer
+  4. Selling more than is in stock triggers a warning with explicit confirm-to-proceed
+  5. Each sale line snapshots unit cost and sale price at sale time, and a customer's purchase history shows what, when, and at what price
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 5: Stock Operations & History
+**Goal**: Operator can handle every non-sale stock movement (write-off, return, correction) and see the complete operation trail
+**Mode:** mvp
+**Depends on**: Phase 4
+**Requirements**: OPS-01, OPS-02, OPS-03, OPS-04
+**Success Criteria** (what must be TRUE):
+  1. Operator can write off stock with a reason, and stock decreases accordingly
+  2. Operator can register a return linked to the original sale, and stock increases accordingly
+  3. Operator can correct stock quantity, and the adjustment is recorded as an operation rather than a direct edit
+  4. Operator can browse the full operation history showing what happened, when, and how much
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 6: Reports & Data Export
+**Goal**: Operator can see sales, profit, and stock health for any period, and get all data out as CSV
+**Mode:** mvp
+**Depends on**: Phase 5
+**Requirements**: RPT-01, RPT-02, RPT-03, RPT-04, BCK-02
+**Success Criteria** (what must be TRUE):
+  1. Operator can view sales and profit reports for a day, week, month, or custom period, with correct local-day boundaries
+  2. Operator can view current stock levels including a low-stock items list
+  3. Operator can view write-off reports for a chosen period
+  4. Operator can view top-selling products and products with no sales for a long time
+  5. Operator can export products, sales, and customers to CSV files
+**Plans**: TBD
+**UI hint**: yes
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Foundation & Ledger Core | 0/TBD | Not started | - |
+| 2. Catalog, Dictionary & Search | 0/TBD | Not started | - |
+| 3. Goods Receipt & Backup | 0/TBD | Not started | - |
+| 4. Sales & Customers | 0/TBD | Not started | - |
+| 5. Stock Operations & History | 0/TBD | Not started | - |
+| 6. Reports & Data Export | 0/TBD | Not started | - |

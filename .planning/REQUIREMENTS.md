@@ -71,4 +71,33 @@
 
 ## Traceability
 
-(Filled by roadmap)
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| CAT-01 | Phase 2 | Pending |
+| CAT-02 | Phase 2 | Pending |
+| CAT-03 | Phase 2 | Pending |
+| CAT-04 | Phase 2 | Pending |
+| RCP-01 | Phase 3 | Pending |
+| RCP-02 | Phase 3 | Pending |
+| BCK-01 | Phase 3 | Pending |
+| SAL-01 | Phase 4 | Pending |
+| SAL-02 | Phase 4 | Pending |
+| SAL-03 | Phase 4 | Pending |
+| SAL-04 | Phase 4 | Pending |
+| SAL-05 | Phase 4 | Pending |
+| CST-01 | Phase 4 | Pending |
+| CST-02 | Phase 4 | Pending |
+| OPS-01 | Phase 5 | Pending |
+| OPS-02 | Phase 5 | Pending |
+| OPS-03 | Phase 5 | Pending |
+| OPS-04 | Phase 5 | Pending |
+| RPT-01 | Phase 6 | Pending |
+| RPT-02 | Phase 6 | Pending |
+| RPT-03 | Phase 6 | Pending |
+| RPT-04 | Phase 6 | Pending |
+| BCK-02 | Phase 6 | Pending |
+
+**Coverage: 26/26 v1 requirements mapped — no orphans, no duplicates.**
