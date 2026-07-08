@@ -134,6 +134,32 @@ def test_web_add_and_edit_rows(client, session):
     assert "<html" not in response.text
 
 
+def test_web_add_invalid_returns_swappable_422_partial(client, session):
+    """CR-01 contract: errors come back as 422 AND htmx is configured to swap 422.
+
+    htmx 2 default responseHandling discards 4xx bodies; base.html must opt
+    422 into swapping, otherwise the RU validation message never renders.
+    """
+    # Blank code -> 422 with the RU field error in the rows partial.
+    response = client.post("/dictionary", data={"code": "  ", "name": "Помада"})
+    assert response.status_code == 422
+    assert 'id="dictionary-rows"' in response.text
+    assert "Укажите код." in response.text
+
+    # Duplicate code on inline edit -> 422 with the RU duplicate message.
+    add_entry(session, code="1234", name="Губная Помада")
+    entry, _ = add_entry(session, code="5678", name="Тушь Для Ресниц")
+    response = client.post(f"/dictionary/{entry.id}", data={"code": "1234", "name": "Тушь"})
+    assert response.status_code == 422
+    assert "Код уже есть в справочнике" in response.text
+
+    # Config-level assertion: any full page carries the htmx-config meta
+    # that opts 422 into swapping (this is what makes the 422 body visible).
+    page = client.get("/dictionary")
+    assert 'name="htmx-config"' in page.text
+    assert '{"code":"422","swap":true}' in page.text
+
+
 def test_web_lookup_fills_when_name_empty(client, session):
     """Known code + empty name -> 200 name-wrap fragment with the autofill hint."""
     add_entry(session, code="1234", name="Губная Помада")
