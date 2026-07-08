@@ -13,7 +13,7 @@ MyOriShop goes from empty repo to a daily-usable local inventory app in six phas
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Ledger Core** - Runnable app skeleton with append-only operations ledger and sync-ready schema
+- [x] **Phase 1: Foundation & Ledger Core** - Runnable app skeleton with append-only operations ledger and sync-ready schema (completed 2026-07-08)
 - [ ] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search
 - [ ] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry
 - [ ] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history
@@ -47,7 +47,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Vertical slice: ledger service (single write path), HTMX page + POST /ops partial, run.bat launcher, lint gate
+- [x] 01-03-PLAN.md — Vertical slice: ledger service (single write path), HTMX page + POST /ops partial, run.bat launcher, lint gate
 
 ### Phase 2: Catalog, Dictionary & Search
 
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Ledger Core | 2/3 | In Progress|  |
+| 1. Foundation & Ledger Core | 3/3 | Complete   | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 0/TBD | Not started | - |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
