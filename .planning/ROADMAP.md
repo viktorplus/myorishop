@@ -31,7 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Every stock-changing operation is stored as an append-only ledger row, and current stock quantity can be recomputed from the ledger alone
   3. Every recorded operation shows who performed it and when
   4. Database inspection confirms money as integer minor units, timestamps as UTC, and UUID identifiers on all records
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Scaffold uv project + vendored htmx 2.0.10 + FAILING Wave-0 test contract (FND-01/02/03 + e2e)
+- [ ] 01-02-PLAN.md — Data foundation: settings/helpers/engine (PRAGMA listener), models, Alembic migration 0001 with append-only triggers + demo seed
+- [ ] 01-03-PLAN.md — Vertical slice: ledger service (single write path), HTMX page + POST /ops partial, run.bat launcher, lint gate
 
 ### Phase 2: Catalog, Dictionary & Search
 **Goal**: Operator can maintain the product catalog and find any product in seconds by code or name
@@ -107,7 +112,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Ledger Core | 0/TBD | Not started | - |
+| 1. Foundation & Ledger Core | 0/3 | Planned | - |
 | 2. Catalog, Dictionary & Search | 0/TBD | Not started | - |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
