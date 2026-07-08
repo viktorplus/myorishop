@@ -50,6 +50,11 @@ def record_operation(
     product = session.get(Product, product_id)
     if product is None:
         raise ValueError(f"unknown product: {product_id!r}")
+    # IN-01 / D-20: operations on soft-deleted products are REJECTED here,
+    # in the single write path — one guard covers all current and future
+    # operation types.
+    if product.deleted_at is not None:
+        raise ValueError(f"product is deleted: {product_id!r}")
 
     op = Operation(
         id=new_id(),

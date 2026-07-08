@@ -20,8 +20,18 @@ NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
 }
 
-# Phase 1 uses only "correction"; the rest arrive in later phases.
-OPERATION_TYPES = ("receipt", "sale", "writeoff", "return", "correction")
+# Phase 1 shipped "correction"; Phase 2 adds the qty_delta=0 audit types
+# (RESEARCH Finding 5 — no CHECK constraint on operations.type, no migration).
+OPERATION_TYPES = (
+    "receipt",
+    "sale",
+    "writeoff",
+    "return",
+    "correction",
+    "price_change",
+    "product_created",
+    "product_edited",
+)
 
 
 class Base(DeclarativeBase):
@@ -32,14 +42,40 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    code: Mapped[str | None] = mapped_column(String(20))
+    code: Mapped[str | None] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(200))
+    # D-19: optional free-text category (datalist suggestions in UI).
+    category: Mapped[str | None] = mapped_column(String(100))
+    # D-19: three optional prices, integer cents only (conventions test).
+    cost_cents: Mapped[int | None] = mapped_column(Integer)
+    sale_cents: Mapped[int | None] = mapped_column(Integer)
+    catalog_cents: Mapped[int | None] = mapped_column(Integer)
+    # D-27: lowercase shadow of name, maintained by the SERVICE layer via
+    # Python str.lower() — SQLite lower()/LIKE cannot fold Cyrillic.
+    name_lc: Mapped[str | None] = mapped_column(String(200), index=True)
     # D-09: cached projection of SUM(operations.qty_delta); recomputable.
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
     # D-10: soft delete only; no hard deletes.
     deleted_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class Dictionary(Base):
+    """Code -> name reference (CAT-02), helper only; products stay the truth.
+
+    PD-1: UUID String(36) surrogate PK + UNIQUE(code) — NOT code-as-PK.
+    The frozen Phase 1 conventions test requires every PK to be a 36-char
+    UUID string, and D-05 sync-readiness wants UUID rows everywhere.
+    """
+
+    __tablename__ = "dictionary"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 
 
 class Operation(Base):
