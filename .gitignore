@@ -13,3 +13,6 @@ data/
 
 # Local environment config (never commit real values)
 .env
+
+# Git Bash crash artifacts (Windows)
+*.stackdump

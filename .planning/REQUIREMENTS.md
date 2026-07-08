@@ -13,7 +13,7 @@
 - [x] **CAT-01**: User can create and edit product cards: code, name, category, cost price, sale price, current catalog price (most fields optional)
 - [ ] **CAT-02**: User can maintain a reference dictionary (product code → name) that auto-fills the name when entering a code
 - [ ] **CAT-03**: User can find a product by code or name with instant search/autocomplete
-- [ ] **CAT-04**: Price changes on a product are kept as history (previous values not lost)
+- [x] **CAT-04**: Price changes on a product are kept as history (previous values not lost)
 
 ### Receipt
 
@@ -79,7 +79,7 @@
 | CAT-01 | Phase 2 | Complete |
 | CAT-02 | Phase 2 | Pending |
 | CAT-03 | Phase 2 | Pending |
-| CAT-04 | Phase 2 | Pending |
+| CAT-04 | Phase 2 | Complete |
 | RCP-01 | Phase 3 | Pending |
 | RCP-02 | Phase 3 | Pending |
 | BCK-01 | Phase 3 | Pending |

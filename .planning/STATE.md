@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-07-08T14:42:16.182Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-07-08T15:04:51.342Z"
 last_activity: 2026-07-08
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 2
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-08
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████░░░░] 57%
 | Phase 01 P02 | 5min | 2 tasks | 9 files |
 | Phase 01 P03 | 7min | 3 tasks | 16 files |
 | Phase 02 P01 | 16min | 3 tasks | 12 files |
+| Phase 02 P02 | 17min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-01: dictionary table uses UUID String(36) surrogate PK + UNIQUE(code) (PD-1) — keeps Phase 1 conventions test green and D-05 sync-readiness
 - [Phase ?]: 02-01: IN-01 guard placed inside record_operation itself — one guard rejects ops on soft-deleted products for all current and future op types
 - [Phase ?]: 02-01: name_lc maintained by Python str.lower(); migration 0002 backfills in Python — SQLite lower()/LIKE are ASCII-only and cannot fold Cyrillic
+- [Phase 02]: 02-02: destructive/restore zone reuses .form-actions for UI-SPEC lg separation - no CSS additions needed
+- [Phase 02]: 02-02: h2 «История цен» lives inside price_history.html partial so the artifact contains-gate holds; form page only includes the partial
+- [Phase 02]: 02-02: PD-4 confirmed - vendored htmx 2.0.10 handles HX-Redirect; delete/restore answer 200 + header, no fallback needed
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T14:41:19.894Z
-Stopped at: Phase 2 UI-SPEC approved
+Last session: 2026-07-08T15:04:32.385Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
