@@ -13,17 +13,18 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 ### Validated
 
 - ✓ Operation audit log (who did what and when) — Phase 1 (append-only ledger with created_by/created_at, visible in UI)
+- ✓ Product catalog: code, name, category, prices; editable product cards with soft delete/restore and price history — Phase 2
+- ✓ Reference dictionary: product code → name with debounced auto-fill (never overwrites typed name) — Phase 2
+- ✓ Fast search by code/name with in-place HTMX updates and match highlighting — Phase 2 (part of operator UI requirement)
 
 ### Active
 
-- [ ] Product catalog: code, name, category, quantity, cost price, sale price, current catalog price (most fields optional); editable product cards
-- [ ] Pre-loaded reference dictionary: product code → name, with auto-fill on entry
 - [ ] Goods receipt: add stock by product code with quantity, cost, catalog and sale prices; price change history preserved
 - [ ] Sales: by product code with auto-fill, custom sale price, optional customer (name, surname, consultant number); stock decremented; sale saved to history
 - [ ] Other operations: write-off, return, stock correction — all logged in operation history
 - [ ] Customers: profile, purchase history, purchase frequency, "running low" reminders, interested-customers list on new stock arrival
 - [ ] Reports: day/week/month/custom period — sales, profit, stock levels, write-offs, top products, active customers, stale products, low-stock items
-- [ ] Simple operator UI: fast search by code/name, minimal clicks, autocomplete, warnings (e.g., selling more than in stock)
+- [ ] Simple operator UI: minimal clicks, autocomplete, warnings (e.g., selling more than in stock) — search/autocomplete shipped in Phase 2
 - [ ] Operation audit log (who did what and when)
 
 ### Out of Scope
@@ -74,4 +75,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-08 after initialization*
+*Last updated: 2026-07-08 after Phase 2*
