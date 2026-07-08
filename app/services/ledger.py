@@ -35,12 +35,18 @@ def record_operation(
     unit_cost_cents: int | None = None,
     unit_price_cents: int | None = None,
     payload: dict | None = None,
+    commit: bool = True,
 ) -> Operation:
     """Append one immutable ledger row and update the cached stock projection.
 
     This is the ONLY sanctioned write path for operations and
     products.quantity (FND-01). Audit fields are stamped from settings
     (FND-03, D-17). Everything happens in one transaction (D-09).
+
+    WR-03: callers staging SEVERAL ops for one logical change pass
+    commit=False for every call and issue ONE session.commit() at the end,
+    so a crash cannot leave a partially written audit trail. next_seq still
+    works: autoflush flushes pending ops before its max(seq) query.
     """
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
@@ -73,7 +79,8 @@ def record_operation(
     # IN-02: SQL-side increment (UPDATE ... SET quantity = quantity + ?) —
     # atomic, no stale-ORM-value window. Same transaction (D-09).
     product.quantity = Product.quantity + qty_delta
-    session.commit()
+    if commit:
+        session.commit()
     return op
 
 

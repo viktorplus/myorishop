@@ -181,8 +181,10 @@ def update_product(
     product.sale_cents = sale_cents
     product.catalog_cents = catalog_cents
 
-    # PD-3: one op per changed price field; the FIRST record_operation commit
-    # also persists all staged product-row mutations atomically.
+    # PD-3: one op per changed price field. WR-03: ALL ops are staged with
+    # commit=False and persisted by the SINGLE commit below, so the product
+    # mutation and every audit row land in one transaction — a crash between
+    # ops can no longer strand a partial price history.
     for field in changed_prices:
         payload = {
             "field": field,
@@ -190,7 +192,12 @@ def update_product(
             "new_cents": new_prices[field],
         }
         record_operation(
-            session, type_="price_change", product_id=product.id, qty_delta=0, payload=payload
+            session,
+            type_="price_change",
+            product_id=product.id,
+            qty_delta=0,
+            payload=payload,
+            commit=False,
         )
     if changed_non_price:
         record_operation(
@@ -199,7 +206,9 @@ def update_product(
             product_id=product.id,
             qty_delta=0,
             payload={"fields": changed_non_price},
+            commit=False,
         )
+    session.commit()
     return product, {}
 
 
