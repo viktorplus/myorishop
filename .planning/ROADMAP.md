@@ -68,7 +68,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Product cards slice: migration 0002 + models + IN-01 guard + create/list at /products (CAT-01)
+- [x] 02-01-PLAN.md — Product cards slice: migration 0002 + models + IN-01 guard + create/list at /products (CAT-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -153,7 +153,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
-| 2. Catalog, Dictionary & Search | 0/4 | Planned | - |
+| 2. Catalog, Dictionary & Search | 1/4 | In Progress|  |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |

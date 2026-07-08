@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-07-08T14:18:04.277Z"
-last_activity: 2026-07-08 -- Phase 2 planning complete
+last_updated: "2026-07-08T14:42:16.182Z"
+last_activity: 2026-07-08
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 7
+  completed_plans: 4
   percent: 17
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 2
-Plan: Not started
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-08 -- Phase 2 planning complete
+Last activity: 2026-07-08
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 01 P01 | 8min | 2 tasks | 12 files |
 | Phase 01 P02 | 5min | 2 tasks | 9 files |
 | Phase 01 P03 | 7min | 3 tasks | 16 files |
+| Phase 02 P01 | 16min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-02: datetime.UTC alias adopted per ruff UP017 (py313 target)
 - [Phase ?]: 01-03: tzdata added as runtime dep - Windows has no system IANA tz database for zoneinfo
 - [Phase ?]: 01-03: ruff B008 handled via flake8-bugbear extend-immutable-calls for fastapi.Depends/Form
+- [Phase ?]: 02-01: dictionary table uses UUID String(36) surrogate PK + UNIQUE(code) (PD-1) — keeps Phase 1 conventions test green and D-05 sync-readiness
+- [Phase ?]: 02-01: IN-01 guard placed inside record_operation itself — one guard rejects ops on soft-deleted products for all current and future op types
+- [Phase ?]: 02-01: name_lc maintained by Python str.lower(); migration 0002 backfills in Python — SQLite lower()/LIKE are ASCII-only and cannot fold Cyrillic
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T13:45:26.574Z
+Last session: 2026-07-08T14:41:19.894Z
 Stopped at: Phase 2 UI-SPEC approved
-Resume file: .planning/phases/02-catalog-dictionary-search/02-UI-SPEC.md
+Resume file: None
