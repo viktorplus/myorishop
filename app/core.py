@@ -6,7 +6,7 @@ Never use float for money (Pitfall 3) and never store naive datetimes.
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 _CENTS = Decimal("0.01")
@@ -31,13 +31,17 @@ def to_cents(value: str) -> int:
     Accepts the Russian comma decimal separator. Raises ValueError on ANY
     invalid input, including non-finite values ('inf', 'nan') and huge
     exponents — callers may rely on catching ValueError alone (WR-02).
+
+    Rounding policy (WR-03): ROUND_HALF_UP — ties round away from zero,
+    the predictable retail behaviour ('12,505' -> 1251), NOT the Decimal
+    default banker's rounding.
     """
     text = str(value).strip().replace(",", ".")
     try:
         amount = Decimal(text)
         if not amount.is_finite():
             raise InvalidOperation
-        return int(amount.quantize(_CENTS) * 100)
+        return int(amount.quantize(_CENTS, rounding=ROUND_HALF_UP) * 100)
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"invalid money value: {value!r}") from exc
 

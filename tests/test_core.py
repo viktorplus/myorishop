@@ -17,6 +17,13 @@ def test_to_cents_accepts_comma_and_dot():
     assert to_cents("0") == 0
 
 
+def test_to_cents_rounds_half_up():
+    """WR-03: deliberate ROUND_HALF_UP policy — ties round away from zero."""
+    assert to_cents("12,505") == 1251  # banker's rounding would give 1250
+    assert to_cents("12,515") == 1252
+    assert to_cents("-12,505") == -1251
+
+
 @pytest.mark.parametrize(
     "bad",
     ["", "abc", "12,5,0", "inf", "-inf", "Infinity", "nan", "1e100000"],
