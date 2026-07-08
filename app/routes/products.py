@@ -10,9 +10,9 @@ from app.services.catalog import (
     category_options,
     create_product,
     get_product,
-    list_products,
     price_history,
     restore_product,
+    search_view,
     soft_delete_product,
     update_product,
 )
@@ -25,8 +25,17 @@ router = APIRouter()
 
 @router.get("/products")
 def products_list(request: Request, session: Session = Depends(get_session)):
-    context = {"products": list_products(session)}
+    # D-18: list page and search partial share the same search_view context
+    # (empty query = first 20 active products by name).
+    context = search_view(session, "")
     return templates.TemplateResponse(request, "pages/products_list.html", context)
+
+
+@router.get("/products/search")
+def products_search(request: Request, q: str = "", session: Session = Depends(get_session)):
+    # D-25: HTMX active search — returns ONLY the rows partial (Phase 1 rule).
+    context = search_view(session, q)
+    return templates.TemplateResponse(request, "partials/product_rows.html", context)
 
 
 @router.get("/products/new")

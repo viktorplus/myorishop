@@ -1,6 +1,8 @@
-{# Stable HTMX swap target: Plan 02-03 search targets #product-rows (outerHTML). #}
+{# Stable HTMX swap target: the /products search input swaps #product-rows (outerHTML).
+   Context comes from catalog.search_view: q + rows of {product, code_seg, name_seg}.
+   Pattern 5: segments are autoescaped; <mark> is literal template HTML — never |safe. #}
 <div id="product-rows">
-  {% if products %}
+  {% if rows %}
   <table>
     <thead>
       <tr>
@@ -14,10 +16,11 @@
       </tr>
     </thead>
     <tbody>
-      {% for product in products %}
+      {% for row in rows %}
+      {% set product = row.product %}
       <tr>
-        <td>{{ product.code }}</td>
-        <td>{{ product.name }}</td>
+        <td>{% set pre, match, post = row.code_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
+        <td>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
         <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
@@ -27,6 +30,10 @@
       {% endfor %}
     </tbody>
   </table>
+  {% elif q and q.strip() %}
+  <div class="empty-state">
+    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте код или название.</p>
+  </div>
   {% else %}
   <div class="empty-state">
     <h2>Товаров пока нет</h2>

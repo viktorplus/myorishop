@@ -6,7 +6,7 @@ The catalog stages Product mutations WITHOUT committing and lets
 record_operation's internal commit close the transaction atomically (D-30).
 """
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core import new_id, to_cents, utcnow_iso
@@ -245,6 +245,67 @@ def list_products(session: Session) -> list[Product]:
             .limit(20)
         )
     )
+
+
+# --- Instant search (CAT-03, D-25/D-26/D-27) ---
+
+
+def _escape_like(q: str) -> str:
+    """Escape \\, % and _ so they match LITERALLY in the manual prefix LIKE."""
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def search_products(session: Session, q: str) -> list[Product]:
+    """Ranked, capped, Cyrillic-safe product search (D-25/D-26).
+
+    D-27: the query string is lowered in PYTHON and compared against the
+    name_lc shadow column — SQLite lower()/LIKE fold ASCII only, so
+    func.lower is permitted ONLY on Product.code (ASCII codes, A1).
+    """
+    base = select(Product).where(Product.deleted_at.is_(None))
+    q_lc = q.strip().lower()  # Python folds Cyrillic; SQL lower() cannot
+    if not q_lc:
+        # Pitfall 6: empty query -> first 20 active products by name.
+        return list(session.scalars(base.order_by(Product.name).limit(20)))
+    code_prefix = func.lower(Product.code).like(_escape_like(q_lc) + "%", escape="\\")
+    # D-26 ranking: exact code (0) > code prefix (1) > name substring (2).
+    rank = case(
+        (func.lower(Product.code) == q_lc, 0),
+        (code_prefix, 1),
+        else_=2,
+    )
+    stmt = (
+        base.where(code_prefix | Product.name_lc.contains(q_lc, autoescape=True))
+        .order_by(rank, Product.name_lc)
+        .limit(20)  # locked cap
+    )
+    return list(session.scalars(stmt))
+
+
+def split_match(text: str, q_lc: str) -> tuple[str, str, str]:
+    """Return (pre, match, post) segments; match == '' when q empty/not found.
+
+    Pattern 5: no HTML is built in Python — the template renders each
+    segment autoescaped with a literal <mark> around the match.
+    """
+    idx = text.lower().find(q_lc) if q_lc else -1
+    if idx < 0:
+        return text, "", ""
+    return text[:idx], text[idx : idx + len(q_lc)], text[idx + len(q_lc) :]
+
+
+def search_view(session: Session, q: str) -> dict:
+    """Shared context for the full list page AND the search partial (D-18)."""
+    q_lc = q.strip().lower()
+    rows = [
+        {
+            "product": product,
+            "code_seg": split_match(product.code or "", q_lc),
+            "name_seg": split_match(product.name, q_lc),
+        }
+        for product in search_products(session, q)
+    ]
+    return {"q": q, "rows": rows}
 
 
 def category_options(session: Session) -> list[str]:

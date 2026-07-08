@@ -190,3 +190,9 @@ th {
   padding: 48px 0;
   text-align: center;
 }
+
+/* Search match highlight: accent-tinted background, text color unchanged. */
+mark {
+  background: #e8effd;
+  color: inherit;
+}
