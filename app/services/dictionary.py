@@ -6,6 +6,7 @@ the operations ledger; plain session.commit() is the whole write path.
 """
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import new_id
@@ -43,7 +44,14 @@ def add_entry(
         return None, errors
     entry = Dictionary(id=new_id(), code=code, name=name)
     session.add(entry)
-    session.commit()
+    # WR-02: the SELECT above is check-then-act — a duplicate landing between
+    # check and commit (second tab, retried request) raises IntegrityError
+    # from uq_dictionary_code; translate it into the same RU error shape.
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return None, {"code": DUPLICATE_ERROR}
     return entry, {}
 
 
@@ -59,7 +67,12 @@ def update_entry(
         return None, errors
     entry.code = code
     entry.name = name
-    session.commit()
+    # WR-02: same race guard as add_entry — see comment there.
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return None, {"code": DUPLICATE_ERROR}
     return entry, {}
 
 

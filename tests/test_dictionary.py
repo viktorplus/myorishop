@@ -57,6 +57,30 @@ def test_add_entry_requires_code_and_name(session):
     assert session.scalars(select(Dictionary)).all() == []
 
 
+def test_add_entry_duplicate_race_returns_ru_error_not_500(session, monkeypatch):
+    """WR-02: a duplicate landing between check and commit must not raise.
+
+    Simulate the two-tab race by disabling the SELECT-based duplicate check —
+    the DB uq_dictionary_code then fires at commit and must be translated
+    into the same RU error shape instead of an unhandled IntegrityError.
+    """
+    from app.services import dictionary as dictionary_service
+
+    entry, errors = add_entry(session, code="1234", name="Губная Помада")
+    assert errors == {}
+
+    monkeypatch.setattr(
+        dictionary_service,
+        "_validate",
+        lambda session, code, name, **kw: (code.strip(), name.strip(), {}),
+    )
+    duplicate, errors = add_entry(session, code="1234", name="Другое Название")
+    assert duplicate is None
+    assert "Код уже есть в справочнике" in errors["code"]
+    # The session is usable again after the rollback.
+    assert len(session.scalars(select(Dictionary)).all()) == 1
+
+
 def test_update_entry_edits_code_and_name(session):
     """Same validation as add; duplicate-code check excludes the row itself."""
     entry, _ = add_entry(session, code="1234", name="Губная Помада")
