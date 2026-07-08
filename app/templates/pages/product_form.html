@@ -11,7 +11,13 @@
 {% endif %}
 {% if errors.product %}<p class="error">{{ errors.product }}</p>{% endif %}
 
-<form method="post" action="{% if product %}/products/{{ product.id }}{% else %}/products{% endif %}" class="stacked-form">
+{# WR-01: swap-time guard — the request-time hx-include check snapshots the
+   name BEFORE the 300ms lookup returns; if the operator started typing a
+   name while the lookup was in flight, discard the fragment instead of
+   destroying their input (Pitfall 5, evaluated at swap time). #}
+<form method="post" action="{% if product %}/products/{{ product.id }}{% else %}/products{% endif %}" class="stacked-form"
+      hx-on::before-swap="if (event.detail.target.id === 'name-wrap'
+        && document.getElementById('name').value.trim()) event.detail.shouldSwap = false">
   <div class="field">
     <label for="code">Код</label>
     {# D-23: debounced dictionary autofill; the 204 guard (Pitfall 5) makes
