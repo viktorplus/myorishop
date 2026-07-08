@@ -448,16 +448,16 @@ def test_backup_and_restore_roundtrip(tmp_path, engine, session, product):
 | A2 | VACUUM INTO preserves triggers/schema objects in the output file | Code Examples | Restore could silently lose append-only enforcement; mitigated by asserting trigger behavior in the restore test |
 | A3 | Prices on the receipt form are optional (empty → NULL), mirroring CAT-01 field optionality, while quantity is required > 0 | Pattern 1 | If user expects all four prices mandatory, add required-validation — one-line change; flagged as Open Question 2 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Existing product + operator edits the name field during receipt — what happens?**
+1. **Existing product + operator edits the name field during receipt — what happens?** — RESOLVED: adopted as PD-9 (name read-only for existing products; renames via /products/{id}/edit)
    - What we know: D-07 says receipts update *prices* on the card; D-03 pre-fills name from the product; Phase 2 has `product_edited` ops for name changes.
    - What's unclear: whether a name typed over the pre-fill should rename the product.
    - Recommendation: ignore name changes for existing products in v1 (receipt touches prices only); renames go through /products/{id}/edit. Simplest, no surprise renames from autofill races.
-2. **Are cost/catalog/sale prices required on a receipt?**
+2. **Are cost/catalog/sale prices required on a receipt?** — RESOLVED: adopted as PD-8 (quantity required > 0; prices optional, empty → NULL)
    - What we know: RCP-01 lists all four fields; product card prices are optional (CAT-01); `parse_optional_cents` exists.
    - Recommendation: quantity required (> 0 integer); prices optional (empty → NULL, no price_change op for empty fields). Keeps fast entry fast and matches card optionality. Planner may tighten to "cost required" if profit math needs it later (SAL-05 snapshots at sale time anyway).
-3. **Pre-migration backup in run.bat?**
+3. **Pre-migration backup in run.bat?** — RESOLVED: adopted as PD-13 (skipped for v1; lifespan backup per D-09 satisfies BCK-01)
    - What we know: run.bat migrates before uvicorn starts; lifespan backup therefore runs post-migration (Pitfall 8). D-09 locks startup backup; it does not forbid an additional call.
    - Recommendation: implement lifespan per D-09 now; optionally expose `uv run python -m app.services.backup` and call it in run.bat before alembic — cheap insurance, Claude's-discretion scope. Not required for BCK-01.
 
