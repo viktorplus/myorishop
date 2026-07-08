@@ -1,0 +1,64 @@
+"""SQLAlchemy 2.0 models (D-05..D-10): sync-ready conventions locked here.
+
+UUID4 TEXT primary keys, integer *_cents money, UTC ISO-8601 TEXT timestamps.
+Schema source of truth is Alembic migration 0001 — create_all is for test
+fixtures only.
+"""
+
+from sqlalchemy import JSON, ForeignKey, Integer, MetaData, String, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.core import new_id, utcnow_iso
+
+# Pitfall 4: SQLite allows unnamed constraints; future batch migrations
+# cannot target them for drop. Name everything from day one.
+NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+# Phase 1 uses only "correction"; the rest arrive in later phases.
+OPERATION_TYPES = ("receipt", "sale", "writeoff", "return", "correction")
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code: Mapped[str | None] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(200))
+    # D-09: cached projection of SUM(operations.qty_delta); recomputable.
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+    # D-10: soft delete only; no hard deletes.
+    deleted_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class Operation(Base):
+    """Append-only ledger row (D-08) — immutability enforced by DB triggers."""
+
+    __tablename__ = "operations"
+    __table_args__ = (UniqueConstraint("device_id", "seq"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey("products.id"), nullable=False, index=True
+    )
+    qty_delta: Mapped[int] = mapped_column(Integer, nullable=False)  # signed
+    unit_cost_cents: Mapped[int | None] = mapped_column(Integer)
+    unit_price_cents: Mapped[int | None] = mapped_column(Integer)
+    payload: Mapped[dict | None] = mapped_column(JSON)  # type-specific fields
+    device_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)  # FND-03
+    synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
