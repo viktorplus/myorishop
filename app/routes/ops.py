@@ -4,7 +4,7 @@ Typed Form fields are the input validation (threat T-1-01): garbage in
 qty_delta gets a 422 from FastAPI before any business code runs.
 """
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -22,6 +22,13 @@ def create_op(
     session: Session = Depends(get_session),
 ):
     # Correction is the one op type needing no prices (walking skeleton).
-    record_operation(session, type_="correction", product_id=product_id, qty_delta=qty_delta)
+    try:
+        record_operation(
+            session, type_="correction", product_id=product_id, qty_delta=qty_delta
+        )
+    except ValueError as exc:
+        # WR-04: stale/tampered product_id must be a 4xx, not a raw 500.
+        session.rollback()
+        raise HTTPException(status_code=404, detail="unknown product") from exc
     context = ledger_view(session)
     return templates.TemplateResponse(request, "partials/ledger_rows.html", context)

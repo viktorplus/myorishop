@@ -28,3 +28,12 @@ def test_post_ops_records_correction(client, session, product):
 
     session.expire_all()
     assert product.quantity == 3
+
+
+def test_post_ops_unknown_product_returns_404(client, session):
+    """WR-04: stale/tampered product_id yields a 4xx, not an unhandled 500."""
+    response = client.post(
+        "/ops",
+        data={"product_id": "no-such-id", "qty_delta": "1"},
+    )
+    assert response.status_code == 404
