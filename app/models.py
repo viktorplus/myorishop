@@ -48,7 +48,7 @@ class Operation(Base):
     __tablename__ = "operations"
     __table_args__ = (UniqueConstraint("device_id", "seq"),)
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     product_id: Mapped[str] = mapped_column(
         ForeignKey("products.id"), nullable=False, index=True
