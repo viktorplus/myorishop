@@ -1,0 +1,30 @@
+[project]
+name = "myorishop"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic==1.18.*",
+    "fastapi==0.139.*",
+    "jinja2==3.1.*",
+    "pydantic-settings==2.14.*",
+    "python-multipart==0.0.32",
+    "sqlalchemy==2.0.*",
+    "uvicorn[standard]==0.51.*",
+]
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.*",
+    "pytest==9.1.*",
+    "ruff==0.15.*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

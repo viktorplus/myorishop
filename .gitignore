@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local database (SQLite + WAL sidecar files)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local environment config (never commit real values)
+.env
