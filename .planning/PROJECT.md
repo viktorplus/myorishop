@@ -12,7 +12,7 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Operation audit log (who did what and when) — Phase 1 (append-only ledger with created_by/created_at, visible in UI)
 
 ### Active
 
