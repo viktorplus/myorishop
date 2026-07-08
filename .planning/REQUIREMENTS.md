@@ -4,9 +4,9 @@
 
 ### Foundation
 
-- [ ] **FND-01**: All stock changes are recorded in an append-only operations ledger (receipt, sale, write-off, return, correction); stock quantity is derived from it
-- [ ] **FND-02**: All money values are stored as integer minor units (cents); all timestamps in UTC; all records use UUID identifiers
-- [ ] **FND-03**: Every operation records who performed it and when (audit trail)
+- [x] **FND-01**: All stock changes are recorded in an append-only operations ledger (receipt, sale, write-off, return, correction); stock quantity is derived from it
+- [x] **FND-02**: All money values are stored as integer minor units (cents); all timestamps in UTC; all records use UUID identifiers
+- [x] **FND-03**: Every operation records who performed it and when (audit trail)
 
 ### Catalog
 
@@ -73,9 +73,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
 | CAT-01 | Phase 2 | Pending |
 | CAT-02 | Phase 2 | Pending |
 | CAT-03 | Phase 2 | Pending |

@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Roadmap and state initialized; awaiting Phase 1 planning
-last_updated: "2026-07-08T12:34:51.541Z"
-last_activity: 2026-07-08 — Roadmap created (6 phases, 26/26 v1 requirements mapped)
+last_updated: "2026-07-08T12:47:46.582Z"
+last_activity: 2026-07-08
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 1 — Foundation & Ledger Core
+**Current focus:** Phase 01 — Foundation & Ledger Core
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation & Ledger Core)
-Plan: Not yet planned
+Phase: 01 (Foundation & Ledger Core) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-08 — Roadmap created (6 phases, 26/26 v1 requirements mapped)
+Last activity: 2026-07-08
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 8min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - Roadmap: Append-only operations ledger is the single source of truth for stock; cached quantity is a recomputable projection
 - Roadmap: Automated backup (BCK-01) placed in Phase 3, before real daily data entry begins (research flag)
 - Roadmap: Customers folded into the Sales phase (Phase 4) — SAL-03 needs customer profiles; keeps a full vertical slice
+- [Phase ?]: 01-01: Python 3.13.13 installed via uv; 3.12 fallback not needed
+- [Phase ?]: 01-01: pytest pythonpath=['.'] added so app package resolves for Plans 01-02/01-03
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08
+Last session: 2026-07-08T12:47:24.765Z
 Stopped at: Roadmap and state initialized; awaiting Phase 1 planning
 Resume file: None
