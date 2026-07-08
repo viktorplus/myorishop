@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Новый товар</h1>
+
+<form method="post" action="/products" class="stacked-form">
+  <div class="field">
+    <label for="code">Код</label>
+    <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus>
+    {% if errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+  </div>
+
+  {# Interface contract for Plan 02-04: dictionary autofill swaps #name-wrap. #}
+  <div class="field" id="name-wrap">
+    <label for="name">Название</label>
+    <input type="text" id="name" name="name" value="{{ form.name or '' }}">
+    {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="category">Категория <span class="muted">(необязательно)</span></label>
+    <input type="text" id="category" name="category" list="cat-options" value="{{ form.category or '' }}">
+    <datalist id="cat-options">
+      {% for c in categories %}<option value="{{ c }}">{% endfor %}
+    </datalist>
+    {% if errors.category %}<p class="error">{{ errors.category }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="cost">Закупочная цена <span class="muted">(необязательно)</span></label>
+    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00" value="{{ form.cost or '' }}">
+    {% if errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="sale">Цена продажи <span class="muted">(необязательно)</span></label>
+    <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00" value="{{ form.sale or '' }}">
+    {% if errors.sale %}<p class="error">{{ errors.sale }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="catalog">Цена по каталогу <span class="muted">(необязательно)</span></label>
+    <input type="text" id="catalog" name="catalog" inputmode="decimal" placeholder="0,00" value="{{ form.catalog or '' }}">
+    {% if errors.catalog %}<p class="error">{{ errors.catalog }}</p>{% endif %}
+  </div>
+
+  <div class="form-actions">
+    <button type="submit">Сохранить товар</button>
+    <a href="/products">Отмена</a>
+  </div>
+</form>
+{% endblock %}

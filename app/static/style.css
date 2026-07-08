@@ -1,37 +1,140 @@
-/* Minimal readable defaults — no framework, no build step. */
+/* Minimal readable defaults — no framework, no build step.
+   Normalized to the Phase 2 UI-SPEC scale: 4/8/16/24/32/48px spacing,
+   16/14/20/24px type at weights 400/600, accent #2563eb, destructive #b91c1c. */
 body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   margin: 0;
   background: #fafafa;
   color: #222;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .container {
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  padding: 0 16px 32px;
 }
 
+/* Navigation: secondary surface, accent links, active = accent + 600. */
+nav {
+  display: flex;
+  gap: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9d9d9;
+  margin: 0 -16px 32px;
+  padding: 8px 16px;
+}
+
+nav a {
+  text-decoration: none;
+}
+
+nav a.active {
+  font-weight: 600;
+}
+
+a {
+  color: #2563eb;
+}
+
+/* Typography: 4 sizes, 2 weights. */
 h1 {
-  font-size: 1.5rem;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
+h2 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+/* Inline form (home page correction form). */
 form {
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  margin-bottom: 24px;
+}
+
+/* Single-column forms (product create/edit). */
+form.stacked-form {
+  display: block;
+  max-width: 480px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+input {
+  padding: 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.stacked-form input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 input[type="number"] {
   width: 6rem;
-  padding: 0.4rem;
 }
 
-button {
-  padding: 0.4rem 0.9rem;
+/* Visible focus state — never outline:none without replacement. */
+input:focus,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+button,
+a.button {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  font-size: 16px;
+  text-decoration: none;
   cursor: pointer;
+}
+
+button:hover,
+a.button:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+button.secondary {
+  background: #ffffff;
+  color: #222;
+  border: 1px solid #d9d9d9;
+}
+
+button.danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
 }
 
 button:disabled {
@@ -42,16 +145,48 @@ button:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 1rem;
+  margin-top: 16px;
+  background: #ffffff;
 }
 
 th,
 td {
-  border: 1px solid #ccc;
-  padding: 0.4rem 0.6rem;
+  border: 1px solid #d9d9d9;
+  padding: 8px 12px;
   text-align: left;
 }
 
 th {
   background: #f0f0f0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Numeric cells: right-aligned, lining figures. */
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+
+.error-block {
+  background: #fdecec;
+  color: #b91c1c;
+  padding: 8px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.empty-state {
+  padding: 48px 0;
+  text-align: center;
 }

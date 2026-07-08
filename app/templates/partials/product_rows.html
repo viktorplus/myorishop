@@ -1,0 +1,35 @@
+{# Stable HTMX swap target: Plan 02-03 search targets #product-rows (outerHTML). #}
+<div id="product-rows">
+  {% if products %}
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Категория</th>
+        <th class="num">Закупочная</th>
+        <th class="num">Продажа</th>
+        <th class="num">Каталог</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for product in products %}
+      <tr>
+        <td>{{ product.code }}</td>
+        <td>{{ product.name }}</td>
+        <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{% if product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <h2>Товаров пока нет</h2>
+    <p class="muted">Добавьте первый товар, чтобы начать вести каталог.</p>
+    <p><a class="button" href="/products/new">Добавить товар</a></p>
+  </div>
+  {% endif %}
+</div>
