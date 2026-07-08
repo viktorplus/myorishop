@@ -7,10 +7,11 @@ one (per-connection memory DBs break with pooled sessions).
 """
 
 import pytest
+from sqlalchemy.orm import sessionmaker
+
 from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
 from app.models import Base, Product
-from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture()
@@ -55,9 +56,10 @@ def client(engine, session, product):
     Plan 01-03, and a module-level import would break collection of
     test_ledger / test_pragmas during Wave 2.
     """
+    from fastapi.testclient import TestClient
+
     from app.db import get_session
     from app.main import app
-    from fastapi.testclient import TestClient
 
     def override_get_session():
         yield session

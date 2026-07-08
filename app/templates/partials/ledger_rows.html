@@ -1,0 +1,28 @@
+<div id="ledger">
+  <section class="stock-summary">
+    <p>Товар: <strong>{{ product.name }}</strong></p>
+    <p>Остаток (кэш): <strong>{{ product.quantity }}</strong></p>
+    <p>Пересчёт по журналу: <strong>{{ computed_qty }}</strong></p>
+  </section>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Тип</th>
+        <th>Кол-во</th>
+        <th>Кто</th>
+        <th>Когда</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in operations %}
+      <tr>
+        <td>{{ op.type }}</td>
+        <td>{{ op.qty_delta }}</td>
+        <td>{{ op.created_by }}</td>
+        <td>{{ op.created_at | local_dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

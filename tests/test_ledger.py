@@ -10,12 +10,13 @@ from datetime import datetime, timedelta
 
 import pytest
 import sqlalchemy
+from sqlalchemy import String, text
+from sqlalchemy.exc import IntegrityError, OperationalError
+
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import Base, Operation, Product  # noqa: F401  (Product: contract symbol)
 from app.services.ledger import compute_stock, next_seq, rebuild_stock, record_operation
-from sqlalchemy import String, text
-from sqlalchemy.exc import IntegrityError, OperationalError
 
 
 def test_record_operation_appends_and_updates_projection(session, product):
