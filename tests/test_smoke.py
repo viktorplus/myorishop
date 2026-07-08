@@ -23,8 +23,9 @@ def test_post_ops_records_correction(client, session, product):
     assert response.status_code == 200
     # FND-03: the partial shows who recorded the operation
     assert settings.operator_name in response.text
-    # updated stock is rendered
-    assert ">3<" in response.text or "3" in response.text
+    # updated stock is rendered (IN-03: no vacuous `or "3"` fallback —
+    # the partial renders the quantity as <strong>3</strong> / <td>3</td>)
+    assert ">3<" in response.text
 
     session.expire_all()
     assert product.quantity == 3
