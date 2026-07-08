@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Roadmap and state initialized; awaiting Phase 1 planning
-last_updated: "2026-07-08T12:47:46.582Z"
+last_updated: "2026-07-08T12:59:36.695Z"
 last_activity: 2026-07-08
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 01 (Foundation & Ledger Core) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-08
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 8min | 2 tasks | 12 files |
+| Phase 01 P02 | 5min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - Roadmap: Customers folded into the Sales phase (Phase 4) — SAL-03 needs customer profiles; keeps a full vertical slice
 - [Phase ?]: 01-01: Python 3.13.13 installed via uv; 3.12 fallback not needed
 - [Phase ?]: 01-01: pytest pythonpath=['.'] added so app package resolves for Plans 01-02/01-03
+- [Phase 01]: 01-02: raw sqlite3 raises IntegrityError for RAISE(ABORT) trigger aborts; tests catch both exception classes
+- [Phase 01]: 01-02: datetime.UTC alias adopted per ruff UP017 (py313 target)
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T12:47:24.765Z
+Last session: 2026-07-08T12:56:14.342Z
 Stopped at: Roadmap and state initialized; awaiting Phase 1 planning
 Resume file: None
