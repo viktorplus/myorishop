@@ -7,6 +7,7 @@ record_operation's internal commit close the transaction atomically (D-30).
 """
 
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import new_id, to_cents, utcnow_iso
@@ -14,6 +15,7 @@ from app.models import Operation, Product
 from app.services.ledger import record_operation
 
 PRICE_ERROR = "Неверный формат цены — введите число, например 12,50."
+DUPLICATE_CODE_ERROR = "Код уже используется другим товаром — введите другой код."
 
 
 def parse_optional_cents(raw: str, errors: dict, field: str) -> int | None:
@@ -59,7 +61,7 @@ def create_product(
             select(Product).where(Product.code == code, Product.deleted_at.is_(None))
         ).first()
         if duplicate is not None:
-            errors["code"] = "Код уже используется другим товаром — введите другой код."
+            errors["code"] = DUPLICATE_CODE_ERROR
 
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
@@ -82,14 +84,21 @@ def create_product(
     )
     # Stage-then-commit: record_operation's session.get autoflushes the
     # pending product, then its commit persists product + op atomically.
+    # WR-04: uq_products_code_active is the DB backstop for the SELECT-based
+    # duplicate check above — a double-submit race fires IntegrityError at
+    # flush/commit and is translated into the same RU error shape.
     session.add(product)
-    record_operation(
-        session,
-        type_="product_created",
-        product_id=product.id,
-        qty_delta=0,
-        payload={"code": product.code, "name": product.name},
-    )
+    try:
+        record_operation(
+            session,
+            type_="product_created",
+            product_id=product.id,
+            qty_delta=0,
+            payload={"code": product.code, "name": product.name},
+        )
+    except IntegrityError:
+        session.rollback()
+        return None, {"code": DUPLICATE_CODE_ERROR}
     return product, errors
 
 
@@ -146,7 +155,7 @@ def update_product(
             )
         ).first()
         if duplicate is not None:
-            errors["code"] = "Код уже используется другим товаром — введите другой код."
+            errors["code"] = DUPLICATE_CODE_ERROR
 
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
@@ -185,30 +194,37 @@ def update_product(
     # commit=False and persisted by the SINGLE commit below, so the product
     # mutation and every audit row land in one transaction — a crash between
     # ops can no longer strand a partial price history.
-    for field in changed_prices:
-        payload = {
-            "field": field,
-            "old_cents": old_prices[field],
-            "new_cents": new_prices[field],
-        }
-        record_operation(
-            session,
-            type_="price_change",
-            product_id=product.id,
-            qty_delta=0,
-            payload=payload,
-            commit=False,
-        )
-    if changed_non_price:
-        record_operation(
-            session,
-            type_="product_edited",
-            product_id=product.id,
-            qty_delta=0,
-            payload={"fields": changed_non_price},
-            commit=False,
-        )
-    session.commit()
+    # WR-04: the staged code UPDATE flushes inside record_operation (autoflush
+    # before next_seq's SELECT) or at the final commit — either can raise
+    # IntegrityError from uq_products_code_active on a duplicate-code race.
+    try:
+        for field in changed_prices:
+            payload = {
+                "field": field,
+                "old_cents": old_prices[field],
+                "new_cents": new_prices[field],
+            }
+            record_operation(
+                session,
+                type_="price_change",
+                product_id=product.id,
+                qty_delta=0,
+                payload=payload,
+                commit=False,
+            )
+        if changed_non_price:
+            record_operation(
+                session,
+                type_="product_edited",
+                product_id=product.id,
+                qty_delta=0,
+                payload={"fields": changed_non_price},
+                commit=False,
+            )
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return None, {"code": DUPLICATE_CODE_ERROR}
     return product, {}
 
 

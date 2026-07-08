@@ -91,6 +91,47 @@ def test_create_product_rejects_duplicate_active_code(session):
     assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 1
 
 
+def test_duplicate_active_code_blocked_by_db_index(session, product):
+    """WR-04: uq_products_code_active is the DB backstop, not just app code."""
+    import sqlalchemy as sa
+
+    from app.core import new_id
+    from app.models import Product
+
+    session.add(Product(id=new_id(), code="TEST-001", name="Дубль", quantity=0))
+    with pytest.raises(sa.exc.IntegrityError):
+        session.commit()
+    session.rollback()
+
+
+def test_create_duplicate_code_race_returns_ru_error_not_500(session, monkeypatch):
+    """WR-04: when the SELECT check misses (double-submit race), the partial
+    unique index fires at flush and must be translated into the RU error."""
+    import sqlalchemy as sa
+
+    from app.services import catalog as catalog_service
+
+    first, errors = create_product(
+        session, code="1234", name="Первый", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    # Blind the duplicate check to simulate the second tab of a race.
+    monkeypatch.setattr(
+        catalog_service,
+        "select",
+        lambda *entities: sa.select(*entities).where(sa.false()),
+    )
+    second, errors = create_product(
+        session, code="1234", name="Второй", category="", **EMPTY_MONEY
+    )
+    assert second is None
+    assert "Код уже используется другим товаром" in errors["code"]
+    # Rollback left exactly one product and one audit op.
+    assert session.scalar(text("SELECT COUNT(*) FROM products WHERE code = '1234'")) == 1
+    assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 1
+
+
 def test_soft_deleted_code_can_be_reused(session, product):
     """D-19/D-20: uniqueness applies to ACTIVE products only."""
     product.deleted_at = utcnow_iso()

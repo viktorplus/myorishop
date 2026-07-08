@@ -5,7 +5,16 @@ Schema source of truth is Alembic migration 0001 — create_all is for test
 fixtures only.
 """
 
-from sqlalchemy import JSON, ForeignKey, Integer, MetaData, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core import new_id, utcnow_iso
@@ -40,6 +49,19 @@ class Base(DeclarativeBase):
 
 class Product(Base):
     __tablename__ = "products"
+    # WR-04 / D-19: code unique among ACTIVE products only — a partial unique
+    # index is the DB backstop for the SELECT-then-INSERT check in the
+    # catalog service (double-submit / two-tab race). Deleted products may
+    # share codes, hence the WHERE clause. Portable to PostgreSQL.
+    __table_args__ = (
+        Index(
+            "uq_products_code_active",
+            "code",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     code: Mapped[str | None] = mapped_column(String(20), index=True)
