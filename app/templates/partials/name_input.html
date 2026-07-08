@@ -1,0 +1,8 @@
+{# Single source for the product-form name field (PD-6): the static form
+   include AND the /dictionary/lookup swap render this same fragment. #}
+<div class="field" id="name-wrap">
+  <label for="name">Название</label>
+  <input type="text" id="name" name="name" value="{{ name }}">
+  {% if errors and errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+  {% if autofilled %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
+</div>

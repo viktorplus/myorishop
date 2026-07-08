@@ -14,16 +14,23 @@
 <form method="post" action="{% if product %}/products/{{ product.id }}{% else %}/products{% endif %}" class="stacked-form">
   <div class="field">
     <label for="code">Код</label>
-    <input type="text" id="code" name="code" value="{% if form %}{{ form.code or '' }}{% elif product %}{{ product.code or '' }}{% endif %}" required autofocus>
+    {# D-23: debounced dictionary autofill; the 204 guard (Pitfall 5) makes
+       this safe in edit mode too — a non-empty name is never overwritten. #}
+    <input type="text" id="code" name="code" value="{% if form %}{{ form.code or '' }}{% elif product %}{{ product.code or '' }}{% endif %}" required autofocus
+           hx-get="/dictionary/lookup"
+           hx-trigger="input changed delay:300ms"
+           hx-include="[name='name']"
+           hx-target="#name-wrap"
+           hx-swap="outerHTML"
+           hx-sync="this:replace">
     {% if errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
   </div>
 
-  {# Interface contract for Plan 02-04: dictionary autofill swaps #name-wrap. #}
-  <div class="field" id="name-wrap">
-    <label for="name">Название</label>
-    <input type="text" id="name" name="name" value="{% if form %}{{ form.name or '' }}{% elif product %}{{ product.name or '' }}{% endif %}">
-    {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
-  </div>
+  {# PD-6: single source for the name field — the lookup swap renders the
+     same partial, so static markup and fragment can never drift apart. #}
+  {% with name = (form.name or '') if form else ((product.name or '') if product else ''), autofilled = False %}
+  {% include "partials/name_input.html" %}
+  {% endwith %}
 
   <div class="field">
     <label for="category">Категория <span class="muted">(необязательно)</span></label>

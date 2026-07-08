@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Справочник</h1>
+
+{# Inline add row (focal point): plain paste-friendly inputs, no masks. #}
+<form hx-post="/dictionary"
+      hx-target="#dictionary-rows"
+      hx-swap="outerHTML"
+      hx-disabled-elt="find button"
+      class="form-actions">
+  <input type="text" name="code" placeholder="Код" autofocus>
+  <input type="text" name="name" placeholder="Название">
+  <button type="submit">Добавить код</button>
+</form>
+
+{% include "partials/dictionary_rows.html" %}
+{% endblock %}

@@ -1,0 +1,50 @@
+{# Swap target for add/edit posts — stable id, partial-only responses. #}
+<div id="dictionary-rows">
+  {% if errors and not error_entry_id %}
+  <div class="error-block">
+    {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
+    {% if form and (form.code or form.name) %}
+    <p class="muted">Не сохранено: {{ form.code }} — {{ form.name }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if entries %}
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Название</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        {% if error_entry_id == e.id and error_form %}
+        {% set row = error_form %}
+        {% else %}
+        {% set row = {"code": e.code, "name": e.name} %}
+        {% endif %}
+        <td><input type="text" name="code" value="{{ row.code }}" form="edit-{{ e.id }}"></td>
+        <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ e.id }}"></td>
+        <td>
+          <form id="edit-{{ e.id }}"
+                hx-post="/dictionary/{{ e.id }}"
+                hx-target="#dictionary-rows"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            <button type="submit" class="secondary">Сохранить код</button>
+          </form>
+          {% if error_entry_id == e.id %}
+          {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">Справочник пуст. Добавьте пары код → название — при вводе кода название будет подставляться автоматически.</p>
+  {% endif %}
+</div>
