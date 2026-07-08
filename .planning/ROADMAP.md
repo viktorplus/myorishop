@@ -14,7 +14,7 @@ MyOriShop goes from empty repo to a daily-usable local inventory app in six phas
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Ledger Core** - Runnable app skeleton with append-only operations ledger and sync-ready schema (completed 2026-07-08)
-- [ ] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search
+- [x] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search (completed 2026-07-08)
 - [ ] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry
 - [ ] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history
 - [ ] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing
@@ -77,7 +77,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion; 02-03 and 02-04 run in parallel — zero file overlap)*
 
 - [x] 02-03-PLAN.md — Instant search slice: ranked Cyrillic-safe search on name_lc, HTMX active search, <mark> highlight (CAT-03)
-- [ ] 02-04-PLAN.md — Dictionary slice: /dictionary CRUD + GET /dictionary/lookup autofill via 204 pattern (CAT-02)
+- [x] 02-04-PLAN.md — Dictionary slice: /dictionary CRUD + GET /dictionary/lookup autofill via 204 pattern (CAT-02)
 
 ### Phase 3: Goods Receipt & Backup
 
@@ -153,7 +153,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
-| 2. Catalog, Dictionary & Search | 3/4 | In Progress|  |
+| 2. Catalog, Dictionary & Search | 4/4 | Complete   | 2026-07-08 |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
