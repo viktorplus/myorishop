@@ -65,7 +65,9 @@ def record_operation(
         created_by=settings.operator_name,
     )
     session.add(op)
-    product.quantity += qty_delta  # cached projection, same transaction (D-09)
+    # IN-02: SQL-side increment (UPDATE ... SET quantity = quantity + ?) —
+    # atomic, no stale-ORM-value window. Same transaction (D-09).
+    product.quantity = Product.quantity + qty_delta
     session.commit()
     return op
 
