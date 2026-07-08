@@ -31,6 +31,14 @@ def test_record_operation_appends_and_updates_projection(session, product):
     assert count == 2
 
 
+def test_record_operation_unknown_product_raises_value_error(session, product):
+    """WR-01: unknown product fails with ValueError BEFORE any row is staged."""
+    with pytest.raises(ValueError, match="unknown product"):
+        record_operation(session, type_="correction", product_id="no-such-id", qty_delta=1)
+    session.rollback()
+    assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 0
+
+
 def test_operations_update_is_rejected(session, product):
     """FND-01 / D-08: UPDATE on operations is blocked at the database level."""
     record_operation(session, type_="correction", product_id=product.id, qty_delta=5)

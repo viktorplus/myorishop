@@ -45,6 +45,12 @@ def record_operation(
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
 
+    # WR-01: validate BEFORE staging the row — session.get() autoflushes,
+    # so a pending Operation with a bad FK would raise IntegrityError first.
+    product = session.get(Product, product_id)
+    if product is None:
+        raise ValueError(f"unknown product: {product_id!r}")
+
     op = Operation(
         id=new_id(),
         type=type_,
@@ -59,9 +65,6 @@ def record_operation(
         created_by=settings.operator_name,
     )
     session.add(op)
-    product = session.get(Product, product_id)
-    if product is None:
-        raise ValueError(f"unknown product: {product_id!r}")
     product.quantity += qty_delta  # cached projection, same transaction (D-09)
     session.commit()
     return op
