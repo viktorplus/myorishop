@@ -76,7 +76,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion; 02-03 and 02-04 run in parallel — zero file overlap)*
 
-- [ ] 02-03-PLAN.md — Instant search slice: ranked Cyrillic-safe search on name_lc, HTMX active search, <mark> highlight (CAT-03)
+- [x] 02-03-PLAN.md — Instant search slice: ranked Cyrillic-safe search on name_lc, HTMX active search, <mark> highlight (CAT-03)
 - [ ] 02-04-PLAN.md — Dictionary slice: /dictionary CRUD + GET /dictionary/lookup autofill via 204 pattern (CAT-02)
 
 ### Phase 3: Goods Receipt & Backup
@@ -153,7 +153,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
-| 2. Catalog, Dictionary & Search | 2/4 | In Progress|  |
+| 2. Catalog, Dictionary & Search | 3/4 | In Progress|  |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
