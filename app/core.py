@@ -28,14 +28,18 @@ def utcnow_iso() -> str:
 def to_cents(value: str) -> int:
     """Parse a money string ('12,50', '12.50', '7') into integer cents.
 
-    Accepts the Russian comma decimal separator. Raises ValueError on garbage.
+    Accepts the Russian comma decimal separator. Raises ValueError on ANY
+    invalid input, including non-finite values ('inf', 'nan') and huge
+    exponents — callers may rely on catching ValueError alone (WR-02).
     """
     text = str(value).strip().replace(",", ".")
     try:
         amount = Decimal(text)
-    except InvalidOperation as exc:
+        if not amount.is_finite():
+            raise InvalidOperation
+        return int(amount.quantize(_CENTS) * 100)
+    except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"invalid money value: {value!r}") from exc
-    return int(amount.quantize(_CENTS) * 100)
 
 
 def format_cents(cents: int) -> str:
