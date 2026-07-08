@@ -1,0 +1,36 @@
+{# Price history (D-29): read-only view of price_change ops, newest first. #}
+<section id="price-history">
+  <h2>История цен</h2>
+  {% if history %}
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Кто</th>
+        <th>Поле</th>
+        <th>Было → Стало</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in history %}
+      <tr>
+        <td>{{ op.created_at | local_dt }}</td>
+        <td>{{ op.created_by }}</td>
+        <td>
+          {%- if op.payload.field == "cost_cents" -%}Закупочная
+          {%- elif op.payload.field == "sale_cents" -%}Продажа
+          {%- elif op.payload.field == "catalog_cents" -%}Каталог
+          {%- else -%}{{ op.payload.field }}
+          {%- endif -%}
+        </td>
+        <td class="num">
+          {%- if op.payload.old_cents is not none -%}{{ op.payload.old_cents | cents }}{%- else -%}—{%- endif %} → {% if op.payload.new_cents is not none -%}{{ op.payload.new_cents | cents }}{%- else -%}—{%- endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Цены ещё не менялись.</p>
+  {% endif %}
+</section>

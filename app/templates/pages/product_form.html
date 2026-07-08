@@ -1,24 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
+{% if product %}
+<h1>Редактирование товара</h1>
+{% else %}
 <h1>Новый товар</h1>
+{% endif %}
 
-<form method="post" action="/products" class="stacked-form">
+{% if product and product.deleted_at %}
+<div class="error-block">Товар удалён</div>
+{% endif %}
+{% if errors.product %}<p class="error">{{ errors.product }}</p>{% endif %}
+
+<form method="post" action="{% if product %}/products/{{ product.id }}{% else %}/products{% endif %}" class="stacked-form">
   <div class="field">
     <label for="code">Код</label>
-    <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus>
+    <input type="text" id="code" name="code" value="{% if form %}{{ form.code or '' }}{% elif product %}{{ product.code or '' }}{% endif %}" required autofocus>
     {% if errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
   </div>
 
   {# Interface contract for Plan 02-04: dictionary autofill swaps #name-wrap. #}
   <div class="field" id="name-wrap">
     <label for="name">Название</label>
-    <input type="text" id="name" name="name" value="{{ form.name or '' }}">
+    <input type="text" id="name" name="name" value="{% if form %}{{ form.name or '' }}{% elif product %}{{ product.name or '' }}{% endif %}">
     {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="category">Категория <span class="muted">(необязательно)</span></label>
-    <input type="text" id="category" name="category" list="cat-options" value="{{ form.category or '' }}">
+    <input type="text" id="category" name="category" list="cat-options" value="{% if form %}{{ form.category or '' }}{% elif product %}{{ product.category or '' }}{% endif %}">
     <datalist id="cat-options">
       {% for c in categories %}<option value="{{ c }}">{% endfor %}
     </datalist>
@@ -27,25 +36,42 @@
 
   <div class="field">
     <label for="cost">Закупочная цена <span class="muted">(необязательно)</span></label>
-    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00" value="{{ form.cost or '' }}">
+    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.cost or '' }}{% elif product and product.cost_cents is not none %}{{ product.cost_cents | cents }}{% endif %}">
     {% if errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="sale">Цена продажи <span class="muted">(необязательно)</span></label>
-    <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00" value="{{ form.sale or '' }}">
+    <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.sale or '' }}{% elif product and product.sale_cents is not none %}{{ product.sale_cents | cents }}{% endif %}">
     {% if errors.sale %}<p class="error">{{ errors.sale }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="catalog">Цена по каталогу <span class="muted">(необязательно)</span></label>
-    <input type="text" id="catalog" name="catalog" inputmode="decimal" placeholder="0,00" value="{{ form.catalog or '' }}">
+    <input type="text" id="catalog" name="catalog" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.catalog or '' }}{% elif product and product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% endif %}">
     {% if errors.catalog %}<p class="error">{{ errors.catalog }}</p>{% endif %}
   </div>
 
+  {% if not (product and product.deleted_at) %}
   <div class="form-actions">
     <button type="submit">Сохранить товар</button>
     <a href="/products">Отмена</a>
   </div>
+  {% endif %}
 </form>
+
+{% if product %}
+{% include "partials/price_history.html" %}
+
+{# Destructive zone, visually separated (24px, UI-SPEC lg). #}
+<div class="form-actions">
+  {% if product.deleted_at %}
+  <button type="button" class="secondary" hx-post="/products/{{ product.id }}/restore">Восстановить</button>
+  {% else %}
+  <button type="button" class="danger"
+          hx-post="/products/{{ product.id }}/delete"
+          hx-confirm="Удалить товар „{{ product.name }}“? Он будет скрыт из каталога и поиска, история операций сохранится.">Удалить товар</button>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
