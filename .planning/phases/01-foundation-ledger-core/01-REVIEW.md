@@ -49,19 +49,19 @@ However, three warnings were **confirmed by executing the code** (not just read)
 
 ## Findings Table
 
-| ID | Severity | File | Line | Issue |
-|----|----------|------|------|-------|
-| WR-01 | Warning | app/services/ledger.py | 61-64 | Unknown-product ValueError guard is unreachable: autoflush in `session.get()` fires FK IntegrityError first (verified by execution) |
-| WR-02 | Warning | app/core.py | 33-38 | `to_cents("inf")` / huge exponents raise `decimal.InvalidOperation` instead of documented ValueError (verified by execution) |
-| WR-03 | Warning | app/core.py | 38 | `to_cents` rounds with implicit banker's rounding: `"12,505"` → 1250, not 1251 (verified by execution) |
-| WR-04 | Warning | app/routes/ops.py | 25 | POST /ops with bad `product_id` returns 500 (unhandled service exception), not a 4xx |
-| WR-05 | Warning | run.bat | 4-5 | uvicorn starts even when `alembic upgrade head` fails — no errorlevel check |
-| WR-06 | Warning | alembic/versions/0001_initial_schema.py | 19-20 | Migration imports mutable app-level constants/functions — breaks migration immutability; import side-effect builds the prod engine |
-| IN-01 | Info | app/services/ledger.py | 62-65 | `record_operation` accepts soft-deleted products |
-| IN-02 | Info | app/services/ledger.py | 65 | `product.quantity += qty_delta` is a Python-side read-modify-write, not an atomic SQL update |
-| IN-03 | Info | tests/test_smoke.py | 27 | Vacuous assertion: `or "3" in response.text` always passes (timestamps contain "3") |
-| IN-04 | Info | app/main.py, app/config.py, app/routes/__init__.py | 9, 14, 8 | All paths are CWD-relative; app misbehaves when launched outside repo root |
-| IN-05 | Info | app/models.py | 51 | `Operation.id` has no default while `Product.id` does — inconsistent convention |
+| ID | Severity | File | Line | Issue | Status |
+|----|----------|------|------|-------|--------|
+| WR-01 | Warning | app/services/ledger.py | 61-64 | Unknown-product ValueError guard is unreachable: autoflush in `session.get()` fires FK IntegrityError first (verified by execution) | fixed — product validated before staging the row; regression test added (550fa92) |
+| WR-02 | Warning | app/core.py | 33-38 | `to_cents("inf")` / huge exponents raise `decimal.InvalidOperation` instead of documented ValueError (verified by execution) | fixed — whole conversion wrapped, non-finite rejected; tests/test_core.py added (21bddcd) |
+| WR-03 | Warning | app/core.py | 38 | `to_cents` rounds with implicit banker's rounding: `"12,505"` → 1250, not 1251 (verified by execution) | fixed — explicit ROUND_HALF_UP, documented in docstring + tests (1d4ec5b) |
+| WR-04 | Warning | app/routes/ops.py | 25 | POST /ops with bad `product_id` returns 500 (unhandled service exception), not a 4xx | fixed — ValueError caught, 404 returned; smoke test added (aa49eca) |
+| WR-05 | Warning | run.bat | 4-5 | uvicorn starts even when `alembic upgrade head` fails — no errorlevel check | fixed — errorlevel check aborts launch; browser opens only after check (e9ab8fe) |
+| WR-06 | Warning | alembic/versions/0001_initial_schema.py | 19-20 | Migration imports mutable app-level constants/functions — breaks migration immutability; import side-effect builds the prod engine | fixed — frozen trigger DDL + seed timestamp inlined, no app imports; APPEND_ONLY_TRIGGERS kept for test fixtures (70c5f4e) |
+| IN-01 | Info | app/services/ledger.py | 62-65 | `record_operation` accepts soft-deleted products | skipped — needs a product-deletion semantics decision; defer to Phase 2 soft-delete work |
+| IN-02 | Info | app/services/ledger.py | 65 | `product.quantity += qty_delta` is a Python-side read-modify-write, not an atomic SQL update | fixed — SQL-side atomic increment (83c073b) |
+| IN-03 | Info | tests/test_smoke.py | 27 | Vacuous assertion: `or "3" in response.text` always passes (timestamps contain "3") | fixed — vacuous or-clause removed (635adf4) |
+| IN-04 | Info | app/main.py, app/config.py, app/routes/__init__.py | 9, 14, 8 | All paths are CWD-relative; app misbehaves when launched outside repo root | skipped — low priority for v1; run.bat's `cd /d "%~dp0"` mitigates; revisit if launch outside repo root becomes a use case |
+| IN-05 | Info | app/models.py | 51 | `Operation.id` has no default while `Product.id` does — inconsistent convention | fixed — `default=new_id` added (be98ecf) |
 
 ## Warnings
 
