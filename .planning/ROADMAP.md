@@ -62,8 +62,22 @@ Plans:
   3. Operator finds a product by partial code or name with instant search/autocomplete results
   4. After changing a product's prices, the previous values remain visible as price history
 
-**Plans**: TBD
+**Plans**: 4 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Product cards slice: migration 0002 + models + IN-01 guard + create/list at /products (CAT-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Edit slice: /products/{id}/edit, price_change/product_edited ops, price history table, soft delete/restore (CAT-01, CAT-04)
+
+**Wave 3** *(blocked on Wave 2 completion; 02-03 and 02-04 run in parallel — zero file overlap)*
+
+- [ ] 02-03-PLAN.md — Instant search slice: ranked Cyrillic-safe search on name_lc, HTMX active search, <mark> highlight (CAT-03)
+- [ ] 02-04-PLAN.md — Dictionary slice: /dictionary CRUD + GET /dictionary/lookup autofill via 204 pattern (CAT-02)
 
 ### Phase 3: Goods Receipt & Backup
 
@@ -139,7 +153,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
-| 2. Catalog, Dictionary & Search | 0/TBD | Not started | - |
+| 2. Catalog, Dictionary & Search | 0/4 | Planned | - |
 | 3. Goods Receipt & Backup | 0/TBD | Not started | - |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |

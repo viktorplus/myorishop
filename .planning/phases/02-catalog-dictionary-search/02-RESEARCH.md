@@ -512,7 +512,12 @@ def category_options(session: Session) -> list[str]:
 | A2 | Catalog stays small (≤ low thousands of rows), so LIKE scans within LIMIT 20 are instant even where indexes can't serve `LIKE '%…%'` substring patterns | Pattern 3, index choices | Only a perf concern; FTS5 or prefix-range queries exist as later escape hatches (post-PG migration, use PG trigram/ILIKE) |
 | A3 | No ledger op is required for soft-delete/restore themselves (CONTEXT lists ops only for create/edit/price) | Finding 5 | If auditors want delete events later, add a `product_deleted` type in a follow-up — append-only design makes this additive |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> RESOLVED during planning:
+> - Q1 (dictionary seed source): manual row-by-row entry with paste-friendly inputs is the locked scope (Plan 02-04); bulk textarea not planned.
+> - Q2 (dictionary PK shape): PD-1 — UUID surrogate PK + UNIQUE(code) (Plan 02-01).
+
 
 1. **Dictionary seed data source (carried from STATE.md blocker)**
    - What we know: no verified source for the Oriflame code→name dictionary; Excel import explicitly out of scope; UI must be paste-friendly manual entry.
