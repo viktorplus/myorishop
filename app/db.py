@@ -13,10 +13,12 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 
-# Single source of the append-only trigger DDL (FND-01, Pattern 2).
-# Imported by Alembic migration 0001 AND tests/conftest.py — never duplicate.
-# v1 blocks ALL updates (synced_at unused); the v2 sync milestone relaxes
-# the UPDATE trigger with a WHEN clause in a new migration.
+# Live source of the append-only trigger DDL (FND-01) for TEST FIXTURES.
+# Migration 0001 carries its own FROZEN copy (WR-06: migrations must never
+# import mutable app code). v1 blocks ALL updates (synced_at unused); the
+# v2 sync milestone relaxes the UPDATE trigger with a WHEN clause in a NEW
+# migration — never edit this constant's DDL semantics in place without
+# also adding that migration.
 APPEND_ONLY_TRIGGERS: tuple[str, str] = (
     """
     CREATE TRIGGER operations_no_update

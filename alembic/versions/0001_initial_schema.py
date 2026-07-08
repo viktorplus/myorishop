@@ -10,14 +10,19 @@ operations, and seeds one demo product for the walking skeleton.
 
 IMPORTANT — Alembic batch caveat: batch (move-and-copy) migrations that
 recreate the operations table DROP its triggers — any future batch migration
-touching operations must re-execute APPEND_ONLY_TRIGGERS.
+touching operations must re-create the append-only triggers (with the DDL
+frozen in that NEW migration, not imported from app code).
+
+Immutability rule (WR-06): this file must never import app modules. The
+trigger DDL and seed timestamp below are FROZEN copies — replaying the
+migration chain on a fresh DB must produce the same history forever.
+app.db.APPEND_ONLY_TRIGGERS stays the live source for test fixtures only;
+future trigger changes go into new migrations, never edited here.
 """
 
 import sqlalchemy as sa
 
 from alembic import op
-from app.core import utcnow_iso
-from app.db import APPEND_ONLY_TRIGGERS
 
 # revision identifiers, used by Alembic.
 revision = "0001"
@@ -26,6 +31,25 @@ branch_labels = None
 depends_on = None
 
 DEMO_PRODUCT_ID = "00000000-0000-4000-8000-000000000001"
+
+# Frozen snapshot of the v1 append-only trigger DDL (duplicated from
+# app.db.APPEND_ONLY_TRIGGERS on purpose — migrations may duplicate app
+# constants, they must not reference them).
+_APPEND_ONLY_TRIGGERS: tuple[str, str] = (
+    """
+    CREATE TRIGGER operations_no_update
+    BEFORE UPDATE ON operations
+    BEGIN SELECT RAISE(ABORT, 'operations ledger is append-only'); END
+    """,
+    """
+    CREATE TRIGGER operations_no_delete
+    BEFORE DELETE ON operations
+    BEGIN SELECT RAISE(ABORT, 'operations ledger is append-only'); END
+    """,
+)
+
+# Frozen seed timestamp (UTC ISO-8601) — deterministic across installs.
+_SEED_CREATED_AT = "2026-07-08T00:00:00+00:00"
 
 
 def upgrade() -> None:
@@ -67,12 +91,12 @@ def upgrade() -> None:
         op.f("ix_operations_product_id"), "operations", ["product_id"], unique=False
     )
 
-    # FND-01: append-only enforcement at the DATABASE level (single DDL source).
-    for stmt in APPEND_ONLY_TRIGGERS:
+    # FND-01: append-only enforcement at the DATABASE level (frozen DDL copy).
+    for stmt in _APPEND_ONLY_TRIGGERS:
         op.execute(stmt)
 
     # Walking-skeleton seed: one demo product to correct against.
-    now = utcnow_iso()
+    now = _SEED_CREATED_AT
     products = sa.table(
         "products",
         sa.column("id", sa.String),
