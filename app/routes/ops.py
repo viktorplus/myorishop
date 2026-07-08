@@ -23,9 +23,7 @@ def create_op(
 ):
     # Correction is the one op type needing no prices (walking skeleton).
     try:
-        record_operation(
-            session, type_="correction", product_id=product_id, qty_delta=qty_delta
-        )
+        record_operation(session, type_="correction", product_id=product_id, qty_delta=qty_delta)
     except ValueError as exc:
         # WR-04: stale/tampered product_id must be a 4xx, not a raw 500.
         session.rollback()
