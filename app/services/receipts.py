@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core import new_id
 from app.models import Operation, Product
 from app.services.catalog import _PRICE_FIELDS, DUPLICATE_CODE_ERROR, parse_optional_cents
+from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
@@ -139,6 +140,36 @@ def register_receipt(
         session.rollback()
         return None, {"code": DUPLICATE_CODE_ERROR}
     return {"product": product, "operation": op}, {}
+
+
+def lookup_prefill(session: Session, code: str) -> dict | None:
+    """Pre-fill data for the receipt-form lookup (D-03 / RCP-02). Read-only.
+
+    Active product first: its name plus current card prices (the route
+    decides which price fields actually fill — PD-10). Dictionary fallback:
+    name only. Unknown code -> None (the route answers 204).
+    """
+    code = code.strip()
+    if not code:
+        return None
+    # Pitfall 5: active-only — a soft-deleted product's code behaves as unknown.
+    product = session.scalars(
+        select(Product).where(Product.code == code, Product.deleted_at.is_(None))
+    ).first()
+    if product is not None:
+        return {
+            "source": "product",
+            "name": product.name,
+            "prices": {
+                "cost": product.cost_cents,
+                "sale": product.sale_cents,
+                "catalog": product.catalog_cents,
+            },
+        }
+    entry = dictionary_lookup(session, code)
+    if entry is not None:
+        return {"source": "dictionary", "name": entry.name, "prices": None}
+    return None
 
 
 def recent_receipts(session: Session, limit: int = 10) -> list[dict]:

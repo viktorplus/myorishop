@@ -1,0 +1,17 @@
+{# /receipts/lookup response fragment (D-03 / PD-10 / RCP-02).
+   Main swap: #name-wrap via the shared name_input.html (PD-6 — the fragment
+   can never drift from the form markup). For an existing product the route
+   passes fill_fields = the price fields that arrived EMPTY in the request;
+   each renders the SAME receipt_price_inputs.html the form uses, with
+   oob = True so htmx routes it to its #{field}-wrap. #}
+{% with autofilled = True %}
+{% include "partials/name_input.html" %}
+{% endwith %}
+{% if source == "product" %}
+{% set labels = {"cost": "Закупочная цена", "sale": "Цена продажи", "catalog": "Цена по каталогу"} %}
+{% for f in fill_fields %}
+{% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True %}
+{% include "partials/receipt_price_inputs.html" %}
+{% endwith %}
+{% endfor %}
+{% endif %}

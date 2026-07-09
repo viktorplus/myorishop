@@ -1,18 +1,19 @@
-"""Goods receipt pages (RCP-01): thin routes, writes in app/services/receipts.py."""
+"""Goods receipt pages (RCP-01/RCP-02): thin routes, writes in app/services/receipts.py."""
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
-from app.services.receipts import recent_receipts, register_receipt
+from app.services.receipts import lookup_prefill, recent_receipts, register_receipt
 
 router = APIRouter()
 
-# Route order: literal paths (/receipts/new, later /receipts/lookup) MUST stay
+# Route order: literal paths (/receipts/new, /receipts/lookup) MUST stay
 # declared before any parameterized /receipts/{...} routes added later.
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
+CARD_FILL_HINT = "Данные подставлены из карточки товара — новые цены обновят карточку."
 
 
 @router.get("/receipts/new")
@@ -24,6 +25,41 @@ def receipt_new_page(request: Request, session: Session = Depends(get_session)):
         "receipts": recent_receipts(session),
     }
     return templates.TemplateResponse(request, "pages/receipt_form.html", context)
+
+
+@router.get("/receipts/lookup")
+def receipt_lookup(
+    request: Request,
+    code: str = "",
+    name: str = "",
+    cost: str = "",
+    sale: str = "",
+    catalog: str = "",
+    session: Session = Depends(get_session),
+):
+    # Phase 2 D-23 contract: the SERVER decides fill vs no-op, htmx ignores
+    # 204. Pitfall 7: a non-empty operator name is never overwritten; PD-10:
+    # typed price fields are excluded from the fill (empty-after-strip only).
+    if name.strip():
+        return Response(status_code=204)
+    result = lookup_prefill(session, code)
+    if result is None:
+        return Response(status_code=204)
+    if result["source"] == "product":
+        typed = {"cost": cost, "sale": sale, "catalog": catalog}
+        fill_fields = [f for f in ("cost", "sale", "catalog") if not typed[f].strip()]
+        hint = CARD_FILL_HINT
+    else:
+        fill_fields = []
+        hint = ""  # name_input.html falls back to the dictionary wording
+    context = {
+        "name": result["name"],
+        "hint": hint,
+        "source": result["source"],
+        "fill_fields": fill_fields,
+        "prices": result["prices"],
+    }
+    return templates.TemplateResponse(request, "partials/receipt_lookup.html", context)
 
 
 @router.post("/receipts")

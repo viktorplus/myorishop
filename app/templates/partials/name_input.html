@@ -1,8 +1,10 @@
-{# Single source for the product-form name field (PD-6): the static form
-   include AND the /dictionary/lookup swap render this same fragment. #}
+{# Single source for the name field (PD-6): the static form includes AND the
+   /dictionary/lookup + /receipts/lookup swaps render this same fragment.
+   hint is optional (Plan 03-02): undefined/empty falls back to the
+   dictionary wording, so existing callers keep working unchanged. #}
 <div class="field" id="name-wrap">
   <label for="name">Название</label>
   <input type="text" id="name" name="name" value="{{ name }}">
   {% if errors and errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
-  {% if autofilled %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
+  {% if autofilled %}<p class="muted">{{ hint | default("Название подставлено из справочника — можно изменить.", true) }}</p>{% endif %}
 </div>
