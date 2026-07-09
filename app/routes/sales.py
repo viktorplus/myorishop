@@ -10,7 +10,7 @@ from app.core import new_id
 from app.db import get_session
 from app.routes import templates
 from app.services.customers import create_customer, customer_search_view
-from app.services.sales import lookup_prefill, recent_sales, register_sale
+from app.services.sales import lookup_prefill, non_blank_lines, recent_sales, register_sale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -31,17 +31,14 @@ _ROW_ID_RE = re.compile(r"[0-9a-fA-F-]{1,36}")
 def _build_lines(codes: list[str], qtys: list[str], prices: list[str], errors: dict[str, str]):
     """Rebuild the echoed basket rows from submitted arrays + service errors.
 
-    Mirrors register_sale's own non-blank-line filtering so error keys
-    (f"qty-{i}"/"price-{i}"/"code-{i}") line up with the right row. The
-    first row keeps a bare row_id ("") so its input ids match the
+    WR-04: uses the shared non_blank_lines helper (app/services/sales.py)
+    so this filter always matches register_sale's own filtering — error
+    keys (f"qty-{i}"/"price-{i}"/"code-{i}") line up with the right row.
+    The first row keeps a bare row_id ("") so its input ids match the
     sale-form-wrap focus hook (id="code") exactly like a fresh basket;
     later rows get a generated id to avoid DOM collisions.
     """
-    non_blank = [
-        (code, qty, price)
-        for code, qty, price in zip(codes, qtys, prices, strict=False)
-        if code.strip() or qty.strip() or price.strip()
-    ]
+    non_blank = non_blank_lines(codes, qtys, prices)
     lines = []
     for i, (code, qty, price) in enumerate(non_blank):
         lines.append(
