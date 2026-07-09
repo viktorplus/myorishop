@@ -1,5 +1,6 @@
 """Sale pages (SAL-01/02/05): thin routes, writes in app/services/sales.py."""
 
+import logging
 import re
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -12,6 +13,7 @@ from app.services.customers import create_customer, customer_search_view
 from app.services.sales import lookup_prefill, recent_sales, register_sale
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Route order: literal paths (/sales/new, /sales/lookup, /sales/row) MUST
 # stay declared before any parameterized /sales/{...} route added later
@@ -144,6 +146,9 @@ def sale_customer_create(
             session, name=name, surname=surname, consultant_number=consultant_number
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-02: log so a real bug isn't silently reduced to a generic
+        # user-facing message with no server-side trace.
+        logger.exception("create_customer failed")
         # "quick_create" (not "form") — sale_customer.html is included inside
         # sale_form.html on the normal basket routes, which already renders
         # its OWN errors.form; a shared "form" key would double-render the
@@ -191,6 +196,9 @@ def sale_create(
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-02: log so a real bug isn't silently reduced to a generic
+        # user-facing message with no server-side trace.
+        logger.exception("register_sale failed")
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
             "lines": _build_lines(code, qty, price, {}),
