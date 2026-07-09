@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Ledger Core** - Runnable app skeleton with append-only operations ledger and sync-ready schema (completed 2026-07-08)
 - [x] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search (completed 2026-07-08)
-- [ ] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry
+- [x] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry (completed 2026-07-09)
 - [ ] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history
 - [ ] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing
 - [ ] **Phase 6: Reports & Data Export** - Period reports (sales, profit, stock, write-offs, top/stale products) and CSV export
@@ -103,7 +103,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion; 03-02 and 03-03 run in parallel — zero file overlap)*
 
 - [x] 03-02-PLAN.md — Lookup pre-fill + card price sync: GET /receipts/lookup (204 pattern), name+prices autofill, price_change ops on intake (RCP-02)
-- [ ] 03-03-PLAN.md — Backup & restore: VACUUM INTO service (AUTOCOMMIT), lifespan startup backup + retention 30, /backup page, restore.bat, restore roundtrip test (BCK-01)
+- [x] 03-03-PLAN.md — Backup & restore: VACUUM INTO service (AUTOCOMMIT), lifespan startup backup + retention 30, /backup page, restore.bat, restore roundtrip test (BCK-01)
 
 ### Phase 4: Sales & Customers
 
@@ -164,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
-| 3. Goods Receipt & Backup | 2/3 | In Progress|  |
+| 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |

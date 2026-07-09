@@ -49,7 +49,7 @@
 
 ### Backup
 
-- [ ] **BCK-01**: Database is backed up automatically using a WAL-safe method (VACUUM INTO); user can restore from a backup
+- [x] **BCK-01**: Database is backed up automatically using a WAL-safe method (VACUUM INTO); user can restore from a backup
 - [ ] **BCK-02**: User can export data (products, sales, customers) to CSV
 
 ## v2 Requirements
@@ -82,7 +82,7 @@
 | CAT-04 | Phase 2 | Complete |
 | RCP-01 | Phase 3 | Complete |
 | RCP-02 | Phase 3 | Complete |
-| BCK-01 | Phase 3 | Pending |
+| BCK-01 | Phase 3 | Complete |
 | SAL-01 | Phase 4 | Pending |
 | SAL-02 | Phase 4 | Pending |
 | SAL-03 | Phase 4 | Pending |
