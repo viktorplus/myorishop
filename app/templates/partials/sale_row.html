@@ -1,0 +1,40 @@
+{# ONE basket line (D-01/D-02). Array-named inputs (code[]/name[]/qty[]/
+   price[]) so the multi-line basket maps directly onto list[str] = Form([]).
+   row_id "" (the first/default row) keeps bare ids ("code", "name-wrap",
+   "qty", "price-wrap") so #sale-form-wrap's focus hook
+   (document.getElementById('code')) works exactly like the receipt form's
+   single-line precedent; any row added via «Добавить строку» gets a
+   generated row_id so its ids never collide with the first row's. #}
+{% set code_id = "code" if not row_id else "code-" + row_id %}
+{% set name_wrap_id = "name-wrap" if not row_id else "name-" + row_id %}
+{% set qty_id = "qty" if not row_id else "qty-" + row_id %}
+{% set price_wrap_id = "price-wrap" if not row_id else "price-" + row_id %}
+<tr id="row-{{ row_id or 'first' }}"{% if focus_new %} hx-on::load="document.getElementById('{{ code_id }}').focus()"{% endif %}>
+  <td>
+    {# D-10/RCP-02 analog: debounced per-line lookup; server decides fill vs 204. #}
+    <input type="text" id="{{ code_id }}" name="code[]" value="{{ code or '' }}"
+           {% if autofocus %}autofocus{% endif %}
+           hx-get="/sales/lookup"
+           hx-trigger="input changed delay:300ms"
+           hx-include="closest tr"
+           hx-vals='{"row": "{{ row_id }}"}'
+           hx-target="#{{ name_wrap_id }}"
+           hx-swap="outerHTML"
+           hx-sync="this:replace">
+    {% if error_code %}<p class="error">{{ error_code }}</p>{% endif %}
+  </td>
+  <td id="{{ name_wrap_id }}">
+    <input type="text" name="name[]" value="{{ name or '' }}">
+  </td>
+  <td>
+    <input type="text" id="{{ qty_id }}" name="qty[]" inputmode="numeric" value="{{ qty or '' }}">
+    {% if error_qty %}<p class="error">{{ error_qty }}</p>{% endif %}
+  </td>
+  <td id="{{ price_wrap_id }}">
+    <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ price or '' }}">
+    {% if error_price %}<p class="error">{{ error_price }}</p>{% endif %}
+  </td>
+  <td>
+    <button type="button" class="secondary" hx-on:click="this.closest('tr').remove()">Удалить строку</button>
+  </td>
+</tr>

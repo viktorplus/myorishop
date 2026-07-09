@@ -1,0 +1,35 @@
+{# Recent sales (mirrors D-04 recent_receipts): stable id so a POST-success
+   response can refresh the list with hx-swap-oob. The heading lives IN the
+   partial so the oob refresh carries it. Autoescape only — stored product
+   names are untrusted (T-4-01). #}
+<div id="recent-sales"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h2>Последние продажи</h2>
+  {% if not sales %}
+  <p class="muted">Продаж пока нет. Добавьте товары в корзину и оформите первую продажу.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Кол-во</th>
+        <th>Цена</th>
+        <th>Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in sales %}
+      <tr>
+        <td>{{ r.op.created_at | local_dt }}</td>
+        <td>{{ r.product.code }}</td>
+        <td>{{ r.product.name }}</td>
+        <td class="num">{{ -r.op.qty_delta }}</td>
+        <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% endif %}</td>
+        <td class="num">{% if r.op.unit_price_cents is not none %}{{ (-r.op.qty_delta * r.op.unit_price_cents) | cents }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
