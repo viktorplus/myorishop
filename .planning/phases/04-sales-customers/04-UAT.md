@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 04-sales-customers
 source: [04-VERIFICATION.md]
 started: 2026-07-09T14:18:05Z
-updated: 2026-07-09T15:30:00Z
+updated: 2026-07-09T15:45:00Z
 ---
 
 ## Current Test
@@ -46,5 +46,12 @@ blocked: 0
   reason: "User reported: не подставляется имя товара после ввода цены - ввода кода."
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "GET /sales/lookup (app/routes/sales.py:71-96) declares bare query params code/name/price, but the basket row inputs (app/templates/partials/sale_row.html) use array-form names code[]/name[]/price[] with hx-include=\"closest tr\", so every request sends bracketed keys FastAPI never binds to the bare params. code always arrives as \"\", lookup_prefill() returns None, and the route always answers 204 — no swap ever happens. Unconditional break, not specific to typing price first."
+  artifacts:
+    - path: "app/routes/sales.py"
+      issue: "sale_lookup() query params (code/name/price) unaliased; real requests send code[]/name[]/price[]"
+    - path: "app/templates/partials/sale_row.html"
+      issue: "code input name=\"code[]\" + hx-include=\"closest tr\" sends bracketed keys to /sales/lookup"
+  missing:
+    - "Alias the /sales/lookup query params to code[]/name[]/price[] (mirroring the alias=\"code[]\" pattern already used on POST /sales), or change the lookup request to send bare-named params instead of relying on the array-named row inputs"
+  debug_session: ".planning/debug/sale-lookup-name-not-filling.md"
