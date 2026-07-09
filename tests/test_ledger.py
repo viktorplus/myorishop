@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import Base, Operation, Product  # noqa: F401  (Product: contract symbol)
+from app.models import Base, Operation, Product, Sale  # noqa: F401  (Product: contract symbol)
 from app.services.ledger import compute_stock, next_seq, rebuild_stock, record_operation
 
 
@@ -110,6 +110,74 @@ def test_audit_trail(session, product):
     assert op1.seq == 1
     assert op2.seq == 2
     assert next_seq(session, settings.device_id) == 3
+
+
+def test_record_operation_sets_sale_id(session, product):
+    """D-03: record_operation(..., sale_id=...) stores the link at INSERT time,
+    and the ledger stays append-only afterwards (T-4-03b)."""
+    header = Sale(
+        id=new_id(),
+        customer_id=None,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(header)
+    op = record_operation(
+        session, type_="sale", product_id=product.id, qty_delta=-1, sale_id=header.id
+    )
+    assert op.sale_id == header.id
+
+    with pytest.raises((OperationalError, IntegrityError)) as exc_info:
+        session.execute(text("UPDATE operations SET qty_delta = 99"))
+    assert "append-only" in str(exc_info.value)
+    session.rollback()
+
+
+def test_migration_0004_preserves_append_only_triggers(tmp_path, monkeypatch):
+    """RESEARCH A1: alembic upgrade head must NOT rebuild `operations`
+    (no `_alembic_tmp_operations` table) and the append-only triggers must
+    still ABORT writes on a freshly migrated database."""
+    from alembic.config import Config
+
+    from alembic import command
+    from app.db import build_engine
+
+    db_path = str(tmp_path / "mig.db")
+    monkeypatch.setattr(settings, "db_path", db_path)
+
+    cfg = Config("alembic.ini")
+    command.upgrade(cfg, "head")
+
+    engine = build_engine(db_path)
+    with engine.connect() as conn:
+        tables = (
+            conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).scalars().all()
+        )
+        assert not any(name.startswith("_alembic_tmp") for name in tables)
+
+        triggers = (
+            conn.execute(text("SELECT name FROM sqlite_master WHERE type='trigger'"))
+            .scalars()
+            .all()
+        )
+        assert "operations_no_update" in triggers
+        assert "operations_no_delete" in triggers
+
+        product_id = conn.execute(text("SELECT id FROM products LIMIT 1")).scalar()
+        conn.execute(
+            text(
+                "INSERT INTO operations "
+                "(id, type, product_id, qty_delta, device_id, seq, created_at, created_by) "
+                "VALUES (:id, 'correction', :pid, 1, 'device-01', 1, "
+                "'2026-07-09T00:00:00+00:00', 'tester')"
+            ),
+            {"id": new_id(), "pid": product_id},
+        )
+        conn.commit()
+
+        with pytest.raises((OperationalError, IntegrityError)) as exc_info:
+            conn.execute(text("UPDATE operations SET qty_delta = 99"))
+        assert "append-only" in str(exc_info.value)
 
 
 def test_seq_unique_per_device(session, product):
