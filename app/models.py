@@ -42,6 +42,31 @@ OPERATION_TYPES = (
     "product_edited",
 )
 
+# Phase 5 (D-02/D-03): latin reason_code -> RU label for write-offs. Stored in
+# Operation.payload["reason_code"]; "other" is the free-text-note escape hatch.
+# This is also the exact server-side allow-list write-offs validate against.
+WRITEOFF_REASONS = {
+    "damaged": "Брак",
+    "expired": "Просрочка",
+    "lost": "Потеря",
+    "personal": "Личное использование",
+    "gift": "Подарок",
+    "other": "Прочее",
+}
+
+# Phase 5 (D-16): latin operation type -> RU label for the /history "Тип" column.
+# Covers every OPERATION_TYPES member.
+OPERATION_TYPE_LABELS = {
+    "receipt": "Приход",
+    "sale": "Продажа",
+    "writeoff": "Списание",
+    "return": "Возврат",
+    "correction": "Корректировка",
+    "price_change": "Изменение цены",
+    "product_created": "Создан",
+    "product_edited": "Изменён",
+}
+
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
