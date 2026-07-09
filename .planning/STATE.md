@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 4 UI-SPEC approved
-last_updated: "2026-07-09T10:26:57.394Z"
-last_activity: 2026-07-09 -- Phase 04 planning complete
+last_updated: "2026-07-09T10:46:52.886Z"
+last_activity: 2026-07-09 -- Phase 04 execution started
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 10
+  total_plans: 15
   completed_plans: 10
   percent: 50
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 03 — goods-receipt-backup
+**Current focus:** Phase 04 — sales-customers
 
 ## Current Position
 
-Phase: 03 (goods-receipt-backup) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-09 -- Phase 04 planning complete
+Phase: 04 (sales-customers) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 04
+Last activity: 2026-07-09 -- Phase 04 execution started
 
 Progress: [████████░░] 80%
 

@@ -125,7 +125,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Schema + ledger foundation + RED test contract: Customer/Sale models, operations.sale_id, migration 0004 (native ADD COLUMN, triggers preserved), record_operation sale_id kwarg, conftest fixtures, test_sales/test_customers RED (SAL-01, SAL-05)
+- [x] 04-01-PLAN.md — Schema + ledger foundation + RED test contract: Customer/Sale models, operations.sale_id, migration 0004 (native ADD COLUMN, triggers preserved), record_operation sale_id kwarg, conftest fixtures, test_sales/test_customers RED (SAL-01, SAL-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -183,6 +183,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
-| 4. Sales & Customers | 0/5 | Planned | - |
+| 4. Sales & Customers | 1/5 | In Progress|  |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
