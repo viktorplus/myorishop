@@ -7,9 +7,11 @@
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
   {% if errors.basket %}<div class="error-block">{{ errors.basket }}</div>{% endif %}
 
-  {# 04-05 INSERTION POINT: customer search / quick-create / selected-chip
-     header goes here (walk-in only in this plan — customer_id is always
-     posted as a hidden empty field). #}
+  {# SAL-03/D-05: customer header — search / quick-create / selected-chip.
+     Lives OUTSIDE <form id="sale-form"> below (the basket form must not
+     nest another form); its own hidden customer_id input associates via
+     form="sale-form" so it still submits with the basket on finalize. #}
+  {% include "partials/sale_customer.html" %}
   {# SAL-04/D-08: oversell warning, rendered above the still-intact basket
      (zero writes until confirmed — the sale-oversell button posts via
      form="sale-form", so the basket form below is never re-serialized). #}
@@ -28,7 +30,6 @@
         hx-disabled-elt="find button"
         hx-on::before-swap="if (event.detail.target.id.startsWith('name') && event.detail.target.querySelector('input') && event.detail.target.querySelector('input').value.trim()) event.detail.shouldSwap = false"
         hx-on::oob-before-swap="if (event.detail.target.id.startsWith('price') && event.detail.target.querySelector('input') && event.detail.target.querySelector('input').value.trim()) event.detail.shouldSwap = false">
-    <input type="hidden" name="customer_id" value="{{ customer_id or '' }}">
     <table class="basket">
       <thead>
         <tr>

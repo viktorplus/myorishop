@@ -1,0 +1,41 @@
+{# Debounced search rows for the sale-form customer autocomplete (D-05).
+   Context comes from customers.customer_search_view: q + rows of
+   {customer, name_seg, consultant_seg} (mirrors customer_rows.html).
+   Swaps #customer-picker (outerHTML) on every keystroke (300ms debounce).
+   No new CSS — reuses the existing table/mark rules (Pattern 5): segments
+   are autoescaped, <mark> is literal template HTML — never |safe.
+
+   Picking a row is a pure client-side swap (T-4-05 — the row already
+   carries the customer's id/name/surname as data-* attributes, which Jinja
+   autoescape HTML-attribute-encodes; the handler reads them via .dataset
+   and writes via .textContent, never building HTML/JS strings from
+   untrusted text). #}
+<div id="customer-picker" class="customer-picker">
+  {% if rows %}
+  <table>
+    <tbody>
+      {% for row in rows %}
+      {% set customer = row.customer %}
+      <tr>
+        <td>
+          <button type="button" class="secondary"
+                  data-id="{{ customer.id }}" data-name="{{ customer.name }}" data-surname="{{ customer.surname or '' }}"
+                  hx-on:click="document.getElementById('customer-id-input').value = this.dataset.id;
+                    document.getElementById('customer-chip-text').textContent = 'Покупатель: ' + this.dataset.name + (this.dataset.surname ? (' ' + this.dataset.surname) : '');
+                    document.getElementById('customer-selected').hidden = false;
+                    document.getElementById('customer-default').hidden = true;">
+            {% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}
+          </button>
+        </td>
+        <td>{% if customer.surname %}{{ customer.surname }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if customer.consultant_number %}{% set pre, match, post = row.consultant_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif q and q.strip() %}
+  <div class="empty-state">
+    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте имя или номер консультанта.</p>
+  </div>
+  {% endif %}
+</div>

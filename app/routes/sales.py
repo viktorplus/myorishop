@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core import new_id
 from app.db import get_session
 from app.routes import templates
+from app.services.customers import create_customer, customer_search_view
 from app.services.sales import lookup_prefill, recent_sales, register_sale
 
 router = APIRouter()
@@ -106,6 +107,56 @@ def sale_row(request: Request, row: str = ""):
         "focus_new": True,
     }
     return templates.TemplateResponse(request, "partials/sale_row.html", context)
+
+
+@router.get("/sales/customer-search")
+def sale_customer_search(request: Request, q: str = "", session: Session = Depends(get_session)):
+    # D-05: rows-only partial for the sale-form header's autocomplete picker.
+    context = customer_search_view(session, q)
+    return templates.TemplateResponse(request, "partials/customer_picker.html", context)
+
+
+@router.post("/sales/customer")
+def sale_customer_create(
+    request: Request,
+    name: str = Form(""),
+    surname: str = Form(""),
+    consultant_number: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    # D-05: inline quick-create from the sale header. Reuses the same
+    # create_customer as /customers/new; the difference is purely the
+    # response shape (a selected-chip fragment, not a redirect).
+    try:
+        customer, errors = create_customer(
+            session, name=name, surname=surname, consultant_number=consultant_number
+        )
+    except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # "quick_create" (not "form") — sale_customer.html is included inside
+        # sale_form.html on the normal basket routes, which already renders
+        # its OWN errors.form; a shared "form" key would double-render the
+        # same error block when both are present.
+        context = {
+            "selected": None,
+            "errors": {"quick_create": SAVE_FAILED_ERROR},
+            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+        }
+        return templates.TemplateResponse(
+            request, "partials/sale_customer.html", context, status_code=422
+        )
+
+    if errors:
+        context = {
+            "selected": None,
+            "errors": errors,
+            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+        }
+        return templates.TemplateResponse(
+            request, "partials/sale_customer.html", context, status_code=422
+        )
+
+    context = {"selected": customer, "errors": {}, "form": {}}
+    return templates.TemplateResponse(request, "partials/sale_customer.html", context)
 
 
 @router.post("/sales")

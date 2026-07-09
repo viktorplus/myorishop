@@ -202,3 +202,16 @@ mark {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Selected-customer chip (Phase 4, D-05): secondary surface, no new color role. */
+.customer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 16px;
+  font-weight: 400;
+}
