@@ -129,3 +129,7 @@ None - no external service configuration required.
 ---
 *Phase: 04-sales-customers*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk (`app/models.py`, `app/services/ledger.py`, `alembic/versions/0004_sales_customers.py`, `tests/conftest.py`, `tests/test_sales.py`, `tests/test_customers.py`, `tests/test_ledger.py`, this summary, `deferred-items.md`). All 4 task/plan commits (`ecdd275`, `1c4d5af`, `0ae039a`, `c5528a2`) verified present in git log.
