@@ -163,7 +163,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 05-02-PLAN.md — Write-off slice: /writeoff form + service on record_operation, reason allow-list, oversell warn/allow, save-and-next (OPS-01)
+- [x] 05-02-PLAN.md — Write-off slice: /writeoff form + service on record_operation, reason allow-list, oversell warn/allow, save-and-next (OPS-01)
 
 **Wave 3** *(blocked on Wave 2 — shares app/main.py)*
 
@@ -205,5 +205,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
-| 5. Stock Operations & History | 1/5 | In Progress|  |
+| 5. Stock Operations & History | 2/5 | In Progress|  |
 | 6. Reports & Data Export | 0/TBD | Not started | - |

@@ -30,7 +30,7 @@
 
 ### Operations
 
-- [ ] **OPS-01**: User can write off stock with a reason
+- [x] **OPS-01**: User can write off stock with a reason
 - [ ] **OPS-02**: User can register a return linked to the original sale; stock increases accordingly
 - [ ] **OPS-03**: User can correct stock quantity (adjustment recorded as an operation, not a direct edit)
 - [ ] **OPS-04**: User can view the full operation history (what, when, how much)
@@ -90,7 +90,7 @@
 | SAL-05 | Phase 4 | Complete |
 | CST-01 | Phase 4 | Complete |
 | CST-02 | Phase 4 | Complete |
-| OPS-01 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 2) |
+| OPS-01 | Phase 5 | Complete |
 | OPS-02 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 3) |
 | OPS-03 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 4) |
 | OPS-04 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 5) |
