@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "sale-lookup-name-not-filling: In the sale form basket row, typing a price then quickly typing a known product code does not autofill the product name field at all (the debounced lookup that should populate \"Название\" from the \"Код\" input appears to not be firing / not filling the name)."
 created: 2026-07-09T00:00:00Z
-updated: 2026-07-09T00:01:00Z
+updated: 2026-07-09T16:30:00Z
 ---
 
 ## Current Focus
@@ -75,6 +75,16 @@ root_cause: |
   total break of SAL lookup-by-code autofill on the /sales/new page, introduced when the
   receipts single-line lookup pattern (bare field names) was adapted to the sales basket's
   array-form field names without updating the GET /sales/lookup route signature to match.
-fix: (not applied — find_root_cause_only mode)
-verification: (not applicable — find_root_cause_only mode)
-files_changed: []
+fix: |
+  Plan 04-06 aliased sale_lookup()'s query params to Query("", alias="code[]") /
+  alias="name[]" / alias="price[]"), matching the bracketed keys sale_row.html's
+  hx-include="closest tr" actually sends (mirroring the existing POST /sales
+  Form(alias=...) pattern in the same file).
+verification: |
+  tests/test_sales.py -k lookup passes (2/2): fill-when-empty and
+  no-clobber-when-typed paths, both using the real bracketed request shape.
+  Full suite: 149 passed. Re-verified by gsd-verifier against phase 04
+  VERIFICATION.md (status: passed).
+files_changed:
+  - app/routes/sales.py
+  - tests/test_sales.py

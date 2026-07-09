@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 04-sales-customers
 source: [04-VERIFICATION.md]
 started: 2026-07-09T14:18:05Z
-updated: 2026-07-09T15:45:00Z
+updated: 2026-07-09T16:30:00Z
 ---
 
 ## Current Test
@@ -42,7 +42,7 @@ blocked: 0
 ## Gaps
 
 - truth: "The in-flight lookup response does not clobber the price the operator already typed (oob-swap guard holds)"
-  status: failed
+  status: resolved
   reason: "User reported: не подставляется имя товара после ввода цены - ввода кода."
   severity: major
   test: 2
