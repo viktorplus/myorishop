@@ -129,7 +129,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — Sale basket happy path: register_sale (multi-line, one transaction, cost/price snapshot), lookup prefill, recent sales, /sales routes + templates + nav (SAL-01, SAL-02, SAL-05)
+- [x] 04-02-PLAN.md — Sale basket happy path: register_sale (multi-line, one transaction, cost/price snapshot), lookup prefill, recent sales, /sales routes + templates + nav (SAL-01, SAL-02, SAL-05)
 
 **Wave 3** *(blocked on Wave 2 completion; 04-03 and 04-04 run in parallel — zero file overlap)*
 
@@ -183,6 +183,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
-| 4. Sales & Customers | 1/5 | In Progress|  |
+| 4. Sales & Customers | 2/5 | In Progress|  |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
