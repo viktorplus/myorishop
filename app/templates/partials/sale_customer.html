@@ -47,10 +47,12 @@
       <div class="field">
         <label for="customer-surname">Фамилия <span class="muted">(необязательно)</span></label>
         <input type="text" id="customer-surname" name="surname" value="{{ form.surname if form else '' }}">
+        {% if errors.surname %}<p class="error">{{ errors.surname }}</p>{% endif %}
       </div>
       <div class="field">
         <label for="customer-consultant">Номер консультанта <span class="muted">(необязательно)</span></label>
         <input type="text" id="customer-consultant" name="consultant_number" value="{{ form.consultant_number if form else '' }}">
+        {% if errors.consultant_number %}<p class="error">{{ errors.consultant_number }}</p>{% endif %}
       </div>
       <button type="button"
               hx-post="/sales/customer"

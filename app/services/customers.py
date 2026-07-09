@@ -15,10 +15,33 @@ from app.models import Customer, Operation, Product, Sale
 from app.services.catalog import split_match
 
 NAME_REQUIRED_ERROR = "Укажите имя покупателя."
+NAME_TOO_LONG_ERROR = "Слишком длинное имя."
+SURNAME_TOO_LONG_ERROR = "Слишком длинная фамилия."
+CONSULTANT_NUMBER_TOO_LONG_ERROR = "Слишком длинный номер консультанта."
+
+# WR-05: mirror the declared column lengths (app/models.py Customer) here so
+# an overlong value is rejected in the service layer instead of silently
+# truncated by SQLite today and hard-erroring after a future PostgreSQL
+# migration (CLAUDE.md: "same models will run on PostgreSQL later").
+_NAME_MAX_LEN = 200
+_SURNAME_MAX_LEN = 200
+_CONSULTANT_NUMBER_MAX_LEN = 50
 
 
 def _search_lc(name: str, surname: str | None, consultant_number: str | None) -> str:
     return " ".join(p for p in (name, surname, consultant_number) if p).strip().lower()
+
+
+def _validate_lengths(
+    name: str, surname: str, consultant_number: str, errors: dict[str, str]
+) -> None:
+    """WR-05: shared max-length guard for create_customer/update_customer."""
+    if len(name) > _NAME_MAX_LEN:
+        errors["name"] = NAME_TOO_LONG_ERROR
+    if len(surname) > _SURNAME_MAX_LEN:
+        errors["surname"] = SURNAME_TOO_LONG_ERROR
+    if len(consultant_number) > _CONSULTANT_NUMBER_MAX_LEN:
+        errors["consultant_number"] = CONSULTANT_NUMBER_TOO_LONG_ERROR
 
 
 def create_customer(
@@ -36,6 +59,10 @@ def create_customer(
 
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
+        return None, errors
+
+    _validate_lengths(name, surname, consultant_number, errors)
+    if errors:
         return None, errors
 
     customer = Customer(
@@ -70,6 +97,10 @@ def update_customer(
 
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
+        return None, errors
+
+    _validate_lengths(name, surname, consultant_number, errors)
+    if errors:
         return None, errors
 
     customer.name = name

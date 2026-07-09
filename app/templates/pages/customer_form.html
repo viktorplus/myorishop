@@ -20,12 +20,14 @@
     <label for="surname">Фамилия <span class="muted">(необязательно)</span></label>
     <input type="text" id="surname" name="surname"
            value="{% if form %}{{ form.surname or '' }}{% elif customer %}{{ customer.surname or '' }}{% endif %}">
+    {% if errors.surname %}<p class="error">{{ errors.surname }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="consultant_number">Номер консультанта <span class="muted">(необязательно)</span></label>
     <input type="text" id="consultant_number" name="consultant_number"
            value="{% if form %}{{ form.consultant_number or '' }}{% elif customer %}{{ customer.consultant_number or '' }}{% endif %}">
+    {% if errors.consultant_number %}<p class="error">{{ errors.consultant_number }}</p>{% endif %}
   </div>
 
   <div class="form-actions">
