@@ -99,8 +99,31 @@ input[type="number"] {
   width: 6rem;
 }
 
+/* Select controls match the input treatment (Phase 5, /history filters). */
+select {
+  padding: 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 16px;
+  height: 36px;
+  background: #ffffff;
+}
+
+/* History filter bar (Phase 5, D-14). */
+.filter-bar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.filter-bar .field {
+  margin-bottom: 0;
+}
+
 /* Visible focus state — never outline:none without replacement. */
 input:focus,
+select:focus,
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid #2563eb;

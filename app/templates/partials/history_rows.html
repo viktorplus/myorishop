@@ -1,0 +1,52 @@
+{# History rows (OPS-04/D-16): the /history table body — 8 columns over
+   EVERY operation type, extending the recent_sales.html/purchase_history.html
+   row shape rather than rewriting the single-product ledger_rows.html.
+   Autoescape only — product names, payload notes, and created_by are
+   untrusted-at-rest text (T-05-18); NEVER |safe.
+
+   Rendered both on the full page (oob=False, wrapped by pages/history.html's
+   <tbody id="history-tbody">) and on every HX filter/pagination response
+   (the plain <tr> rows are the swap/append payload; the trailing
+   #load-more row carries hx-swap-oob so a "Показать ещё" click replaces
+   only itself in place, never duplicating the control). #}
+{% if not rows %}
+<tr>
+  <td colspan="8" class="empty-state muted">
+    {% if type_filter or product_id %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+  </td>
+</tr>
+{% else %}
+{% for r in rows %}
+<tr>
+  <td>{{ r.op.created_at | local_dt }}</td>
+  <td>{{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</td>
+  <td>{{ r.product.name }} ({{ r.product.code }})</td>
+  <td class="num">{% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}</td>
+  <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="num">{% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td>
+    {%- if r.op.type == "writeoff" and r.op.payload -%}
+    {{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+    {%- elif r.op.type == "correction" and r.op.payload -%}
+    {{ "Пересчёт" if r.op.payload.mode == "count" else "Изменение" }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+    {%- else -%}
+    <span class="muted">—</span>
+    {%- endif %}
+  </td>
+  <td>{{ r.op.created_by }}</td>
+</tr>
+{% endfor %}
+{% endif %}
+{# D-15: fetch-one-extra sentinel drives has_next; the control is a <tr> (not
+   a bare <div>) so it stays valid inside <tbody> and survives beforeend
+   pagination appends without the browser foster-parenting a stray block
+   element out of the table. #}
+<tr id="load-more"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if has_next %}
+  <td colspan="8">
+    <button type="button" class="secondary"
+            hx-get="/history?type={{ type_filter }}&product={{ product_id }}&page={{ page + 1 }}"
+            hx-target="#history-tbody" hx-swap="beforeend" hx-disabled-elt="this">Показать ещё</button>
+  </td>
+  {% endif %}
+</tr>

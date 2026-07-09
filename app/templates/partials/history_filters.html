@@ -1,0 +1,30 @@
+{# History filter bar (D-14): type + product selects. hx-include pulls the
+   OTHER select's current value along so both filters combine; hx-target
+   swaps only the rows tbody (filters reset pagination to page 0 implicitly
+   — no page param is sent). hx-push-url keeps the filtered view linkable. #}
+<div class="filter-bar">
+  <div class="field">
+    <label for="type">Тип операции</label>
+    <select id="type" name="type"
+            hx-get="/history" hx-trigger="change"
+            hx-include="[name='product']"
+            hx-target="#history-tbody" hx-push-url="true">
+      <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
+      {% for t, label in OPERATION_TYPE_LABELS.items() %}
+      <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="product">Товар</label>
+    <select id="product" name="product"
+            hx-get="/history" hx-trigger="change"
+            hx-include="[name='type']"
+            hx-target="#history-tbody" hx-push-url="true">
+      <option value=""{% if not product_id %} selected{% endif %}>Все товары</option>
+      {% for p in products %}
+      <option value="{{ p.id }}"{% if p.id == product_id %} selected{% endif %}>{{ p.name }} ({{ p.code }})</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>

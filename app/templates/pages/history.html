@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>История операций</h1>
+
+{% include "partials/history_filters.html" %}
+
+<table>
+  <thead>
+    <tr>
+      <th>Когда</th>
+      <th>Тип</th>
+      <th>Товар</th>
+      <th class="num">Кол-во</th>
+      <th class="num">Цена</th>
+      <th class="num">Себестоимость</th>
+      <th>Причина</th>
+      <th>Кто</th>
+    </tr>
+  </thead>
+  <tbody id="history-tbody">
+    {% with oob = False %}
+    {% include "partials/history_rows.html" %}
+    {% endwith %}
+  </tbody>
+</table>
+{% endblock %}
