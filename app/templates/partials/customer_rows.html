@@ -1,0 +1,41 @@
+{# Stable HTMX swap target: the /customers search input swaps #customer-rows (outerHTML).
+   Context comes from customers.customer_search_view: q + rows of {customer, name_seg, consultant_seg}.
+   Pattern 5: segments are autoescaped; <mark> is literal template HTML — never |safe. #}
+<div id="customer-rows">
+  {% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Имя</th>
+        <th>Фамилия</th>
+        <th>Номер консультанта</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set customer = row.customer %}
+      <tr>
+        <td>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
+        <td>{% if customer.surname %}{{ customer.surname }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if customer.consultant_number %}{% set pre, match, post = row.consultant_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          <a href="/customers/{{ customer.id }}">Открыть</a>
+          <a href="/customers/{{ customer.id }}/edit">Изменить</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif q and q.strip() %}
+  <div class="empty-state">
+    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте имя или номер консультанта.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h2>Покупателей пока нет</h2>
+    <p class="muted">Покупателей пока нет. Добавьте первого покупателя, чтобы вести историю покупок.</p>
+    <p><a class="button" href="/customers/new">Добавить покупателя</a></p>
+  </div>
+  {% endif %}
+</div>
