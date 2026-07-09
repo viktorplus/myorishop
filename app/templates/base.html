@@ -18,6 +18,7 @@
       <a href="/"{% if request.url.path == "/" %} class="active"{% endif %}>Главная</a>
       <a href="/products"{% if request.url.path.startswith("/products") %} class="active"{% endif %}>Товары</a>
       <a href="/receipts/new"{% if request.url.path.startswith("/receipts") %} class="active"{% endif %}>Приход</a>
+      <a href="/sales/new"{% if request.url.path.startswith("/sales") %} class="active"{% endif %}>Продажи</a>
       <a href="/dictionary"{% if request.url.path.startswith("/dictionary") %} class="active"{% endif %}>Справочник</a>
       <a href="/backup"{% if request.url.path.startswith("/backup") %} class="active"{% endif %}>Резервные копии</a>
     </nav>
