@@ -114,9 +114,7 @@ def register_sale(
         products_by_id: dict[str, Product] = {}
         for line in resolved:
             product = line["product"]
-            requested_by_product[product.id] = (
-                requested_by_product.get(product.id, 0) + line["qty"]
-            )
+            requested_by_product[product.id] = requested_by_product.get(product.id, 0) + line["qty"]
             products_by_id[product.id] = product
 
         oversold = [

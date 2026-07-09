@@ -10,14 +10,19 @@
   {# 04-05 INSERTION POINT: customer search / quick-create / selected-chip
      header goes here (walk-in only in this plan — customer_id is always
      posted as a hidden empty field). #}
-  {# 04-03 INSERTION POINT: the oversell warning block
-     (partials/sale_oversell.html) goes here, above the basket table. #}
+  {# SAL-04/D-08: oversell warning, rendered above the still-intact basket
+     (zero writes until confirmed — the sale-oversell button posts via
+     form="sale-form", so the basket form below is never re-serialized). #}
+  {% if oversell %}
+  {% include "partials/sale_oversell.html" %}
+  {% endif %}
 
   {# Swap-time guards (mirrors receipt_form.html Pitfall 7): a lookup
      response never clobbers a value the operator already typed. Row ids
      are dynamic ("name-wrap"/"name-{row}", "price-wrap"/"price-{row}"), so
      the guard matches by prefix rather than one fixed id. #}
-  <form hx-post="/sales"
+  <form id="sale-form"
+        hx-post="/sales"
         hx-target="#sale-form-wrap"
         hx-swap="outerHTML"
         hx-disabled-elt="find button"

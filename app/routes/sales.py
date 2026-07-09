@@ -139,8 +139,9 @@ def sale_create(
             request, "partials/sale_form.html", context, status_code=422
         )
 
-    # Oversell branch (added by 04-03): this plan's register_sale never sets
-    # result["oversell"], so this is a documented no-op today.
+    # SAL-04/D-08: oversell — zero writes, warn above the still-intact
+    # basket (lines re-rendered from the submitted arrays; the confirm
+    # button re-POSTs the same basket via form="sale-form" + confirm=1).
     if result and result.get("oversell"):
         context = {
             "errors": {},
@@ -148,6 +149,7 @@ def sale_create(
             "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
+            "oversell": result["oversell"],
         }
         return templates.TemplateResponse(request, "partials/sale_form.html", context)
 
