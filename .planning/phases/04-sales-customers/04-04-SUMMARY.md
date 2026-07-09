@@ -110,3 +110,12 @@ None - no external service configuration required.
 ---
 *Phase: 04-sales-customers*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All 7 created files verified present on disk (`app/services/customers.py`,
+`app/routes/customers.py`, `app/templates/pages/customers_list.html`,
+`app/templates/partials/customer_rows.html`, `app/templates/pages/customer_form.html`,
+`app/templates/pages/customer_detail.html`, `app/templates/partials/purchase_history.html`),
+plus this summary. All 4 task/plan commits (`6f2b11e`, `0519340`, `f2b06fe`, `fbed336`)
+verified present in git log.
