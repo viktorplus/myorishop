@@ -1,5 +1,7 @@
 """Sale pages (SAL-01/02/05): thin routes, writes in app/services/sales.py."""
 
+import re
+
 from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy.orm import Session
 
@@ -16,6 +18,12 @@ router = APIRouter()
 # (04-05 customer picker endpoints are also literal paths, so this holds).
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
+
+# CR-01: row_id is echoed unescaped into an hx-on::load JS-evaluated
+# attribute (sale_row.html), so it must be constrained to the exact shape
+# new_id() produces (a UUID4 string) before it is ever trusted. Anything
+# that doesn't match is discarded in favor of a freshly generated id.
+_ROW_ID_RE = re.compile(r"[0-9a-fA-F-]{1,36}")
 
 
 def _build_lines(codes: list[str], qtys: list[str], prices: list[str], errors: dict[str, str]):
@@ -93,7 +101,11 @@ def sale_lookup(
 def sale_row(request: Request, row: str = ""):
     # A fresh row is always appended alongside existing rows (hx-swap
     # "beforeend"), so it needs a unique, never-blank row id.
-    row_id = row.strip() or new_id()
+    # CR-01: row_id is later interpolated into an hx-on::load JS attribute
+    # (sale_row.html), so client input must be format-validated before use
+    # instead of trusted as-is.
+    row = row.strip()
+    row_id = row if _ROW_ID_RE.fullmatch(row) else new_id()
     context = {
         "row_id": row_id,
         "code": "",
