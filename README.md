@@ -5,10 +5,14 @@ FastAPI + SQLAlchemy + SQLite + HTMX, server-rendered, fully offline after setup
 
 ## Prerequisites
 
-- Windows with [uv](https://docs.astral.sh/uv/) installed
-- Internet is needed once for the first `uv sync`; after that the app runs fully offline
+- Windows
+- Internet is needed once for setup (installs uv + dependencies); after that the app runs fully offline
 
 ## Setup (one time)
+
+Double-click `install.bat` — it installs [uv](https://docs.astral.sh/uv/) (via winget) if missing, then runs `uv sync` and applies database migrations.
+
+Or manually:
 
 ```bat
 uv sync
