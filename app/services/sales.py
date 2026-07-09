@@ -11,8 +11,11 @@ D-10: the entered per-line price is REQUIRED and becomes unit_price_cents
 is frozen from Product.cost_cents at write time and may be NULL (a NULL card
 cost never blocks the sale; an empty/invalid PRICE does).
 
-The oversell aggregate check (SAL-04) is added by Plan 04-03 — this plan
-accepts every basket unconditionally (see the placeholder comment below).
+SAL-04/D-08/D-09: after per-line validation and before any write, requested
+quantity is aggregated per product across the whole basket (Pitfall 6) and
+compared to the cached Product.quantity. An oversold basket with
+confirm != "1" returns {"oversell": [...]} with ZERO writes; confirm == "1"
+skips the check and the sale writes (stock may go negative).
 
 Single-write-path contract: Operation rows and products.quantity are
 written ONLY through app.services.ledger.record_operation — every line is
@@ -99,13 +102,33 @@ def register_sale(
     if errors:
         return None, errors
 
-    # --- 04-03 INSERTION POINT ---
-    # Oversell aggregate check goes here: sum requested qty per product_id
-    # across ALL resolved lines, compare to Product.quantity; if any product
-    # oversells and confirm != "1", return ({"oversell": True, ...}, {}) with
-    # ZERO writes (Pitfall 6: aggregate duplicate lines of the same product
-    # BEFORE comparing). This plan accepts every basket unconditionally —
-    # `confirm` is accepted but unused here.
+    # SAL-04/D-08/D-09: aggregate oversell check — sum requested qty per
+    # product_id across ALL resolved lines (Pitfall 6: the SAME product on
+    # two lines must be summed before comparing, not checked line-by-line),
+    # compare to the cached Product.quantity (authoritative projection —
+    # RESEARCH A4, do NOT recompute via compute_stock here). If any product
+    # oversells and confirm != "1", warn with ZERO writes. confirm == "1"
+    # skips the block entirely (D-09: stock may go negative).
+    if confirm != "1":
+        requested_by_product: dict[str, int] = {}
+        products_by_id: dict[str, Product] = {}
+        for line in resolved:
+            product = line["product"]
+            requested_by_product[product.id] = requested_by_product.get(product.id, 0) + line["qty"]
+            products_by_id[product.id] = product
+
+        oversold = [
+            {
+                "product": products_by_id[product_id],
+                "available": products_by_id[product_id].quantity,
+                "requested": requested,
+            }
+            for product_id, requested in requested_by_product.items()
+            if requested > products_by_id[product_id].quantity
+        ]
+        if oversold:
+            oversold.sort(key=lambda entry: entry["product"].name)
+            return {"oversell": oversold}, {}
 
     header = Sale(
         id=new_id(),
