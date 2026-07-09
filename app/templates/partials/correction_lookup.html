@@ -1,0 +1,12 @@
+{# /corrections/lookup response fragment (mirrors receipt_lookup.html):
+   Main swap: #name-wrap via the shared name_input.html (PD-6). An additional
+   oob-swapped fragment fills the current-qty hint used by the counted-mode
+   block — the correction form needs the current cached quantity shown
+   beside the counted input (D-09). Dictionary-only matches carry no
+   quantity (quantity is none), so the hint is left untouched. #}
+{% with autofilled = True %}
+{% include "partials/name_input.html" %}
+{% endwith %}
+{% if quantity is not none %}
+<span id="current-qty-hint" class="muted" hx-swap-oob="true">Текущий остаток: {{ quantity }}</span>
+{% endif %}
