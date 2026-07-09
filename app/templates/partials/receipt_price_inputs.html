@@ -1,0 +1,9 @@
+{# Single source for ONE receipt price field (PD-10): the static form include
+   renders it today; Plan 03-02's lookup fill re-renders the same fragment
+   with oob=True targeting id="{field}-wrap". Parameters: field, label,
+   value, error (optional), oob (optional, default false). #}
+<div class="field" id="{{ field }}-wrap"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <label for="{{ field }}">{{ label }} <span class="muted">(необязательно)</span></label>
+  <input type="text" id="{{ field }}" name="{{ field }}" inputmode="decimal" placeholder="0,00" value="{{ value or '' }}">
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+</div>

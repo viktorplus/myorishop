@@ -1,0 +1,50 @@
+{# Save-and-next form partial (D-02): swapped WHOLE on every POST response.
+   Focus returns to «Код» via the explicit hx-on::load hook below —
+   autofocus does NOT fire inside swapped content (RESEARCH Pitfall 6);
+   the autofocus attribute covers the initial page load only. #}
+<div id="receipt-form-wrap"{% if focus_code %} hx-on::load="document.getElementById('code').focus()"{% endif %}>
+  {% if saved %}<p>Приход сохранён: {{ saved.name }} — {{ saved.qty }} шт.</p>{% endif %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  <form class="stacked-form"
+        hx-post="/receipts"
+        hx-target="#receipt-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <div class="field">
+      <label for="code">Код</label>
+      {# Lookup wiring (hx-get) arrives in Plan 03-02. #}
+      <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus>
+      {% if errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+    </div>
+
+    {# PD-6: single source for the name field — shared with the product form. #}
+    {% with name = form.name or '', autofilled = False %}
+    {% include "partials/name_input.html" %}
+    {% endwith %}
+
+    <div class="field">
+      <label for="qty">Количество</label>
+      <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ form.qty or '' }}">
+      {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+
+    {% with field = "cost", label = "Закупочная цена", value = form.cost or "", error = errors.cost %}
+    {% include "partials/receipt_price_inputs.html" %}
+    {% endwith %}
+
+    {% with field = "sale", label = "Цена продажи", value = form.sale or "", error = errors.sale %}
+    {% include "partials/receipt_price_inputs.html" %}
+    {% endwith %}
+
+    {% with field = "catalog", label = "Цена по каталогу", value = form.catalog or "", error = errors.catalog %}
+    {% include "partials/receipt_price_inputs.html" %}
+    {% endwith %}
+
+    <p class="muted">Если товара с таким кодом ещё нет — карточка будет создана автоматически.</p>
+
+    <div class="form-actions">
+      <button type="submit">Сохранить приход</button>
+    </div>
+  </form>
+</div>

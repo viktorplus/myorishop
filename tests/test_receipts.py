@@ -193,7 +193,8 @@ def test_web_receipt_page_renders_form(client):
     assert "Цена продажи" in response.text
     assert "Цена по каталогу" in response.text
     assert "(необязательно)" in response.text
-    assert "Если товара с таким кодом ещё нет — карточка будет создана автоматически." in response.text
+    notice = "Если товара с таким кодом ещё нет — карточка будет создана автоматически."
+    assert notice in response.text
 
 
 def test_web_receipt_post_success_returns_fresh_form(client):
@@ -273,14 +274,22 @@ def test_web_recent_receipts_empty_state(client):
     response = client.get("/receipts/new")
     assert response.status_code == 200
     assert "Последние приходы" in response.text
-    assert "Приходов пока нет. Введите код товара, чтобы оприходовать первую позицию." in response.text
+    empty_state = "Приходов пока нет. Введите код товара, чтобы оприходовать первую позицию."
+    assert empty_state in response.text
 
 
 def test_web_recent_receipts_lists_saved_receipt(client):
     """After a save the table shows RU headers plus the saved name/quantity."""
     response = client.post(
         "/receipts",
-        data={"code": "9999", "name": "Губная помада", "qty": "7", "cost": "", "sale": "", "catalog": ""},
+        data={
+            "code": "9999",
+            "name": "Губная помада",
+            "qty": "7",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+        },
     )
     assert response.status_code == 200
 
@@ -296,7 +305,14 @@ def test_web_recent_receipts_oob_row_in_post_response(client):
     """D-04: the POST success response refreshes the list out-of-band."""
     response = client.post(
         "/receipts",
-        data={"code": "9999", "name": "Крем для рук", "qty": "2", "cost": "", "sale": "", "catalog": ""},
+        data={
+            "code": "9999",
+            "name": "Крем для рук",
+            "qty": "2",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+        },
     )
     assert response.status_code == 200
     assert 'id="recent-receipts"' in response.text
