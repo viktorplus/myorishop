@@ -17,3 +17,6 @@ backups/
 
 # Git Bash crash artifacts (Windows)
 *.stackdump
+
+# GSD research cache (ephemeral, regenerable)
+.planning/research/.cache/
