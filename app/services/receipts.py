@@ -1,10 +1,13 @@
-"""Receipts service (RCP-01): the goods-intake write built on the ledger.
+"""Receipts service (RCP-01/RCP-02): the goods-intake write built on the ledger.
 
 D-01: one receipt entry = one product line = one receipt op, qty_delta > 0.
 D-05: an unknown code auto-creates the product card + product_created op in
 the SAME transaction. D-06: the receipt op snapshots unit_cost_cents and
-unit_price_cents; payload carries catalog_cents. PD-8: prices are optional
-(empty string -> NULL) and never touch the product card in this plan.
+unit_price_cents; payload carries catalog_cents. D-07: for an EXISTING
+product the entered prices update the card via one price_change op per
+CHANGED field (CAT-04 machinery). PD-8: prices are optional (empty string
+-> NULL) and an empty field never clears a card price — receipts are
+additive, unlike the edit form where empty means NULL.
 
 Single-write-path contract: Operation rows and products.quantity are
 written ONLY through app.services.ledger.record_operation — every call
@@ -17,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core import new_id
 from app.models import Operation, Product
-from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
+from app.services.catalog import _PRICE_FIELDS, DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.ledger import record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
@@ -91,6 +94,30 @@ def register_receipt(
             payload={"code": code, "name": name},
             commit=False,
         )
+    else:
+        # D-07: entered prices update the existing card, one price_change op
+        # per CHANGED non-empty field — same payload shape as
+        # catalog.update_product. PD-8: None (empty input) never clears a
+        # card price. PD-9: the typed name is ignored (no product_edited op).
+        entered = {
+            "cost_cents": cost_cents,
+            "sale_cents": sale_cents,
+            "catalog_cents": catalog_cents,
+        }
+        for field in _PRICE_FIELDS:
+            if entered[field] is None or entered[field] == getattr(product, field):
+                continue
+            # Pitfall 7: snapshot the old value BEFORE mutating the card.
+            old = getattr(product, field)
+            record_operation(
+                session,
+                type_="price_change",
+                product_id=product.id,
+                qty_delta=0,
+                payload={"field": field, "old_cents": old, "new_cents": entered[field]},
+                commit=False,
+            )
+            setattr(product, field, entered[field])
 
     # D-06: snapshot the entered prices on the immutable receipt op.
     op = record_operation(
