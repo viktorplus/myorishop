@@ -180,6 +180,31 @@ def test_migration_0004_preserves_append_only_triggers(tmp_path, monkeypatch):
         assert "append-only" in str(exc_info.value)
 
 
+def test_append_only_preserved_for_return_and_correction(session, product):
+    """Phase 5 invariant: `return`/`correction` ops are NEW rows (never a
+    mutation) and UPDATE/DELETE on operations still ABORT afterwards."""
+    before = session.scalar(text("SELECT COUNT(*) FROM operations"))
+
+    return_op = record_operation(session, type_="return", product_id=product.id, qty_delta=1)
+    correction_op = record_operation(
+        session, type_="correction", product_id=product.id, qty_delta=-1
+    )
+
+    after = session.scalar(text("SELECT COUNT(*) FROM operations"))
+    assert after == before + 2
+    assert return_op.id != correction_op.id  # two distinct NEW rows, not a mutation
+
+    with pytest.raises((OperationalError, IntegrityError)) as exc_info:
+        session.execute(text("UPDATE operations SET qty_delta = 99"))
+    assert "append-only" in str(exc_info.value)
+    session.rollback()
+
+    with pytest.raises((OperationalError, IntegrityError)) as exc_info:
+        session.execute(text("DELETE FROM operations"))
+    assert "append-only" in str(exc_info.value)
+    session.rollback()
+
+
 def test_seq_unique_per_device(session, product):
     """D-08 / Pitfall 6: (device_id, seq) is UNIQUE — duplicates fail loudly."""
     existing = record_operation(session, type_="correction", product_id=product.id, qty_delta=1)
