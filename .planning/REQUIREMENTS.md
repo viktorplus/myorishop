@@ -90,10 +90,10 @@
 | SAL-05 | Phase 4 | Complete |
 | CST-01 | Phase 4 | Complete |
 | CST-02 | Phase 4 | Complete |
-| OPS-01 | Phase 5 | Pending |
-| OPS-02 | Phase 5 | Pending |
-| OPS-03 | Phase 5 | Pending |
-| OPS-04 | Phase 5 | Pending |
+| OPS-01 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 2) |
+| OPS-02 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 3) |
+| OPS-03 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 4) |
+| OPS-04 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 5) |
 | RPT-01 | Phase 6 | Pending |
 | RPT-02 | Phase 6 | Pending |
 | RPT-03 | Phase 6 | Pending |

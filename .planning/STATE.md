@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-07-09T22:01:59.789Z"
-last_activity: 2026-07-09 -- Phase 05 planning complete
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-07-09T22:30:28.146Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 21
-  completed_plans: 16
+  completed_plans: 17
   percent: 67
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 04 — sales-customers
+**Current focus:** Phase 05 — stock-operations-history
 
 ## Current Position
 
-Phase: 04 (sales-customers) — COMPLETE
-Plan: 6 of 6
+Phase: 05 (stock-operations-history) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-09 -- Phase 05 planning complete
+Last activity: 2026-07-09
 
-Progress: [██████████] 100%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | Phase 03 P02 | 10min | 3 tasks | 6 files |
 | Phase 03 P03 | 9min | 3 tasks | 11 files |
 | Phase 04 P06 | 8min | 1 tasks | 2 files |
+| Phase 05 P01 | 12min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-03: backup created_iso stored as UTC isoformat so the shared local_dt filter renders backup timestamps
 - [Phase 03]: 03-03: GET /backup takes no session dependency - only POST needs session.get_bind() (PD-12)
 - [Phase 04-06]: row stays unaliased in /sales/lookup - hx-vals sends bare "row" key via a separate JS object literal, not through hx-include's array-form serialization
+- [Phase ?]: 05-01: price_change RU label = "Изменение цены" (PLAN.md task text authoritative over 05-PATTERNS.md draft "Цена")
+- [Phase ?]: 05-01: Wave-0 tests fix route contract - GET/POST /writeoff + /writeoff/lookup, GET/POST /returns, POST /corrections (replaces POST /ops), GET /history
 
 ### Pending Todos
 
@@ -119,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T21:00:52.492Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-stock-operations-history/05-CONTEXT.md
+Last session: 2026-07-09T22:30:28.096Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None

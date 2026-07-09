@@ -159,7 +159,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Shared foundation: WRITEOFF_REASONS + OPERATION_TYPE_LABELS constants (Jinja globals) + Wave-0 RED test contract (OPS-01..04)
+- [x] 05-01-PLAN.md — Shared foundation: WRITEOFF_REASONS + OPERATION_TYPE_LABELS constants (Jinja globals) + Wave-0 RED test contract (OPS-01..04)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -205,5 +205,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
-| 5. Stock Operations & History | 0/5 | Not started | - |
+| 5. Stock Operations & History | 1/5 | In Progress|  |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
