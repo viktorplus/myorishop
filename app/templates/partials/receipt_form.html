@@ -47,4 +47,12 @@
       <button type="submit">Сохранить приход</button>
     </div>
   </form>
+
+  {# D-04: the POST success response carries the refreshed recent list
+     out-of-band; on 422 htmx only swaps the form (include_oob_rows False). #}
+  {% if include_oob_rows %}
+  {% with oob = True, receipts = receipts %}
+  {% include "partials/receipt_rows.html" %}
+  {% endwith %}
+  {% endif %}
 </div>

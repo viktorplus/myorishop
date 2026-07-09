@@ -1,0 +1,37 @@
+{# Recent receipts (D-04): stable id so the POST success response can refresh
+   the list with hx-swap-oob. The heading lives IN the partial so the oob
+   refresh carries it (Phase 2 price_history precedent). Autoescape only —
+   stored product names are untrusted (T-3-02). #}
+<div id="recent-receipts"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h2>Последние приходы</h2>
+  {% if not receipts %}
+  <p class="muted">Приходов пока нет. Введите код товара, чтобы оприходовать первую позицию.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Кол-во</th>
+        <th>Закупочная</th>
+        <th>Продажа</th>
+        <th>Каталог</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in receipts %}
+      <tr>
+        <td>{{ r.op.created_at | local_dt }}</td>
+        <td>{{ r.product.code }}</td>
+        <td>{{ r.product.name }}</td>
+        <td class="num">{{ r.op.qty_delta }}</td>
+        <td class="num">{% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% endif %}</td>
+        <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% endif %}</td>
+        <td class="num">{% if r.op.payload and r.op.payload.catalog_cents is not none %}{{ r.op.payload.catalog_cents | cents }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>

@@ -17,6 +17,7 @@
     <nav>
       <a href="/"{% if request.url.path == "/" %} class="active"{% endif %}>Главная</a>
       <a href="/products"{% if request.url.path.startswith("/products") %} class="active"{% endif %}>Товары</a>
+      <a href="/receipts/new"{% if request.url.path.startswith("/receipts") %} class="active"{% endif %}>Приход</a>
       <a href="/dictionary"{% if request.url.path.startswith("/dictionary") %} class="active"{% endif %}>Справочник</a>
     </nav>
     {% block content %}{% endblock %}

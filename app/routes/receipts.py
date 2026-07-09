@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
-from app.services.receipts import register_receipt
+from app.services.receipts import recent_receipts, register_receipt
 
 router = APIRouter()
 
@@ -17,7 +17,12 @@ SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте 
 
 @router.get("/receipts/new")
 def receipt_new_page(request: Request, session: Session = Depends(get_session)):
-    context = {"errors": {}, "form": {}, "focus_code": False}
+    context = {
+        "errors": {},
+        "form": {},
+        "focus_code": False,
+        "receipts": recent_receipts(session),
+    }
     return templates.TemplateResponse(request, "pages/receipt_form.html", context)
 
 
@@ -53,20 +58,33 @@ def receipt_create(
             catalog_raw=catalog,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
-        context = {"errors": {"form": SAVE_FAILED_ERROR}, "form": form_echo, "focus_code": False}
+        context = {
+            "errors": {"form": SAVE_FAILED_ERROR},
+            "form": form_echo,
+            "focus_code": False,
+            "include_oob_rows": False,
+        }
         return templates.TemplateResponse(
             request, "partials/receipt_form.html", context, status_code=422
         )
     if errors:
-        context = {"errors": errors, "form": form_echo, "focus_code": False}
+        context = {
+            "errors": errors,
+            "form": form_echo,
+            "focus_code": False,
+            "include_oob_rows": False,
+        }
         return templates.TemplateResponse(
             request, "partials/receipt_form.html", context, status_code=422
         )
-    # D-02: success -> fresh empty form + success line + focus back to «Код».
+    # D-02: success -> fresh empty form + success line + focus back to «Код»;
+    # D-04: the refreshed recent list rides along as an oob swap.
     context = {
         "errors": {},
         "form": {},
         "saved": {"name": result["product"].name, "qty": result["operation"].qty_delta},
         "focus_code": True,
+        "receipts": recent_receipts(session),
+        "include_oob_rows": True,
     }
     return templates.TemplateResponse(request, "partials/receipt_form.html", context)

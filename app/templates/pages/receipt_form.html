@@ -3,4 +3,8 @@
 <h1>Приход товара</h1>
 
 {% include "partials/receipt_form.html" %}
+
+{% with oob = False %}
+{% include "partials/receipt_rows.html" %}
+{% endwith %}
 {% endblock %}
