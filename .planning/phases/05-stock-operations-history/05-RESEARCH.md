@@ -372,19 +372,22 @@ rows = session.execute(
 | A4 | `/history` should include ALL op types (incl. price_change/product_created), RU-labeled | Pattern 5 | Low — OPS-04 says "full operation history"; planner may scope to stock-affecting types (D-16 lists reason columns oriented to writeoff/correction). Confirm during planning. |
 | A5 | Write-off default reason wording (Брак/Просрочка/…) is acceptable as-is | User Constraints D-03 | Low — CONTEXT marks wording adjustable by planner/operator. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Return aggregation granularity (sale+product vs sale line).**
    - What we know: index supports sale_id aggregation; entry point is a specific sale op (row) exposing `op.sale_id`, `op.product_id`, frozen prices.
    - What's unclear: whether to also store the origin sale op id in the return payload for per-line traceability.
    - Recommendation: cap by `sale_id`+`product_id`; copy the clicked op's frozen price/cost; optionally store `{"origin_op_id": ...}` in the return payload for auditability (cheap, no schema cost).
+   - RESOLVED: cap the returnable qty by `sale_id`+`product_id` and copy the clicked origin op's frozen price/cost; store the origin op reference in the return payload. Implemented in plan 05-03.
 
 2. **/history scope: all op types or stock-affecting only?**
    - What we know: OPS-04 = "full operation history"; D-16 columns emphasize writeoff/correction reasons.
    - Recommendation: include all types with RU labels; type filter lets the operator narrow to writeoff/return/correction. Confirm with planner.
+   - RESOLVED: include ALL operation types with RU labels; the «Тип» filter lets the operator narrow. Implemented in plan 05-05.
 
 3. **Write-off oversell warn/confirm (D-04, Claude's discretion).**
    - Recommendation: reuse the Phase 4 `sale_oversell` warn-but-allow pattern (`app/templates/partials/sale_oversell.html`, `confirm=1` re-POST) so stock can go to/through zero with an explicit confirm.
+   - RESOLVED: reuse the Phase 4 `sale_oversell` warn-but-allow pattern (`confirm=1` re-POST); stock may go to/through zero on explicit confirm. Implemented in plan 05-02.
 
 ## Environment Availability
 
