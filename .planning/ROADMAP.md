@@ -153,8 +153,29 @@ Plans:
   3. Operator can correct stock quantity, and the adjustment is recorded as an operation rather than a direct edit
   4. Operator can browse the full operation history showing what happened, when, and how much
 
-**Plans**: TBD
+**Plans**: 5 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Shared foundation: WRITEOFF_REASONS + OPERATION_TYPE_LABELS constants (Jinja globals) + Wave-0 RED test contract (OPS-01..04)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 05-02-PLAN.md — Write-off slice: /writeoff form + service on record_operation, reason allow-list, oversell warn/allow, save-and-next (OPS-01)
+
+**Wave 3** *(blocked on Wave 2 — shares app/main.py)*
+
+- [ ] 05-03-PLAN.md — Sale-linked return slice: /returns from a sale line, returnable-qty cap, frozen price/cost copy (OPS-02)
+
+**Wave 4** *(blocked on Wave 3 — shares app/main.py)*
+
+- [ ] 05-04-PLAN.md — Correction slice: /corrections count/delta modes, zero-net reject, retire POST /ops (OPS-03)
+
+**Wave 5** *(blocked on Wave 4 — shares app/main.py)*
+
+- [ ] 05-05-PLAN.md — History slice: /history paginated + type/product filters + nav link, history_rows partial (OPS-04)
 
 ### Phase 6: Reports & Data Export
 
@@ -184,5 +205,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
-| 5. Stock Operations & History | 0/TBD | Not started | - |
+| 5. Stock Operations & History | 0/5 | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
