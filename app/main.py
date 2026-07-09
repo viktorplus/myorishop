@@ -7,10 +7,10 @@ from fastapi.staticfiles import StaticFiles
 
 from app.routes import (
     backup,
+    corrections,
     customers,
     dictionary,
     home,
-    ops,
     products,
     receipts,
     returns,
@@ -34,7 +34,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MyOriShop", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(home.router)
-app.include_router(ops.router)
 app.include_router(products.router)
 app.include_router(dictionary.router)
 app.include_router(receipts.router)
@@ -43,3 +42,4 @@ app.include_router(customers.router)
 app.include_router(backup.router)
 app.include_router(writeoffs.router)
 app.include_router(returns.router)
+app.include_router(corrections.router)

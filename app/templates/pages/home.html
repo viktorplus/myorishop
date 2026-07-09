@@ -3,12 +3,10 @@
 <h1>MyOriShop — склад</h1>
 
 {% if product %}
-<form hx-post="/ops" hx-target="#ledger" hx-swap="outerHTML" hx-disabled-elt="find button">
-  <input type="hidden" name="product_id" value="{{ product.id }}">
-  <label for="qty_delta">Изменение количества (±)</label>
-  <input type="number" id="qty_delta" name="qty_delta" required>
-  <button type="submit">Записать корректировку</button>
-</form>
+{# D-12/D-17: the walking-skeleton correction form is retired — the
+   authoritative correction path is /corrections and the authoritative
+   full audit trail is /history. #}
+<p><a href="/corrections">Корректировка остатка</a> · <a href="/history">История операций</a></p>
 
 {% include "partials/ledger_rows.html" %}
 {% else %}
