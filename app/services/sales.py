@@ -1,0 +1,184 @@
+"""Sales service (SAL-01/02/05): the multi-line basket write built on the ledger.
+
+D-01/D-02/D-03: one sale = a BASKET of N product lines, grouped by a `sales`
+header (id UUID, optional customer_id) and written as N `sale` operations
+(qty_delta < 0) linked back to the header via `Operation.sale_id`. The whole
+basket is ONE transaction — an empty basket cannot be finalized, and an
+unknown code on any line aborts the entire basket (all-or-nothing).
+
+D-10: the entered per-line price is REQUIRED and becomes unit_price_cents
+(overrides the card sale_cents — a pre-fill only). D-11/D-12: unit_cost_cents
+is frozen from Product.cost_cents at write time and may be NULL (a NULL card
+cost never blocks the sale; an empty/invalid PRICE does).
+
+The oversell aggregate check (SAL-04) is added by Plan 04-03 — this plan
+accepts every basket unconditionally (see the placeholder comment below).
+
+Single-write-path contract: Operation rows and products.quantity are
+written ONLY through app.services.ledger.record_operation — every line is
+staged with commit=False and ONE commit closes the transaction (WR-03).
+"""
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.core import new_id, to_cents, utcnow_iso
+from app.models import Operation, Product, Sale
+from app.services import catalog
+from app.services.dictionary import lookup as dictionary_lookup
+from app.services.ledger import record_operation
+
+PRICE_REQUIRED_ERROR = "Укажите цену продажи."
+EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чтобы оформить продажу."
+PRODUCT_NOT_FOUND_TMPL = "Товар с кодом „{code}“ не найден. Сначала оприходуйте товар."
+QTY_ERROR = "Укажите количество — целое число больше нуля."
+SAVE_ROLLBACK = "Не удалось сохранить продажу. Попробуйте ещё раз."
+
+
+def register_sale(
+    session: Session,
+    *,
+    customer_id: str | None,
+    codes: list[str],
+    qtys: list[str],
+    prices: list[str],
+    confirm: str = "",
+) -> tuple[dict | None, dict[str, str]]:
+    """Register one walk-in/customer sale atomically; returns (result, errors).
+
+    Success: ({"header": ..., "line_count": ..., "total_cents": ...}, {}).
+    Failure: (None, errors) with RU messages — NOTHING is staged or written
+    on any validation error (D-03: the whole basket is one transaction).
+    """
+    errors: dict[str, str] = {}
+
+    # D-03: a line counts only if any of code/qty/price is non-blank after
+    # strip; a fully blank basket cannot be finalized.
+    non_blank = [
+        (code, qty, price)
+        for code, qty, price in zip(codes, qtys, prices, strict=False)
+        if code.strip() or qty.strip() or price.strip()
+    ]
+    if not non_blank:
+        return None, {"basket": EMPTY_BASKET_ERROR}
+
+    resolved: list[dict] = []
+    for i, (code_raw, qty_raw, price_raw) in enumerate(non_blank):
+        code = code_raw.strip()
+
+        # D-01: qty_delta strictly positive integer; corrections are Phase 5.
+        qty_text = qty_raw.strip()
+        qty = int(qty_text) if qty_text.isdigit() else 0
+        if qty <= 0:
+            errors[f"qty-{i}"] = QTY_ERROR
+
+        # D-12 divergence from receipts: sale price is REQUIRED per line —
+        # empty is rejected (unlike receipts, where empty price = NULL).
+        price_text = price_raw.strip()
+        price_cents: int | None = None
+        if not price_text:
+            errors[f"price-{i}"] = PRICE_REQUIRED_ERROR
+        else:
+            try:
+                price_cents = to_cents(price_text)
+            except ValueError:
+                errors[f"price-{i}"] = catalog.PRICE_ERROR
+
+        # Active-only lookup — a soft-deleted product's code is unknown.
+        product = session.scalars(
+            select(Product).where(Product.code == code, Product.deleted_at.is_(None))
+        ).first()
+        if product is None:
+            errors[f"code-{i}"] = PRODUCT_NOT_FOUND_TMPL.format(code=code)
+
+        resolved.append({"product": product, "qty": qty, "price_cents": price_cents})
+
+    # D-03: any invalid line aborts the WHOLE basket — nothing staged yet.
+    if errors:
+        return None, errors
+
+    # --- 04-03 INSERTION POINT ---
+    # Oversell aggregate check goes here: sum requested qty per product_id
+    # across ALL resolved lines, compare to Product.quantity; if any product
+    # oversells and confirm != "1", return ({"oversell": True, ...}, {}) with
+    # ZERO writes (Pitfall 6: aggregate duplicate lines of the same product
+    # BEFORE comparing). This plan accepts every basket unconditionally —
+    # `confirm` is accepted but unused here.
+
+    header = Sale(
+        id=new_id(),
+        customer_id=customer_id or None,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+        device_id=settings.device_id,
+    )
+    session.add(header)
+
+    total_cents = 0
+    for line in resolved:
+        product = line["product"]
+        qty = line["qty"]
+        price_cents = line["price_cents"]
+        record_operation(
+            session,
+            type_="sale",
+            product_id=product.id,
+            qty_delta=-qty,
+            unit_cost_cents=product.cost_cents,  # D-11 freeze (may be None)
+            unit_price_cents=price_cents,  # D-10 entered price
+            sale_id=header.id,
+            commit=False,
+        )
+        total_cents += qty * price_cents
+
+    # WR-03/WR-04: single transaction close.
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return None, {"basket": SAVE_ROLLBACK}
+
+    return {
+        "header": header,
+        "line_count": len(resolved),
+        "total_cents": total_cents,
+    }, {}
+
+
+def lookup_prefill(session: Session, code: str) -> dict | None:
+    """Pre-fill data for a basket line's lookup. Read-only.
+
+    Active product first: its name plus the card `sale_cents` (D-10 — only
+    the sale price pre-fills, not cost/catalog). Dictionary fallback: name
+    only. Unknown code -> None (the route answers 204).
+    """
+    code = code.strip()
+    if not code:
+        return None
+    product = session.scalars(
+        select(Product).where(Product.code == code, Product.deleted_at.is_(None))
+    ).first()
+    if product is not None:
+        return {
+            "source": "product",
+            "name": product.name,
+            "prices": {"sale": product.sale_cents},
+        }
+    entry = dictionary_lookup(session, code)
+    if entry is not None:
+        return {"source": "dictionary", "name": entry.name, "prices": None}
+    return None
+
+
+def recent_sales(session: Session, limit: int = 10) -> list[dict]:
+    """Last N sale ops joined to their products, newest first (mirrors D-04)."""
+    rows = session.execute(
+        select(Operation, Product)
+        .join(Product, Operation.product_id == Product.id)
+        .where(Operation.type == "sale")
+        .order_by(Operation.created_at.desc(), Operation.seq.desc())
+        .limit(limit)
+    ).all()
+    return [{"op": op, "product": product} for op, product in rows]
