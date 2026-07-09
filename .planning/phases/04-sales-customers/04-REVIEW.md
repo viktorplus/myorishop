@@ -4,37 +4,37 @@ reviewed: 2026-07-09T00:00:00Z
 depth: standard
 files_reviewed: 26
 files_reviewed_list:
+  - alembic/versions/0004_sales_customers.py
+  - app/main.py
   - app/models.py
+  - app/routes/customers.py
+  - app/routes/sales.py
+  - app/services/customers.py
   - app/services/ledger.py
   - app/services/sales.py
-  - app/services/customers.py
-  - app/routes/sales.py
-  - app/routes/customers.py
-  - app/main.py
-  - alembic/versions/0004_sales_customers.py
+  - app/static/style.css
+  - app/templates/base.html
+  - app/templates/pages/customer_detail.html
+  - app/templates/pages/customer_form.html
+  - app/templates/pages/customers_list.html
+  - app/templates/pages/sale_form.html
+  - app/templates/partials/customer_picker.html
+  - app/templates/partials/customer_rows.html
+  - app/templates/partials/purchase_history.html
+  - app/templates/partials/recent_sales.html
+  - app/templates/partials/sale_customer.html
+  - app/templates/partials/sale_form.html
+  - app/templates/partials/sale_lookup.html
+  - app/templates/partials/sale_oversell.html
+  - app/templates/partials/sale_row.html
   - tests/conftest.py
+  - tests/test_customers.py
   - tests/test_ledger.py
   - tests/test_sales.py
-  - tests/test_customers.py
-  - app/templates/base.html
-  - app/templates/pages/sale_form.html
-  - app/templates/partials/sale_form.html
-  - app/templates/partials/sale_row.html
-  - app/templates/partials/sale_lookup.html
-  - app/templates/partials/recent_sales.html
-  - app/templates/partials/sale_oversell.html
-  - app/templates/partials/sale_customer.html
-  - app/templates/partials/customer_picker.html
-  - app/templates/pages/customers_list.html
-  - app/templates/partials/customer_rows.html
-  - app/templates/pages/customer_form.html
-  - app/templates/pages/customer_detail.html
-  - app/templates/partials/purchase_history.html
-  - app/static/style.css
 findings:
-  critical: 1
-  warning: 5
-  info: 1
+  critical: 0
+  warning: 4
+  info: 3
   total: 7
 status: issues_found
 ---
@@ -43,234 +43,211 @@ status: issues_found
 
 **Reviewed:** 2026-07-09T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 26
+**Files Reviewed:** 26 (full file set across all 6 plans in this phase, including the
+04-06 `/sales/lookup` bracketed-key gap closure — this supersedes an earlier
+`04-REVIEW.md` written against the pre-gap-closure state of this directory)
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the sales-basket and customer-CRUD slice: models, the ledger/sales/customers
-services, their routes, migration `0004`, tests, and every template touched by this
-phase. The append-only ledger contract, the "one transaction / all-or-nothing basket"
-design, and the oversell-aggregation logic are all sound and match their docstrings and
-tests (verified against the actual SQLAlchemy 2.0.51 flush-ordering behavior used by
-this project, and against Python's `str.isdigit()`/`int()` semantics, both confirmed by
-running small scripts against the project's own `.venv`).
+Reviewed the full sales + customers slice: the `customers`/`sales` schema migration
+(0004), models, routes, services, templates, and tests. All 45 tests in
+`test_sales.py` / `test_customers.py` / `test_ledger.py` pass. The bracketed-key
+regression in `/sales/lookup` (SAL-01 gap closure, plan 04-06) is correctly fixed —
+the route now aliases `code[]`/`name[]`/`price[]`, and the regression tests
+(`test_web_sale_lookup_prefills_price`,
+`test_web_sale_lookup_bracketed_params_price_prefilled_no_clobber`) exercise the exact
+bracketed shape htmx actually sends from `hx-include="closest tr"`.
 
-One genuine, provable XSS vulnerability was found: `GET /sales/row`'s `row` query
-parameter is reflected — unsanitized beyond Jinja's default HTML-attribute escaping —
-into an `hx-on::load` attribute that htmx evaluates as JavaScript. HTML-entity escaping
-of quotes does not neutralize this sink, because the browser HTML-decodes the attribute
-value before handing it to the JS engine; a crafted `row` value round-trips back into
-syntactically valid JavaScript. Several further robustness/quality issues were found
-around exception handling in `app/services/sales.py` / `app/routes/sales.py`.
+Note for whoever consumes this report: an earlier `04-REVIEW.md` existed in this
+directory (timestamped before the 04-06 gap closure) that flagged a critical reflected-XSS
+finding (`row` query param → `hx-on::load` JS sink in `sale_row.html`), an unsafe
+`isdigit()`/`int()` precondition, a missing rollback around the basket write loop, and a
+missing max-length guard on `Customer` fields. I re-checked all four against the code as
+it stands today: **all four are fixed** — `/sales/row`'s `row` param is now validated with
+`_ROW_ID_RE` before use, `qty_text.isascii() and qty_text.isdigit()` guards the `int()`
+call, the entire per-line write loop plus the final commit are now inside one
+`try/except (IntegrityError, ValueError)` with an explicit rollback, and
+`app/services/customers.py::_validate_lengths` enforces the declared column lengths. No
+regression from that prior review remains.
 
-## Critical Issues
+This pass found no new Critical/Blocker-level issues (no hardcoded secrets, no
+`|safe`/`innerHTML`-style XSS, no SQL/command injection, no auth bypass — all templates
+rely on Jinja autoescape, and every client-controlled value that flows into a
+JS-evaluated attribute is now server-validated). It did find two Warnings worth fixing
+before they bite in production:
 
-### CR-01: Reflected XSS via `row` query param into an `hx-on::load` JS sink
+1. `register_sale`'s write-phase exception handler swallows `IntegrityError`/`ValueError`
+   with **no logging**, unlike every other exception boundary in this phase (routes
+   always `logger.exception(...)`). A genuine concurrency bug (e.g. a
+   `(device_id, seq)` collision) would surface to the operator as a generic "try again"
+   message with zero server-side trace to diagnose it.
+2. I empirically verified (by running `alembic upgrade head` and inspecting the
+   resulting schema with SQLAlchemy's `inspect()`) that **production's
+   `operations.sale_id` column has no database-level foreign key** — by design, per the
+   migration's own "A1 fallback" docstring — while the test suite's
+   `Base.metadata.create_all()` schema **does** create that FK. The only safety net this
+   phase relies on for `sale_id` integrity therefore does not exist in the deployed
+   schema, and no test run against the current fixtures can ever catch a regression that
+   writes a bogus `sale_id`.
 
-**File:** `app/routes/sales.py:92-109`, `app/templates/partials/sale_row.html:8-20`
-
-**Issue:** `GET /sales/row` takes `row: str = ""` straight from the query string,
-only calls `.strip()`, and uses it as `row_id` whenever non-blank:
-
-```python
-@router.get("/sales/row")
-def sale_row(request: Request, row: str = ""):
-    row_id = row.strip() or new_id()
-    context = {"row_id": row_id, ..., "focus_new": True, ...}
-    return templates.TemplateResponse(request, "partials/sale_row.html", context)
-```
-
-`sale_row.html` then builds `code_id = "code-" + row_id` and embeds it inside a
-JS-executing attribute:
-
-```html
-{% set code_id = "code" if not row_id else "code-" + row_id %}
-<tr id="row-{{ row_id or 'first' }}"{% if focus_new %} hx-on::load="document.getElementById('{{ code_id }}').focus()"{% endif %}>
-```
-
-Jinja's autoescaping HTML-entity-encodes `'`/`"` inside the attribute, but the browser
-HTML-decodes attribute values *before* htmx reads them with `getAttribute()` and
-evaluates them as JS. So a payload such as:
-
-```
-GET /sales/row?row=');alert(document.domain);//
-```
-
-renders as `hx-on::load="document.getElementById(&#39;code-&#39;);alert(document.domain);//&#39;).focus()"`,
-which the browser decodes back to
-`document.getElementById('code-');alert(document.domain);//').focus()` — valid
-JavaScript that executes `alert(document.domain)` when htmx processes the `load`
-hook. Confirmed by manual trace of Jinja's escape set (`&`, `<`, `>`, `'`, `"` only —
-`;`, `(`, `)`, `/` pass through untouched) plus standard browser attribute-decoding
-behavior for inline event-handler-style attributes.
-
-Under normal app usage the "Добавить строку" button never sends a `row` param (so
-`row_id` is always server-generated via `new_id()`), meaning this parameter has no
-legitimate non-blank use today — it is pure attacker surface. The same `row` value is
-also reflected, unsanitized, into `hx-vals='{"row": "{{ row_id }}"}'` on the same
-element (secondary evidence of the same root cause).
-
-**Fix:** Do not let client input choose the DOM id used inside an inline
-JS-evaluated attribute. Either ignore the incoming value entirely (always call
-`new_id()` server-side for this endpoint), or strictly validate it before use:
-
-```python
-import re
-_ROW_ID_RE = re.compile(r"[0-9a-fA-F-]{1,36}")
-
-@router.get("/sales/row")
-def sale_row(request: Request, row: str = ""):
-    row = row.strip()
-    row_id = row if _ROW_ID_RE.fullmatch(row) else new_id()
-    ...
-```
-
-Longer term, prefer the `.dataset`-based pattern already used correctly elsewhere in
-this same phase (`app/templates/partials/customer_picker.html`, which explicitly reads
-`this.dataset.id` instead of string-interpolating untrusted text into an inline
-handler) instead of building `hx-on::load="...('{{ value }}')..."` strings from
-request-controlled input.
+Neither is a live data-corruption bug in the code as written today (the only caller
+passes `sale_id=header.id` from a `Sale` header added in the same transaction), but both
+remove a safety net that future changes will likely assume exists.
 
 ## Warnings
 
-### WR-01: `qty_text.isdigit()` is not a safe precondition for `int()`
+### WR-01: `register_sale` silently discards genuine write-phase errors (no logging)
 
-**File:** `app/services/sales.py:76`
-
-**Issue:**
+**File:** `app/services/sales.py:183-185`
+**Issue:** The write loop's exception handler catches `(IntegrityError, ValueError)`,
+rolls back, and returns a generic RU message — with no `logger.exception` call:
 ```python
-qty = int(qty_text) if qty_text.isdigit() else 0
-```
-Python's `str.isdigit()` returns `True` for non-ASCII "digit" characters that
-`int()` cannot parse (e.g. superscript `'²'.isdigit() == True` but
-`int('²')` raises `ValueError`). Confirmed by running this exact snippet against the
-project's `.venv` Python. If an operator's browser/IME submits such a character in the
-quantity field, `register_sale` raises an uncaught `ValueError` instead of producing
-the intended `QTY_ERROR` ("Укажите количество…") message; the exception is only
-saved from becoming a 500 by the broad `except Exception` in the route (see WR-02),
-which then shows a generic, unhelpful "Не удалось сохранить" error instead of the
-correct per-field validation message.
-
-**Fix:**
-```python
-qty = int(qty_text) if qty_text.isascii() and qty_text.isdigit() else 0
-```
-(or use a regex `re.fullmatch(r"[0-9]+", qty_text)`). The same pattern exists in
-`app/services/receipts.py:58` and should get the same fix for consistency, though that
-file is outside this phase's scope.
-
-### WR-02: Broad exception swallowing with no logging in sales routes
-
-**File:** `app/routes/sales.py:130-146` (`sale_customer_create`), `app/routes/sales.py:172-191` (`sale_create`)
-
-**Issue:** Both handlers wrap their service call in `except Exception:  # noqa: BLE001`
-and convert *any* unexpected error — including real bugs like WR-01, `AttributeError`,
-`KeyError`, or a future regression — into the same generic user-facing message, with
-zero logging anywhere. In production this makes any real defect essentially
-undiagnosable: there is no trace of what actually failed, only "Не удалось сохранить".
-
-**Fix:** Log the exception before returning the friendly error, e.g.:
-```python
-except Exception:
-    logger.exception("register_sale failed")
-    ...
-```
-so the failure is at least visible in server logs while still shielding the operator
-from a raw 500.
-
-### WR-03: Basket write loop has no explicit rollback on non-`IntegrityError` failures
-
-**File:** `app/services/sales.py:143-164`
-
-**Issue:** The per-line write loop (`record_operation(..., commit=False)` for each
-resolved line) is not wrapped in a `try`/`except`; only the final `session.commit()`
-call catches `IntegrityError`:
-```python
-for line in resolved:
-    ...
-    record_operation(session, ..., commit=False)
-    ...
-try:
-    session.commit()
-except IntegrityError:
-    session.rollback()
-    return None, {"basket": SAVE_ROLLBACK}
-```
-If `record_operation` raises anything other than at commit time (e.g. a `ValueError`
-from its own guards, reachable in a TOCTOU race where a product is soft-deleted between
-this function's earlier validation and the write loop), the exception propagates out of
-`register_sale` with the session left holding uncommitted pending inserts and **no
-explicit rollback**. This currently doesn't corrupt data only because the caller's
-`get_session()` dependency (`app/db.py:60-63`) happens to close the session via a
-context manager, and `Session.close()` implicitly rolls back any open transaction — but
-that safety net is incidental, not part of this function's own contract, and the
-docstring's claim ("nothing staged or written on any validation error") is not actually
-guaranteed by this function in that path.
-
-**Fix:** Wrap the write loop itself and roll back explicitly on any exception, not just
-at the final commit:
-```python
-try:
-    for line in resolved:
-        ...
-        record_operation(session, ..., commit=False)
-        total_cents += qty * price_cents
-    session.commit()
 except (IntegrityError, ValueError):
     session.rollback()
     return None, {"basket": SAVE_ROLLBACK}
 ```
+Contrast this with `app/routes/sales.py:145-148` and `:196-198`, which both explicitly
+log via `logger.exception(...)` specifically so "a real bug isn't silently reduced to a
+generic user-facing message with no server-side trace" (their own comment). Because
+`register_sale` catches these exceptions internally, they never propagate to the route's
+`try/except Exception`, so that route-level logging never fires for this class of error.
+A real bug (e.g. a `(device_id, seq)` UNIQUE violation from a future concurrency issue)
+would be completely invisible in the server logs.
+**Fix:**
+```python
+# app/services/sales.py
+import logging
+...
+logger = logging.getLogger(__name__)
+...
+    except (IntegrityError, ValueError):
+        logger.exception("register_sale write phase failed")
+        session.rollback()
+        return None, {"basket": SAVE_ROLLBACK}
+```
 
-### WR-04: Basket-line filtering logic duplicated between service and route
+### WR-02: `operations.sale_id` has no FK in production; the test schema silently over-enforces it
 
-**File:** `app/services/sales.py:62-66`, `app/routes/sales.py:21-49`
+**File:** `alembic/versions/0004_sales_customers.py:78-82`, `app/models.py:122-124`,
+`tests/conftest.py:22-23`, `app/services/ledger.py:29-90`
+**Issue:** Verified by running the actual migration chain and inspecting the resulting
+schema:
+```
+alembic upgrade head        -> operations FKs = [fk_operations_product_id_products]                       (no sale_id FK)
+Base.metadata.create_all()  -> operations FKs = [fk_operations_product_id_products, fk_operations_sale_id_sales]
+```
+Every test in this phase runs against `Base.metadata.create_all()`
+(`tests/conftest.py:22-23`), so the suite enforces a `sale_id` FK constraint that
+**does not exist in the real, migrated production database** (the migration
+deliberately omits it — see the module docstring's "A1 fallback" section on the SQLite
+ALTER-with-inline-FK limitation). `record_operation` (`app/services/ledger.py`)
+explicitly validates `product_id` (`session.get(Product, product_id)` + a
+soft-delete check) but performs **no equivalent existence check for `sale_id`** — the
+FK was the only other safety net, and it is absent in production. A future bug that
+passes a stale/incorrect `sale_id` into `record_operation` would silently write an
+orphaned reference in the field, and no test run against the current fixtures could
+ever catch it, because the fixture schema is stricter than production for this exact
+column.
+**Fix:** Either (a) add an explicit `session.get(Sale, sale_id)` existence check in
+`record_operation` mirroring the `product_id` guard when `sale_id is not None`, or (b)
+at minimum add a migration-schema-based regression test (in the style of
+`test_migration_0004_preserves_append_only_triggers`) that documents/asserts the
+current no-FK behavior in production, so a future contributor doesn't accidentally
+assume FK enforcement that isn't actually there.
 
-**Issue:** The "a line counts only if code/qty/price is non-blank" filter is
-implemented independently in both `register_sale` (the source of truth for
-`f"qty-{i}"`/`f"price-{i}"`/`f"code-{i}"` error keys) and `_build_lines` (used to
-re-render the echoed basket on error). The route's docstring even calls this out
-("Mirrors register_sale's own non-blank-line filtering"), acknowledging the
-duplication. If either filter's rule changes without updating the other, error
-messages will silently attach to the wrong row.
+### WR-03: Name-required early return skips length validation on the other fields
 
-**Fix:** Extract the filter into one shared helper (e.g.
-`app/services/sales.py::_non_blank_lines(codes, qtys, prices)`) and have both
-`register_sale` and `_build_lines` call it.
+**File:** `app/services/customers.py:60-66` (`create_customer`), `:98-104`
+(`update_customer`)
+**Issue:** Both functions do:
+```python
+if not name:
+    errors["name"] = NAME_REQUIRED_ERROR
+    return None, errors
 
-### WR-05: `search_lc`/name fields have no max-length guard before insert
+_validate_lengths(name, surname, consultant_number, errors)
+if errors:
+    return None, errors
+```
+When `name` is blank *and* `surname`/`consultant_number` exceed their max length, only
+`"Укажите имя покупателя."` is ever returned — the length error only surfaces after the
+operator fixes the name and resubmits, one avoidable extra round trip later than
+necessary, and inconsistent with the "one response, all field errors" pattern the
+`errors` dict shape implies elsewhere in this codebase.
+**Fix:**
+```python
+errors: dict[str, str] = {}
+name = name.strip()
+surname = surname.strip()
+consultant_number = consultant_number.strip()
 
-**File:** `app/services/customers.py:24-50`, `app/services/customers.py:53-80`
+if not name:
+    errors["name"] = NAME_REQUIRED_ERROR
+_validate_lengths(name, surname, consultant_number, errors)
+if errors:
+    return None, errors
+```
 
-**Issue:** `Customer.name`/`surname`/`consultant_number` are declared as
-`String(200)`/`String(200)`/`String(50)` and `search_lc` as `String(400)`, but none of
-`create_customer`/`update_customer` enforce these lengths before insert. SQLite does
-not enforce `VARCHAR` length, so this silently succeeds today; per this project's own
-documented PostgreSQL-migration goal (CLAUDE.md: "same models will run on PostgreSQL
-later"), an overlong value that works fine now will raise a hard error after that
-migration. (Note: the sibling `app/services/catalog.py` has the same gap for
-`Product.code`/`name`, so this is a pre-existing project convention, not unique to this
-phase — flagged here because it applies directly to the new `Customer` write paths.)
+### WR-04: `/sales/lookup`'s `row` param isn't format-validated the way `/sales/row`'s is
 
-**Fix:** Truncate or validate against the column's declared length in the service
-layer, e.g. `errors["name"] = "Слишком длинное имя."` when `len(name) > 200`.
+**File:** `app/routes/sales.py:71-77`, `app/templates/partials/sale_lookup.html:5-6`
+**Issue:** `app/routes/sales.py:24-28` documents, in detail, that a client-controlled
+"row" value is attacker-reachable and "must be constrained to the exact shape
+`new_id()` produces... before it is ever trusted," and `/sales/row` does exactly that
+via `_ROW_ID_RE.fullmatch(row)` (line 107). `/sales/lookup`'s own `row: str = ""` (line
+77) is the same kind of client-controlled value from the same style of request, but is
+passed straight into `sale_lookup.html` unvalidated (`"name-" + row`,
+`"price-" + row`). Today this only ends up inside an `id="..."` HTML attribute, which
+Jinja autoescapes, so it is not currently exploitable — but the asymmetry means a
+future template change that reuses `row` inside a JS-evaluated attribute (as
+`sale_row.html` already does for the validated `row_id`) would silently reintroduce the
+exact class of bug `_ROW_ID_RE` exists to prevent.
+**Fix:** Apply the same guard for consistency/defense-in-depth:
+```python
+row = row.strip()
+row = row if _ROW_ID_RE.fullmatch(row) else ""
+```
 
 ## Info
 
-### IN-01: `row`/`code` GET params echoed into DOM ids without format validation
+### IN-01: Superfluous `noqa: F401` on an import that IS used
 
-**File:** `app/routes/sales.py:64-89` (`sale_lookup`), `app/templates/partials/sale_lookup.html:5-6`
+**File:** `tests/test_customers.py:23`
+**Issue:** `from app.services.sales import register_sale  # noqa: F401 (used to seed linked sales)`
+— `register_sale` is genuinely called later in the file (e.g. line 84,
+`test_purchase_history_returns_rows_for_customer`), so it is not unused and the `noqa`
+suppresses a lint warning that would never fire. Harmless, but reads as if the import
+were dead when it isn't.
+**Fix:** Drop the `# noqa: F401` (keep the explanatory comment as plain prose if
+useful).
 
-**Issue:** `sale_lookup`'s `row` param is likewise used unvalidated to build
-`name_wrap_id`/`price_wrap_id` (`"name-" + row`, `"price-" + row`). Unlike CR-01 these
-only end up in plain `id="..."` attributes (not a JS-execution sink), so this is not
-itself exploitable for script injection, but it shares the same root cause (trusting a
-client-supplied "row" identifier) and would benefit from the same validation fix
-suggested in CR-01, for consistency and to avoid DOM-id collisions from unexpected
-input.
+### IN-02: `create_customer`/`update_customer` duplicate their validation pipeline
 
-**Fix:** Apply the same `row` format validation described in CR-01's fix to this route
-as well.
+**File:** `app/services/customers.py:47-77` vs `:80-111`
+**Issue:** Both functions repeat the identical trim → required-name check →
+`_validate_lengths` → build-and-assign sequence almost line for line. Not incorrect,
+but the duplication means any future change to validation order/rules (e.g. WR-03
+above) has to be applied twice and can drift out of sync.
+**Fix:** Extract a shared helper, e.g.
+`_normalize_and_validate(name, surname, consultant_number) -> tuple[str, str, str, dict[str, str]]`,
+and call it from both functions.
+
+### IN-03: Dead "missing price" branch in the sale history/list partials
+
+**File:** `app/templates/partials/recent_sales.html:28-29`,
+`app/templates/partials/purchase_history.html:25-26`
+**Issue:** Both partials guard `{% if h.op.unit_price_cents is not none %}` (or
+`r.op...`) before rendering price/total, for rows where `Operation.type == "sale"`.
+Since `app/services/sales.py::register_sale` rejects any sale line with a blank price
+(`PRICE_REQUIRED_ERROR`), a `sale`-type operation can never have `unit_price_cents is
+None` in practice — the branch is unreachable given current invariants, and the two
+partials aren't even consistent with each other about it (`purchase_history.html`
+renders a `—` placeholder for the "missing" case; `recent_sales.html` has no `else`
+branch at all, so it would render an empty cell for a case that cannot happen).
+**Fix:** Either simplify to `{{ h.op.unit_price_cents | cents }}` unconditionally, or —
+if intentionally kept as defensive code against a future operation type reusing this
+template — align the two partials to render the same placeholder.
 
 ---
 
