@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     operator_name: str = "operator"
     device_id: str = "device-01"
     display_tz: str = "Europe/Moscow"
+    # BCK-01 (D-08/D-09/D-10): startup + manual VACUUM INTO backups.
+    # backup_on_startup exists as a flag so the TEST SUITE can disable the
+    # lifespan backup (RESEARCH Pitfall 1) — env overrides BACKUP_ON_STARTUP.
+    backup_dir: str = "backups"
+    backup_on_startup: bool = True
+    backup_keep: int = 30
 
 
 settings = Settings()

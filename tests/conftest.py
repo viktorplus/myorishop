@@ -49,17 +49,24 @@ def product(session):
 
 
 @pytest.fixture()
-def client(engine, session, product):
+def client(engine, session, product, monkeypatch):
     """TestClient with the app's get_session dependency overridden.
 
     app.main is imported lazily INSIDE this fixture: it only exists after
     Plan 01-03, and a module-level import would break collection of
     test_ledger / test_pragmas during Wave 2.
+
+    RESEARCH Pitfall 1: `with TestClient(app)` RUNS lifespan, so the startup
+    backup must be disabled here or every client test would VACUUM the
+    developer's real data/myorishop.db into backups/.
     """
     from fastapi.testclient import TestClient
 
+    from app.config import settings
     from app.db import get_session
     from app.main import app
+
+    monkeypatch.setattr(settings, "backup_on_startup", False)
 
     def override_get_session():
         yield session
