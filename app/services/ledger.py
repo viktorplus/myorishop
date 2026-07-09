@@ -35,6 +35,7 @@ def record_operation(
     unit_cost_cents: int | None = None,
     unit_price_cents: int | None = None,
     payload: dict | None = None,
+    sale_id: str | None = None,
     commit: bool = True,
 ) -> Operation:
     """Append one immutable ledger row and update the cached stock projection.
@@ -47,6 +48,10 @@ def record_operation(
     commit=False for every call and issue ONE session.commit() at the end,
     so a crash cannot leave a partially written audit trail. next_seq still
     works: autoflush flushes pending ops before its max(seq) query.
+
+    sale_id (D-03) links a `sale` op back to its Sale header; it is set at
+    INSERT time only — the operations_no_update trigger ABORTs any later
+    UPDATE. All other callers keep working untouched (default None).
     """
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
@@ -70,6 +75,7 @@ def record_operation(
         unit_cost_cents=unit_cost_cents,
         unit_price_cents=unit_price_cents,
         payload=payload,
+        sale_id=sale_id,
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),

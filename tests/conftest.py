@@ -11,7 +11,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
-from app.models import Base, Product
+from app.models import Base, Customer, Product
+from app.services.ledger import record_operation
 
 
 @pytest.fixture()
@@ -46,6 +47,43 @@ def product(session):
     session.add(product)
     session.commit()
     return product
+
+
+@pytest.fixture()
+def stocked_product(session):
+    """Seed a product with real ledger-backed stock (Phase 4: sale/oversell tests)."""
+    product = Product(
+        id=new_id(),
+        code="STK-001",
+        name="Товар со склада",
+        quantity=0,
+    )
+    session.add(product)
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=8,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+    )
+    return product
+
+
+@pytest.fixture()
+def customer(session):
+    """Seed one demo customer (Phase 4: sale/customer link tests)."""
+    customer = Customer(
+        id=new_id(),
+        name="Анна",
+        surname="Иванова",
+        consultant_number="12345",
+        search_lc="анна иванова 12345",
+    )
+    session.add(customer)
+    session.commit()
+    return customer
 
 
 @pytest.fixture()

@@ -115,8 +115,55 @@ class Operation(Base):
     unit_cost_cents: Mapped[int | None] = mapped_column(Integer)
     unit_price_cents: Mapped[int | None] = mapped_column(Integer)
     payload: Mapped[dict | None] = mapped_column(JSON)  # type-specific fields
+    # D-03: nullable link to the sales header this line belongs to. Set at
+    # INSERT time only (via record_operation) — the operations_no_update
+    # trigger ABORTs any later UPDATE, so this can never be attached after
+    # the fact. Non-sale ops leave this NULL.
+    sale_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sales.id", name="fk_operations_sale_id_sales"), index=True
+    )
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)  # FND-03
     synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
+
+
+class Customer(Base):
+    """Customer profile (CST-01): optional link target for a sale header.
+
+    A2: no unique constraint — walk-in quick-create tolerates duplicate
+    names/consultant numbers. search_lc is a Cyrillic-safe shadow of
+    "name surname consultant", maintained by the SERVICE layer via Python
+    str.lower() — SQLite lower()/LIKE cannot fold Cyrillic (mirrors
+    Product.name_lc).
+    """
+
+    __tablename__ = "customers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    surname: Mapped[str | None] = mapped_column(String(200))
+    consultant_number: Mapped[str | None] = mapped_column(String(50))
+    search_lc: Mapped[str | None] = mapped_column(String(400), index=True)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
+class Sale(Base):
+    """Sale header (D-03): groups N `sale` operations for one basket.
+
+    The header carries NO qty/price — stock is computed ONLY from ledger
+    sale operations. customer_id is nullable (D-04: walk-in sale is valid).
+    device_id is nullable sync provenance (RESEARCH Open Q1, resolved).
+    """
+
+    __tablename__ = "sales"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    customer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("customers.id", name="fk_sales_customer_id_customers"), index=True
+    )
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    device_id: Mapped[str | None] = mapped_column(String(36))
