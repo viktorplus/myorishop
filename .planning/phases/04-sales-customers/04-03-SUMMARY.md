@@ -102,3 +102,7 @@ None - no external service configuration required.
 ---
 *Phase: 04-sales-customers*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk (`app/services/sales.py`, `app/routes/sales.py`, `app/templates/partials/sale_form.html`, `app/templates/partials/sale_oversell.html`, this summary). All 3 commits (`ef09f9b`, `cface6e`, `f9d54a2`) verified present in git log.
