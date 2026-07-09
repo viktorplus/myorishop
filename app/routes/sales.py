@@ -132,9 +132,13 @@ def sale_customer_create(
             session, name=name, surname=surname, consultant_number=consultant_number
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # "quick_create" (not "form") — sale_customer.html is included inside
+        # sale_form.html on the normal basket routes, which already renders
+        # its OWN errors.form; a shared "form" key would double-render the
+        # same error block when both are present.
         context = {
             "selected": None,
-            "errors": {"form": SAVE_FAILED_ERROR},
+            "errors": {"quick_create": SAVE_FAILED_ERROR},
             "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
         }
         return templates.TemplateResponse(
