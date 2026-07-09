@@ -1,0 +1,21 @@
+{# D-04/T-05-03: oversell warning — server already wrote ZERO ops for this
+   write-off. Reuses the existing .error-block treatment and button.danger
+   (mirrors sale_oversell.html, Phase 4 SAL-04) — no new CSS/color role.
+   Product names are untrusted stored input (T-05-05): autoescape only —
+   the safe filter is never applied. #}
+<div class="error-block" id="writeoff-oversell-warning">
+  <p><strong>Товара не хватает на складе</strong></p>
+  <p>{{ oversell.product.name }}: на складе {{ oversell.available }}, списываете {{ oversell.requested }}.</p>
+  <div class="form-actions">
+    {# Re-POSTs the SAME form via form association (mirrors sale_oversell.html):
+       hx-vals merges confirm=1 into the writeoff-form fields, no re-serialization. #}
+    <button type="submit" class="danger" form="writeoff-form"
+            hx-post="/writeoff" hx-vals='{"confirm": "1"}'
+            hx-target="#writeoff-form-wrap" hx-swap="outerHTML"
+            hx-disabled-elt="this">Списать всё равно</button>
+    {# Client-side dismiss only — no server call, no write; the form
+       underneath was never swapped, so entered values are intact. #}
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#writeoff-oversell-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>

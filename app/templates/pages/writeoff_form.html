@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Списание</h1>
+
+{% include "partials/writeoff_form.html" %}
+
+{% with oob = False %}
+{% include "partials/writeoff_rows.html" %}
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,6 @@
+{# /writeoff/lookup response fragment (D-04): name-only fill — write-off has
+   no price fields, so this is just the shared name_input.html fragment
+   (PD-6 — the fragment can never drift from the form markup). #}
+{% with autofilled = True %}
+{% include "partials/name_input.html" %}
+{% endwith %}

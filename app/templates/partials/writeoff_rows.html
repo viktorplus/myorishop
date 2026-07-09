@@ -1,0 +1,36 @@
+{# Recent write-offs (mirrors recent_sales.html / recent_receipts.html, D-04):
+   stable id so the POST success response can refresh the list with
+   hx-swap-oob. The heading lives IN the partial so the oob refresh carries
+   it. Autoescape only — stored product names and notes are untrusted
+   (T-05-05). #}
+<div id="recent-writeoffs"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h2>Последние операции</h2>
+  {% if not writeoffs %}
+  <p class="muted">Списаний пока нет.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Кол-во</th>
+        <th>Причина</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in writeoffs %}
+      <tr>
+        <td>{{ r.op.created_at | local_dt }}</td>
+        <td>{{ r.product.code }}</td>
+        <td>{{ r.product.name }}</td>
+        <td class="num">{{ r.op.qty_delta }}</td>
+        <td>
+          {{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
