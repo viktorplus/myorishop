@@ -10,6 +10,7 @@ from app.routes import (
     corrections,
     customers,
     dictionary,
+    history,
     home,
     products,
     receipts,
@@ -43,3 +44,4 @@ app.include_router(backup.router)
 app.include_router(writeoffs.router)
 app.include_router(returns.router)
 app.include_router(corrections.router)
+app.include_router(history.router)
