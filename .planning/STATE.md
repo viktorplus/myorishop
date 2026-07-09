@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-07-09T22:51:11.508Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-07-09T23:14:14.200Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 21
-  completed_plans: 18
+  completed_plans: 19
   percent: 67
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 05 (stock-operations-history) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-09
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [█████████░] 86%
 | Phase 04 P06 | 8min | 1 tasks | 2 files |
 | Phase 05 P01 | 12min | 2 tasks | 7 files |
 | Phase 05 P02 | 13min | 3 tasks | 8 files |
+| Phase 05 P03 | 10min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-01: Wave-0 tests fix route contract - GET/POST /writeoff + /writeoff/lookup, GET/POST /returns, POST /corrections (replaces POST /ops), GET /history
 - [Phase 05]: 05-02: register_writeoff never auto-creates a product (unlike register_receipt) - unknown code is always an error directing to receipt first (D-04)
 - [Phase 05]: 05-02: write-off oversell reuses the Phase 4 SAL-04 warn-but-allow pattern verbatim (.error-block + button.danger + hx-vals confirm=1) - no new CSS
+- [Phase 05]: 05-03: sold_qty() exposed as public helper alongside returnable_qty()/register_return() so the route renders the returnable hint denominator without a duplicate aggregation query
+- [Phase 05]: 05-03: #return-slot moved outside the oob-swapped #recent-sales wrapper, emitted only on non-oob render - an oob refresh must never wipe an in-progress/just-saved return form nested inside it
 
 ### Pending Todos
 
@@ -125,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T22:51:11.471Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-07-09T23:14:14.115Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None

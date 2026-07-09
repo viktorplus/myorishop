@@ -31,7 +31,7 @@
 ### Operations
 
 - [x] **OPS-01**: User can write off stock with a reason
-- [ ] **OPS-02**: User can register a return linked to the original sale; stock increases accordingly
+- [x] **OPS-02**: User can register a return linked to the original sale; stock increases accordingly
 - [ ] **OPS-03**: User can correct stock quantity (adjustment recorded as an operation, not a direct edit)
 - [ ] **OPS-04**: User can view the full operation history (what, when, how much)
 
