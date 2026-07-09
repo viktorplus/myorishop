@@ -1,4 +1,4 @@
-"""RCP-01 executable contract: goods receipt entry slice (Plan 03-01).
+"""RCP-01/RCP-02 executable contract: goods receipt slice (Plans 03-01/03-02).
 
 Covers the receipt transaction (D-01: one entry = one receipt op with
 qty_delta > 0), the save-and-next form loop (D-02: fresh form + focus
@@ -8,10 +8,16 @@ first, hx-swap-oob refresh), product auto-creation for unknown codes
 on the op (D-06: unit_cost/unit_price columns + payload.catalog_cents)
 and optional prices (PD-8: empty string -> NULL, card untouched).
 
-Naming convention (used by later -k filters): route/e2e tests are
-prefixed test_web_, everything else is service level. Words "recent"
-and "nav" are reserved for the Task 3 slice; "lookup"/"price_sync"
-selectors belong to Plan 03-02 and MUST NOT appear here.
+Plan 03-02 adds (RCP-02): the /receipts/lookup pre-fill (D-03: product
+card fills name + EMPTY price fields, dictionary fills name only, 204
+otherwise; PD-10: per-field oob fills skip operator-typed values) and
+card price sync inside register_receipt (D-07: one price_change op per
+CHANGED non-empty field; PD-9: a typed name never renames an existing
+product).
+
+Naming convention (used by -k filters): route/e2e tests are prefixed
+test_web_, everything else is service level. "recent"/"nav" select the
+03-01 Task 3 slice; "lookup"/"price_sync" select the 03-02 slice.
 """
 
 from sqlalchemy import select
@@ -19,6 +25,7 @@ from sqlalchemy import select
 from app.models import Operation, Product
 from app.services import catalog
 from app.services.catalog import create_product, soft_delete_product
+from app.services.dictionary import add_entry
 from app.services.ledger import compute_stock, record_operation
 from app.services.receipts import recent_receipts, register_receipt
 
@@ -326,3 +333,180 @@ def test_web_nav_has_receipts_link(client):
     assert response.status_code == 200
     assert 'href="/receipts/new"' in response.text
     assert "Приход" in response.text
+
+
+# --- Plan 03-02: card price sync inside register_receipt (D-07 / PD-8 / PD-9) ---
+
+CARD_HINT = "Данные подставлены из карточки товара — новые цены обновят карточку."
+DICT_HINT = "Название подставлено из справочника — можно изменить."
+
+
+def test_price_sync_updates_card_and_writes_ops(session, product):
+    """D-07: one price_change op per CHANGED field, old snapshotted BEFORE mutation."""
+    product.cost_cents = 100
+    product.sale_cents = None
+    product.catalog_cents = 300
+    session.commit()
+
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Тестовый товар",
+        qty_raw="1",
+        cost_raw="2,00",
+        sale_raw="5,00",
+        catalog_raw="3,00",
+    )
+    assert errors == {}
+    assert result
+
+    assert product.cost_cents == 200
+    assert product.sale_cents == 500
+    assert product.catalog_cents == 300
+
+    ops = session.scalars(select(Operation)).all()
+    price_ops = {op.payload["field"]: op for op in ops if op.type == "price_change"}
+    # catalog price unchanged (300 -> 300): NO price_change op for it.
+    assert set(price_ops) == {"cost_cents", "sale_cents"}
+    assert price_ops["cost_cents"].payload == {
+        "field": "cost_cents",
+        "old_cents": 100,
+        "new_cents": 200,
+    }
+    assert price_ops["sale_cents"].payload == {
+        "field": "sale_cents",
+        "old_cents": None,
+        "new_cents": 500,
+    }
+    receipt_ops = [op for op in ops if op.type == "receipt"]
+    assert len(receipt_ops) == 1
+    # 2 price_change + 1 receipt, all landed in the SAME committed transaction.
+    assert len(ops) == 3
+
+
+def test_price_sync_empty_fields_leave_card_untouched(session, product):
+    """PD-8: empty inputs never clear card prices; receipt op still written."""
+    product.cost_cents = 100
+    product.sale_cents = 250
+    product.catalog_cents = 300
+    session.commit()
+
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Тестовый товар",
+        qty_raw="2",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+    )
+    assert errors == {}
+    assert result
+
+    assert product.cost_cents == 100
+    assert product.sale_cents == 250
+    assert product.catalog_cents == 300
+
+    ops = session.scalars(select(Operation)).all()
+    assert [op.type for op in ops] == ["receipt"]
+    op = ops[0]
+    assert op.unit_cost_cents is None
+    assert op.unit_price_cents is None
+    assert op.payload["catalog_cents"] is None
+
+
+def test_price_sync_ignores_name_for_existing_product(session, product):
+    """PD-9: a typed name never renames an existing product, no product_edited op."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Другое имя",
+        qty_raw="1",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+    )
+    assert errors == {}
+    assert result
+
+    session.refresh(product)
+    assert product.name == "Тестовый товар"
+    edited = session.scalars(
+        select(Operation).where(Operation.type == "product_edited")
+    ).all()
+    assert edited == []
+
+
+# --- Plan 03-02: GET /receipts/lookup pre-fill (D-03 / PD-10 / RCP-02) ---
+
+
+def test_web_lookup_product_fills_name_and_prices(client, session, product):
+    """D-03: existing product -> name main swap + oob fills for empty prices."""
+    product.cost_cents = 1250
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "TEST-001", "name": "", "cost": "", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="name-wrap"' in response.text
+    assert "Тестовый товар" in response.text
+    assert CARD_HINT in response.text
+    assert 'id="cost-wrap"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
+    assert 'value="12,50"' in response.text
+
+
+def test_web_lookup_product_skips_typed_price_fields(client, session, product):
+    """PD-10: price fields the operator already typed are excluded from the fill."""
+    product.cost_cents = 1250
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "TEST-001", "name": "", "cost": "9", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="name-wrap"' in response.text
+    assert 'id="sale-wrap"' in response.text
+    assert 'id="catalog-wrap"' in response.text
+    assert 'id="cost-wrap"' not in response.text
+
+
+def test_web_lookup_dictionary_fallback_name_only(client, session):
+    """D-03 fallback: dictionary-only code fills the name, no oob fragments."""
+    add_entry(session, code="4321", name="Тушь")
+    response = client.get("/receipts/lookup", params={"code": "4321", "name": ""})
+    assert response.status_code == 200
+    assert "Тушь" in response.text
+    assert DICT_HINT in response.text
+    assert "hx-swap-oob" not in response.text
+
+
+def test_web_lookup_204_for_unknown_code(client):
+    """Code known nowhere -> 204, empty body, htmx does nothing."""
+    response = client.get("/receipts/lookup", params={"code": "0000", "name": ""})
+    assert response.status_code == 204
+    assert response.text == ""
+
+
+def test_web_lookup_204_when_name_typed(client, product):
+    """Pitfall 7: operator-typed name is never overwritten -> 204."""
+    response = client.get(
+        "/receipts/lookup", params={"code": "TEST-001", "name": "Своё"}
+    )
+    assert response.status_code == 204
+    assert response.text == ""
+
+
+def test_web_lookup_form_wiring(client):
+    """The receipt code input triggers the debounced lookup with swap guards."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert 'hx-get="/receipts/lookup"' in response.text
+    assert "delay:300ms" in response.text
+    assert 'hx-target="#name-wrap"' in response.text
+    assert 'hx-sync="this:replace"' in response.text
+    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog']"
+    assert f'hx-include="{include}"' in response.text
