@@ -13,6 +13,7 @@
       <th class="num">Кол-во</th>
       <th class="num">Цена</th>
       <th class="num">Сумма</th>
+      <th>Действие</th>
     </tr>
   </thead>
   <tbody>
@@ -24,8 +25,13 @@
       <td class="num">{{ -h.op.qty_delta }}</td>
       <td class="num">{% if h.op.unit_price_cents is not none %}{{ h.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="num">{% if h.op.unit_price_cents is not none %}{{ (-h.op.qty_delta * h.op.unit_price_cents) | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      {# D-05: entry point into the sale-linked return slice, same shape as
+         recent_sales.html's «Вернуть» link. Neutral text link (UI-SPEC). #}
+      <td><a href="#" hx-get="/returns?sale_id={{ h.op.sale_id }}&product_id={{ h.product.id }}&origin_op_id={{ h.op.id }}"
+             hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% endif %}
+<div id="return-slot"></div>

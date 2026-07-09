@@ -31,3 +31,12 @@
   {% endif %}
   {% endif %}
 </div>
+
+{# D-06: the POST success response carries the refreshed recent-sales list
+   out-of-band so the remaining-returnable count updates there too; on
+   GET/422 htmx only swaps the return form (include_oob_rows unset). #}
+{% if include_oob_rows %}
+{% with oob = True, sales = sales %}
+{% include "partials/recent_sales.html" %}
+{% endwith %}
+{% endif %}

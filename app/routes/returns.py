@@ -141,5 +141,6 @@ def return_create(
         "errors": {},
         "saved": {"name": result["product"].name, "qty": result["operation"].qty_delta},
         "sales": recent_sales(session),
+        "include_oob_rows": True,
     }
     return templates.TemplateResponse(request, "partials/return_form.html", context)
