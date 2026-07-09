@@ -5,8 +5,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Local database (SQLite + WAL sidecar files)
+# Local database (SQLite + WAL sidecar files) and its backups
 data/
+backups/
 *.db
 *.db-wal
 *.db-shm

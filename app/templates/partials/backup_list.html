@@ -1,0 +1,31 @@
+{# Swap target for POST /backup — stable id. Server-enumerated list ONLY:
+   no download links, no delete buttons, no per-row forms (security V12). #}
+<div id="backup-list">
+  {% if message %}<p>{{ message }}</p>{% endif %}
+  {% if error %}
+  <div class="error-block"><p class="error">{{ error }}</p></div>
+  {% endif %}
+
+  {% if backups %}
+  <table>
+    <thead>
+      <tr>
+        <th>Файл</th>
+        <th>Создана</th>
+        <th>Размер</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in backups %}
+      <tr>
+        <td>{{ b.name }}</td>
+        <td>{{ b.created_iso | local_dt }}</td>
+        <td class="num">{{ b.size_label }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">Резервных копий пока нет. Копия создаётся автоматически при запуске приложения — или нажмите «Создать резервную копию».</p>
+  {% endif %}
+</div>

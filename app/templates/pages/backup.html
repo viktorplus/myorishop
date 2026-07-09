@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Резервные копии</h1>
+<p class="muted">Копия создаётся автоматически при каждом запуске приложения. Хранятся последние 30 копий.</p>
+
+{# VACUUM can take a moment — disable the button while the request runs. #}
+<div class="form-actions">
+  <button hx-post="/backup"
+          hx-target="#backup-list"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this">Создать резервную копию</button>
+</div>
+
+{% include "partials/backup_list.html" %}
+
+<h2>Восстановление из копии</h2>
+<ol>
+  <li>Закройте приложение.</li>
+  <li>Запустите restore.bat и укажите файл копии.</li>
+  <li>Снова запустите run.bat.</li>
+</ol>
+{% endblock %}
