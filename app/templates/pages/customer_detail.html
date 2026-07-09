@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ customer.name }} {{ customer.surname or '' }}</h1>
+{% if customer.consultant_number %}
+<p class="muted">Номер консультанта: {{ customer.consultant_number }}</p>
+{% endif %}
+
+<p class="page-actions"><a href="/customers/{{ customer.id }}/edit">Изменить</a></p>
+
+<section id="customer-history">
+  <h2>История покупок</h2>
+  {% include "partials/purchase_history.html" %}
+</section>
+{% endblock %}

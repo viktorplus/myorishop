@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+{% if customer %}
+<h1>Редактирование покупателя</h1>
+{% else %}
+<h1>Новый покупатель</h1>
+{% endif %}
+
+{% if errors.customer %}<p class="error">{{ errors.customer }}</p>{% endif %}
+
+<form method="post" action="{% if customer %}/customers/{{ customer.id }}{% else %}/customers{% endif %}" class="stacked-form">
+  <div class="field">
+    <label for="name">Имя</label>
+    <input type="text" id="name" name="name" required autofocus
+           value="{% if form %}{{ form.name or '' }}{% elif customer %}{{ customer.name or '' }}{% endif %}">
+    {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="surname">Фамилия <span class="muted">(необязательно)</span></label>
+    <input type="text" id="surname" name="surname"
+           value="{% if form %}{{ form.surname or '' }}{% elif customer %}{{ customer.surname or '' }}{% endif %}">
+  </div>
+
+  <div class="field">
+    <label for="consultant_number">Номер консультанта <span class="muted">(необязательно)</span></label>
+    <input type="text" id="consultant_number" name="consultant_number"
+           value="{% if form %}{{ form.consultant_number or '' }}{% elif customer %}{{ customer.consultant_number or '' }}{% endif %}">
+  </div>
+
+  <div class="form-actions">
+    <button type="submit">Сохранить покупателя</button>
+    <a href="/customers">Отмена</a>
+  </div>
+</form>
+{% endblock %}

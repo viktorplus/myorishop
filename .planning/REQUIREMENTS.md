@@ -37,8 +37,8 @@
 
 ### Customers
 
-- [ ] **CST-01**: User can create and edit customer profiles (name, surname, consultant number)
-- [ ] **CST-02**: User can view a customer's purchase history: what, when, at what price
+- [x] **CST-01**: User can create and edit customer profiles (name, surname, consultant number)
+- [x] **CST-02**: User can view a customer's purchase history: what, when, at what price
 
 ### Reports
 
@@ -88,8 +88,8 @@
 | SAL-03 | Phase 4 | Pending |
 | SAL-04 | Phase 4 | Complete |
 | SAL-05 | Phase 4 | Complete |
-| CST-01 | Phase 4 | Pending |
-| CST-02 | Phase 4 | Pending |
+| CST-01 | Phase 4 | Complete |
+| CST-02 | Phase 4 | Complete |
 | OPS-01 | Phase 5 | Pending |
 | OPS-02 | Phase 5 | Pending |
 | OPS-03 | Phase 5 | Pending |

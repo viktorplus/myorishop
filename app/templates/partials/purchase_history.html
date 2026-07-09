@@ -1,0 +1,31 @@
+{# Purchase history (CST-02): reads the FROZEN op.unit_price_cents — NEVER
+   the current Product.sale_cents (RESEARCH Anti-Pattern). Autoescape only;
+   never |safe. #}
+{% if not history %}
+<p class="muted">Покупок пока нет.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Когда</th>
+      <th>Код</th>
+      <th>Название</th>
+      <th class="num">Кол-во</th>
+      <th class="num">Цена</th>
+      <th class="num">Сумма</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for h in history %}
+    <tr>
+      <td>{{ h.op.created_at | local_dt }}</td>
+      <td>{{ h.product.code }}</td>
+      <td>{{ h.product.name }}</td>
+      <td class="num">{{ -h.op.qty_delta }}</td>
+      <td class="num">{% if h.op.unit_price_cents is not none %}{{ h.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{% if h.op.unit_price_cents is not none %}{{ (-h.op.qty_delta * h.op.unit_price_cents) | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
