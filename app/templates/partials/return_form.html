@@ -1,0 +1,33 @@
+{# Return form (OPS-02): compact single-column block, swapped WHOLE on GET
+   load and every POST response. D-07: unit_price_cents is copied
+   server-side from the FROZEN origin sale op and shown read-only — this
+   form has NO editable price field. Product name is untrusted stored
+   input (T-4-01): autoescape only, never |safe. #}
+<div id="return-form-wrap">
+  {% if saved %}<p>Возврат оформлен: {{ saved.name }} — {{ saved.qty }} шт.</p>{% endif %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  {% if product %}
+  <p>Возврат из продажи от {{ origin_created_at | local_dt }} — {{ product.name }} ({{ product.code }}), цена {{ unit_price_cents | cents }}</p>
+  <p class="muted">Доступно к возврату: {{ remaining }} из {{ sold }}.</p>
+
+  {% if remaining <= 0 %}
+  <p class="muted">Эта позиция уже возвращена полностью.</p>
+  {% else %}
+  <form hx-post="/returns"
+        hx-target="#return-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="origin_op_id" value="{{ origin_op_id }}">
+    <div class="field">
+      <label for="qty">Количество к возврату</label>
+      <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ remaining }}" max="{{ remaining }}">
+      {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+    <div class="form-actions">
+      <button type="submit">Оформить возврат</button>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
