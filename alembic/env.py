@@ -1,10 +1,15 @@
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.config import settings
 from app.models import Base
+
+# SQLite can't create the db file if its parent directory is missing
+# (e.g. fresh clone, data/ is gitignored) — mirrors app/db.py's build_engine().
+Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
