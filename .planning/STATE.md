@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-07-09T23:30:38.393Z"
+status: verifying
+stopped_at: Completed 05-05-PLAN.md (Phase 5 complete - all 5 plans done)
+last_updated: "2026-07-09T23:54:28.520Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 21
-  completed_plans: 20
-  percent: 67
+  completed_plans: 21
+  percent: 83
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 
 Phase: 05 (stock-operations-history) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-09
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [██████████] 95%
 | Phase 05 P02 | 13min | 3 tasks | 8 files |
 | Phase 05 P03 | 10min | 3 tasks | 6 files |
 | Phase 05 P04 | 13min | 3 tasks | 8 files |
+| Phase 05 P05 | 18min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,7 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-03: #return-slot moved outside the oob-swapped #recent-sales wrapper, emitted only on non-oob render - an oob refresh must never wipe an in-progress/just-saved return form nested inside it
 - [Phase 05]: 05-04: zero-net rejection applies uniformly after parsing in both modes (delta "-0" also parses to 0), matching D-10's plain-language rule
 - [Phase 05]: 05-04: retired POST /ops (D-12) - deleted app/routes/ops.py, removed its two smoke tests; /corrections is now the single correction path
+- [Phase 05]: 05-05: /history renders rows-only whenever a type/product filter is present (not only on HX-Request) - the full page's filter select always lists every RU type label/product code, which would otherwise leak unselected options into an already-filtered response
 
 ### Pending Todos
 
@@ -131,6 +133,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T23:30:38.343Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-07-09T23:54:28.444Z
+Stopped at: Completed 05-05-PLAN.md (Phase 5 complete - all 5 plans done)
 Resume file: None
