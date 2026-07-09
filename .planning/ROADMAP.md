@@ -133,8 +133,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion; 04-03 and 04-04 run in parallel — zero file overlap)*
 
-- [ ] 04-03-PLAN.md — Oversell warn/confirm: aggregate stock check in register_sale, sale_oversell partial, «Продать всё равно» hx-vals confirm, allow-negative (SAL-04)
-- [ ] 04-04-PLAN.md — Customers CRUD + purchase history: customers service (Cyrillic search, frozen-price history), /customers routes + templates + nav (CST-01, CST-02)
+- [x] 04-03-PLAN.md — Oversell warn/confirm: aggregate stock check in register_sale, sale_oversell partial, «Продать всё равно» hx-vals confirm, allow-negative (SAL-04)
+- [x] 04-04-PLAN.md — Customers CRUD + purchase history: customers service (Cyrillic search, frozen-price history), /customers routes + templates + nav (CST-01, CST-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -183,6 +183,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
-| 4. Sales & Customers | 2/5 | In Progress|  |
+| 4. Sales & Customers | 4/5 | In Progress|  |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
