@@ -22,11 +22,11 @@
 
 ### Sales
 
-- [ ] **SAL-01**: User can register a sale by product code with quantity; stock decreases and the sale is saved to history
-- [ ] **SAL-02**: Sale price can differ from the standard price per sale line
+- [x] **SAL-01**: User can register a sale by product code with quantity; stock decreases and the sale is saved to history
+- [x] **SAL-02**: Sale price can differ from the standard price per sale line
 - [ ] **SAL-03**: A sale can optionally be linked to a customer (name, surname, consultant number)
 - [ ] **SAL-04**: User is warned when selling more than is in stock
-- [ ] **SAL-05**: Each sale line snapshots unit cost and sale price at the moment of sale (profit reports stay correct after price changes)
+- [x] **SAL-05**: Each sale line snapshots unit cost and sale price at the moment of sale (profit reports stay correct after price changes)
 
 ### Operations
 
@@ -83,11 +83,11 @@
 | RCP-01 | Phase 3 | Complete |
 | RCP-02 | Phase 3 | Complete |
 | BCK-01 | Phase 3 | Complete |
-| SAL-01 | Phase 4 | Pending |
-| SAL-02 | Phase 4 | Pending |
+| SAL-01 | Phase 4 | Complete |
+| SAL-02 | Phase 4 | Complete |
 | SAL-03 | Phase 4 | Pending |
 | SAL-04 | Phase 4 | Pending |
-| SAL-05 | Phase 4 | Pending |
+| SAL-05 | Phase 4 | Complete |
 | CST-01 | Phase 4 | Pending |
 | CST-02 | Phase 4 | Pending |
 | OPS-01 | Phase 5 | Pending |
