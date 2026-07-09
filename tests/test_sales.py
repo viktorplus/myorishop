@@ -247,15 +247,43 @@ def test_web_sale_post_empty_basket_422(client):
 
 
 def test_web_sale_lookup_prefills_price(client, session, stocked_product):
-    """Per-line lookup pre-fills Цена продажи from the product card sale_cents."""
+    """Per-line lookup pre-fills Цена продажи from the product card sale_cents.
+
+    Uses bracketed keys (code[]/name[]/price[]) — this is the request shape
+    sale_row.html's hx-include="closest tr" actually sends from the real DOM,
+    not the bare keys the route used to (incorrectly) declare.
+    """
     stocked_product.sale_cents = 1500
     session.commit()
 
     response = client.get(
-        "/sales/lookup", params={"code": stocked_product.code, "name": "", "price": ""}
+        "/sales/lookup",
+        params={"code[]": stocked_product.code, "name[]": "", "price[]": ""},
     )
     assert response.status_code == 200
     assert stocked_product.name in response.text
+    assert 'hx-swap-oob="true"' in response.text
+
+
+def test_web_sale_lookup_bracketed_params_price_prefilled_no_clobber(
+    client, session, stocked_product
+):
+    """SAL-01 gap: Phase 4 UAT Test 2 reproduction (type price, then type code).
+
+    Bracketed keys with price[] already non-empty must still autofill
+    «Название» (fill_price=False so the already-typed price is not clobbered
+    by an oob swap).
+    """
+    stocked_product.sale_cents = 1500
+    session.commit()
+
+    response = client.get(
+        "/sales/lookup",
+        params={"code[]": stocked_product.code, "name[]": "", "price[]": "15,00"},
+    )
+    assert response.status_code == 200
+    assert stocked_product.name in response.text
+    assert 'hx-swap-oob="true"' not in response.text
 
 
 def test_web_sale_oversell_shows_warning_and_confirm_writes(client, stocked_product):

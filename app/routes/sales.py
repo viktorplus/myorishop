@@ -3,7 +3,7 @@
 import logging
 import re
 
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core import new_id
@@ -71,9 +71,9 @@ def sale_new_page(request: Request, session: Session = Depends(get_session)):
 @router.get("/sales/lookup")
 def sale_lookup(
     request: Request,
-    code: str = "",
-    name: str = "",
-    price: str = "",
+    code: str = Query("", alias="code[]"),
+    name: str = Query("", alias="name[]"),
+    price: str = Query("", alias="price[]"),
     row: str = "",
     session: Session = Depends(get_session),
 ):
