@@ -196,3 +196,9 @@ mark {
   background: #e8effd;
   color: inherit;
 }
+
+/* Sale basket (Phase 4): line inputs fill their table cell. */
+.basket td input {
+  width: 100%;
+  box-sizing: border-box;
+}

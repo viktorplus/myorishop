@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.routes import backup, dictionary, home, ops, products, receipts
+from app.routes import backup, dictionary, home, ops, products, receipts, sales
 
 # Module-qualified import: tests monkeypatch backup_service.startup_backup
 # as ONE seam (PD-13).
@@ -27,4 +27,5 @@ app.include_router(ops.router)
 app.include_router(products.router)
 app.include_router(dictionary.router)
 app.include_router(receipts.router)
+app.include_router(sales.router)
 app.include_router(backup.router)

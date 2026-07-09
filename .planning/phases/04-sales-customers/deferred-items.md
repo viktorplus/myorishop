@@ -20,3 +20,14 @@ fixed here; left for a dedicated cleanup task if the team wants it).
   code this plan added triggers a reformat. The repository was apparently
   never run through `ruff format` end-to-end; a dedicated formatting pass
   is out of scope for a feature plan.
+
+## From Plan 04-02
+
+- **`ruff check tests/test_sales.py tests/test_customers.py`** — 2
+  pre-existing `I001` (unsorted import block) findings. Both files were
+  authored entirely in Plan 04-01 (commit `0ae039a`) as the phase-wide RED
+  test contract; Plan 04-02 does not modify either file (confirmed via
+  `git diff --stat HEAD -- tests/test_sales.py tests/test_customers.py`
+  showing no changes). `uv run ruff check app/services/sales.py
+  app/routes/sales.py app/main.py app/templates` and `ruff format --check`
+  on the same files-this-plan-touched set both pass clean.

@@ -1,0 +1,16 @@
+{# /sales/lookup response fragment (D-10 / RCP-02 analog).
+   Main swap: #name-wrap (or #name-{row}) — replaces the whole wrapper
+   outerHTML. Oob fill: #price-wrap (or #price-{row}) with the card
+   sale_cents, only when the operator has not already typed a price. #}
+{% set name_wrap_id = "name-wrap" if not row else "name-" + row %}
+{% set price_wrap_id = "price-wrap" if not row else "price-" + row %}
+<td id="{{ name_wrap_id }}">
+  <input type="text" name="name[]" value="{{ name }}">
+  {% if source == "dictionary" %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
+</td>
+{% if fill_price %}
+<td id="{{ price_wrap_id }}" hx-swap-oob="true">
+  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (prices.sale | cents) if prices and prices.sale is not none else '' }}">
+  <p class="muted">Цена подставлена из карточки товара — можно изменить.</p>
+</td>
+{% endif %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Продажа</h1>
+
+{% include "partials/sale_form.html" %}
+
+{% with oob = False %}
+{% include "partials/recent_sales.html" %}
+{% endwith %}
+{% endblock %}

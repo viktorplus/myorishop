@@ -1,0 +1,67 @@
+{# Save-and-next basket form partial (D-02): swapped WHOLE on every POST
+   response. Focus returns to the first «Код» via the explicit hx-on::load
+   hook below — mirrors the receipt precedent (Pitfall 4): autofocus does
+   not fire on swapped content, only on the initial page load. #}
+<div id="sale-form-wrap"{% if focus_code %} hx-on::load="document.getElementById('code').focus()"{% endif %}>
+  {% if saved %}<p>Продажа оформлена: {{ saved.line_count }} позиц. на сумму {{ saved.total_cents | cents }}.</p>{% endif %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+  {% if errors.basket %}<div class="error-block">{{ errors.basket }}</div>{% endif %}
+
+  {# 04-05 INSERTION POINT: customer search / quick-create / selected-chip
+     header goes here (walk-in only in this plan — customer_id is always
+     posted as a hidden empty field). #}
+  {# 04-03 INSERTION POINT: the oversell warning block
+     (partials/sale_oversell.html) goes here, above the basket table. #}
+
+  {# Swap-time guards (mirrors receipt_form.html Pitfall 7): a lookup
+     response never clobbers a value the operator already typed. Row ids
+     are dynamic ("name-wrap"/"name-{row}", "price-wrap"/"price-{row}"), so
+     the guard matches by prefix rather than one fixed id. #}
+  <form hx-post="/sales"
+        hx-target="#sale-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button"
+        hx-on::before-swap="if (event.detail.target.id.startsWith('name') && event.detail.target.querySelector('input') && event.detail.target.querySelector('input').value.trim()) event.detail.shouldSwap = false"
+        hx-on::oob-before-swap="if (event.detail.target.id.startsWith('price') && event.detail.target.querySelector('input') && event.detail.target.querySelector('input').value.trim()) event.detail.shouldSwap = false">
+    <input type="hidden" name="customer_id" value="{{ customer_id or '' }}">
+    <table class="basket">
+      <thead>
+        <tr>
+          <th>Код</th>
+          <th>Название</th>
+          <th>Кол-во</th>
+          <th>Цена продажи</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="basket-rows">
+        {% if lines %}
+        {% for line in lines %}
+        {% with row_id = line.row_id, code = line.code, name = line.name, qty = line.qty, price = line.price, error_code = line.error_code, error_qty = line.error_qty, error_price = line.error_price, autofocus = (loop.index0 == 0), focus_new = False %}
+        {% include "partials/sale_row.html" %}
+        {% endwith %}
+        {% endfor %}
+        {% else %}
+        {% with row_id = "", code = "", name = "", qty = "", price = "", error_code = None, error_qty = None, error_price = None, autofocus = True, focus_new = False %}
+        {% include "partials/sale_row.html" %}
+        {% endwith %}
+        {% endif %}
+      </tbody>
+    </table>
+    <p class="muted">Если товара с таким кодом ещё нет — сначала оприходуйте его.</p>
+
+    <div class="form-actions">
+      <button type="button" class="secondary" hx-get="/sales/row" hx-target="#basket-rows" hx-swap="beforeend">Добавить строку</button>
+      <button type="submit">Оформить продажу</button>
+    </div>
+  </form>
+
+  {# D-04 analog: the POST success response carries the refreshed recent
+     list out-of-band; on 422 htmx only swaps the form (include_oob_rows
+     False). #}
+  {% if include_oob_rows %}
+  {% with oob = True, sales = sales %}
+  {% include "partials/recent_sales.html" %}
+  {% endwith %}
+  {% endif %}
+</div>
