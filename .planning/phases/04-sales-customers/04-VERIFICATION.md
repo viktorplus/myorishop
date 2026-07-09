@@ -1,41 +1,28 @@
 ---
 phase: 04-sales-customers
-verified: 2026-07-09T16:00:00Z
-status: human_needed
+verified: 2026-07-09T20:05:49Z
+status: passed
 score: 5/5 must-haves verified
 overrides_applied: 0
-human_verification:
-  - test: "Add a basket line via «Добавить строку» without clicking into the new row"
-    expected: "Focus lands on the new row's «Код» field automatically (no click required)"
-    why_human: "DOM focus behavior after an htmx swap is not observable via TestClient/pytest — requires a real browser"
-  - test: "Type a sale price, then quickly type a known product code in the same row (before the 300ms lookup debounce fires)"
-    expected: "The in-flight lookup response does not clobber the price the operator already typed (oob-swap guard holds)"
-    why_human: "In-flight HTMX swap race condition; requires real browser timing, not reproducible via TestClient"
-  - test: "Oversell a line (qty > stock), observe the warning, click «Продать всё равно»"
-    expected: "Warning shows zero committed sale ops; confirm re-POSTs the same basket and writes, allowing Product.quantity to go negative; «Вернуться к корзине» dismisses with no write"
-    why_human: "Full HTMX warn-then-confirm cycle with live DOM state and the form= association across elements — end-to-end browser behavior beyond what TestClient's single-request model can exercise"
-  - test: "In the sale form: type a customer name in the picker, select a row, verify the chip appears with «Убрать»; then quick-create a new customer inline without leaving the sale"
-    expected: "Selecting a picker row (client-side dataset-read JS) flips the header to the chip state with the correct hidden customer_id; quick-create renders a chip from the server response; «Убрать» reverts to search state"
-    why_human: "Client-side-only picker-row selection (reads element .dataset via JS, no server round-trip) is not exercised by TestClient, which only sees HTTP request/response pairs, not DOM/JS behavior"
+re_verification:
+  previous_status: human_needed
+  previous_score: 5/5
+  gaps_closed:
+    - "SAL-01: GET /sales/lookup autofill of «Название» from a typed product code — was unconditionally broken (bare code/name/price query params never bound the bracketed code[]/name[]/price[] keys hx-include=\"closest tr\" actually sends), found by human UAT (04-UAT.md Test 2), root-caused in .planning/debug/sale-lookup-name-not-filling.md, fixed by plan 04-06 (Query(alias=\"code[]\"/\"name[]\"/\"price[]\") on app/routes/sales.py::sale_lookup), and confirmed closed by direct code read + 2 passing regression tests reproducing both the fill-when-empty and no-clobber-when-typed request shapes"
+  gaps_remaining: []
+  regressions: []
 ---
 
 # Phase 4: Sales & Customers Verification Report
 
 **Phase Goal:** Operator can sell products — optionally to a known customer — with stock decremented, oversells warned, and profit data frozen correctly at sale time
-**Verified:** 2026-07-09T16:00:00Z
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-09T20:05:49Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (plan 04-06, closing the SAL-01 `/sales/lookup` bracketed-param binding bug found by UAT)
 
 ## Note on ROADMAP `Mode: mvp` tag
 
-ROADMAP.md tags this phase `**Mode:** mvp`, but the phase goal text ("Operator can sell products — optionally to a known customer — with stock decremented, oversells warned, and profit data frozen correctly at sale time") is **not** in the required user-story format (`As a [role], I want to [capability], so that [outcome].`). Confirmed programmatically:
-
-```
-gsd-tools query user-story.validate --story "<goal text>" --pick valid
-→ false
-```
-
-Per the MVP-mode verification contract, a non-conforming goal under `mode: mvp` should be surfaced as a discrepancy rather than forced into MVP-mode framing (which would produce a low-quality "User Flow Coverage" table built from an ad-hoc-derived flow instead of the phase's own user story). This verification therefore proceeds as **standard goal-backward verification** against the ROADMAP Success Criteria and PLAN must-haves. If MVP framing is desired for this phase, run `/gsd mvp-phase 4` to reformat the goal, then re-verify.
+Carried forward from the initial verification: ROADMAP.md tags this phase `**Mode:** mvp`, but the phase goal text is not in user-story format (`gsd-tools query user-story.validate` returns `false`). This verification proceeds as standard goal-backward verification against ROADMAP Success Criteria and PLAN must-haves, as before. Informational only — does not affect the functional verdict.
 
 ## Goal Achievement
 
@@ -43,111 +30,89 @@ Per the MVP-mode verification contract, a non-conforming goal under `mode: mvp` 
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Operator can register a sale by product code with quantity; stock decreases and the sale is saved to history | VERIFIED | `app/services/sales.py::register_sale` writes N `sale` ops (`qty_delta=-qty`) + a `Sale` header in one transaction; `tests/test_sales.py::test_stock_decrements_for_basket_sale` passes (spot-checked directly, plus full suite) |
-| 2 | Operator can override the sale price on any sale line | VERIFIED | `register_sale` requires an entered price and stores it as `unit_price_cents`, ignoring `Product.sale_cents` except as a lookup pre-fill; `test_price_override_uses_entered_price` passes |
-| 3 | Operator can create and edit customer profiles (name, surname, consultant number) and link a sale to a customer | VERIFIED | `app/services/customers.py::create_customer/update_customer` (CRUD + `search_lc` shadow); `app/routes/sales.py::sale_customer_create` + `partials/sale_customer.html` link `customer_id` into the sale header; `test_web_sale_links_selected_customer` passes (spot-checked directly) |
-| 4 | Selling more than is in stock triggers a warning with explicit confirm-to-proceed | VERIFIED | Aggregate oversell check in `register_sale` (sums qty per `product_id` before comparing to cached `Product.quantity`); zero writes until `confirm=="1"`; `partials/sale_oversell.html` renders «Продать всё равно»/«Вернуться к корзине»; `test_oversell_blocks_without_confirm`, `test_oversell_confirm_writes_negative_stock`, `test_oversell_aggregates_duplicate_lines` all pass (last one spot-checked directly) |
-| 5 | Each sale line snapshots unit cost and sale price at sale time, and a customer's purchase history shows what/when/at what price | VERIFIED | `unit_cost_cents`/`unit_price_cents` frozen at INSERT via `record_operation`; `app/services/customers.py::purchase_history` joins `Operation→Sale→Product` and reads the FROZEN `unit_price_cents`; `test_snapshot_frozen_after_price_change`, `test_purchase_history_frozen` pass (latter spot-checked directly) |
+| 1 | Operator can register a sale by product code with quantity; stock decreases and the sale is saved to history | VERIFIED | Unchanged since prior verification. `app/services/sales.py::register_sale` writes N `sale` ops (`qty_delta=-qty`) + a `Sale` header in one transaction; `test_stock_decrements_for_basket_sale` passes. **Plus (new):** the per-line code-lookup autofill (`GET /sales/lookup`) that makes entering a code by hand practical is now confirmed working for every case, not just when a price is empty — see gap-closure evidence below |
+| 2 | Operator can override the sale price on any sale line | VERIFIED | Unchanged. `register_sale` requires an entered price, stores it as `unit_price_cents`; `test_price_override_uses_entered_price` passes |
+| 3 | Operator can create and edit customer profiles and link a sale to a customer | VERIFIED | Unchanged. `app/services/customers.py` CRUD + `app/routes/sales.py` customer routes; `test_web_sale_links_selected_customer` passes; human-confirmed in 04-UAT.md Test 4 (pass) |
+| 4 | Selling more than is in stock triggers a warning with explicit confirm-to-proceed | VERIFIED | Unchanged. Aggregate oversell check, zero writes until `confirm=="1"`; `test_oversell_blocks_without_confirm`, `test_oversell_confirm_writes_negative_stock` pass; human-confirmed in 04-UAT.md Test 3 (pass) |
+| 5 | Each sale line snapshots unit cost and sale price at sale time, and a customer's purchase history shows what/when/at what price | VERIFIED | Unchanged. `unit_cost_cents`/`unit_price_cents` frozen at INSERT; `test_snapshot_frozen_after_price_change`, `test_purchase_history_frozen` pass |
 
 **Score:** 5/5 truths verified
 
+### Gap Closure Verification (SAL-01 — `/sales/lookup` bracketed-param binding)
+
+This is the specific item this re-verification exists to confirm. Verified directly in the current codebase, not from SUMMARY.md claims:
+
+| Check | Method | Result |
+|-------|--------|--------|
+| Route declares aliased query params | Read `app/routes/sales.py` lines 71-79 | `code: str = Query("", alias="code[]")`, `name: str = Query("", alias="name[]")`, `price: str = Query("", alias="price[]")` — confirmed present verbatim |
+| Real DOM sends bracketed keys | Read `app/templates/partials/sale_row.html` lines 15, 27, 34 | `name="code[]"`, `name="name[]"`, `name="price[]"` with `hx-include="closest tr"` on the code input (line 19) — confirms the route now binds the exact keys the browser sends |
+| Regression test: fill-when-empty | `uv run pytest tests/test_sales.py -k lookup -q` | `test_web_sale_lookup_prefills_price` — sends `code[]`/`name[]`/`price[]`, asserts 200 + name present + `hx-swap-oob="true"` present. PASSED |
+| Regression test: no-clobber-when-typed (exact UAT Test 2 reproduction) | Same run | `test_web_sale_lookup_bracketed_params_price_prefilled_no_clobber` — sends `price[]="15,00"`, asserts 200 + name present + `hx-swap-oob="true"` absent. PASSED |
+| Full suite, no regressions | `uv run pytest -q` | 149 passed (148 prior + 1 new regression test), 0 failed |
+| Scope of change since prior verification | `git diff --stat` against the UAT commit (`fd28bfa`) | Only `app/routes/sales.py` (+4/-4) and `tests/test_sales.py` (+32/-2) changed — confirms no unrelated drift, the fix is isolated to the diagnosed root cause |
+| Lint clean | `uv run ruff check app/routes/sales.py tests/test_sales.py` and full phase-04 file set | All checks passed (pre-existing `I001` import-order finding in `tests/test_sales.py`/`test_customers.py` confirmed already logged in `deferred-items.md` from Plan 04-01, unrelated to this fix) |
+
+**Conclusion:** The root cause (bare `code`/`name`/`price` query param declarations never binding the bracketed `code[]`/`name[]`/`price[]` keys the real basket row sends via `hx-include="closest tr"`) is fixed with an explicit `Query(alias=...)` on all three params, mirroring the existing pattern already used by the sibling `POST /sales` route. This was previously misdiagnosed by the human tester as a timing/race condition ("type price, then quickly type code before debounce fires") but the debug session confirmed it was an unconditional, deterministic binding failure — code lookup never worked, regardless of timing. Because the fix and its verification are both purely HTTP-request-shape-based (not timing-dependent), the two new regression tests fully close this gap without requiring a further browser-timing check. No new human-verification item is introduced by this fix.
+
 ### Required Artifacts
+
+No artifacts changed shape since the prior verification's artifact table (all 13 artifacts previously verified remain unchanged) except:
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `app/models.py` | `Customer`, `Sale` models, `Operation.sale_id` | VERIFIED | All three present exactly as specified (lines 122-170) |
-| `app/services/ledger.py` | `record_operation(..., sale_id=None)` kwarg | VERIFIED | Line 38, 78 — threaded into `Operation(...)` constructor |
-| `alembic/versions/0004_sales_customers.py` | customers + sales tables, native `operations.sale_id` add-column | VERIFIED | Confirmed native `op.add_column` (no `batch_alter_table`); migration chain runs; append-only triggers preserved (`test_migration_0004_preserves_append_only_triggers`) |
-| `app/services/sales.py` | `register_sale`, `lookup_prefill`, `recent_sales` | VERIFIED | All three present; single-write-path via `record_operation` only |
-| `app/routes/sales.py` | `/sales/new`, `/sales/lookup`, `/sales/row`, `POST /sales`, `/sales/customer-search`, `POST /sales/customer` | VERIFIED | All six routes present, literal paths declared correctly |
-| `app/templates/partials/sale_form.html` | basket form, oversell + customer-header insertion points wired | VERIFIED | Contains `id="sale-form-wrap"`, `id="sale-form"`, `hx-post="/sales"`, includes `sale_customer.html` and `sale_oversell.html` conditionally |
-| `app/templates/partials/recent_sales.html` | oob-refreshable recent sales list | VERIFIED | Contains `id="recent-sales"` + `hx-swap-oob` |
-| `app/templates/partials/sale_oversell.html` | oversell warning + confirm/cancel | VERIFIED | Contains «Товара не хватает на складе», «Продать всё равно», «Вернуться к корзине», `hx-vals='{"confirm": "1"}'` |
-| `app/services/customers.py` | CRUD, `search_customers`, `purchase_history` | VERIFIED | All functions present; `purchase_history` joins on `Operation.sale_id == Sale.id` |
-| `app/routes/customers.py` | `/customers` CRUD + detail | VERIFIED | All 7 routes present, literal-before-parameterized ordering respected |
-| `app/templates/pages/customer_detail.html` | customer detail + purchase history | VERIFIED | Contains «История покупок»; `partials/purchase_history.html` renders frozen `unit_price_cents` |
-| `app/templates/partials/sale_customer.html` | customer header: search + quick-create + chip | VERIFIED | Contains `name="customer_id"`, `hx-get="/sales/customer-search"`, quick-create `hx-post="/sales/customer"`, «Без покупателя (розница)» note |
-| `app/templates/partials/customer_picker.html` | customer search rows for sale picker | VERIFIED | Contains `id="customer-picker"` (table-based per 04-05 decision), `<mark>` highlight, no `\|safe` |
+| `app/routes/sales.py` | `sale_lookup()` binds bracketed `code[]`/`name[]`/`price[]` via `Query(alias=...)` | VERIFIED | Confirmed at lines 71-79; `Query` added to the `fastapi` import (line 6) |
+| `tests/test_sales.py` | Regression coverage for both bracketed-key lookup paths | VERIFIED | `test_web_sale_lookup_prefills_price` (updated) + `test_web_sale_lookup_bracketed_params_price_prefilled_no_clobber` (new), both present and passing |
+
+All other Phase 4 artifacts (`app/models.py`, `app/services/ledger.py`, `alembic/versions/0004_sales_customers.py`, `app/services/sales.py`, `app/services/customers.py`, `app/routes/customers.py`, and all `app/templates/partials/*` / `pages/*` sale/customer templates) are unchanged since the prior VERIFICATION.md (confirmed via `git diff --stat` showing zero changes to any file outside `app/routes/sales.py` and `tests/test_sales.py`) and remain VERIFIED by inheritance from that prior full check.
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `app/services/sales.py` | `app/services/ledger.record_operation` | `record_operation(type_="sale", qty_delta=-qty, sale_id=header.id, commit=False)` | WIRED | Confirmed at lines 169-178 |
-| `app/routes/sales.py` | `app/services/sales.register_sale` | `POST /sales` handler | WIRED | Confirmed at line 187 |
-| `app/templates/partials/sale_form.html` | `POST /sales` | `hx-post="/sales"` | WIRED | Confirmed via grep |
-| `app/services/sales.py` | `Product.quantity` | aggregate requested qty per product vs cached quantity | WIRED | Confirmed lines 130-148 |
-| `app/templates/partials/sale_oversell.html` | `POST /sales` | `hx-vals='{"confirm":"1"}'` + `form="sale-form"` | WIRED | Confirmed via review + tests |
-| `app/services/customers.py` | Sale + Operation + Product join | `Operation.sale_id == Sale.id` | WIRED | Confirmed line 154 |
-| `app/services/customers.py` | `Customer.search_lc` | `search_lc.contains(q_lc, autoescape=True)` | WIRED | Confirmed line 128, Python-side lowering (Cyrillic-safe) |
-| `app/routes/sales.py` | `app/services/customers.search_customers/create_customer` | `GET /sales/customer-search`, `POST /sales/customer` | WIRED | Confirmed lines 123-173 |
-| `app/templates/partials/sale_customer.html` | `POST /sales` (finalize) | hidden `input name="customer_id"` `form="sale-form"` | WIRED | Confirmed per 04-05 SUMMARY + review |
+| `app/templates/partials/sale_row.html` (code input) | `app/routes/sales.py::sale_lookup` | `hx-get="/sales/lookup"` + `hx-include="closest tr"` sending `code[]`/`name[]`/`price[]` | WIRED (was previously NOT_WIRED for real DOM requests — this is the closed gap) | Route now declares matching `Query(alias=...)` for all three; confirmed by regression tests using the literal bracketed param shape |
+| All other key links from the prior verification (`register_sale`↔`record_operation`, `POST /sales`↔`sale_form.html`, oversell warn/confirm cycle, customer picker/search/create, `purchase_history` join) | — | — | WIRED (unchanged) | No files in these paths changed since prior verification; carried forward |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Full phase test suite | `uv run pytest -q` | 148 passed, 0 failed | PASS |
-| Sale finalize links selected customer | `uv run pytest tests/test_sales.py::test_web_sale_links_selected_customer -v` | PASSED | PASS |
-| Oversell aggregates duplicate lines before comparing to stock | `uv run pytest tests/test_sales.py::test_oversell_aggregates_duplicate_lines -v` | PASSED | PASS |
-| Purchase history reads frozen price after card mutation | `uv run pytest tests/test_customers.py::test_purchase_history_frozen -v` | PASSED | PASS |
-| Test enumeration for the phase (34 tests) | `uv run pytest tests/test_sales.py tests/test_customers.py --co -q` | 34 tests collected, all named per requirement (stock/oversell/customer_link/snapshot/crud/search/history/history_frozen/web_*) | PASS |
-| Ruff clean on phase-modified files | `uv run ruff check app/services/sales.py app/services/customers.py app/routes/sales.py app/routes/customers.py app/models.py app/services/ledger.py alembic/versions/0004_sales_customers.py` | All checks passed | PASS |
+| Full phase+project test suite | `uv run pytest -q` | 149 passed, 0 failed | PASS |
+| Bracketed-key lookup regression tests (both new/updated) | `uv run pytest tests/test_sales.py -k lookup -q` | 2 passed | PASS |
+| Ruff clean on gap-closure files | `uv run ruff check app/routes/sales.py tests/test_sales.py` | 1 pre-existing, already-logged `I001` unrelated to this fix; 0 new findings | PASS |
+| Ruff clean on full phase-04 core file set | `uv run ruff check app/services/sales.py app/services/customers.py app/routes/sales.py app/routes/customers.py app/models.py app/services/ledger.py alembic/versions/0004_sales_customers.py` | All checks passed | PASS |
+| No unrelated drift since prior verification | `git diff --stat fd28bfa..HEAD -- app tests` | Only `app/routes/sales.py` and `tests/test_sales.py` changed | PASS |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|-------------|--------|----------|
-| SAL-01 | 04-01, 04-02 | Register a sale by code/qty; stock decreases, saved to history | SATISFIED | `register_sale`, `record_operation` sale ops, `test_stock_decrements_for_basket_sale` |
-| SAL-02 | 04-02 | Sale price can differ from standard price per line | SATISFIED | Entered price required and snapshotted as `unit_price_cents`; `test_price_override_uses_entered_price` |
-| SAL-03 | 04-05 | Sale can optionally be linked to a customer | SATISFIED (code+tests) — **REQUIREMENTS.md not updated** | `sale_customer.html`/`customer_picker.html`/routes wired; `test_web_sale_links_selected_customer`, `test_customer_link_sets_header_customer_id`, `test_customer_link_walkin_customer_id_null` all pass. **Gap:** `.planning/REQUIREMENTS.md` still shows `[ ] SAL-03` and "Pending" in the Traceability table — SAL-01/02/05 (05e2014) and CST-01/02 (4c6f9ba) each got a dedicated "mark complete" commit, but no equivalent commit exists for SAL-03 after 04-05 merged |
-| SAL-04 | 04-03 | Warn when selling more than in stock | SATISFIED | Aggregate oversell check + warn/confirm flow; 3 oversell tests pass |
-| SAL-05 | 04-01, 04-02 | Snapshot unit cost + sale price at sale time | SATISFIED | `unit_cost_cents`/`unit_price_cents` frozen at INSERT; `test_snapshot_frozen_after_price_change`, `test_null_cost_allowed_sale_succeeds` |
-| CST-01 | 04-04 | Create/edit customer profiles | SATISFIED | `create_customer`/`update_customer`/routes/templates; CRUD tests pass |
-| CST-02 | 04-04 | View customer purchase history (what/when/price) | SATISFIED | `purchase_history` join reads frozen price; `test_purchase_history_returns_rows_for_customer`, `test_purchase_history_frozen` |
+| SAL-01 | 04-01, 04-02, 04-06 (gap closure) | Register a sale by code/qty; stock decreases, saved to history | SATISFIED | `register_sale`, `record_operation` sale ops, `test_stock_decrements_for_basket_sale`; per-line code-lookup autofill now fixed and regression-tested (see Gap Closure Verification above); REQUIREMENTS.md shows `[x]` and "Complete" |
+| SAL-02 | 04-02 | Sale price can differ from standard price per line | SATISFIED | Unchanged; `test_price_override_uses_entered_price` |
+| SAL-03 | 04-05 | Sale can optionally be linked to a customer | SATISFIED | REQUIREMENTS.md now shows `[x]` and "Complete" — the documentation-staleness gap noted in the prior VERIFICATION.md has been resolved |
+| SAL-04 | 04-03 | Warn when selling more than in stock | SATISFIED | Unchanged; 3 oversell tests pass; human-confirmed in 04-UAT.md Test 3 |
+| SAL-05 | 04-01, 04-02 | Snapshot unit cost + sale price at sale time | SATISFIED | Unchanged; `test_snapshot_frozen_after_price_change` |
+| CST-01 | 04-04 | Create/edit customer profiles | SATISFIED | Unchanged; CRUD tests pass |
+| CST-02 | 04-04 | View customer purchase history (what/when/price) | SATISFIED | Unchanged; `test_purchase_history_frozen` |
 
-No orphaned requirements — all 7 phase-declared requirement IDs (SAL-01..05, CST-01, CST-02) appear in REQUIREMENTS.md's traceability table mapped to Phase 4.
+No orphaned requirements — all 7 phase-declared requirement IDs (SAL-01..05, CST-01, CST-02) appear in REQUIREMENTS.md's traceability table mapped to Phase 4, all marked `[x]` / "Complete".
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| — | — | No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in any phase-04 file | — | None |
+| — | — | No `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` markers found in `app/routes/sales.py`, `app/services/sales.py`, or `app/templates/partials/sale_row.html` | — | None |
 
-A code review (`04-REVIEW.md`) found 1 critical (CR-01: reflected XSS via unvalidated `row` query param in an `hx-on::load` JS sink) and 5 warnings (unsafe `isdigit()` precondition, broad exception swallowing with no logging, missing explicit rollback on non-`IntegrityError` write failures, duplicated line-filtering logic, missing max-length guards on customer fields). All 6 were fixed per `04-REVIEW-FIX.md`, each with its own commit (fec18a2, 73e5a28, 729100e, b253026, 3ca887a, acbbffa), and verified present in the current codebase (e.g. `_ROW_ID_RE` validation in `app/routes/sales.py`, `_validate_lengths` in `app/services/customers.py`, the widened `except (IntegrityError, ValueError)` in `register_sale`). No unresolved findings remain.
+No new anti-patterns introduced by plan 04-06. All 6 code-review findings from `04-REVIEW.md`/`04-REVIEW-FIX.md` remain fixed (unchanged since prior verification).
 
 ### Human Verification Required
 
-1. **Focus after adding a basket line**
-   **Test:** Click «Добавить строку» to add a new row without clicking into it.
-   **Expected:** Focus lands on the new row's «Код» field automatically.
-   **Why human:** DOM focus behavior post-htmx-swap is not observable via TestClient.
-
-2. **In-flight lookup does not clobber a typed price**
-   **Test:** Type a price, then quickly type a known product code before the 300ms debounce fires.
-   **Expected:** The lookup response's price pre-fill does not overwrite the already-typed price.
-   **Why human:** Real browser timing/race condition, not reproducible in a synchronous test client.
-
-3. **Oversell warn→confirm→write cycle end-to-end**
-   **Test:** Enter a quantity exceeding stock, observe the warning, click «Продать всё равно»; separately, click «Вернуться к корзине».
-   **Expected:** Warning shows 0 writes; confirm re-POSTs and writes (stock may go negative); cancel dismisses with zero writes.
-   **Why human:** Full HTMX two-step confirm cycle with live DOM/`form=` association across page state — beyond what a single-request TestClient assertion proves.
-
-4. **Customer picker client-side selection**
-   **Test:** In the sale form, type a customer name, click a picker row; separately, use «Новый покупатель» to quick-create inline.
-   **Expected:** Clicking a row flips the header to the chip state (populated from `data-*` attributes via JS, no server round-trip) with the correct hidden `customer_id`; quick-create renders a server-side chip; «Убрать» reverts to the search state.
-   **Why human:** The picker-row selection is pure client-side JS (`.dataset` read, no HTTP call) — TestClient only exercises HTTP request/response pairs, not in-page JS behavior.
+None. The 4 items flagged in the prior verification were carried through a real UAT session (`04-UAT.md`): 3 passed (basket-row focus, oversell warn/confirm cycle, customer picker/quick-create), and 1 failed (the `/sales/lookup` autofill gap, SAL-01). That failure has now been root-caused, fixed, and closed with deterministic regression tests that reproduce the literal browser request shape — the failure was never actually a browser-timing race (that was the tester's working hypothesis going in), it was a static query-param binding mismatch, so no further browser-dependent confirmation is required to close it.
 
 ### Gaps Summary
 
-No functional gaps block the phase goal — all 5 ROADMAP Success Criteria are verified in the codebase with passing automated tests (148/148, including targeted re-runs of 3 key tests), clean `ruff check`, and all 6 code-review findings fixed and confirmed present. Two non-blocking items are worth the developer's attention:
-
-1. **REQUIREMENTS.md staleness (SAL-03):** the traceability table and checkbox for SAL-03 were not updated to "Complete" after 04-05 merged, unlike every other requirement in this phase which got a dedicated tracking commit. Functionally SAL-03 is fully implemented and tested — this is a documentation-only gap, easy to fix with a one-line edit + commit.
-2. **ROADMAP `mode: mvp` / goal-format mismatch:** the phase is tagged `mode: mvp` but its goal text is not in user-story format, so MVP-mode "User Flow Coverage" framing was not applied (see note above). This is informational only — it does not affect the functional verification above.
-
-The four human-verification items above are genuine browser/DOM/timing behaviors that cannot be proven by automated tests and were correctly deferred to end-of-phase UAT by the plans themselves (VALIDATION.md Manual-Only Verifications + 04-05's embedded human-check). Per the status decision tree, their presence routes this phase to `human_needed` rather than `passed`, even though every automatable truth is VERIFIED.
+No gaps. All 5 ROADMAP Success Criteria verified, all 7 phase requirements (SAL-01..05, CST-01, CST-02) satisfied and marked complete in REQUIREMENTS.md, full test suite green (149/149) with 2 new regression tests directly reproducing the closed UAT gap, ruff clean on all phase-04 core files, no anti-patterns, no orphaned requirements, and no outstanding human-verification items (the prior UAT round already exercised all 4 human-only behaviors, with the one failure now fixed and proven via deterministic tests rather than requiring a second browser round).
 
 ---
 
-*Verified: 2026-07-09T16:00:00Z*
+*Verified: 2026-07-09T20:05:49Z*
 *Verifier: Claude (gsd-verifier)*
