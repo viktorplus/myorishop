@@ -119,8 +119,26 @@ Plans:
   4. Selling more than is in stock triggers a warning with explicit confirm-to-proceed
   5. Each sale line snapshots unit cost and sale price at sale time, and a customer's purchase history shows what, when, and at what price
 
-**Plans**: TBD
+**Plans**: 5 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Schema + ledger foundation + RED test contract: Customer/Sale models, operations.sale_id, migration 0004 (native ADD COLUMN, triggers preserved), record_operation sale_id kwarg, conftest fixtures, test_sales/test_customers RED (SAL-01, SAL-05)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Sale basket happy path: register_sale (multi-line, one transaction, cost/price snapshot), lookup prefill, recent sales, /sales routes + templates + nav (SAL-01, SAL-02, SAL-05)
+
+**Wave 3** *(blocked on Wave 2 completion; 04-03 and 04-04 run in parallel — zero file overlap)*
+
+- [ ] 04-03-PLAN.md — Oversell warn/confirm: aggregate stock check in register_sale, sale_oversell partial, «Продать всё равно» hx-vals confirm, allow-negative (SAL-04)
+- [ ] 04-04-PLAN.md — Customers CRUD + purchase history: customers service (Cyrillic search, frozen-price history), /customers routes + templates + nav (CST-01, CST-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-05-PLAN.md — Sale ↔ customer linking: inline picker + quick-create in the sale form, selected-customer chip, /sales/customer-search + POST /sales/customer (SAL-03)
 
 ### Phase 5: Stock Operations & History
 
@@ -165,6 +183,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
-| 4. Sales & Customers | 0/TBD | Not started | - |
+| 4. Sales & Customers | 0/5 | Planned | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
