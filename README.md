@@ -31,6 +31,13 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 Then open http://127.0.0.1:8000 (run.bat opens the browser automatically).
 The app binds to loopback only and works without internet.
 
+## Demo data (for manual testing)
+
+- Double-click `seed_demo_data.bat` to fill the database with sample products, customers, and sales.
+- Double-click `reset_demo_data.bat` to wipe it back to empty (the operations ledger is append-only, so this deletes the DB file and re-applies migrations rather than deleting rows).
+
+Re-running the seed script without a reset in between refuses to run (pass `--force` to seed on top of existing data anyway).
+
 ## Test
 
 ```bat
