@@ -18,7 +18,7 @@
 ### Receipt
 
 - [x] **RCP-01**: User can register a goods receipt by product code with quantity, cost price, catalog price, and sale price; stock increases accordingly
-- [ ] **RCP-02**: Product name auto-fills from the dictionary during receipt entry
+- [x] **RCP-02**: Product name auto-fills from the dictionary during receipt entry
 
 ### Sales
 
@@ -81,7 +81,7 @@
 | CAT-03 | Phase 2 | Complete |
 | CAT-04 | Phase 2 | Complete |
 | RCP-01 | Phase 3 | Complete |
-| RCP-02 | Phase 3 | Pending |
+| RCP-02 | Phase 3 | Complete |
 | BCK-01 | Phase 3 | Pending |
 | SAL-01 | Phase 4 | Pending |
 | SAL-02 | Phase 4 | Pending |

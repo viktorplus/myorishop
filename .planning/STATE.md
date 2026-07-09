@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-07-09T05:54:08.755Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-07-09T06:10:26.635Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 03 (goods-receipt-backup) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-09
 
@@ -61,6 +61,7 @@ Progress: [████████░░] 80%
 | Phase 02 P03 | 6min | 2 tasks | 6 files |
 | Phase 02 P04 | 9min | 2 tasks | 9 files |
 | Phase 03 P01 | 8min | 3 tasks | 9 files |
+| Phase 03 P02 | 10min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-01: recent_receipts landed in Task 2 - RED test module imports it at module level, Task 2 verify could not collect otherwise
 - [Phase 03]: 03-01: receipt quantity validated via str.isdigit() + int > 0 - one strict positive-int rule, one RU message (D-01)
 - [Phase 03]: 03-01: typed name ignored for existing products - renames only via /products/{id}/edit (PD-9 preview)
+- [Phase 03]: 03-02: _PRICE_FIELDS imported from app.services.catalog - single source of truth for the price-field tuple
+- [Phase 03]: 03-02: dictionary-source lookup passes empty hint - name_input.html default filter supplies the dictionary wording
+- [Phase 03]: 03-02: oob-before-swap guard derives input id from wrap id - one guard covers all three price fields
 
 ### Pending Todos
 
@@ -109,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T05:53:41.974Z
-Stopped at: Phase 3 UI-SPEC approved
+Last session: 2026-07-09T06:10:26.616Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
