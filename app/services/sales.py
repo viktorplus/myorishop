@@ -72,8 +72,12 @@ def register_sale(
         code = code_raw.strip()
 
         # D-01: qty_delta strictly positive integer; corrections are Phase 5.
+        # WR-01: isdigit() alone accepts non-ASCII "digit" characters (e.g.
+        # superscript '²') that int() cannot parse and raises on; guard
+        # with isascii() first so an unparsable value falls through to the
+        # QTY_ERROR path instead of an uncaught ValueError.
         qty_text = qty_raw.strip()
-        qty = int(qty_text) if qty_text.isdigit() else 0
+        qty = int(qty_text) if qty_text.isascii() and qty_text.isdigit() else 0
         if qty <= 0:
             errors[f"qty-{i}"] = QTY_ERROR
 
