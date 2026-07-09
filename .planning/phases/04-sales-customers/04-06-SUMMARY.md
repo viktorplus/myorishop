@@ -90,3 +90,7 @@ None - no external service configuration required.
 ---
 *Phase: 04-sales-customers*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All modified files verified present on disk (`app/routes/sales.py`, `tests/test_sales.py`, this summary). Both commits (`94391b8`, `9284892`) verified present in git log.

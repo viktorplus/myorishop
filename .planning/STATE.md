@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 4 UI-SPEC approved
-last_updated: "2026-07-09T10:46:52.886Z"
-last_activity: 2026-07-09 -- Phase 04 execution started
+last_updated: "2026-07-09T19:47:48.425Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 10
-  percent: 50
+  completed_phases: 4
+  total_plans: 16
+  completed_plans: 16
+  percent: 67
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 
 ## Current Position
 
-Phase: 04 (sales-customers) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 04
-Last activity: 2026-07-09 -- Phase 04 execution started
+Phase: 04 (sales-customers) — COMPLETE
+Plan: 6 of 6
+Status: Phase complete — ready for verification
+Last activity: 2026-07-09
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 80%
 | Phase 03 P01 | 8min | 3 tasks | 9 files |
 | Phase 03 P02 | 10min | 3 tasks | 6 files |
 | Phase 03 P03 | 9min | 3 tasks | 11 files |
+| Phase 04 P06 | 8min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-03: prune_backups guards keep>0 explicitly - naive files[:-keep] slice keeps everything at keep=0
 - [Phase 03]: 03-03: backup created_iso stored as UTC isoformat so the shared local_dt filter renders backup timestamps
 - [Phase 03]: 03-03: GET /backup takes no session dependency - only POST needs session.get_bind() (PD-12)
+- [Phase 04-06]: row stays unaliased in /sales/lookup - hx-vals sends bare "row" key via a separate JS object literal, not through hx-include's array-form serialization
 
 ### Pending Todos
 
@@ -117,6 +119,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T10:00:34.655Z
+Last session: 2026-07-09T19:42:15.152Z
 Stopped at: Phase 4 UI-SPEC approved
-Resume file: .planning/phases/04-sales-customers/04-UI-SPEC.md
+Resume file: None
