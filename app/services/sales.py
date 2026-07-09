@@ -144,26 +144,30 @@ def register_sale(
     session.add(header)
 
     total_cents = 0
-    for line in resolved:
-        product = line["product"]
-        qty = line["qty"]
-        price_cents = line["price_cents"]
-        record_operation(
-            session,
-            type_="sale",
-            product_id=product.id,
-            qty_delta=-qty,
-            unit_cost_cents=product.cost_cents,  # D-11 freeze (may be None)
-            unit_price_cents=price_cents,  # D-10 entered price
-            sale_id=header.id,
-            commit=False,
-        )
-        total_cents += qty * price_cents
-
-    # WR-03/WR-04: single transaction close.
+    # WR-03: the write loop itself is inside the try so a non-IntegrityError
+    # raised by record_operation's own guards (e.g. a TOCTOU soft-delete
+    # race -> ValueError) rolls back explicitly instead of leaving the
+    # session holding uncommitted pending inserts.
     try:
+        for line in resolved:
+            product = line["product"]
+            qty = line["qty"]
+            price_cents = line["price_cents"]
+            record_operation(
+                session,
+                type_="sale",
+                product_id=product.id,
+                qty_delta=-qty,
+                unit_cost_cents=product.cost_cents,  # D-11 freeze (may be None)
+                unit_price_cents=price_cents,  # D-10 entered price
+                sale_id=header.id,
+                commit=False,
+            )
+            total_cents += qty * price_cents
+
+        # WR-03/WR-04: single transaction close.
         session.commit()
-    except IntegrityError:
+    except (IntegrityError, ValueError):
         session.rollback()
         return None, {"basket": SAVE_ROLLBACK}
 
