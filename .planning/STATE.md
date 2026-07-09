@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-07-08T21:00:19.759Z"
-last_activity: 2026-07-08 -- Phase 3 planning complete
+last_updated: "2026-07-09T05:54:08.755Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 10
+  completed_plans: 8
   percent: 33
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 03 — goods-receipt-&-backup
+**Current focus:** Phase 03 — goods-receipt-backup
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 03 (goods-receipt-backup) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-08 -- Phase 3 planning complete
+Last activity: 2026-07-09
 
-Progress: [███░░░░░░░] 33%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02 P02 | 17min | 3 tasks | 6 files |
 | Phase 02 P03 | 6min | 2 tasks | 6 files |
 | Phase 02 P04 | 9min | 2 tasks | 9 files |
+| Phase 03 P01 | 8min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-03: no-results message gated by q.strip() - whitespace-only query on an empty catalog shows «Товаров пока нет», not a quoted blank query
 - [Phase ?]: 02-03: GET /products renders via search_view(session, ''); list_products kept in the service for existing 02-01/02-02 tests
 - [Phase ?]: 02-04: dictionary row editing uses HTML form= attribute association - inline per-row forms in the table without nested form elements
+- [Phase 03]: 03-01: recent_receipts landed in Task 2 - RED test module imports it at module level, Task 2 verify could not collect otherwise
+- [Phase 03]: 03-01: receipt quantity validated via str.isdigit() + int > 0 - one strict positive-int rule, one RU message (D-01)
+- [Phase 03]: 03-01: typed name ignored for existing products - renames only via /products/{id}/edit (PD-9 preview)
 
 ### Pending Todos
 
@@ -105,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T20:32:32.828Z
+Last session: 2026-07-09T05:53:41.974Z
 Stopped at: Phase 3 UI-SPEC approved
-Resume file: .planning/phases/03-goods-receipt-backup/03-UI-SPEC.md
+Resume file: None

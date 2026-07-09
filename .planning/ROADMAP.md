@@ -98,7 +98,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Receipt entry vertical slice: save-and-next form, one-transaction ledger receipt ops, auto-create, recent list, nav (RCP-01)
+- [x] 03-01-PLAN.md — Receipt entry vertical slice: save-and-next form, one-transaction ledger receipt ops, auto-create, recent list, nav (RCP-01)
 
 **Wave 2** *(blocked on Wave 1 completion; 03-02 and 03-03 run in parallel — zero file overlap)*
 
@@ -164,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation & Ledger Core | 3/3 | Complete    | 2026-07-08 |
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
-| 3. Goods Receipt & Backup | 0/3 | Planned     | - |
+| 3. Goods Receipt & Backup | 1/3 | In Progress|  |
 | 4. Sales & Customers | 0/TBD | Not started | - |
 | 5. Stock Operations & History | 0/TBD | Not started | - |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
