@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-07-09T23:14:14.200Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-07-09T23:30:38.393Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
   percent: 67
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-08)
 ## Current Position
 
 Phase: 05 (stock-operations-history) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-09
 
-Progress: [█████████░] 90%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Progress: [█████████░] 90%
 | Phase 05 P01 | 12min | 2 tasks | 7 files |
 | Phase 05 P02 | 13min | 3 tasks | 8 files |
 | Phase 05 P03 | 10min | 3 tasks | 6 files |
+| Phase 05 P04 | 13min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,8 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-02: write-off oversell reuses the Phase 4 SAL-04 warn-but-allow pattern verbatim (.error-block + button.danger + hx-vals confirm=1) - no new CSS
 - [Phase 05]: 05-03: sold_qty() exposed as public helper alongside returnable_qty()/register_return() so the route renders the returnable hint denominator without a duplicate aggregation query
 - [Phase 05]: 05-03: #return-slot moved outside the oob-swapped #recent-sales wrapper, emitted only on non-oob render - an oob refresh must never wipe an in-progress/just-saved return form nested inside it
+- [Phase 05]: 05-04: zero-net rejection applies uniformly after parsing in both modes (delta "-0" also parses to 0), matching D-10's plain-language rule
+- [Phase 05]: 05-04: retired POST /ops (D-12) - deleted app/routes/ops.py, removed its two smoke tests; /corrections is now the single correction path
 
 ### Pending Todos
 
@@ -128,6 +131,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T23:14:14.115Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-07-09T23:30:38.343Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None

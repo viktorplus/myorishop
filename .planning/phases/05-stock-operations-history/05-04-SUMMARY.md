@@ -137,3 +137,7 @@ None - no external service configuration required.
 ---
 *Phase: 05-stock-operations-history*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+All created files (`app/services/corrections.py`, `app/routes/corrections.py`, `app/templates/pages/correction_form.html`, `app/templates/partials/correction_form.html`, `app/templates/partials/correction_lookup.html`, this SUMMARY.md) verified present on disk; `app/routes/ops.py` confirmed deleted; all task commits (`1259d26`, `fc74603`, `8972b93`, `022e7aa`) verified present in git log.
