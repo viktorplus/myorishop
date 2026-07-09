@@ -400,15 +400,17 @@ def search_customers(session, q: str) -> list[Customer]:
 
 **Note:** A1 is the only assumption with real blast radius; it is gated by an explicit verification step in the plan (run `alembic upgrade head` and assert the ledger is still immutable before proceeding).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the `sales` header need `device_id`/`seq` for sync?**
    - What we know: `operations` already carry `device_id`+`seq` (UNIQUE); the header is grouping metadata with its own UUID + UTC + `created_by`.
    - What's unclear: whether v2 sync wants provenance on the header itself.
    - Recommendation: add a nullable `device_id` on `sales` for symmetry (cheap, sync-friendly); leave `seq` off (headers are not stock events). Planner discretion.
+   - **RESOLVED:** Plan 04-01 adds a nullable `device_id` on the `sales` header; `seq` omitted.
 
 2. **Should the recent-sales list live under the form or as its own page?**
    - Recommendation: mirror `recent_receipts` — an oob-refreshed partial under the form (`partials/recent_sales.html`), lowest-friction and consistent. D-explicitly leaves this to discretion.
+   - **RESOLVED:** Plan 04-02 adds an oob-refreshed `partials/recent_sales.html` under the sale form.
 
 ## Environment Availability
 
