@@ -80,6 +80,10 @@ def writeoff_create(
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-03: defensive rollback, mirroring the fix applied to
+        # returns.py (CR-03) — this handler doesn't re-query the session
+        # today, but a future edit easily could reintroduce that bug.
+        session.rollback()
         logger.exception("register_writeoff failed")
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
