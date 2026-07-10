@@ -249,3 +249,34 @@ def test_all_active_products_excludes_deleted(session, product):
     result = all_active_products(session)
     assert product in result
     assert other not in result
+
+
+def test_web_reports_stock_lists_low_stock_and_full_table(client, session, product):
+    product.low_stock_threshold = 0
+    product.quantity = 0
+    session.commit()
+
+    response = client.get("/reports/stock")
+    assert response.status_code == 200
+    assert "Мало на складе" in response.text
+    assert "Все товары" in response.text
+    assert product.code in response.text
+    assert "Мало" in response.text
+
+
+def test_web_reports_stock_no_low_stock_shows_empty_state(client, session, product):
+    product.low_stock_threshold = 0
+    product.quantity = 1
+    session.commit()
+
+    response = client.get("/reports/stock")
+    assert response.status_code == 200
+    assert "Товаров с низким остатком нет." in response.text
+    # full table still lists the product, but with no "Мало" status
+    assert product.code in response.text
+
+
+def test_web_reports_landing_links_to_stock(client):
+    response = client.get("/reports")
+    assert response.status_code == 200
+    assert 'href="/reports/stock"' in response.text
