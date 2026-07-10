@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Warehouse & Batch Tracking
 status: planning
-last_updated: "2026-07-10T20:15:00.000Z"
-last_activity: 2026-07-10
+stopped_at: Phase 7 context gathered
+last_updated: "2026-07-10T18:31:15.612Z"
+last_activity: "2026-07-10 — ROADMAP.md revised: Phase 8 (Mobile) redefined as a dedicated mobile flow (not CSS adaptation) and moved to Phase 11 (last); Warehouses/Batches/Transfers-Expiry renumbered 8/9/10. REQUIREMENTS.md traceability updated (12/12 mapped)."
 progress:
   total_phases: 5
   completed_phases: 0
@@ -101,9 +102,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10
-Stopped at: v1.1 ROADMAP.md revised (Mobile Flow pulled out as standalone Phase 11, sequenced after Warehouses/Batches/Transfers-Expiry) and STATE.md updated; REQUIREMENTS.md traceability updated (12/12 requirements mapped to Phases 7-11), ready for /gsd-plan-phase 7
-Resume file: None
+Last session: 2026-07-10T18:31:15.583Z
+Stopped at: Phase 7 context gathered
+Resume file: .planning/phases/07-category-browsing-minimum-price-guardrail/07-CONTEXT.md
 
 ## Operator Next Steps
 
