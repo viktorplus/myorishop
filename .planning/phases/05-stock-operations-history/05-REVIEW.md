@@ -1,6 +1,6 @@
 ---
 phase: 05-stock-operations-history
-reviewed: 2026-07-10T12:40:00Z
+reviewed: 2026-07-10T14:30:00Z
 depth: standard
 files_reviewed: 34
 files_reviewed_list:
@@ -24,6 +24,8 @@ files_reviewed_list:
   - app/templates/partials/correction_form.html
   - app/templates/partials/correction_lookup.html
   - app/templates/partials/history_filters.html
+  - app/templates/partials/history_load_more.html
+  - app/templates/partials/history_response.html
   - app/templates/partials/history_rows.html
   - app/templates/partials/purchase_history.html
   - app/templates/partials/recent_sales.html
@@ -39,134 +41,70 @@ files_reviewed_list:
   - tests/test_smoke.py
   - tests/test_writeoffs.py
 findings:
-  critical: 1
-  warning: 3
-  info: 8
-  total: 12
+  critical: 0
+  warning: 6
+  info: 10
+  total: 16
 status: issues_found
 ---
 
 # Phase 05: Code Review Report
 
-**Reviewed:** 2026-07-10T12:40:00Z
-**Depth:** standard
+**Reviewed:** 2026-07-10T14:30:00Z
+**Depth:** standard (targeted deep verification of the 05-09 `/history` pagination restructuring)
 **Files Reviewed:** 34
-**Status:** issues_found
+**Status:** issues_found (no blockers)
 
 ## Summary
 
-This is a re-review of Phase 5 (write-off / sale-linked return / stock
-correction / `/history` ledger browser) after the **05-08** gap-closure plan.
+This is a re-review of Phase 5 after **05-09**, which restructured
+`/history`'s "Показать ещё" pagination to fix the previous review's **CR-01**
+(the pagination control lived inside `#history-tbody`, the same element the
+type/product `<select>`s and the "Показать ещё" button's own click both swap
+into, so the oob-before-main-swap ordering destroyed it on the very first
+filter interaction).
 
-- **Old CR-01** (a plain, non-htmx GET to a filtered `/history` URL — e.g. a
-  browser reload of a URL `hx-push-url` just wrote — returned a bare
-  chrome-less `<tr>` fragment that a real browser drops per HTML5 parsing
-  rules) is now **CONFIRMED FIXED**. `app/routes/history.py:34-46` now
-  branches purely on `is_hx = bool(request.headers.get("HX-Request"))`; a
-  filtered top-level GET renders the full `pages/history.html` chrome with
-  the filter bar pre-selecting the active filter, exactly as the previous
-  review's fix suggestion specified. `tests/test_history.py`'s
-  `test_web_history_filtered_reload_returns_full_chrome` exercises this.
+**CR-01 is CONFIRMED RESOLVED.** Verification performed specifically on this
+fix:
 
-- Everything else the previous review flagged (old WR-01 through WR-04,
-  IN-01 through IN-07) is **still present, unchanged** — 05-08 only touched
-  the chrome-decision logic, not any of these. They are carried forward
-  below under their (renumbered) findings.
+- Read `git show 3970586` (the 05-09 commit) against the prior structure to
+  confirm `#load-more` no longer nests inside `#history-tbody`'s
+  innerHTML/beforeend swap target — it now lives in a sibling `<tfoot>`.
+- Ran the full existing suite — `31 passed`, including the new
+  `test_web_history_load_more_survives_filter_change` regression test, which
+  seeds 51 rows and asserts `#load-more` is absent from inside `<tbody>` and
+  present in `<tfoot>` for both a filtered full page and a filtered HX
+  response.
+- Probed the raw HTTP response bytes for an HX `/history` request to confirm
+  htmx's `getStartTag` tag-sniffing (`<tr>` is the first tag in the combined
+  rows+oob payload, regardless of leading Jinja whitespace) will wrap the
+  response as `<table><tbody>...</tbody></table>`, so oob-extraction and the
+  main swap split correctly.
+- Probed a **two-hop** pagination sequence (120 seeded write-offs,
+  `page_size=50`, not covered by the new test, which only exercises page 0):
+  page 0 response linked to `page=1`; the page 1 response correctly linked
+  to `page=2`; the page 2 (final, 20 rows remaining) response correctly
+  rendered an empty, buttonless `<tr id="load-more">` (`has_next` correctly
+  `False`). Confirms the fix holds across *multiple* consecutive
+  interactions, not just the single filter-change case the new test covers.
+- Confirmed `<tfoot>` after `<tbody>` is valid HTML5 (the modern content
+  model permits `tfoot` as the table's last child) and that an oob
+  outerHTML replace-by-ID works correctly even though the oob fragment's own
+  parsing context (synthetic `<table><tbody>` wrapper, since the whole
+  response's first tag is `<tr>`) differs from the live target's real
+  parent (`<tfoot>`) — this is standard, well-supported contextual fragment
+  parsing behavior, not something this codebase needs to special-case.
 
-- Re-tracing the "Показать ещё" pagination control end-to-end for this pass
-  surfaced that the underlying defect is **more severe than previously
-  assessed**. The prior review's WR-01 described only the "Показать ещё"
-  button's own `beforeend` click leaving the control visually stuck between
-  row batches — filed as a deferred Warning. Tracing the *other* two
-  triggers that hit the same `#history-tbody` target (the type/product
-  `<select>`s in `history_filters.html`, which use htmx's **default**
-  `innerHTML` swap, not `beforeend`) shows that using **any filter** causes
-  the `#load-more` control — out-of-band-swapped, but nested *inside* the
-  very element `innerHTML` is about to overwrite — to be **permanently
-  destroyed** the moment a filter is first touched. `has_next` may still be
-  `True` server-side, but no button to reach it ever appears again for the
-  rest of that page session (only a full, non-htmx page reload restores
-  it). That is a materially worse outcome (silent, permanent loss of access
-  to part of the audit trail) than "the button looks stuck in the wrong
-  place," so this is escalated from Warning to **Critical** below (CR-01,
-  replacing the now-resolved old CR-01 slot).
-
-## Critical Issues
-
-### CR-01: `/history` "Показать ещё" pagination is permanently destroyed by the first filter interaction (htmx oob nested inside its own swap target); the button-click ordering bug from the prior review is also still present
-
-**File:** `app/templates/partials/history_rows.html:44-52`, `app/templates/partials/history_filters.html:8-28`, `app/routes/history.py:34-46`
-
-**Issue:** The trailing `<tr id="load-more">` row is marked
-`hx-swap-oob="true"` on every htmx response (`oob` is true whenever
-`is_hx` is true), and it lives *inside* `#history-tbody` — the same
-element used as the `hx-target` by both the type/product `<select>`s
-(`history_filters.html:8-16`, `:20-28`) and the "Показать ещё" button
-(`history_rows.html:47-49`). htmx strips `hx-swap-oob` elements out of the
-response and swaps them into the DOM *before* the main target swap runs
-("removed from the response before the remainder of the response is
-swapped in via the target" — documented htmx behavior). Two distinct
-failure modes follow, both rooted in the same nesting mistake:
-
-1. **Filter select change (new finding, not caught by the prior review).**
-   Neither `<select>` sets `hx-swap`, so htmx uses its default —
-   `innerHTML` — on `#history-tbody`. Sequence: (a) the oob-extracted
-   `#load-more` row is swapped into its current position inside
-   `#history-tbody`; (b) the main swap then runs
-   `#history-tbody.innerHTML = <new rows only>` (the load-more row was
-   already stripped out of that content for step (a)), which wipes out
-   *every* child of `#history-tbody`, including the row step (a) just
-   placed. After the **first** filter interaction, `#load-more` no longer
-   exists anywhere in the DOM. Any later response that tries to oob-swap a
-   fresh `#load-more` (e.g. a filter that now matches >50 rows) has no
-   matching id to swap into, so it silently no-ops. Result: "Показать ещё"
-   never reappears for the rest of that page session, even when
-   `has_next` is `True` server-side — the operator can no longer reach
-   rows beyond the first 50 for that filter, with no error or indication
-   anything is missing.
-2. **"Показать ещё" click itself (carried over from the prior review's
-   WR-01, confirmed still present and unfixed).** The button uses
-   `hx-swap="beforeend"` on the same `#history-tbody` target. Because the
-   oob swap repositions `#load-more` in place *before* the `beforeend`
-   append runs, the newly-fetched rows land *after* the already-updated
-   `#load-more` row rather than before it — the control visibly migrates
-   to a fixed position between the first and second page of rows instead
-   of staying at the bottom, and every subsequent batch stacks beneath it
-   (compounding with each click).
-
-Given the app's core value proposition (the operator can rely on stock and
-sales figures being always correct and visible), silently and permanently
-hiding part of the operation ledger behind a vanished "load more" control
-is a real defect, not merely cosmetic — hence Critical rather than Warning.
-
-**Fix:** Stop nesting the oob pagination control inside the element that
-is also the `innerHTML`/`beforeend` swap target. Recommended: move
-`#load-more` outside `#history-tbody` (e.g. its own `<tfoot>` row) so
-neither swap ever touches it, and drop `hx-swap-oob` entirely in favor of
-a same-element swap:
-```html
-<table>
-  ...
-  <tbody id="history-tbody">{# only data <tr>s, no load-more #}</tbody>
-  <tfoot><tr id="load-more">...</tr></tfoot>
-</table>
-```
-with the `<select>`s and the "Показать ещё" button both still targeting
-`#history-tbody` (default `innerHTML` for filters is then safe — it only
-ever touches data rows), and the button additionally targeting `#load-more`
-directly (`hx-target="#load-more" hx-swap="outerHTML"`) to update/remove
-itself without needing `hx-swap-oob` or `beforeend` at all. Add a
-regression test that performs an `HX-Request` filter GET against a fixture
-with >50 matching rows and asserts a `<button>` inside `id="load-more"` is
-present in that response (the current suite never exercises the >50-row
-filtered case).
+**No new htmx wiring defect of the CR-01 class was introduced.** The
+findings below are pre-existing carry-forward items from the prior review
+(unchanged files, re-verified as still present) plus a few new lower-severity
+observations surfaced by this pass — none rise to Critical.
 
 ## Warnings
 
-### WR-01: `/corrections` has no persistent nav entry point, and is fully unreachable with zero products (carried over from prior review, unchanged)
+### WR-01: `/corrections` has no persistent nav entry point, and is fully unreachable with zero products (carried over, unchanged)
 
 **File:** `app/templates/base.html:17-26`, `app/templates/pages/home.html:5-16`
-
 **Issue:** `base.html`'s nav bar links to `/`, `/products`, `/receipts/new`,
 `/sales/new`, `/writeoff`, `/customers`, `/history`, `/dictionary`,
 `/backup` — never `/corrections`. The only link to `/corrections` anywhere
@@ -177,7 +115,6 @@ becomes completely unreachable via the UI. `/writeoff` received the exact
 same fix (nav entry + `test_web_writeoff_reachable_from_nav` regression
 test) earlier in this phase; `/corrections` never got the equivalent
 treatment, and still has no guarding test.
-
 **Fix:**
 ```html
 <a href="/corrections"{% if request.url.path.startswith("/corrections") %} class="active"{% endif %}>Корректировка</a>
@@ -190,7 +127,7 @@ write-off one.
 **File:** `app/templates/partials/writeoff_rows.html:28-30`
 **Issue:** `{{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}`
 assumes `r.op.payload` is always a populated dict, unlike
-`history_rows.html:28`, which defensively checks
+`history_rows.html:29`, which defensively checks
 `r.op.type == "writeoff" and r.op.payload` first. Every write-off written
 through today's single write path always populates `payload`, so this
 isn't reachable yet — but it's an inconsistent defensive posture between
@@ -215,6 +152,70 @@ specific product's history once it's soft-deleted, since it no longer
 appears as an `<option>` in the "Товар" select.
 **Fix:** Either include soft-deleted products in the filter list (e.g.
 labeled "Название (архив)"), or document this as a known limitation.
+
+### WR-04: `is_hx` header check accepts any non-empty string, including the literal `"false"` (new finding)
+
+**File:** `app/routes/history.py:41`
+**Issue:** `is_hx = bool(request.headers.get("HX-Request"))` treats *any*
+non-empty header value as "genuine htmx request," including a hand-crafted
+`HX-Request: false`. Real htmx always sends the literal string `"true"`, so
+this is unreachable through normal UI use — but the entire purpose of this
+line (per the CR-01/D-14/D-15 comment directly above it, both the original
+and the 05-09 addendum) is to reliably distinguish genuine htmx traffic
+from anything else requesting `/history` with query params. A client that
+sends `HX-Request: false` (a test tool, a proxy, a future JS helper, or a
+misconfigured integration) would incorrectly receive the chrome-less
+`history_response.html` fragment instead of the full page — reproducing
+the exact "browser drops a bare fragment" failure class this branch exists
+to prevent, just via a different trigger than the one already fixed.
+**Fix:**
+```python
+is_hx = request.headers.get("HX-Request", "").lower() == "true"
+```
+
+### WR-05: `<tfoot>` is repurposed to anchor a pagination control, not to hold a footer summary (new finding, 05-09)
+
+**File:** `app/templates/pages/history.html:23-27`, `app/templates/partials/history_load_more.html`
+**Issue:** `<tfoot>` is a table-footer sectioning element with defined
+semantics (column totals/summaries); some assistive technology and print
+stylesheets treat it specially (e.g. repeating on every printed page, or
+being announced differently by screen readers than an ordinary body row).
+Using it purely as an out-of-band DOM anchor for a "Показать ещё" button —
+which is what the 05-09 fix does to solve the CR-01 nesting bug — is a
+semantic misuse of the element, even though it correctly achieves the
+"structural sibling of `#history-tbody`, never touched by its swaps" goal
+the fix needed. A plain `<div id="load-more">` placed immediately after the
+closing `</table>` tag would achieve the identical DOM-sibling isolation
+without borrowing footer semantics for what is really a pagination control,
+not a summary row.
+**Fix:** Low priority — functionally correct as shipped. Consider for a
+follow-up accessibility pass:
+```html
+</table>
+<div id="load-more">
+  {% with oob = False %}{% include "partials/history_load_more.html" %}{% endwith %}
+</div>
+```
+with `history_load_more.html`'s root element changed from `<tr>`/`<td
+colspan="8">` to a plain block element.
+
+### WR-06: Offset-based `/history` pagination can skip or duplicate rows under concurrent writes (new finding)
+
+**File:** `app/services/operations.py:29-48`
+**Issue:** `history_view` pages with `LIMIT page_size+1 OFFSET
+page*page_size` over `ORDER BY created_at DESC, seq DESC`. If a new
+operation is recorded (a sale, write-off, receipt, correction, etc.)
+between two "Показать ещё" clicks, every row at or above the current offset
+boundary shifts down by one — the next page fetch either re-shows a row
+already seen (duplicate) or skips a row entirely (never shown). Not a
+data-loss issue (the ledger itself is untouched), but it can make the
+on-screen history page silently misleading during ordinary concurrent
+operator activity (the exact scenario this app is built around — the
+operator keeps working while `/history` might be left open in another
+view).
+**Fix:** Not urgent for v1 (short, focused browsing sessions), but worth a
+follow-up: switch to keyset/cursor pagination keyed on the last row's
+`(created_at, seq)` instead of a numeric `OFFSET`.
 
 ## Info
 
@@ -306,7 +307,7 @@ validation gap only.
 **Fix:** `page: int = Query(0, ge=0)` to reject/clamp negative values
 explicitly.
 
-### IN-08: Inconsistent empty-note storage between corrections and write-offs (new finding)
+### IN-08: Inconsistent empty-note storage between corrections and write-offs (carried over, unchanged)
 
 **File:** `app/services/corrections.py:91`, `app/services/writeoffs.py:100`
 **Issue:** `corrections.py` stores `note.strip() or None` in the payload
@@ -323,8 +324,42 @@ This changes `tests/test_writeoffs.py::test_stock_and_reason`'s assertion
 `op.payload == {"reason_code": "expired", "note": ""}` to expect `None`
 instead — update the test alongside the fix.
 
+### IN-09: Unvalidated `type`/`product` query params echoed verbatim into the pagination URL (new finding)
+
+**File:** `app/routes/history.py:21,46`, `app/templates/partials/history_load_more.html:14`
+**Issue:** `history_view` returns `"type_filter": type_filter or ""` using
+the raw, unvalidated query value even when it isn't a member of
+`OPERATION_TYPES` (the allow-list is applied only to the `WHERE` clause,
+not to the echoed-back value). This raw value is then embedded into the
+"Показать ещё" button's `hx-get` URL on every response. Harmless today —
+Jinja's autoescaping neutralizes HTML/attribute injection, and the value is
+silently ignored server-side on the next request — but it's inconsistent
+with the rest of the codebase's "never trust unvalidated input past the
+boundary" convention (V5, applied to `reason_code`/`mode` elsewhere).
+**Fix:** Normalize `type_filter` to `""` in `history_view` when it isn't a
+member of `OPERATION_TYPES`, before returning it, instead of only using the
+allow-list to build the `WHERE` clause.
+
+### IN-10: Pre-existing `ruff` import-order violation in a required-reading test file (new finding)
+
+**File:** `tests/test_writeoffs.py:17-21`
+**Issue:** `uv run ruff check tests/test_writeoffs.py` reports `I001`
+(unsorted import block) — the `from app.services.writeoffs import
+register_writeoff  # noqa: F401` "RED by design" contract import is placed
+before the `sqlalchemy`/`app.models`/`app.services.ledger` imports,
+breaking isort grouping. The 05-09 commit fixed the identical pattern in
+`tests/test_history.py` specifically to satisfy that plan's ruff-clean
+gate; the same pattern remains unfixed here (and in `test_customers.py`/
+`test_sales.py` elsewhere in the suite, outside this review's file list).
+Not a functional issue — the `# noqa: F401` already suppresses the
+unused-import warning — but worth a follow-up sweep if a repo-wide
+ruff-clean gate is ever enforced.
+**Fix:** `uv run ruff check --fix tests/test_writeoffs.py` (verify the
+reordering doesn't change the "RED by design" collection-failure intent
+before committing).
+
 ---
 
-_Reviewed: 2026-07-10T12:40:00Z_
+_Reviewed: 2026-07-10T14:30:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
