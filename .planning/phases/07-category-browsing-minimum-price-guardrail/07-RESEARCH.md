@@ -374,17 +374,19 @@ Not applicable in the "framework evolved" sense — this phase touches no extern
 
 **If this table is empty:** N/A — see rows above. Both assumptions are low-to-medium risk with mitigations already noted; neither blocks planning.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should `min_sale_cents` be audited via `_PRICE_FIELDS` (per-change `price_change` op with old/new cents, shown in "История цен") or via the `product_edited` path (change noted by field name only, no history line, like `low_stock_threshold`/`stale_days`)?**
+1. **(RESOLVED — plan 07-02) Should `min_sale_cents` be audited via `_PRICE_FIELDS` (per-change `price_change` op with old/new cents, shown in "История цен") or via the `product_edited` path (change noted by field name only, no history line, like `low_stock_threshold`/`stale_days`)?**
    - What we know: CONTEXT.md (D-06/D-07) specifies the field's storage, form placement, and copy, but is silent on its audit-trail treatment. The codebase has two established patterns for optional Integer/money fields: the three `_PRICE_FIELDS` (cost/sale/catalog) get per-field `price_change` ops with old/new cents shown in `price_history.html`; `low_stock_threshold`/`stale_days` get folded into a single `product_edited` op's `fields` list with no visible before/after value.
    - What's unclear: Which precedent this field should follow. It is semantically a *price* (money, in cents) which argues for `_PRICE_FIELDS`; but it is also a *threshold/guardrail* like `low_stock_threshold` (an operational control rather than a transactional price), which argues for the `product_edited` path.
-   - Recommendation: Treat it as a price (join `_PRICE_FIELDS`) since it is literally stored in cents and the existing `price_history.html` UI already has a natural slot for "what was the minimum before, what is it now" — this is valuable audit information for a guardrail whose entire purpose is preventing accidental underselling. This requires: (1) adding `"min_sale_cents"` to `_PRICE_FIELDS` in `catalog.py`, and (2) adding one new `elif op.payload.field == "min_sale_cents"` branch (label suggestion: "Минимальная") to `price_history.html`. The planner should make this decision explicit in the plan rather than leaving it implicit in the diff.
+   - Resolution: Plan 07-02 joins `_PRICE_FIELDS` — `min_sale_cents` gets per-change `price_change` audit history in `price_history.html` (label "Минимальная"), matching the recommendation below.
+   - Recommendation (as given, now adopted): Treat it as a price (join `_PRICE_FIELDS`) since it is literally stored in cents and the existing `price_history.html` UI already has a natural slot for "what was the minimum before, what is it now" — this is valuable audit information for a guardrail whose entire purpose is preventing accidental underselling. This requires: (1) adding `"min_sale_cents"` to `_PRICE_FIELDS` in `catalog.py`, and (2) adding one new `elif op.payload.field == "min_sale_cents"` branch (label suggestion: "Минимальная") to `price_history.html`.
 
-2. **Exact grouping/sorting implementation for the "Без категории" bucket (SQL-side vs. Python-side)?**
+2. **(RESOLVED — plan 07-01) Exact grouping/sorting implementation for the "Без категории" bucket (SQL-side vs. Python-side)?**
    - What we know: The bucket must sort last, always visible, never hidden (D-04). A working Python-side `groupby`/`sorted` approach is shown in Code Examples with an explicit sentinel; a SQL-side `ORDER BY` shortcut is also shown but flagged as unverified.
    - What's unclear: Whether SQLite's boolean-as-integer ordering behaves as assumed without an actual test run against a seeded DB with mixed NULL/empty/named categories.
-   - Recommendation: Default to the Python-side grouping (simpler to reason about, portable to PostgreSQL without relying on dialect-specific NULL-ordering behavior) unless a plan-time spike proves the SQL approach correct and prefers it for performance (irrelevant at this data scale — a single local operator's catalog is small).
+   - Resolution: Plan 07-01 uses the Python-side grouping, matching the recommendation below.
+   - Recommendation (as given, now adopted): Default to the Python-side grouping (simpler to reason about, portable to PostgreSQL without relying on dialect-specific NULL-ordering behavior) unless a plan-time spike proves the SQL approach correct and prefers it for performance (irrelevant at this data scale — a single local operator's catalog is small).
 
 ## Environment Availability
 
