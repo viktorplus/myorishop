@@ -1,10 +1,11 @@
 ---
 phase: 7
 slug: category-browsing-minimum-price-guardrail
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-10
+reviewed_at: 2026-07-10
 ---
 
 # Phase 7 — UI Design Contract
