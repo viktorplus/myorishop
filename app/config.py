@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     backup_dir: str = "backups"
     backup_on_startup: bool = True
     backup_keep: int = 30
+    # RPT-02/RPT-04 (D-05): global fallback when a product's own threshold is NULL.
+    low_stock_threshold: int = 5
+    stale_days: int = 90
 
 
 settings = Settings()

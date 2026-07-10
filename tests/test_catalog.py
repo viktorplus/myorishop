@@ -220,6 +220,37 @@ def test_migration_0002_fresh_db_and_backfill(tmp_path, monkeypatch):
         assert {"ix_products_code", "ix_products_name_lc"} <= indexes
 
 
+def test_migration_0005_adds_threshold_columns(tmp_path, monkeypatch):
+    """Migration 0005: fresh upgrade adds NULL low_stock_threshold/stale_days."""
+    db_file = tmp_path / "fresh.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0004")
+
+    now = "2026-07-10T00:00:00+00:00"
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("00000000-0000-4000-8000-000000000005", "5555", "Порог-Тест", 0, now, now),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(products)")}
+        assert {"low_stock_threshold", "stale_days"} <= cols
+
+        low_stock_threshold, stale_days = conn.execute(
+            "SELECT low_stock_threshold, stale_days FROM products WHERE name = ?",
+            ("Порог-Тест",),
+        ).fetchone()
+        assert low_stock_threshold is None
+        assert stale_days is None
+
+
 def test_category_options_distinct_active_only(session):
     """Datalist source: distinct non-empty categories of ACTIVE products, sorted."""
     create_product(session, code="A1", name="Духи", category="Ароматы", **EMPTY_MONEY)

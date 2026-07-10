@@ -97,6 +97,10 @@ class Product(Base):
     cost_cents: Mapped[int | None] = mapped_column(Integer)
     sale_cents: Mapped[int | None] = mapped_column(Integer)
     catalog_cents: Mapped[int | None] = mapped_column(Integer)
+    # D-04/D-05 (Phase 6): per-product report thresholds; NULL = use
+    # settings.{low_stock_threshold,stale_days}.
+    low_stock_threshold: Mapped[int | None] = mapped_column(Integer)
+    stale_days: Mapped[int | None] = mapped_column(Integer)
     # D-27: lowercase shadow of name, maintained by the SERVICE layer via
     # Python str.lower() — SQLite lower()/LIKE cannot fold Cyrillic.
     name_lc: Mapped[str | None] = mapped_column(String(200), index=True)
