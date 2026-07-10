@@ -49,7 +49,11 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
   2. Operator can set, or leave unset, an optional minimum sale price on a product's card
   3. Selling below a set minimum price shows a warning and requires explicit confirmation before the sale is recorded (same warn-but-allow pattern as the existing oversell warning)
   4. A product with no minimum price configured never triggers the warning, and a minimum price explicitly set to 0 is respected rather than silently treated as "unset"
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 07-01-PLAN.md — CAT-01: products_by_category() service query + /categories route, page, and nav link
+- [ ] 07-02-PLAN.md — PRICE-01 (schema + form): migration 0006, Product.min_sale_cents, product-form field, audit trail
+- [ ] 07-03-PLAN.md — PRICE-01 (sale guardrail): register_sale() price-floor check, warning partial, route wiring
 **UI hint**: yes
 
 ### Phase 8: Warehouses
@@ -113,9 +117,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Sales & Customers | v1.0 | 6/6 | Complete | 2026-07-09 |
 | 5. Stock Operations & History | v1.0 | 9/9 | Complete | 2026-07-10 |
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
-| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 0/TBD | Not started | - |
+| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 0/3 | Not started | - |
 | 8. Warehouses | v1.1 | 0/TBD | Not started | - |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
-</content>
