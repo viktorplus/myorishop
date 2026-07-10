@@ -23,6 +23,7 @@
       <a href="/customers"{% if request.url.path.startswith("/customers") %} class="active"{% endif %}>Покупатели</a>
       <a href="/history"{% if request.url.path.startswith("/history") %} class="active"{% endif %}>История</a>
       <a href="/reports"{% if request.url.path.startswith("/reports") %} class="active"{% endif %}>Отчёты</a>
+      <a href="/export"{% if request.url.path.startswith("/export") %} class="active"{% endif %}>Экспорт</a>
       <a href="/dictionary"{% if request.url.path.startswith("/dictionary") %} class="active"{% endif %}>Справочник</a>
       <a href="/backup"{% if request.url.path.startswith("/backup") %} class="active"{% endif %}>Резервные копии</a>
     </nav>

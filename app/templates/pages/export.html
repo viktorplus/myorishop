@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Экспорт данных</h1>
+<p class="muted">Выгрузите данные в CSV — файлы открываются в Excel.</p>
+
+<p><a class="button" href="/export/products.csv">Скачать товары (CSV)</a></p>
+<p><a class="button" href="/export/sales.csv">Скачать продажи (CSV)</a></p>
+<p><a class="button" href="/export/customers.csv">Скачать покупателей (CSV)</a></p>
+{% endblock %}
