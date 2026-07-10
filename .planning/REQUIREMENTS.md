@@ -45,7 +45,7 @@
 - [ ] **RPT-01**: User can view sales and profit reports for a day, week, month, or custom period
 - [x] **RPT-02**: User can view current stock levels and low-stock items
 - [ ] **RPT-03**: User can view write-off reports for a period
-- [ ] **RPT-04**: User can view top-selling products and products with no sales for a long time
+- [x] **RPT-04**: User can view top-selling products and products with no sales for a long time
 
 ### Backup
 
@@ -97,7 +97,7 @@
 | RPT-01 | Phase 6 | Pending |
 | RPT-02 | Phase 6 | Complete |
 | RPT-03 | Phase 6 | Pending |
-| RPT-04 | Phase 6 | Pending |
+| RPT-04 | Phase 6 | Complete |
 | BCK-02 | Phase 6 | Pending |
 
 **Coverage: 26/26 v1 requirements mapped — no orphans, no duplicates.**
