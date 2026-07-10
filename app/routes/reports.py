@@ -10,7 +10,7 @@ from app.config import settings
 from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.routes import templates
-from app.services.reports import sales_profit_report
+from app.services.reports import sales_profit_report, writeoff_report
 from app.services.stock import (
     all_active_products,
     effective_low_stock_threshold,
@@ -111,6 +111,38 @@ def reports_sales_page(
     if bool(request.headers.get("HX-Request")):
         return templates.TemplateResponse(request, "partials/sales_report_results.html", context)
     return templates.TemplateResponse(request, "pages/reports_sales.html", context)
+
+
+@router.get("/reports/writeoffs")
+def reports_writeoffs_page(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    period = _resolve_period(from_, to, settings.display_tz)
+    report = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        report = writeoff_report(session, start_iso, end_iso)
+
+    context = {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "report": report,
+    }
+    # CR-01 precedent (history.py / reports_sales_page): only a genuine
+    # HX-Request header gets the chrome-less results partial.
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(
+            request, "partials/writeoffs_report_rows.html", context
+        )
+    return templates.TemplateResponse(request, "pages/reports_writeoffs.html", context)
 
 
 @router.get("/reports/stock")

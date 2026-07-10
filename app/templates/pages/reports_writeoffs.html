@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Списания</h1>
+
+{% with period_action = "/reports/writeoffs", period_target = "#writeoffs-results" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+
+<div id="writeoffs-results">
+  {% include "partials/writeoffs_report_rows.html" %}
+</div>
+{% endblock %}
