@@ -207,17 +207,21 @@ def sale_create(
             request, "partials/sale_form.html", context, status_code=422
         )
 
-    # SAL-04/D-08: oversell — zero writes, warn above the still-intact
-    # basket (lines re-rendered from the submitted arrays; the confirm
-    # button re-POSTs the same basket via form="sale-form" + confirm=1).
-    if result and result.get("oversell"):
+    # SAL-04/D-08/PRICE-01/D-11: oversell and/or below-minimum — zero
+    # writes, warn above the still-intact basket (lines re-rendered from
+    # the submitted arrays; the confirm button re-POSTs the same basket
+    # via form="sale-form" + confirm=1). Both keys are checked here (not
+    # just "oversell") so a basket tripping ONLY below_minimum doesn't
+    # fall through this guard and reach the success-write branch below.
+    if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
             "errors": {},
             "lines": _build_lines(code, qty, price, {}),
             "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
-            "oversell": result["oversell"],
+            "oversell": result.get("oversell"),
+            "below_minimum": result.get("below_minimum"),
         }
         return templates.TemplateResponse(request, "partials/sale_form.html", context)
 

@@ -402,6 +402,74 @@ def test_web_sale_oversell_shows_warning_and_confirm_writes(client, stocked_prod
     assert "Продажа оформлена:" in confirm_response.text
 
 
+def test_web_sale_below_minimum_shows_warning_and_confirm_writes(client, session, stocked_product):
+    """PRICE-01: below-minimum POST (no confirm) warns + writes 0; confirm=1 re-POST writes."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Цена ниже минимальной" in response.text
+    assert "Продать всё равно" in response.text
+
+    confirm_response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "1",
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert "Продажа оформлена:" in confirm_response.text
+
+
+def test_web_sale_both_warnings_stack_and_single_confirm_resolves_both(
+    client, session, stocked_product
+):
+    """D-11/Pitfall 2: a basket failing both checks shows both blocks; one confirm resolves both."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["100"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Товара не хватает на складе" in response.text
+    assert "Цена ниже минимальной" in response.text
+
+    confirm_response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["100"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "1",
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert "Продажа оформлена:" in confirm_response.text
+
+
 def test_web_nav_has_sales_link(client):
     """Nav gains the sales entry: Продажи -> /sales/new."""
     response = client.get("/")

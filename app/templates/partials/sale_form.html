@@ -18,6 +18,12 @@
   {% if oversell %}
   {% include "partials/sale_oversell.html" %}
   {% endif %}
+  {# PRICE-01/D-11: price-floor warning, rendered after the oversell block
+     (established-pattern-first ordering) — both render together in the
+     same response when both keys are present. #}
+  {% if below_minimum %}
+  {% include "partials/sale_price_warning.html" %}
+  {% endif %}
 
   {# Swap-time guards (mirrors receipt_form.html Pitfall 7): a lookup
      response never clobbers a value the operator already typed. Row ids
