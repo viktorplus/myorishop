@@ -114,3 +114,7 @@ None - no external service configuration required.
 ---
 *Phase: 07-category-browsing-minimum-price-guardrail*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+All claimed files verified present; all claimed commit hashes (2e530e3, fecee53, c27ceba) verified present in git log.
