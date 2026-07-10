@@ -14,12 +14,14 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 **Target features:**
 - Multiple warehouses, each stock item tagged with a free-text storage location
+- Stock transfer between warehouses (moves quantity from one warehouse/batch to another without erasing cost/price history)
 - "Товары на складе" page grouping products by category/rubric
 - Batch/lot tracking: one product code can have several batches with different expiry dates and prices; operator manually picks a batch at sale time from a list showing price, expiry, remaining quantity, and comment
-- Optional expiry date per batch
+- Batch selection also applies to write-offs, returns, and stock corrections (not just sales)
+- Optional expiry date per batch, plus an "expiring soon" report
 - Optional per-product minimum sale price — selling below it shows a warning but allows override (same pattern as oversell)
 - Optional free-text comment per batch, shown in the sale-time batch picker
-- Mobile-responsive layout
+- A dedicated mobile flow: simpler single-purpose screens/steps for core operations, instead of squeezing the same dense desktop pages into a phone screen via CSS alone
 
 ## Requirements
 
@@ -42,21 +44,25 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 - [ ] User can create and manage multiple warehouses (WH-01)
 - [ ] Stock item has an optional free-text storage location tag within its warehouse (WH-02)
+- [ ] User can transfer stock (a batch or part of it) from one warehouse to another without losing cost/price history (WH-03)
 - [ ] "Товары на складе" page groups products by category/rubric (CAT-01)
 - [ ] Product code can have multiple batches (lots) with distinct expiry date and price (LOT-01)
 - [ ] At sale, operator sees a list of matching batches (price, expiry, remaining qty, comment) and manually selects one (LOT-02)
+- [ ] Write-off, return, and stock correction also require selecting the specific batch, not just the product (LOT-05)
 - [ ] Optional expiry date field per batch (LOT-03)
 - [ ] Optional free-text comment per batch, shown in the sale-time batch picker (LOT-04)
+- [ ] Report of batches with an approaching/passed expiry date (LOT-06)
 - [ ] Optional minimum sale price per product — selling below it warns but allows override (PRICE-01)
-- [ ] Mobile-responsive layout, usable on a smartphone screen (UI-01)
+- [ ] Dedicated mobile flow — simpler single-purpose screens/steps for core operations, not a CSS-only adaptation of the desktop pages (UI-01)
 
 ### Out of Scope
 
 - Barcodes — no scanner hardware; code entry is fast enough for one operator
 - Oriflame campaign catalog integration — not needed for core value
-- Batch FIFO costing — average/snapshot cost is sufficient for profit reports
+- Automatic FEFO/FIFO batch selection — v1.1 introduces batches (LOT-01..06) but selection stays manual (operator picks the batch), superseding the earlier "no batches" decision without adopting automatic queue-based costing
 - Invoicing/payments, notifications — not needed for core value
 - Excel/CSV import of initial data — no existing data; everything entered manually from scratch (user decision)
+- CSV export with warehouse/batch columns — v1.1 keeps the existing product/sale/customer-level export unchanged; deferred to a later milestone
 
 ## Context
 

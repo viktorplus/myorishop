@@ -32,7 +32,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 
 ### UI
 
-- [ ] **UI-01**: Mobile-responsive layout, usable on a smartphone screen
+- [ ] **UI-01**: A dedicated mobile flow — simpler, single-purpose screens/steps for core operations (search, receipts, sales, write-offs/returns/corrections, history) — rather than adapting the same dense desktop pages via CSS alone; the existing desktop layout stays unchanged
 
 ## v2 Requirements
 
@@ -72,24 +72,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WH-01 | TBD | Pending |
-| WH-02 | TBD | Pending |
-| WH-03 | TBD | Pending |
-| CAT-01 | TBD | Pending |
-| LOT-01 | TBD | Pending |
-| LOT-02 | TBD | Pending |
-| LOT-03 | TBD | Pending |
-| LOT-04 | TBD | Pending |
-| LOT-05 | TBD | Pending |
-| LOT-06 | TBD | Pending |
-| PRICE-01 | TBD | Pending |
-| UI-01 | TBD | Pending |
+| WH-01 | Phase 9 | Pending |
+| WH-02 | Phase 10 | Pending |
+| WH-03 | Phase 11 | Pending |
+| CAT-01 | Phase 7 | Pending |
+| LOT-01 | Phase 10 | Pending |
+| LOT-02 | Phase 10 | Pending |
+| LOT-03 | Phase 10 | Pending |
+| LOT-04 | Phase 10 | Pending |
+| LOT-05 | Phase 10 | Pending |
+| LOT-06 | Phase 11 | Pending |
+| PRICE-01 | Phase 7 | Pending |
+| UI-01 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 12 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12 (roadmap created 2026-07-10, Phases 7-11)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after initial v1.1 definition*
+*Last updated: 2026-07-10 after v1.1 roadmap creation (Phases 7-11)*
