@@ -13,13 +13,13 @@ everything else is service level. Selectors: link_and_freeze,
 returnable_cap, entry_point.
 """
 
-from app.services.returns import register_return, returnable_qty  # noqa: F401
 from sqlalchemy import select
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import Operation, Sale
 from app.services.ledger import compute_stock, record_operation
+from app.services.returns import register_return, returnable_qty  # noqa: F401
 
 
 def _return_ops(session):
@@ -143,9 +143,10 @@ def test_web_return_survives_unexpected_error(client, session, stocked_product, 
     SQLAlchemy Session needing an explicit rollback() before further use —
     unlike a plain failed SELECT, which SQLite does not poison a
     transaction over (Postgres would, SQLite does not)."""
+    from sqlalchemy.exc import IntegrityError
+
     import app.services.returns as returns_service
     from app.models import Product
-    from sqlalchemy.exc import IntegrityError
 
     _header, sale_op = _make_sale(session, stocked_product, qty=2)
 
