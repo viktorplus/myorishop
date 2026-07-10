@@ -15,7 +15,11 @@ service-level tests (Task 1) must NOT contain those prefixes.
 import csv
 import io
 
+from app.config import settings
+from app.core import new_id, utcnow_iso
+from app.models import Customer, Sale
 from app.services.export import _csv_rows, _csv_safe, _encode_once
+from app.services.ledger import record_operation
 
 # --- service-level: BOM-once + delimiter correctness (Task 1) ---------------
 
@@ -89,6 +93,85 @@ def test_products_csv_roundtrip(client, product):
     assert len(rows) == 2
     assert rows[1][0] == product.code
     assert rows[1][1] == product.name
+
+
+def test_sales_csv_roundtrip(client, session, product):
+    """WR-02: content-level coverage for stream_sales_csv, incl. formula-injection-safe buyer name."""
+    customer = Customer(
+        id=new_id(),
+        name="=cmd",
+        surname="Тестова",
+        consultant_number="99999",
+        search_lc="=cmd тестова 99999",
+    )
+    session.add(customer)
+    header = Sale(
+        id=new_id(),
+        customer_id=customer.id,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(header)
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-2,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        sale_id=header.id,
+    )
+    session.commit()
+
+    response = client.get("/export/sales.csv")
+    assert response.status_code == 200
+    assert "sales.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    assert rows[0] == [
+        "Когда",
+        "Код",
+        "Товар",
+        "Кол-во",
+        "Цена",
+        "Себестоимость",
+        "Покупатель",
+        "Кто",
+    ]
+    assert len(rows) == 2
+    assert rows[1][1] == product.code
+    assert rows[1][2] == product.name
+    assert rows[1][3] == "2"
+    # Formula-injection-prefixed customer name is escaped with a leading apostrophe.
+    assert rows[1][6] == "'=cmd Тестова"
+    assert rows[1][7] == settings.operator_name
+
+
+def test_customers_csv_roundtrip(client, session):
+    """WR-02 / CR-01: content-level coverage pinning consultant_number CSV escaping."""
+    customer = Customer(
+        id=new_id(),
+        name="Пётр",
+        surname="Сидоров",
+        consultant_number="=cmd|'/C calc'!A0",
+        search_lc="пётр сидоров",
+    )
+    session.add(customer)
+    session.commit()
+
+    response = client.get("/export/customers.csv")
+    assert response.status_code == 200
+    assert "customers.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    assert rows[0] == ["Имя", "Фамилия", "Номер консультанта", "Создан"]
+    assert len(rows) == 2
+    assert rows[1][0] == "Пётр"
+    assert rows[1][1] == "Сидоров"
+    # CR-01: consultant_number is now escaped like every other free-text field.
+    assert rows[1][2] == "'=cmd|'/C calc'!A0"
 
 
 def test_web_export_ignores_client_params(client, product):
