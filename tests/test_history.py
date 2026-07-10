@@ -62,16 +62,43 @@ def test_web_history_rows(client, session, stocked_product):
 
 def test_web_history_filters(client, session, stocked_product, product):
     """OPS-04/D-14: the type filter and the product filter each narrow
-    results (portable ORM, no raw SQL)."""
+    results (portable ORM, no raw SQL).
+
+    CR-01: since the fix, a filtered non-HX request renders the full page,
+    whose filter-bar <select> unconditionally lists every RU type label /
+    every active product as <option> text regardless of the active filter
+    (that's normal <select> behavior, not a row match). So assertions must
+    be scoped to the row markup (<td>...</td>) rather than a bare substring
+    check, which would otherwise false-positive on the dropdown text.
+    """
     _seed_mixed_ops(session, stocked_product)
     record_operation(session, type_="correction", product_id=product.id, qty_delta=1)
 
     type_response = client.get("/history", params={"type": "writeoff"})
     assert type_response.status_code == 200
-    assert "Списание" in type_response.text
-    assert "Корректировка" not in type_response.text
+    assert "<td>Списание</td>" in type_response.text
+    assert "<td>Корректировка</td>" not in type_response.text
 
     product_response = client.get("/history", params={"product": stocked_product.id})
     assert product_response.status_code == 200
-    assert stocked_product.code in product_response.text
-    assert product.code not in product_response.text
+    assert f"<td>{stocked_product.name} ({stocked_product.code})</td>" in product_response.text
+    assert f"<td>{product.name} ({product.code})</td>" not in product_response.text
+
+
+def test_web_history_filtered_reload_returns_full_chrome(client, session, stocked_product):
+    """CR-01/OPS-04: a plain (non-htmx) top-level GET to /history that
+    carries a type filter must render the full page chrome — not the
+    chrome-less rows-only partial a real browser would drop per HTML5
+    parsing rules — while filtering still narrows the displayed rows
+    correctly (scoped to <td> row markup — see test_web_history_filters
+    docstring for why a bare substring check is insufficient once the
+    always-populated filter-bar <select> is present)."""
+    _seed_mixed_ops(session, stocked_product)
+
+    response = client.get("/history", params={"type": "writeoff"})
+    assert response.status_code == 200
+    assert "<html" in response.text
+    assert "<nav" in response.text
+    assert "<table" in response.text
+    assert "<td>Списание</td>" in response.text
+    assert "<td>Корректировка</td>" not in response.text
