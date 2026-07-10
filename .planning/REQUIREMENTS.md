@@ -43,7 +43,7 @@
 ### Reports
 
 - [ ] **RPT-01**: User can view sales and profit reports for a day, week, month, or custom period
-- [ ] **RPT-02**: User can view current stock levels and low-stock items
+- [x] **RPT-02**: User can view current stock levels and low-stock items
 - [ ] **RPT-03**: User can view write-off reports for a period
 - [ ] **RPT-04**: User can view top-selling products and products with no sales for a long time
 
@@ -95,7 +95,7 @@
 | OPS-03 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 4) |
 | OPS-04 | Phase 5 | In Progress (Wave 0 foundation landed; service/route pending Wave 5) |
 | RPT-01 | Phase 6 | Pending |
-| RPT-02 | Phase 6 | Pending |
+| RPT-02 | Phase 6 | Complete |
 | RPT-03 | Phase 6 | Pending |
 | RPT-04 | Phase 6 | Pending |
 | BCK-02 | Phase 6 | Pending |

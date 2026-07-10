@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Остатки склада</h1>
+
+<h2>Мало на складе</h2>
+{% if not low_stock_rows %}
+<p class="empty-state muted">Товаров с низким остатком нет.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Код</th>
+      <th>Название</th>
+      <th class="num">Остаток</th>
+      <th>Статус</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in low_stock_rows %}
+    <tr>
+      <td>{{ row.product.code or "" }}</td>
+      <td>{{ row.product.name }}</td>
+      <td class="num">{{ row.product.quantity }}</td>
+      <td>Мало</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Все товары</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Код</th>
+      <th>Название</th>
+      <th class="num">Остаток</th>
+      <th>Статус</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for product in all_products %}
+    <tr>
+      <td>{{ product.code or "" }}</td>
+      <td>{{ product.name }}</td>
+      <td class="num">{{ product.quantity }}</td>
+      <td>{% if product.id in low_stock_ids %}Мало{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

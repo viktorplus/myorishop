@@ -11,6 +11,11 @@ from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.routes import templates
 from app.services.reports import sales_profit_report
+from app.services.stock import (
+    all_active_products,
+    effective_low_stock_threshold,
+    low_stock_products,
+)
 
 router = APIRouter()
 
@@ -106,3 +111,18 @@ def reports_sales_page(
     if bool(request.headers.get("HX-Request")):
         return templates.TemplateResponse(request, "partials/sales_report_results.html", context)
     return templates.TemplateResponse(request, "pages/reports_sales.html", context)
+
+
+@router.get("/reports/stock")
+def reports_stock_page(request: Request, session: Session = Depends(get_session)):
+    """RPT-02/D-03: "as of now" stock view — no period filter, always the full page."""
+    low_stock_rows = [
+        {"product": p, "threshold": effective_low_stock_threshold(p)}
+        for p in low_stock_products(session)
+    ]
+    context = {
+        "low_stock_rows": low_stock_rows,
+        "all_products": all_active_products(session),
+        "low_stock_ids": {row["product"].id for row in low_stock_rows},
+    }
+    return templates.TemplateResponse(request, "pages/reports_stock.html", context)
