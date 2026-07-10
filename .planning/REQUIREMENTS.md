@@ -72,24 +72,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WH-01 | Phase 9 | Pending |
-| WH-02 | Phase 10 | Pending |
-| WH-03 | Phase 11 | Pending |
+| WH-01 | Phase 8 | Pending |
+| WH-02 | Phase 9 | Pending |
+| WH-03 | Phase 10 | Pending |
 | CAT-01 | Phase 7 | Pending |
-| LOT-01 | Phase 10 | Pending |
-| LOT-02 | Phase 10 | Pending |
-| LOT-03 | Phase 10 | Pending |
-| LOT-04 | Phase 10 | Pending |
-| LOT-05 | Phase 10 | Pending |
-| LOT-06 | Phase 11 | Pending |
+| LOT-01 | Phase 9 | Pending |
+| LOT-02 | Phase 9 | Pending |
+| LOT-03 | Phase 9 | Pending |
+| LOT-04 | Phase 9 | Pending |
+| LOT-05 | Phase 9 | Pending |
+| LOT-06 | Phase 10 | Pending |
 | PRICE-01 | Phase 7 | Pending |
-| UI-01 | Phase 8 | Pending |
+| UI-01 | Phase 11 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 12 total
-- Mapped to phases: 12 (roadmap created 2026-07-10, Phases 7-11)
+- Mapped to phases: 12 (roadmap revised 2026-07-10, Phases 7-11)
 - Unmapped: 0 ✓
+
+**Revision note (2026-07-10):** UI-01's phase mapping moved from Phase 8 to Phase 11. The mobile flow requirement was reinterpreted as a dedicated single-purpose screen set (not a CSS adaptation of desktop pages) and re-sequenced to the end of the milestone so it is built once, as a self-contained phase, against the complete final v1.1 operation set (including the batch picker, warehouse transfer, and expiry report introduced by Phases 8-10) — see ROADMAP.md Phase 11 for full rationale. Phases 7, 9 (formerly 10), and 10 (formerly 11) are unchanged in scope; only their numbers and cross-references shifted.
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after v1.1 roadmap creation (Phases 7-11)*
+*Last updated: 2026-07-10 after v1.1 roadmap revision (Phases 7-11, Mobile Flow moved to Phase 11)*
