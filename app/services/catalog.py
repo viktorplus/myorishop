@@ -16,6 +16,7 @@ from app.services.ledger import record_operation
 
 PRICE_ERROR = "Неверный формат цены — введите число, например 12,50."
 DUPLICATE_CODE_ERROR = "Код уже используется другим товаром — введите другой код."
+THRESHOLD_ERROR = "Введите целое число 0 или больше."
 
 
 def parse_optional_cents(raw: str, errors: dict, field: str) -> int | None:
@@ -30,6 +31,22 @@ def parse_optional_cents(raw: str, errors: dict, field: str) -> int | None:
         return None
 
 
+def parse_optional_int(raw: str, errors: dict, field: str) -> int | None:
+    """Empty string -> NULL (Pitfall 3: "use global default", NOT zero).
+
+    T-06-01/T-06-02: WR-01-style ASCII-digit-only allow-list — mirrors the
+    qty/price guard style used in sales.py/writeoffs.py/corrections.py. A
+    genuine "0" is parsed and returned as the int 0, never coerced to None.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    if raw.isascii() and raw.isdigit():
+        return int(raw)
+    errors[field] = THRESHOLD_ERROR
+    return None
+
+
 def create_product(
     session: Session,
     *,
@@ -39,6 +56,8 @@ def create_product(
     cost_raw: str,
     sale_raw: str,
     catalog_raw: str,
+    low_stock_threshold_raw: str = "",
+    stale_days_raw: str = "",
 ) -> tuple[Product | None, dict[str, str]]:
     """Create a product and its product_created audit op atomically (D-19/D-30).
 
@@ -66,6 +85,10 @@ def create_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
+    low_stock_threshold = parse_optional_int(
+        low_stock_threshold_raw, errors, "low_stock_threshold"
+    )
+    stale_days = parse_optional_int(stale_days_raw, errors, "stale_days")
 
     if errors:
         return None, errors
@@ -80,6 +103,8 @@ def create_product(
         cost_cents=cost_cents,
         sale_cents=sale_cents,
         catalog_cents=catalog_cents,
+        low_stock_threshold=low_stock_threshold,
+        stale_days=stale_days,
         quantity=0,
     )
     # Stage-then-commit: record_operation's session.get autoflushes the
@@ -120,6 +145,8 @@ def update_product(
     cost_raw: str,
     sale_raw: str,
     catalog_raw: str,
+    low_stock_threshold_raw: str = "",
+    stale_days_raw: str = "",
 ) -> tuple[Product | None, dict[str, str]]:
     """Update a product; audit every change through the single write path.
 
@@ -160,19 +187,38 @@ def update_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
+    low_stock_threshold = parse_optional_int(
+        low_stock_threshold_raw, errors, "low_stock_threshold"
+    )
+    stale_days = parse_optional_int(stale_days_raw, errors, "stale_days")
 
     if errors:
         return None, errors
 
     # Pitfall 7: snapshot old values BEFORE any mutation.
     old_prices = {field: getattr(product, field) for field in _PRICE_FIELDS}
-    old_fields = {"code": product.code, "name": product.name, "category": product.category}
+    # D-04/D-05: low_stock_threshold/stale_days are plain integer fields (not
+    # money), so they follow the product_edited audit path alongside
+    # code/name/category, NOT the per-field price_change path.
+    old_fields = {
+        "code": product.code,
+        "name": product.name,
+        "category": product.category,
+        "low_stock_threshold": product.low_stock_threshold,
+        "stale_days": product.stale_days,
+    }
     new_prices = {
         "cost_cents": cost_cents,
         "sale_cents": sale_cents,
         "catalog_cents": catalog_cents,
     }
-    new_fields = {"code": code, "name": name, "category": category or None}
+    new_fields = {
+        "code": code,
+        "name": name,
+        "category": category or None,
+        "low_stock_threshold": low_stock_threshold,
+        "stale_days": stale_days,
+    }
 
     changed_prices = [f for f in _PRICE_FIELDS if old_prices[f] != new_prices[f]]
     changed_non_price = sorted(f for f in old_fields if old_fields[f] != new_fields[f])
@@ -189,6 +235,8 @@ def update_product(
     product.cost_cents = cost_cents
     product.sale_cents = sale_cents
     product.catalog_cents = catalog_cents
+    product.low_stock_threshold = low_stock_threshold
+    product.stale_days = stale_days
 
     # PD-3: one op per changed price field. WR-03: ALL ops are staged with
     # commit=False and persisted by the SINGLE commit below, so the product

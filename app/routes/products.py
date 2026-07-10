@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_session
 from app.routes import templates
 from app.services.catalog import (
@@ -45,6 +46,8 @@ def product_new(request: Request, session: Session = Depends(get_session)):
         "categories": category_options(session),
         "errors": {},
         "form": {},
+        "low_stock_default": settings.low_stock_threshold,
+        "stale_days_default": settings.stale_days,
     }
     return templates.TemplateResponse(request, "pages/product_form.html", context)
 
@@ -58,6 +61,8 @@ def product_create(
     cost: str = Form(""),
     sale: str = Form(""),
     catalog: str = Form(""),
+    low_stock_threshold: str = Form(""),
+    stale_days: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money fields arrive as strings on purpose: Pydantic v2 rejects ""
@@ -70,6 +75,8 @@ def product_create(
         cost_raw=cost,
         sale_raw=sale,
         catalog_raw=catalog,
+        low_stock_threshold_raw=low_stock_threshold,
+        stale_days_raw=stale_days,
     )
     if errors:
         context = {
@@ -83,7 +90,11 @@ def product_create(
                 "cost": cost,
                 "sale": sale,
                 "catalog": catalog,
+                "low_stock_threshold": low_stock_threshold,
+                "stale_days": stale_days,
             },
+            "low_stock_default": settings.low_stock_threshold,
+            "stale_days_default": settings.stale_days,
         }
         return templates.TemplateResponse(
             request, "pages/product_form.html", context, status_code=422
@@ -102,6 +113,8 @@ def product_edit(request: Request, product_id: str, session: Session = Depends(g
         "errors": {},
         "history": price_history(session, product_id),
         "form": None,
+        "low_stock_default": settings.low_stock_threshold,
+        "stale_days_default": settings.stale_days,
     }
     return templates.TemplateResponse(request, "pages/product_form.html", context)
 
@@ -116,6 +129,8 @@ def product_update(
     cost: str = Form(""),
     sale: str = Form(""),
     catalog: str = Form(""),
+    low_stock_threshold: str = Form(""),
+    stale_days: str = Form(""),
     session: Session = Depends(get_session),
 ):
     product, errors = update_product(
@@ -127,6 +142,8 @@ def product_update(
         cost_raw=cost,
         sale_raw=sale,
         catalog_raw=catalog,
+        low_stock_threshold_raw=low_stock_threshold,
+        stale_days_raw=stale_days,
     )
     if errors:
         existing = get_product(session, product_id)
@@ -144,7 +161,11 @@ def product_update(
                 "cost": cost,
                 "sale": sale,
                 "catalog": catalog,
+                "low_stock_threshold": low_stock_threshold,
+                "stale_days": stale_days,
             },
+            "low_stock_default": settings.low_stock_threshold,
+            "stale_days_default": settings.stale_days,
         }
         return templates.TemplateResponse(
             request, "pages/product_form.html", context, status_code=422
