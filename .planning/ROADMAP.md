@@ -202,8 +202,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion; 06-03 and 06-04 run in parallel — zero file overlap)*
 
-- [ ] 06-03-PLAN.md — Stock & low-stock report: effective-threshold service, /reports/stock (RPT-02)
-- [ ] 06-04-PLAN.md — CSV export: products/sales/customers streaming CSV, /export page + nav (BCK-02)
+- [x] 06-03-PLAN.md — Stock & low-stock report: effective-threshold service, /reports/stock (RPT-02)
+- [x] 06-04-PLAN.md — CSV export: products/sales/customers streaming CSV, /export page + nav (BCK-02)
 
 **Wave 3** *(blocked on Wave 2 completion — shares app/routes/reports.py)*
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
 | 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
-| 6. Reports & Data Export | 2/6 | In Progress|  |
+| 6. Reports & Data Export | 4/6 | In Progress|  |
