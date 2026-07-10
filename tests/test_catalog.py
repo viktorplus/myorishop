@@ -877,6 +877,7 @@ def test_web_nav_has_categories_link(client):
     page = client.get("/products")
     assert page.status_code == 200
     assert 'href="/categories"' in page.text
+    assert "Категории" in page.text
 
 
 # --- Plan 07-02: minimum sale price guardrail schema/capture (PRICE-01) ---
@@ -1059,4 +1060,3 @@ def test_web_create_product_invalid_min_sale_rerenders_422(client, session):
     assert response.status_code == 422
     assert "Неверный формат цены" in response.text
     assert session.scalar(text("SELECT COUNT(*) FROM products WHERE code = 'MIN-3'")) == 0
-    assert "Категории" in page.text
