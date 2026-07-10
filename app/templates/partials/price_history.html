@@ -20,6 +20,7 @@
           {%- if op.payload.field == "cost_cents" -%}Закупочная
           {%- elif op.payload.field == "sale_cents" -%}Продажа
           {%- elif op.payload.field == "catalog_cents" -%}Каталог
+          {%- elif op.payload.field == "min_sale_cents" -%}Минимальная
           {%- else -%}{{ op.payload.field }}
           {%- endif -%}
         </td>

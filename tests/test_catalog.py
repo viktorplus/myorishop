@@ -878,3 +878,185 @@ def test_web_nav_has_categories_link(client):
     assert page.status_code == 200
     assert 'href="/categories"' in page.text
     assert "Категории" in page.text
+
+
+# --- Plan 07-02: minimum sale price guardrail schema/capture (PRICE-01) ---
+
+
+def test_migration_0006_adds_min_sale_cents_column(tmp_path, monkeypatch):
+    """Migration 0006: fresh upgrade adds a NULL min_sale_cents column."""
+    db_file = tmp_path / "fresh.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0005")
+
+    now = "2026-07-10T00:00:00+00:00"
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("00000000-0000-4000-8000-000000000006", "6666", "Мин-Цена-Тест", 0, now, now),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(products)")}
+        assert "min_sale_cents" in cols
+
+        (min_sale_cents,) = conn.execute(
+            "SELECT min_sale_cents FROM products WHERE name = ?",
+            ("Мин-Цена-Тест",),
+        ).fetchone()
+        assert min_sale_cents is None
+
+
+def test_create_product_min_sale_cents_empty_is_none(session):
+    """D-06: empty min_sale raw -> NULL column (no floor set)."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        min_sale_raw="",
+    )
+    assert errors == {}
+    assert product is not None
+    assert product.min_sale_cents is None
+
+
+def test_create_product_min_sale_cents_explicit_zero_is_stored_as_zero(session):
+    """Pitfall 1 (service level): an explicit "0" is stored as int 0, never None."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        min_sale_raw="0",
+    )
+    assert errors == {}
+    assert product is not None
+    assert product.min_sale_cents == 0
+
+
+def test_create_product_rejects_negative_min_sale_price(session):
+    """WR-04 reused: a negative minimum price is rejected with PRICE_ERROR."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        min_sale_raw="-5",
+    )
+    assert product is None
+    assert "min_sale" in errors
+    assert session.scalar(text("SELECT COUNT(*) FROM products")) == 0
+
+
+def test_update_min_sale_price_change_records_price_change_op(session):
+    """T-07-05: a min-price-only edit joins _PRICE_FIELDS and is audited."""
+    product, errors = create_product(
+        session, code="1234", name="Помада", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    updated, errors = update_product(
+        session,
+        product.id,
+        code="1234",
+        name="Помада",
+        category="",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        min_sale_raw="99,90",
+    )
+    assert errors == {}
+    assert updated is not None
+    ops = session.scalars(select(Operation).where(Operation.type == "price_change")).all()
+    assert len(ops) == 1
+    assert ops[0].payload == {"field": "min_sale_cents", "old_cents": None, "new_cents": 9990}
+    session.expire_all()
+    assert product.min_sale_cents == 9990
+
+
+# --- Plan 07-02: product-form min-price field, end-to-end round-trip (PRICE-01) ---
+
+
+def test_web_create_product_with_min_sale_price_round_trips(client, session):
+    """Success criterion 4: a set min_sale round-trips through save and reload."""
+    from app.models import Product
+
+    response = client.post(
+        "/products",
+        data={
+            "code": "MIN-1",
+            "name": "Крем С Минимальной Ценой",
+            "category": "",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "min_sale": "12,50",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    created = session.scalars(select(Product).where(Product.code == "MIN-1")).first()
+    assert created is not None
+    assert created.min_sale_cents == 1250
+
+    edit_page = client.get(f"/products/{created.id}/edit")
+    assert edit_page.status_code == 200
+    assert "12,50" in edit_page.text
+
+
+def test_web_create_product_min_sale_explicit_zero_round_trips(client, session):
+    """Success criterion 4: an explicit 0 minimum price is NOT NULL."""
+    from app.models import Product
+
+    response = client.post(
+        "/products",
+        data={
+            "code": "MIN-2",
+            "name": "Крем С Нулевой Ценой",
+            "category": "",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "min_sale": "0",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    created = session.scalars(select(Product).where(Product.code == "MIN-2")).first()
+    assert created is not None
+    assert created.min_sale_cents == 0
+
+    edit_page = client.get(f"/products/{created.id}/edit")
+    assert edit_page.status_code == 200
+    assert "0,00" in edit_page.text
+
+
+def test_web_create_product_invalid_min_sale_rerenders_422(client, session):
+    """Invalid min_sale -> 422 re-render with PRICE_ERROR; nothing persisted."""
+    response = client.post(
+        "/products",
+        data={
+            "code": "MIN-3",
+            "name": "Тест",
+            "category": "",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "min_sale": "abc",
+        },
+    )
+    assert response.status_code == 422
+    assert "Неверный формат цены" in response.text
+    assert session.scalar(text("SELECT COUNT(*) FROM products WHERE code = 'MIN-3'")) == 0

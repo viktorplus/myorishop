@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core import new_id
 from app.models import Operation, Product
-from app.services.catalog import _PRICE_FIELDS, DUPLICATE_CODE_ERROR, parse_optional_cents
+from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
 
@@ -105,7 +105,11 @@ def register_receipt(
             "sale_cents": sale_cents,
             "catalog_cents": catalog_cents,
         }
-        for field in _PRICE_FIELDS:
+        # PD-8: a receipt has no min_sale input, so this loop iterates the
+        # fields a receipt CAN set (not the full app.services.catalog
+        # _PRICE_FIELDS set, which also includes min_sale_cents as of
+        # Phase 7 PRICE-01) — min_sale_cents is untouched by receipts.
+        for field in entered:
             if entered[field] is None or entered[field] == getattr(product, field):
                 continue
             # Pitfall 7: snapshot the old value BEFORE mutating the card.
