@@ -28,7 +28,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 
 ### Pricing Guardrails
 
-- [ ] **PRICE-01**: Optional minimum sale price per product — selling below it shows a warning but allows override (same pattern as the existing oversell warning)
+- [x] **PRICE-01**: Optional minimum sale price per product — selling below it shows a warning but allows override (same pattern as the existing oversell warning)
 
 ### UI
 
@@ -82,7 +82,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOT-04 | Phase 9 | Pending |
 | LOT-05 | Phase 9 | Pending |
 | LOT-06 | Phase 10 | Pending |
-| PRICE-01 | Phase 7 | Pending |
+| PRICE-01 | Phase 7 | Complete |
 | UI-01 | Phase 11 | Pending |
 
 **Coverage:**

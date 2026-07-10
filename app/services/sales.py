@@ -143,9 +143,36 @@ def register_sale(
             for product_id, requested in requested_by_product.items()
             if requested > products_by_id[product_id].quantity
         ]
-        if oversold:
-            oversold.sort(key=lambda entry: entry["product"].name)
-            return {"oversell": oversold}, {}
+
+        # PRICE-01/D-08/D-09/D-10: per-LINE minimum-price check (NOT
+        # aggregated like the oversell qty sum above — the same product on
+        # two lines is checked independently on each). is not None (D-06)
+        # so an unset minimum never blocks, and strict < (D-10) so a price
+        # exactly at the minimum passes silently.
+        below_minimum = [
+            {
+                "product": line["product"],
+                "entered": line["price_cents"],
+                "minimum": line["product"].min_sale_cents,
+            }
+            for line in resolved
+            if line["product"].min_sale_cents is not None
+            and line["price_cents"] < line["product"].min_sale_cents
+        ]
+
+        # Pitfall 2: both checks are computed above BEFORE any return, so a
+        # basket tripping both surfaces both warnings in the SAME response
+        # instead of the price-floor check being silently skipped by an
+        # early oversell-only return.
+        if oversold or below_minimum:
+            result: dict = {}
+            if oversold:
+                oversold.sort(key=lambda entry: entry["product"].name)
+                result["oversell"] = oversold
+            if below_minimum:
+                below_minimum.sort(key=lambda entry: entry["product"].name)
+                result["below_minimum"] = below_minimum
+            return result, {}
 
     header = Sale(
         id=new_id(),

@@ -207,6 +207,92 @@ def test_oversell_aggregates_duplicate_lines(session, stocked_product):
     assert _sale_ops(session) == []
 
 
+def test_below_minimum_blocks_without_confirm(session, stocked_product):
+    """PRICE-01/D-08/D-09: entered price below min_sale_cents -> warn, 0 writes."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+    )
+    assert errors == {}
+    assert result.get("below_minimum")
+    assert _sale_ops(session) == []
+
+
+def test_below_minimum_confirm_writes(session, stocked_product):
+    """PRICE-01/D-09: confirm=1 skips the block; sale writes at the entered price."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        confirm="1",
+    )
+    assert errors == {}
+    assert not result.get("below_minimum")
+    op = _sale_ops(session)[0]
+    assert op.unit_price_cents == 1500
+
+
+def test_below_minimum_boundary_equal_price_passes_silently(session, stocked_product):
+    """D-10: a price exactly equal to the minimum passes silently (strict <)."""
+    stocked_product.min_sale_cents = 1500
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+    )
+    assert errors == {}
+    assert not result.get("below_minimum")
+    assert len(_sale_ops(session)) == 1
+
+
+def test_min_sale_unset_never_warns_even_at_zero_entered_price(session, stocked_product):
+    """D-06/success criterion 4: no min_sale_cents configured -> never warns, even at 0."""
+    assert stocked_product.min_sale_cents is None
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["0,00"],
+    )
+    assert errors == {}
+    assert not result.get("below_minimum")
+
+
+def test_oversell_and_below_minimum_both_reported_together(session, stocked_product):
+    """D-11/Pitfall 2: a basket tripping BOTH checks reports both in one call."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["100"],
+        prices=["15,00"],
+    )
+    assert errors == {}
+    assert result.get("oversell")
+    assert result.get("below_minimum")
+    assert _sale_ops(session) == []
+
+
 # --- Web slice (routes + templates) ---
 
 
@@ -301,6 +387,74 @@ def test_web_sale_oversell_shows_warning_and_confirm_writes(client, stocked_prod
     assert response.status_code == 200
     assert "Товара не хватает на складе" in response.text
     assert "Продать всё равно" in response.text
+
+    confirm_response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["100"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "1",
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert "Продажа оформлена:" in confirm_response.text
+
+
+def test_web_sale_below_minimum_shows_warning_and_confirm_writes(client, session, stocked_product):
+    """PRICE-01: below-minimum POST (no confirm) warns + writes 0; confirm=1 re-POST writes."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Цена ниже минимальной" in response.text
+    assert "Продать всё равно" in response.text
+
+    confirm_response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "1",
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert "Продажа оформлена:" in confirm_response.text
+
+
+def test_web_sale_both_warnings_stack_and_single_confirm_resolves_both(
+    client, session, stocked_product
+):
+    """D-11/Pitfall 2: a basket failing both checks shows both blocks; one confirm resolves both."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["100"],
+            "price[]": ["15,00"],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Товара не хватает на складе" in response.text
+    assert "Цена ниже минимальной" in response.text
 
     confirm_response = client.post(
         "/sales",
