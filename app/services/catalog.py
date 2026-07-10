@@ -404,3 +404,25 @@ def category_options(session: Session) -> list[str]:
             .order_by(Product.category)
         )
     )
+
+
+def products_by_category(session: Session) -> list[dict]:
+    """Active products grouped by category, alphabetical, "Без категории" last (D-03/D-04).
+
+    Python-side grouping (not a SQL NULL-ordering trick, per RESEARCH.md Open
+    Question #2) guarantees the uncategorized bucket sorts last regardless of
+    dict iteration order.
+    """
+    products = list(
+        session.scalars(
+            select(Product).where(Product.deleted_at.is_(None)).order_by(Product.name_lc)
+        )
+    )
+    by_category: dict[str, list[Product]] = {}
+    for p in products:
+        by_category.setdefault(p.category or "", []).append(p)
+    named = sorted(k for k in by_category if k)
+    groups = [{"label": k, "products": by_category[k]} for k in named]
+    if "" in by_category:
+        groups.append({"label": "Без категории", "products": by_category[""]})
+    return groups
