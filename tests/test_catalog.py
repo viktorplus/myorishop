@@ -142,6 +142,23 @@ def test_create_product_rejects_invalid_threshold(session):
     assert session.scalar(text("SELECT COUNT(*) FROM products")) == 0
 
 
+def test_create_product_rejects_threshold_above_int32_bound(session):
+    """WR-03: a digit string that fits SQLite INTEGER but overflows a future
+    PostgreSQL 4-byte INTEGER column must be rejected, not silently stored."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        low_stock_threshold_raw="2147483648",  # 2^31, one past the int32 max
+        stale_days_raw="0",
+    )
+    assert product is None
+    assert "low_stock_threshold" in errors
+    assert session.scalar(text("SELECT COUNT(*) FROM products")) == 0
+
+
 def test_duplicate_active_code_blocked_by_db_index(session, product):
     """WR-04: uq_products_code_active is the DB backstop, not just app code."""
     import sqlalchemy as sa

@@ -41,7 +41,7 @@ def parse_optional_int(raw: str, errors: dict, field: str) -> int | None:
     raw = raw.strip()
     if not raw:
         return None
-    if raw.isascii() and raw.isdigit():
+    if raw.isascii() and raw.isdigit() and int(raw) <= 2_147_483_647:
         return int(raw)
     errors[field] = THRESHOLD_ERROR
     return None
