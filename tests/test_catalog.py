@@ -820,3 +820,61 @@ def test_web_edit_unknown_id_404(client):
     """Unknown product id on the edit page -> 404."""
     response = client.get("/products/does-not-exist/edit")
     assert response.status_code == 404
+
+
+# --- Plan 07-01: /categories page (CAT-01) ---
+
+
+def test_web_categories_page_lists_groups_with_edit_link(client, session):
+    """CAT-01 e2e: groups render in order, "Без категории" last, edit links present."""
+    create_product(session, code="B1", name="Духи", category="Парфюмерия", **EMPTY_MONEY)
+    a1, errors = create_product(
+        session, code="A1", name="Помада", category="Макияж", **EMPTY_MONEY
+    )
+    assert errors == {}
+    create_product(session, code="U1", name="Товар Без Категории", category="", **EMPTY_MONEY)
+
+    page = client.get("/categories")
+    assert page.status_code == 200
+    assert "Товары на складе" in page.text
+    macijaz_pos = page.text.index("Макияж")
+    parf_pos = page.text.index("Парфюмерия")
+    bez_pos = page.text.index("Без категории")
+    assert macijaz_pos < parf_pos < bez_pos
+    assert f"/products/{a1.id}/edit" in page.text
+
+
+def test_web_categories_page_hides_deleted_products(client, session):
+    """D-05: a soft-deleted product's name never appears in the response."""
+    kept, errors = create_product(
+        session, code="K1", name="Остаётся Крем", category="Уход", **EMPTY_MONEY
+    )
+    assert errors == {}
+    gone, errors = create_product(
+        session, code="G1", name="Удалённый Товар", category="Уход", **EMPTY_MONEY
+    )
+    assert errors == {}
+    soft_delete_product(session, gone.id)
+
+    page = client.get("/categories")
+    assert page.status_code == 200
+    assert "Остаётся Крем" in page.text
+    assert "Удалённый Товар" not in page.text
+
+
+def test_web_categories_page_empty_state(client, session, product):
+    """Zero active products -> empty-state block, no table."""
+    soft_delete_product(session, product.id)
+
+    page = client.get("/categories")
+    assert page.status_code == 200
+    assert "Товаров пока нет" in page.text
+    assert "<table>" not in page.text
+
+
+def test_web_nav_has_categories_link(client):
+    """Nav bar exposes the new /categories link from every page."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert 'href="/categories"' in page.text
+    assert "Категории" in page.text
