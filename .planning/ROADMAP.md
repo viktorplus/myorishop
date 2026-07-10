@@ -52,7 +52,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
   3. Selling below a set minimum price shows a warning and requires explicit confirmation before the sale is recorded (same warn-but-allow pattern as the existing oversell warning)
   4. A product with no minimum price configured never triggers the warning, and a minimum price explicitly set to 0 is respected rather than silently treated as "unset"
 
-**Plans**: 3 plans
+**Plans**: 4 plans (3 original + 1 gap closure)
 Plans:
 **Wave 1**
 
@@ -65,6 +65,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 07-03-PLAN.md — PRICE-01 (sale guardrail): register_sale() price-floor check, warning partial, route wiring
+
+**Gap closure (wave 1, from 07-VERIFICATION.md CR-01)**
+
+- [ ] 07-04-PLAN.md — PRICE-01 (negative-price guard): reject negative sale-line prices in register_sale independent of min_sale_cents
 
 **UI hint**: yes
 
