@@ -75,7 +75,16 @@ def test_products_csv_roundtrip(client, product):
     text = response.content.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    assert rows[0] == ["Код", "Название", "Категория", "Закупка", "Продажа", "Каталог", "Остаток"]
+    assert rows[0] == [
+        "Код",
+        "Название",
+        "Категория",
+        "Закупка",
+        "Продажа",
+        "Каталог",
+        "Остаток",
+        "Удалён",
+    ]
     # Exactly one seeded product from the `product` fixture.
     assert len(rows) == 2
     assert rows[1][0] == product.code

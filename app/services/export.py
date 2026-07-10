@@ -72,7 +72,16 @@ def _encode_once(text_chunks) -> Generator[bytes]:
 def stream_products_csv(session: Session) -> StreamingResponse:
     """Full product catalog dump, including soft-deleted (BCK-02 full dump)."""
     products = session.scalars(select(Product).order_by(Product.name_lc)).all()
-    header = ["Код", "Название", "Категория", "Закупка", "Продажа", "Каталог", "Остаток"]
+    header = [
+        "Код",
+        "Название",
+        "Категория",
+        "Закупка",
+        "Продажа",
+        "Каталог",
+        "Остаток",
+        "Удалён",
+    ]
     rows = [
         [
             _csv_safe(product.code or ""),
@@ -82,6 +91,7 @@ def stream_products_csv(session: Session) -> StreamingResponse:
             format_cents(product.sale_cents) if product.sale_cents is not None else "",
             format_cents(product.catalog_cents) if product.catalog_cents is not None else "",
             product.quantity,
+            "Да" if product.deleted_at else "",
         ]
         for product in products
     ]
