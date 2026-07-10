@@ -10,9 +10,9 @@ from datetime import date
 
 from app.config import settings
 from app.core import local_day_bounds_utc, new_id
-from app.models import Product
+from app.models import WRITEOFF_REASONS, Product
 from app.services.ledger import record_operation
-from app.services.reports import sales_profit_report
+from app.services.reports import sales_profit_report, writeoff_report
 from app.services.stock import (
     all_active_products,
     effective_low_stock_threshold,
@@ -143,6 +143,102 @@ def test_sales_report_includes_deleted_product_for_past_period(session, product,
     report = sales_profit_report(session, start_iso, end_iso)
     assert len(report["by_product"]) == 1
     assert report["by_product"][0]["product"] is product
+
+
+def _record_writeoff_at(
+    session,
+    monkeypatch,
+    iso: str,
+    *,
+    product: Product,
+    qty: int,
+    reason_code: str,
+):
+    """Record one write-off operation with a caller-controlled created_at.
+
+    Mirrors _record_sale_at above — monkeypatches app.services.ledger's
+    utcnow_iso so the stamped created_at lands exactly where the test needs
+    it relative to a period boundary.
+    """
+    import app.services.ledger as ledger_module
+
+    monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: iso)
+    return record_operation(
+        session,
+        type_="writeoff",
+        product_id=product.id,
+        qty_delta=-qty,
+        payload={"reason_code": reason_code, "note": ""},
+    )
+
+
+def test_writeoff_report_groups_by_reason(session, product, monkeypatch):
+    """Result order follows WRITEOFF_REASONS' own key order (damaged, expired, ...)."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+
+    _record_writeoff_at(
+        session, monkeypatch, mid_day_iso, product=product, qty=3, reason_code="expired"
+    )
+    _record_writeoff_at(
+        session, monkeypatch, mid_day_iso, product=product, qty=2, reason_code="damaged"
+    )
+
+    report = writeoff_report(session, start_iso, end_iso)
+    by_reason = report["by_reason"]
+    assert [entry["reason_code"] for entry in by_reason] == ["damaged", "expired"]
+    assert by_reason[0]["qty"] == 2
+    assert by_reason[0]["label"] == WRITEOFF_REASONS["damaged"]
+    assert by_reason[1]["qty"] == 3
+    assert by_reason[1]["label"] == WRITEOFF_REASONS["expired"]
+    assert report["total_qty"] == 5
+
+
+def test_writeoff_report_excludes_reason_with_zero_writeoffs_in_period(session, product, monkeypatch):
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+
+    _record_writeoff_at(
+        session, monkeypatch, mid_day_iso, product=product, qty=1, reason_code="lost"
+    )
+
+    report = writeoff_report(session, start_iso, end_iso)
+    reason_codes = [entry["reason_code"] for entry in report["by_reason"]]
+    assert reason_codes == ["lost"]
+    assert "damaged" not in reason_codes
+    assert "expired" not in reason_codes
+
+
+def test_writeoff_report_includes_deleted_product_for_past_period(session, product, monkeypatch):
+    """RESEARCH Pitfall 5: same rule as sales_profit_report - never filter deleted_at."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+
+    _record_writeoff_at(
+        session, monkeypatch, mid_day_iso, product=product, qty=1, reason_code="damaged"
+    )
+    product.deleted_at = "2026-07-11T00:00:00+00:00"
+    session.commit()
+
+    report = writeoff_report(session, start_iso, end_iso)
+    assert report["total_qty"] == 1
+    assert report["by_reason"][0]["lines"][0]["product"] is product
+
+
+def test_writeoff_report_excludes_outside_period(session, product, monkeypatch):
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    just_inside = "2026-07-10T20:59:59+00:00"  # 23:59:59 local, still July 10
+    just_outside = "2026-07-10T21:00:00+00:00"  # 00:00:00 local July 11
+
+    _record_writeoff_at(
+        session, monkeypatch, just_inside, product=product, qty=1, reason_code="damaged"
+    )
+    _record_writeoff_at(
+        session, monkeypatch, just_outside, product=product, qty=9, reason_code="damaged"
+    )
+
+    report = writeoff_report(session, start_iso, end_iso)
+    assert report["total_qty"] == 1
 
 
 def test_web_reports_landing_links_to_sales(client):
