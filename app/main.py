@@ -10,6 +10,7 @@ from app.routes import (
     corrections,
     customers,
     dictionary,
+    export,
     history,
     home,
     products,
@@ -47,3 +48,4 @@ app.include_router(returns.router)
 app.include_router(corrections.router)
 app.include_router(history.router)
 app.include_router(reports.router)
+app.include_router(export.router)

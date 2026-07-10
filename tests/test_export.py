@@ -17,7 +17,6 @@ import io
 
 from app.services.export import _csv_rows, _csv_safe, _encode_once
 
-
 # --- service-level: BOM-once + delimiter correctness (Task 1) ---------------
 
 
@@ -52,3 +51,47 @@ def test_csv_safe_prefixes_formula_injection_chars():
 def test_csv_safe_leaves_normal_values_untouched():
     assert _csv_safe("Обычное имя") == "Обычное имя"
     assert _csv_safe("") == ""
+
+
+# --- route-level: /export page + three download routes (Task 2) ------------
+
+
+def test_web_export_page_has_three_download_links(client):
+    response = client.get("/export")
+    assert response.status_code == 200
+    body = response.text
+    assert 'href="/export/products.csv"' in body
+    assert 'href="/export/sales.csv"' in body
+    assert 'href="/export/customers.csv"' in body
+    # UI-SPEC hard rule: plain anchors only — htmx would break the native
+    # Content-Disposition download by trying to swap the CSV into the DOM.
+    assert 'hx-get="/export' not in body
+
+
+def test_products_csv_roundtrip(client, product):
+    response = client.get("/export/products.csv")
+    assert response.status_code == 200
+    assert "products.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    assert rows[0] == ["Код", "Название", "Категория", "Закупка", "Продажа", "Каталог", "Остаток"]
+    # Exactly one seeded product from the `product` fixture.
+    assert len(rows) == 2
+    assert rows[1][0] == product.code
+    assert rows[1][1] == product.name
+
+
+def test_web_export_ignores_client_params(client, product):
+    baseline = client.get("/export/products.csv").content
+    response = client.get("/export/products.csv?path=..%5Cevil&filename=x.csv")
+    assert response.status_code == 200
+    assert response.content == baseline
+    assert "evil" not in response.text
+
+
+def test_web_nav_has_export_link(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/export"' in response.text
+    assert "Экспорт" in response.text
