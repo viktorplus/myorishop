@@ -109,3 +109,15 @@ None - no external service configuration required.
 ---
 *Phase: 05-stock-operations-history*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+- FOUND: app/routes/returns.py
+- FOUND: app/routes/corrections.py
+- FOUND: app/routes/writeoffs.py
+- FOUND: tests/test_returns.py
+- FOUND: .planning/phases/05-stock-operations-history/05-07-SUMMARY.md
+- FOUND commit: 95eb5d8 (test)
+- FOUND commit: 784ee49 (feat)
+- FOUND commit: cbb71a9 (fix)
+- FOUND commit: 6bc31f6 (docs: summary)
