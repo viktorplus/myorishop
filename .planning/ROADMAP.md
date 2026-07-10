@@ -32,7 +32,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 
 **Milestone Goal:** Support multiple physical warehouses with in-warehouse locations, batch/lot-level stock (distinct expiry dates and prices per batch, chosen manually at sale time), category browsing, minimum-price guardrails, and a dedicated mobile flow.
 
-- [ ] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product
+- [x] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product (completed 2026-07-10)
 - [ ] **Phase 8: Warehouses** - Operators create and manage multiple physical warehouses
 - [ ] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch
 - [ ] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
@@ -64,7 +64,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 07-03-PLAN.md — PRICE-01 (sale guardrail): register_sale() price-floor check, warning partial, route wiring
+- [x] 07-03-PLAN.md — PRICE-01 (sale guardrail): register_sale() price-floor check, warning partial, route wiring
 
 **UI hint**: yes
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Sales & Customers | v1.0 | 6/6 | Complete | 2026-07-09 |
 | 5. Stock Operations & History | v1.0 | 9/9 | Complete | 2026-07-10 |
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
-| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 2/3 | In Progress|  |
+| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 3/3 | Complete   | 2026-07-10 |
 | 8. Warehouses | v1.1 | 0/TBD | Not started | - |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
