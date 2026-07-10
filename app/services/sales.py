@@ -105,6 +105,14 @@ def register_sale(
                 price_cents = to_cents(price_text)
             except ValueError:
                 errors[f"price-{i}"] = catalog.PRICE_ERROR
+            else:
+                # WR-04 (mirrors catalog.parse_optional_cents): a negative
+                # sale price has no domain meaning regardless of whether
+                # min_sale_cents is configured — reject with the same
+                # PRICE_ERROR convention used for every other money field.
+                if price_cents < 0:
+                    errors[f"price-{i}"] = catalog.PRICE_ERROR
+                    price_cents = None
 
         # Active-only lookup — a soft-deleted product's code is unknown.
         product = session.scalars(
