@@ -88,7 +88,7 @@ def return_form_page(
     if origin is None:
         context = _empty_context(origin_op_id, {"form": ORIGIN_NOT_FOUND_ERROR})
         return templates.TemplateResponse(
-            request, "partials/return_form.html", context, status_code=404
+            request, "partials/return_form.html", context, status_code=422
         )
     context = _origin_context(session, origin, {})
     return templates.TemplateResponse(request, "partials/return_form.html", context)
@@ -107,6 +107,11 @@ def return_create(
     try:
         result, errors = register_return(session, origin_op_id=origin_op_id, qty_raw=qty)
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # CR-03: rollback FIRST — an unexpected failure may have left the
+        # session needing rollback (e.g. a failed flush/commit); any further
+        # query below (_origin_context/_empty_context) would otherwise raise
+        # an unhandled PendingRollbackError instead of this graceful 422.
+        session.rollback()
         # WR-02 analog: log so a real bug isn't silently reduced to a
         # generic user-facing message with no server-side trace.
         logger.exception("register_return failed")

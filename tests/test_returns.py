@@ -13,13 +13,13 @@ everything else is service level. Selectors: link_and_freeze,
 returnable_cap, entry_point.
 """
 
-from app.services.returns import register_return, returnable_qty  # noqa: F401
 from sqlalchemy import select
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import Operation, Sale
 from app.services.ledger import compute_stock, record_operation
+from app.services.returns import register_return, returnable_qty  # noqa: F401
 
 
 def _return_ops(session):
@@ -121,3 +121,48 @@ def test_web_return_entry_point(client, session, stocked_product):
     assert response.status_code == 200
     assert stocked_product.name in response.text
     assert "15,00" in response.text  # frozen sale price rendered via | cents
+
+
+def test_web_return_origin_not_found_uses_422(client):
+    """CR-02: an unresolvable origin returns 422 (htmx-swappable per
+    base.html's responseHandling allow-list), not 404 (silently discarded)."""
+    response = client.get(
+        "/returns",
+        params={"sale_id": "", "product_id": "", "origin_op_id": "bogus-id"},
+    )
+    assert response.status_code == 422
+    assert "Исходная продажа не найдена." in response.text
+
+
+def test_web_return_survives_unexpected_error(client, session, stocked_product, monkeypatch):
+    """CR-03: an unexpected (non-ValueError/IntegrityError) exception must
+    not crash via an unhandled PendingRollbackError when the except block
+    re-queries the (now-tainted) session for the error context.
+
+    A failed flush (duplicate primary key) is what genuinely leaves a
+    SQLAlchemy Session needing an explicit rollback() before further use —
+    unlike a plain failed SELECT, which SQLite does not poison a
+    transaction over (Postgres would, SQLite does not)."""
+    from sqlalchemy.exc import IntegrityError
+
+    import app.services.returns as returns_service
+    from app.models import Product
+
+    _header, sale_op = _make_sale(session, stocked_product, qty=2)
+
+    def _boom(*args, **kwargs):
+        # Taint the session with a failed flush, mirroring a session left
+        # needing rollback() after record_operation's own commit fails for
+        # a reason other than ValueError/IntegrityError.
+        session.add(Product(id=stocked_product.id, code="DUP", name="dup", quantity=0))
+        try:
+            session.flush()
+        except IntegrityError:
+            pass
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(returns_service, "record_operation", _boom)
+
+    response = client.post("/returns", data={"origin_op_id": sale_op.id, "qty": "1"})
+    assert response.status_code == 422
+    assert "Не удалось сохранить" in response.text
