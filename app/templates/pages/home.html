@@ -5,8 +5,10 @@
 {% if product %}
 {# D-12/D-17: the walking-skeleton correction form is retired — the
    authoritative correction path is /corrections and the authoritative
-   full audit trail is /history. #}
-<p><a href="/corrections">Корректировка остатка</a> · <a href="/history">История операций</a></p>
+   full audit trail is /history. Write-off link closes the OPS-01 UI gap
+   (05-VERIFICATION.md Gap #1 / 05-REVIEW.md CR-01): /writeoff had no
+   navigation entry point anywhere in the rendered UI. #}
+<p><a href="/writeoff">Списание</a> · <a href="/corrections">Корректировка остатка</a> · <a href="/history">История операций</a></p>
 
 {% include "partials/ledger_rows.html" %}
 {% else %}
