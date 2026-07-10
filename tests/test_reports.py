@@ -529,3 +529,54 @@ def test_stale_excludes_soft_deleted_never_sold_product(session, product):
 
     result = stale_products(session)
     assert result == []
+
+
+def test_web_reports_products_top_selling_ranked(client, session, product):
+    other = Product(id=new_id(), code="TEST-002", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-3,
+        unit_price_cents=1000,
+    )
+    record_operation(
+        session,
+        type_="sale",
+        product_id=other.id,
+        qty_delta=-5,
+        unit_price_cents=1000,
+    )
+
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+    assert "Топ продаж" in response.text
+    assert response.text.index(other.name) < response.text.index(product.name)
+
+
+def test_web_reports_products_stale_shows_never_sold_as_nikogda(client, product):
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+    assert "Никогда" in response.text
+    assert product.code in response.text
+
+
+def test_web_reports_products_stale_independent_of_bad_period(client, product):
+    response = client.get("/reports/products", params={"from": "garbage"})
+    assert response.status_code == 200
+    assert "Некорректная дата." in response.text
+    # stale section still renders correctly despite the top-selling half's error
+    assert "Никогда" in response.text
+    assert product.code in response.text
+
+
+def test_web_reports_landing_links_to_all_four_reports(client):
+    response = client.get("/reports")
+    assert response.status_code == 200
+    assert 'href="/reports/sales"' in response.text
+    assert 'href="/reports/stock"' in response.text
+    assert 'href="/reports/writeoffs"' in response.text
+    assert 'href="/reports/products"' in response.text

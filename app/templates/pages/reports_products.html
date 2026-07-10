@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Топ и залежавшиеся товары</h1>
+
+{% with period_action = "/reports/products", period_target = "#top-selling-results" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+
+<div id="top-selling-results">
+  {% include "partials/top_selling_rows.html" %}
+</div>
+
+<h2>Залежавшиеся товары</h2>
+{% if not stale_rows %}
+<p class="empty-state muted">Залежавшихся товаров нет.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Код</th>
+      <th>Название</th>
+      <th>Последняя продажа</th>
+      <th class="num">Дней без продаж</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in stale_rows %}
+    <tr>
+      <td>{{ row.product.code or "" }}</td>
+      <td>{{ row.product.name }}</td>
+      <td>{% if row.last_sale_iso is none %}Никогда{% else %}{{ row.last_sale_iso | local_dt }}{% endif %}</td>
+      <td class="num">{% if row.days_since is none %}<span class="muted">—</span>{% else %}{{ row.days_since }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
