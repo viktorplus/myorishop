@@ -65,6 +65,18 @@
     {% if errors.catalog %}<p class="error">{{ errors.catalog }}</p>{% endif %}
   </div>
 
+  <div class="field">
+    <label for="low_stock_threshold">Порог «мало на складе», шт. <span class="muted">(необязательно, по умолчанию: {{ low_stock_default }})</span></label>
+    <input type="text" id="low_stock_threshold" name="low_stock_threshold" inputmode="numeric" value="{% if form %}{{ form.low_stock_threshold or '' }}{% elif product and product.low_stock_threshold is not none %}{{ product.low_stock_threshold }}{% endif %}">
+    {% if errors.low_stock_threshold %}<p class="error">{{ errors.low_stock_threshold }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="stale_days">Дней без продаж = «залежался» <span class="muted">(необязательно, по умолчанию: {{ stale_days_default }})</span></label>
+    <input type="text" id="stale_days" name="stale_days" inputmode="numeric" value="{% if form %}{{ form.stale_days or '' }}{% elif product and product.stale_days is not none %}{{ product.stale_days }}{% endif %}">
+    {% if errors.stale_days %}<p class="error">{{ errors.stale_days }}</p>{% endif %}
+  </div>
+
   {% if not (product and product.deleted_at) %}
   <div class="form-actions">
     <button type="submit">Сохранить товар</button>

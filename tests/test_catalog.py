@@ -91,6 +91,57 @@ def test_create_product_rejects_duplicate_active_code(session):
     assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 1
 
 
+def test_create_product_threshold_fields_empty_means_none(session):
+    """D-05: empty threshold raw strings -> NULL columns ('use global default')."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        low_stock_threshold_raw="",
+        stale_days_raw="",
+    )
+    assert errors == {}
+    assert product is not None
+    assert product.low_stock_threshold is None
+    assert product.stale_days is None
+
+
+def test_create_product_threshold_zero_is_stored_as_zero_not_none(session):
+    """Pitfall 3 (service level): an explicit "0" is stored as int 0, never None."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        low_stock_threshold_raw="0",
+        stale_days_raw="0",
+    )
+    assert errors == {}
+    assert product is not None
+    assert product.low_stock_threshold == 0
+    assert product.stale_days == 0
+
+
+def test_create_product_rejects_invalid_threshold(session):
+    """T-06-01: non-digit and negative threshold values are rejected, not clamped."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        **EMPTY_MONEY,
+        low_stock_threshold_raw="abc",
+        stale_days_raw="-1",
+    )
+    assert product is None
+    assert "low_stock_threshold" in errors
+    assert "stale_days" in errors
+    assert session.scalar(text("SELECT COUNT(*) FROM products")) == 0
+
+
 def test_duplicate_active_code_blocked_by_db_index(session, product):
     """WR-04: uq_products_code_active is the DB backstop, not just app code."""
     import sqlalchemy as sa
@@ -218,6 +269,37 @@ def test_migration_0002_fresh_db_and_backfill(tmp_path, monkeypatch):
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
         }
         assert {"ix_products_code", "ix_products_name_lc"} <= indexes
+
+
+def test_migration_0005_adds_threshold_columns(tmp_path, monkeypatch):
+    """Migration 0005: fresh upgrade adds NULL low_stock_threshold/stale_days."""
+    db_file = tmp_path / "fresh.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0004")
+
+    now = "2026-07-10T00:00:00+00:00"
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("00000000-0000-4000-8000-000000000005", "5555", "Порог-Тест", 0, now, now),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(products)")}
+        assert {"low_stock_threshold", "stale_days"} <= cols
+
+        low_stock_threshold, stale_days = conn.execute(
+            "SELECT low_stock_threshold, stale_days FROM products WHERE name = ?",
+            ("Порог-Тест",),
+        ).fetchone()
+        assert low_stock_threshold is None
+        assert stale_days is None
 
 
 def test_category_options_distinct_active_only(session):
@@ -413,6 +495,34 @@ def test_update_non_price_fields_records_product_edited(session):
     assert ops[0].payload == {"fields": ["category", "name"]}
     session.expire_all()
     assert product.name_lc == "тени для век"  # D-27: unconditional Python lower
+
+
+def test_update_product_threshold_change_writes_product_edited_op(session):
+    """D-04/D-05: a threshold-only edit writes exactly one product_edited op."""
+    product, errors = create_product(
+        session, code="1234", name="Помада", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    updated, errors = update_product(
+        session,
+        product.id,
+        code="1234",
+        name="Помада",
+        category="",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        low_stock_threshold_raw="",
+        stale_days_raw="7",
+    )
+    assert errors == {}
+    assert updated is not None
+    ops = session.scalars(select(Operation).where(Operation.type == "product_edited")).all()
+    assert len(ops) == 1
+    assert ops[0].payload == {"fields": ["stale_days"]}
+    session.expire_all()
+    assert updated.stale_days == 7
+    assert updated.low_stock_threshold is None
 
 
 def test_update_rejects_duplicate_active_code_excluding_self(session):
