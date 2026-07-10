@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Продажи и прибыль</h1>
+
+{% with period_action = "/reports/sales", period_target = "#sales-results" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+
+<div id="sales-results">
+  {% include "partials/sales_report_results.html" %}
+</div>
+{% endblock %}

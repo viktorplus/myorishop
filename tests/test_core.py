@@ -75,7 +75,7 @@ def test_local_day_bounds_utc_evening_sale_within_local_day():
 
 
 def test_local_day_bounds_utc_next_local_day_excluded():
-    """D-02: 00:30 local time on 2026-07-11 (21:30 UTC on the 10th) belongs to July 11, NOT July 10."""
+    """D-02: 00:30 local on 2026-07-11 (21:30 UTC the 10th) belongs to July 11, NOT July 10."""
     start_iso, end_iso = local_day_bounds_utc(
         date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow"
     )
@@ -84,7 +84,7 @@ def test_local_day_bounds_utc_next_local_day_excluded():
 
 
 def test_local_day_bounds_utc_week_range_is_half_open():
-    """D-02: a 7-day Monday-Sunday range's end_iso is local midnight of the Monday AFTER — never a closed range."""
+    """D-02: a 7-day Mon-Sun range's end_iso is local midnight of the day AFTER — never closed."""
     monday = date(2026, 7, 6)
     sunday = date(2026, 7, 12)
     start_iso, end_iso = local_day_bounds_utc(monday, sunday, "Europe/Moscow")

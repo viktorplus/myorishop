@@ -1,0 +1,48 @@
+{# Sales/profit results (RPT-01): summary totals + per-product breakdown.
+   Swapped in place by the period filter's hx-get/hx-target — no wrapping
+   id here, the page template supplies div#sales-results around the
+   include (this same partial is the HX innerHTML swap payload). #}
+{% if report is none %}
+<div class="error-block">
+  <p class="error">Не удалось загрузить отчёт. Проверьте даты и попробуйте ещё раз.</p>
+</div>
+{% elif report.totals.units_sold == 0 %}
+<p class="empty-state muted">За выбранный период продаж не было.</p>
+{% else %}
+<h2>Итоги за период</h2>
+<table>
+  <tbody>
+    <tr><td>Продано, шт.</td><td class="num">{{ report.totals.units_sold }}</td></tr>
+    <tr><td>Выручка</td><td class="num">{{ report.totals.revenue_cents | cents }}</td></tr>
+    <tr><td>Себестоимость</td><td class="num">{{ report.totals.cost_cents | cents }}</td></tr>
+    <tr><td>Прибыль</td><td class="num">{{ report.totals.profit_cents | cents }}</td></tr>
+  </tbody>
+</table>
+{% if report.cost_unknown_count > 0 %}
+<p class="muted">{{ report.cost_unknown_count }} продаж без указанной себестоимости — прибыль по ним не учтена.</p>
+{% endif %}
+
+<h2>По товарам</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Товар</th>
+      <th class="num">Продано, шт.</th>
+      <th class="num">Выручка</th>
+      <th class="num">Себестоимость</th>
+      <th class="num">Прибыль</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in report.by_product %}
+    <tr>
+      <td>{{ row.product.name }} ({{ row.product.code }})</td>
+      <td class="num">{{ row.qty }}</td>
+      <td class="num">{{ row.revenue_cents | cents }}</td>
+      <td class="num">{{ row.cost_cents | cents }}</td>
+      <td class="num">{{ row.profit_cents | cents }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

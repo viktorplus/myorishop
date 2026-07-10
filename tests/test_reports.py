@@ -137,3 +137,48 @@ def test_sales_report_includes_deleted_product_for_past_period(session, product,
     report = sales_profit_report(session, start_iso, end_iso)
     assert len(report["by_product"]) == 1
     assert report["by_product"][0]["product"] is product
+
+
+def test_web_reports_landing_links_to_sales(client):
+    response = client.get("/reports")
+    assert response.status_code == 200
+    assert 'href="/reports/sales"' in response.text
+
+
+def test_web_reports_sales_today_default(client):
+    """D-01: no query params defaults to today's preset; active preset has no secondary class."""
+    response = client.get("/reports/sales")
+    assert response.status_code == 200
+    assert ">Сегодня</a>" in response.text
+    assert ">Неделя</a>" in response.text
+    assert ">Месяц</a>" in response.text
+
+    today_start = response.text.index(">Сегодня</a>")
+    today_anchor = response.text[: today_start + len(">Сегодня</a>")]
+    today_anchor = today_anchor[today_anchor.rindex("<a "):]
+    assert "secondary" not in today_anchor
+
+    week_start = response.text.index(">Неделя</a>")
+    week_anchor = response.text[: week_start + len(">Неделя</a>")]
+    week_anchor = week_anchor[week_anchor.rindex("<a "):]
+    assert "secondary" in week_anchor
+
+
+def test_web_reports_sales_invalid_date_shows_ru_error(client):
+    response = client.get("/reports/sales", params={"from": "not-a-date", "to": "2026-07-10"})
+    assert response.status_code == 200
+    assert "Некорректная дата." in response.text
+
+
+def test_web_reports_sales_hx_request_returns_partial_only(client):
+    """D-03/CR-01: an HX-Request returns only the results fragment, no chrome."""
+    response = client.get("/reports/sales", headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    assert "<html" not in response.text
+    assert "<nav" not in response.text
+
+
+def test_web_nav_has_reports_link(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/reports"' in response.text
