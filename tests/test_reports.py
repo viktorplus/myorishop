@@ -8,10 +8,16 @@ Product.deleted_at" contract (RESEARCH Pitfall 5).
 
 from datetime import date
 
+from app.config import settings
 from app.core import local_day_bounds_utc, new_id
 from app.models import Product
 from app.services.ledger import record_operation
 from app.services.reports import sales_profit_report
+from app.services.stock import (
+    all_active_products,
+    effective_low_stock_threshold,
+    low_stock_products,
+)
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
@@ -182,3 +188,64 @@ def test_web_nav_has_reports_link(client):
     response = client.get("/")
     assert response.status_code == 200
     assert 'href="/reports"' in response.text
+
+
+def test_effective_threshold_zero_not_fallback(session, product):
+    """RESEARCH/Pitfall 3: an explicit 0 threshold never falls back to global default."""
+    product.low_stock_threshold = 0
+    product.quantity = 0
+    session.commit()
+    assert effective_low_stock_threshold(product) == 0
+    assert product in low_stock_products(session)
+
+    product.quantity = 1
+    session.commit()
+    assert effective_low_stock_threshold(product) == 0
+    assert product not in low_stock_products(session)
+
+
+def test_low_stock_uses_global_fallback(session, product):
+    """A product with no per-product threshold uses settings.low_stock_threshold."""
+    assert product.low_stock_threshold is None
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=settings.low_stock_threshold,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+    )
+    assert effective_low_stock_threshold(product) == settings.low_stock_threshold
+    assert product in low_stock_products(session)
+
+
+def test_low_stock_excludes_deleted_products(session, product):
+    product.low_stock_threshold = 0
+    product.quantity = 0
+    product.deleted_at = "2026-07-10T00:00:00+00:00"
+    session.commit()
+    assert product not in low_stock_products(session)
+
+
+def test_low_stock_products_sorted_by_quantity_ascending(session, product):
+    other = Product(
+        id=new_id(), code="TEST-002", name="Другой товар", quantity=3, low_stock_threshold=10
+    )
+    session.add(other)
+    product.low_stock_threshold = 10
+    product.quantity = 1
+    session.commit()
+
+    result = low_stock_products(session)
+    assert [p.id for p in result] == [product.id, other.id]
+
+
+def test_all_active_products_excludes_deleted(session, product):
+    other = Product(id=new_id(), code="TEST-003", name="Удалённый товар", quantity=0)
+    other.deleted_at = "2026-07-10T00:00:00+00:00"
+    session.add(other)
+    session.commit()
+
+    result = all_active_products(session)
+    assert product in result
+    assert other not in result
