@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Catalog, Dictionary & Search** - Product cards, code→name dictionary with autofill, instant search (completed 2026-07-08)
 - [x] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry (completed 2026-07-09)
 - [x] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history (completed 2026-07-09)
-- [ ] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing (gap found in re-verification 2026-07-10 -- see 05-VERIFICATION.md)
+- [x] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing (gap found in re-verification 2026-07-10 -- see 05-VERIFICATION.md) (completed 2026-07-10)
 - [ ] **Phase 6: Reports & Data Export** - Period reports (sales, profit, stock, write-offs, top/stale products) and CSV export
 
 ## Phase Details
@@ -205,5 +205,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Catalog, Dictionary & Search | 4/4 | Complete    | 2026-07-08 |
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
-| 5. Stock Operations & History | 8/8 | Complete   | 2026-07-10 |
+| 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
 | 6. Reports & Data Export | 0/TBD | Not started | - |
