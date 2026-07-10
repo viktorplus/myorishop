@@ -191,8 +191,27 @@ Plans:
   4. Operator can view top-selling products and products with no sales for a long time
   5. Operator can export products, sales, and customers to CSV files
 
-**Plans**: TBD
+**Plans**: 6 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Product threshold configuration slice: migration 0005 (low_stock_threshold/stale_days) + product-form fields + audit trail (RPT-02, RPT-04)
+- [ ] 06-02-PLAN.md — Sales & profit report + reporting infrastructure: local_day_bounds_utc, /reports landing, period filter partial, nav (RPT-01)
+
+**Wave 2** *(blocked on Wave 1 completion; 06-03 and 06-04 run in parallel — zero file overlap)*
+
+- [ ] 06-03-PLAN.md — Stock & low-stock report: effective-threshold service, /reports/stock (RPT-02)
+- [ ] 06-04-PLAN.md — CSV export: products/sales/customers streaming CSV, /export page + nav (BCK-02)
+
+**Wave 3** *(blocked on Wave 2 completion — shares app/routes/reports.py)*
+
+- [ ] 06-05-PLAN.md — Write-off report: Python-side grouping by reason_code, /reports/writeoffs (RPT-03)
+
+**Wave 4** *(blocked on Wave 3 completion — shares app/routes/reports.py)*
+
+- [ ] 06-06-PLAN.md — Top-selling & stale products report: SQL aggregation + effective stale-days threshold, /reports/products (RPT-04)
 
 ## Progress
 
@@ -206,4 +225,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
 | 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
-| 6. Reports & Data Export | 0/TBD | Not started | - |
+| 6. Reports & Data Export | 0/6 | Not started | - |
