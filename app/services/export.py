@@ -139,7 +139,7 @@ def stream_customers_csv(session: Session) -> StreamingResponse:
         [
             _csv_safe(customer.name),
             _csv_safe(customer.surname or ""),
-            customer.consultant_number or "",
+            _csv_safe(customer.consultant_number or ""),
             iso_to_local(customer.created_at, settings.display_tz),
         ]
         for customer in customers
