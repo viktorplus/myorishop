@@ -31,6 +31,13 @@ def history_page(
     # existing `selected` logic. Filter presence alone must never route to
     # the chrome-less partial (that was the CR-01 bug: a real browser drops
     # a bare rows fragment per HTML5 parsing rules, rendering a blank page).
+    # CR-01 (new, 05-09): the chrome-less HX response now renders the
+    # combined-response partial below, which pairs the data-rows main-swap
+    # payload with an oob update of the now-<tfoot>-isolated #load-more
+    # control. A filter change's default innerHTML swap on #history-tbody
+    # and the pagination button's own beforeend swap into the same target
+    # can no longer destroy the pagination control (previously both lived
+    # inside #history-tbody, the exact defect this plan fixes).
     is_hx = bool(request.headers.get("HX-Request"))
     context = {
         "rows": result["rows"],
@@ -38,9 +45,8 @@ def history_page(
         "page": result["page"],
         "type_filter": result["type_filter"],
         "product_id": result["product_id"],
-        "oob": is_hx,
     }
     if is_hx:
-        return templates.TemplateResponse(request, "partials/history_rows.html", context)
+        return templates.TemplateResponse(request, "partials/history_response.html", context)
     context["products"] = filter_products(session)
     return templates.TemplateResponse(request, "pages/history.html", context)

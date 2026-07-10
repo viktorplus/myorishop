@@ -4,11 +4,12 @@
    Autoescape only — product names, payload notes, and created_by are
    untrusted-at-rest text (T-05-18); NEVER |safe.
 
-   Rendered both on the full page (oob=False, wrapped by pages/history.html's
-   <tbody id="history-tbody">) and on every HX filter/pagination response
-   (the plain <tr> rows are the swap/append payload; the trailing
-   #load-more row carries hx-swap-oob so a "Показать ещё" click replaces
-   only itself in place, never duplicating the control). #}
+   DATA ROWS ONLY (CR-01 fix, 05-09): this partial no longer contains the
+   #load-more pagination control or reads an `oob` variable. The control
+   moved to partials/history_load_more.html, rendered inside <tfoot> — a
+   structural sibling of <tbody id="history-tbody">, never touched by this
+   partial's own content or by the filter <select>s' default innerHTML swap
+   on that tbody. #}
 {% if not rows %}
 <tr>
   <td colspan="8" class="empty-state muted">
@@ -37,16 +38,3 @@
 </tr>
 {% endfor %}
 {% endif %}
-{# D-15: fetch-one-extra sentinel drives has_next; the control is a <tr> (not
-   a bare <div>) so it stays valid inside <tbody> and survives beforeend
-   pagination appends without the browser foster-parenting a stray block
-   element out of the table. #}
-<tr id="load-more"{% if oob %} hx-swap-oob="true"{% endif %}>
-  {% if has_next %}
-  <td colspan="8">
-    <button type="button" class="secondary"
-            hx-get="/history?type={{ type_filter }}&product={{ product_id }}&page={{ page + 1 }}"
-            hx-target="#history-tbody" hx-swap="beforeend" hx-disabled-elt="this">Показать ещё</button>
-  </td>
-  {% endif %}
-</tr>

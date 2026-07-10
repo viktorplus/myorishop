@@ -12,10 +12,9 @@ Requirements -> Test Map): route/e2e tests are prefixed test_web_;
 everything else is service level. Selectors: rows, filters, pagination.
 """
 
-from app.services.operations import history_view  # noqa: F401
-
 from app.config import settings
 from app.services.ledger import record_operation
+from app.services.operations import history_view  # noqa: F401
 
 
 def _seed_mixed_ops(session, product):
@@ -102,3 +101,36 @@ def test_web_history_filtered_reload_returns_full_chrome(client, session, stocke
     assert "<table" in response.text
     assert "<td>Списание</td>" in response.text
     assert "<td>Корректировка</td>" not in response.text
+
+
+def test_web_history_load_more_survives_filter_change(client, session, stocked_product):
+    """CR-01 (new)/OPS-04: #load-more must survive a filter-select change on
+    a >50-row filtered result set. The old bug nested <tr id="load-more"> INSIDE
+    <tbody id="history-tbody">, the exact element the type/product <select>s
+    target with htmx's default (unset -> innerHTML) swap; the oob-before-main
+    ordering meant the main swap wiped the oob-placed control right after it
+    landed, permanently stranding pagination past page 1 of any filtered
+    view. The fix moves #load-more into its own <tfoot>, a DOM sibling of
+    #history-tbody untouched by that tbody's innerHTML/beforeend swaps."""
+    for _ in range(51):
+        record_operation(session, type_="writeoff", product_id=stocked_product.id, qty_delta=-1)
+
+    full_page = client.get("/history", params={"type": "writeoff"})
+    assert full_page.status_code == 200
+    tbody_start = full_page.text.index('<tbody id="history-tbody">')
+    tbody_end = full_page.text.index("</tbody>", tbody_start)
+    tbody_html = full_page.text[tbody_start:tbody_end]
+    assert 'id="load-more"' not in tbody_html
+    assert "<tfoot>" in full_page.text
+    tfoot_start = full_page.text.index("<tfoot>")
+    tfoot_html = full_page.text[tfoot_start:]
+    assert 'id="load-more"' in tfoot_html
+    assert "Показать ещё" in tfoot_html
+
+    hx_response = client.get(
+        "/history", params={"type": "writeoff"}, headers={"HX-Request": "true"}
+    )
+    assert hx_response.status_code == 200
+    assert 'id="load-more"' in hx_response.text
+    assert "hx-swap-oob" in hx_response.text
+    assert "Показать ещё" in hx_response.text

@@ -1,0 +1,18 @@
+{# History load-more control (OPS-04/D-15, CR-01 fix 05-09): the "Показать
+   ещё" pagination control now lives in its own <tfoot> — a structural
+   sibling of <tbody id="history-tbody">, never a descendant. This isolates
+   it from #history-tbody's own innerHTML swap (a filter <select> change)
+   and beforeend swap (this button's own click), which used to destroy or
+   reposition it when the control was nested inside the tbody's row payload
+   (05-VERIFICATION.md's CR-01). The `oob` variable still drives
+   hx-swap-oob so every HX response can update this now-isolated row in
+   place. #}
+<tr id="load-more"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if has_next %}
+  <td colspan="8">
+    <button type="button" class="secondary"
+            hx-get="/history?type={{ type_filter }}&product={{ product_id }}&page={{ page + 1 }}"
+            hx-target="#history-tbody" hx-swap="beforeend" hx-disabled-elt="this">Показать ещё</button>
+  </td>
+  {% endif %}
+</tr>
