@@ -104,3 +104,11 @@ None - no external service configuration required.
 ---
 *Phase: 07-category-browsing-minimum-price-guardrail*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+- FOUND: app/services/sales.py
+- FOUND: tests/test_sales.py
+- FOUND: .planning/phases/07-category-browsing-minimum-price-guardrail/07-04-SUMMARY.md
+- FOUND commit: def53f9 (fix(07-04): reject negative sale-line prices in register_sale)
+- FOUND commit: 14cdc98 (docs(07-04): complete negative sale-price gap-closure plan)
