@@ -15,7 +15,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 
 ### Categories
 
-- [ ] **CAT-01**: "Товары на складе" page groups products by category/rubric
+- [x] **CAT-01**: "Товары на складе" page groups products by category/rubric
 
 ### Batches & Lots
 
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WH-01 | Phase 8 | Pending |
 | WH-02 | Phase 9 | Pending |
 | WH-03 | Phase 10 | Pending |
-| CAT-01 | Phase 7 | Pending |
+| CAT-01 | Phase 7 | Complete |
 | LOT-01 | Phase 9 | Pending |
 | LOT-02 | Phase 9 | Pending |
 | LOT-03 | Phase 9 | Pending |
@@ -86,6 +86,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-01 | Phase 11 | Pending |
 
 **Coverage:**
+
 - v1.1 requirements: 12 total
 - Mapped to phases: 12 (roadmap revised 2026-07-10, Phases 7-11)
 - Unmapped: 0 ✓

@@ -145,7 +145,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Sales & Customers | v1.0 | 6/6 | Complete | 2026-07-09 |
 | 5. Stock Operations & History | v1.0 | 9/9 | Complete | 2026-07-10 |
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
-| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete   | 2026-07-10 |
+| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 0/TBD | Not started | - |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
