@@ -376,3 +376,50 @@ def test_web_reports_landing_links_to_stock(client):
     response = client.get("/reports")
     assert response.status_code == 200
     assert 'href="/reports/stock"' in response.text
+
+
+def test_web_reports_writeoffs_groups_by_reason(client, session, product):
+    record_operation(
+        session,
+        type_="writeoff",
+        product_id=product.id,
+        qty_delta=-3,
+        payload={"reason_code": "expired", "note": ""},
+    )
+    record_operation(
+        session,
+        type_="writeoff",
+        product_id=product.id,
+        qty_delta=-2,
+        payload={"reason_code": "damaged", "note": ""},
+    )
+
+    response = client.get("/reports/writeoffs")
+    assert response.status_code == 200
+    assert "Причина" in response.text
+    assert "Кол-во, шт." in response.text
+    assert WRITEOFF_REASONS["damaged"] in response.text
+    assert WRITEOFF_REASONS["expired"] in response.text
+    # order follows WRITEOFF_REASONS' own key order (damaged before expired)
+    assert response.text.index(WRITEOFF_REASONS["damaged"]) < response.text.index(
+        WRITEOFF_REASONS["expired"]
+    )
+
+
+def test_web_reports_writeoffs_empty_state(client):
+    response = client.get("/reports/writeoffs")
+    assert response.status_code == 200
+    assert "За выбранный период списаний не было." in response.text
+
+
+def test_web_reports_writeoffs_hx_request_returns_partial_only(client):
+    response = client.get("/reports/writeoffs", headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    assert "<html" not in response.text
+    assert "<nav" not in response.text
+
+
+def test_web_reports_landing_links_to_writeoffs(client):
+    response = client.get("/reports")
+    assert response.status_code == 200
+    assert 'href="/reports/writeoffs"' in response.text

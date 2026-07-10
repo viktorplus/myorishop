@@ -1,0 +1,30 @@
+{# Write-off results (RPT-03): grouped by reason_code in WRITEOFF_REASONS
+   order. Swapped in place by the period filter's hx-get/hx-target — no
+   wrapping id here, the page template supplies div#writeoffs-results
+   around the include (this same partial is the HX innerHTML swap payload),
+   mirroring sales_report_results.html's own structure exactly. #}
+{% if report is none %}
+<div class="error-block">
+  <p class="error">Не удалось загрузить отчёт. Проверьте даты и попробуйте ещё раз.</p>
+</div>
+{% elif report.by_reason | length == 0 %}
+<p class="empty-state muted">За выбранный период списаний не было.</p>
+{% else %}
+<h2>Списания по причинам</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Причина</th>
+      <th class="num">Кол-во, шт.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for entry in report.by_reason %}
+    <tr>
+      <td>{{ entry.label }}</td>
+      <td class="num">{{ entry.qty }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
