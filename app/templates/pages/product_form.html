@@ -60,6 +60,12 @@
   </div>
 
   <div class="field">
+    <label for="min_sale">Минимальная цена продажи <span class="muted">(необязательно)</span></label>
+    <input type="text" id="min_sale" name="min_sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.min_sale or '' }}{% elif product and product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% endif %}">
+    {% if errors.min_sale %}<p class="error">{{ errors.min_sale }}</p>{% endif %}
+  </div>
+
+  <div class="field">
     <label for="catalog">Цена по каталогу <span class="muted">(необязательно)</span></label>
     <input type="text" id="catalog" name="catalog" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.catalog or '' }}{% elif product and product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% endif %}">
     {% if errors.catalog %}<p class="error">{{ errors.catalog }}</p>{% endif %}
