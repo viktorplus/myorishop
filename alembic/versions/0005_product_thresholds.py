@@ -13,9 +13,9 @@ operator-entered 0 is a genuinely explicit value and is stored as 0.
 Immutability rule (WR-06): this file must never reference application
 modules. All values below are FROZEN copies.
 
-Native add_column, no batch mode — this migration never touches
+Native ADD COLUMN, no batch mode — this migration never touches
 `operations`, so the append-only triggers are not a concern here, but the
-native-add-column reasoning from 0002/0004 is restated for consistency:
+native-ADD-COLUMN reasoning from 0002/0004 is restated for consistency:
 never batch-alter a table whose migrations must stay replayable forever.
 """
 
