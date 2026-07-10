@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.routes import (
     backup,
+    categories,
     corrections,
     customers,
     dictionary,
@@ -38,6 +39,7 @@ app = FastAPI(title="MyOriShop", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(home.router)
 app.include_router(products.router)
+app.include_router(categories.router)
 app.include_router(dictionary.router)
 app.include_router(receipts.router)
 app.include_router(sales.router)
