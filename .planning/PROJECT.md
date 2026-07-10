@@ -39,20 +39,20 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 - ✓ Reports: day/week/month/custom period — sales, profit, stock levels, write-offs, top products, stale products, low-stock items — Phase 6 (RPT-01..04)
 - ✓ Data export: full products/sales/customers dump as three Excel-compatible CSV files — Phase 6 (BCK-02)
 - ✓ Simple operator UI: minimal clicks, autocomplete, oversell warnings — delivered incrementally across Phases 2-5
+- ✓ "Товары на складе" page groups products by category/rubric — Phase 7 (CAT-01)
+- ✓ Optional minimum sale price per product — selling below it warns but allows override, same pattern as oversell — Phase 7 (PRICE-01)
 
 ### Active
 
 - [ ] User can create and manage multiple warehouses (WH-01)
 - [ ] Stock item has an optional free-text storage location tag within its warehouse (WH-02)
 - [ ] User can transfer stock (a batch or part of it) from one warehouse to another without losing cost/price history (WH-03)
-- [ ] "Товары на складе" page groups products by category/rubric (CAT-01)
 - [ ] Product code can have multiple batches (lots) with distinct expiry date and price (LOT-01)
 - [ ] At sale, operator sees a list of matching batches (price, expiry, remaining qty, comment) and manually selects one (LOT-02)
 - [ ] Write-off, return, and stock correction also require selecting the specific batch, not just the product (LOT-05)
 - [ ] Optional expiry date field per batch (LOT-03)
 - [ ] Optional free-text comment per batch, shown in the sale-time batch picker (LOT-04)
 - [ ] Report of batches with an approaching/passed expiry date (LOT-06)
-- [ ] Optional minimum sale price per product — selling below it warns but allows override (PRICE-01)
 - [ ] Dedicated mobile flow — simpler single-purpose screens/steps for core operations, not a CSS-only adaptation of the desktop pages (UI-01)
 
 ### Out of Scope
@@ -93,6 +93,8 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 | Per-product threshold with global fallback (`is not None`, never bare `or`) for low-stock/stale-days | An explicit zero threshold must stay meaningful, not collapse into "use the default" | ✓ Good — Shipped Phase 6 |
 | Single shared period-filter + local-day-boundary helper reused unchanged across all four period-based reports | One code path for date math avoids drift between sales/stock/writeoffs/top-selling reports | ✓ Good — Shipped Phase 6 |
 | CSV export: BOM-once + `;` delimiter + apostrophe-escape of formula-injection prefixes, zero client-supplied params | Must open correctly in Excel with Cyrillic and be safe against formula injection, with a minimal server attack surface | ✓ Good — Shipped Phase 6, security-audited (14/14 threats closed) |
+| Python-side category grouping (dict keyed by category or "") instead of a SQL NULL-ordering trick | Guarantees the "Без категории" bucket always sorts last regardless of dict iteration order | ✓ Good — Shipped Phase 7 |
+| Every money field parse (including sale-line price) rejects negative values via the same `PRICE_ERROR` convention as `parse_optional_cents` | A negative sale-line price must never bypass the price-floor guardrail just because the product has no minimum configured | ✓ Good — Shipped Phase 7 (gap-closure plan 07-04, found by code review CR-01) |
 
 ## Evolution
 
@@ -112,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after starting v1.1 milestone (Multi-Warehouse & Batch Tracking)*
+*Last updated: 2026-07-11 after Phase 7 completion (Category Browsing & Minimum Price Guardrail)*
