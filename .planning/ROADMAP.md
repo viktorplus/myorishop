@@ -207,7 +207,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion — shares app/routes/reports.py)*
 
-- [ ] 06-05-PLAN.md — Write-off report: Python-side grouping by reason_code, /reports/writeoffs (RPT-03)
+- [x] 06-05-PLAN.md — Write-off report: Python-side grouping by reason_code, /reports/writeoffs (RPT-03)
 
 **Wave 4** *(blocked on Wave 3 completion — shares app/routes/reports.py)*
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
 | 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
-| 6. Reports & Data Export | 4/6 | In Progress|  |
+| 6. Reports & Data Export | 5/6 | In Progress|  |
