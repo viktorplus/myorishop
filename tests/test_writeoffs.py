@@ -126,3 +126,12 @@ def test_web_writeoff_oversell(client, session, stocked_product):
     session.expire_all()
     assert stocked_product.quantity <= 0
     assert len(_writeoff_ops(session)) == 1
+
+
+def test_web_writeoff_reachable_from_nav(client, product):
+    """Gap-closure guard: 05-VERIFICATION.md's Gap #1 (unreachable /writeoff
+    — no nav entry point anywhere in the rendered UI) must never silently
+    regress; the home page must always link to /writeoff."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/writeoff"' in response.text
