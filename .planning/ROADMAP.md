@@ -60,7 +60,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — PRICE-01 (schema + form): migration 0006, Product.min_sale_cents, product-form field, audit trail
+- [x] 07-02-PLAN.md — PRICE-01 (schema + form): migration 0006, Product.min_sale_cents, product-form field, audit trail
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Sales & Customers | v1.0 | 6/6 | Complete | 2026-07-09 |
 | 5. Stock Operations & History | v1.0 | 9/9 | Complete | 2026-07-10 |
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
-| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 1/3 | In Progress|  |
+| 7. Category Browsing & Minimum Price Guardrail | v1.1 | 2/3 | In Progress|  |
 | 8. Warehouses | v1.1 | 0/TBD | Not started | - |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
