@@ -113,3 +113,7 @@ None - no external service configuration required.
 ---
 *Phase: 05-stock-operations-history*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+All created/modified files confirmed on disk; both commits (`3970586` task commit, `ffc426a` SUMMARY commit) confirmed in `git log --oneline --all`.
