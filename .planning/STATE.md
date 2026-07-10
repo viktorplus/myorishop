@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 6 complete — milestone v1.0 100% done
-last_updated: "2026-07-10T16:45:45.527Z"
-last_activity: 2026-07-10
+status: Awaiting next milestone
+stopped_at: Phase 6 complete, milestone v1.0 100% done, ready for /gsd-complete-milestone
+last_updated: "2026-07-10T16:55:46.944Z"
+last_activity: 2026-07-10 — Milestone v1.0 completed and archived
 progress:
   total_phases: 6
   completed_phases: 6
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 
 ## Current Position
 
-Phase: 06 (complete — last phase in milestone v1.0)
-Plan: 6/6 complete
-Status: Milestone v1.0 complete
-Last activity: 2026-07-10
-
-Progress: [██████████] 100%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-10 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -135,10 +133,15 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
+| verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
 
 ## Session Continuity
 
 Last session: 2026-07-10
 Stopped at: Phase 6 complete, milestone v1.0 100% done, ready for /gsd-complete-milestone
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
