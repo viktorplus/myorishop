@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Goods Receipt & Backup** - Stock intake through the ledger, automated WAL-safe backups before real data entry (completed 2026-07-09)
 - [x] **Phase 4: Sales & Customers** - Sales with price override, cost snapshots, oversell warning, and customer profiles with purchase history (completed 2026-07-09)
 - [x] **Phase 5: Stock Operations & History** - Write-off, sale-linked return, stock correction, full operation history browsing (completed 2026-07-10)
-- [ ] **Phase 6: Reports & Data Export** - Period reports (sales, profit, stock, write-offs, top/stale products) and CSV export
+- [x] **Phase 6: Reports & Data Export** - Period reports (sales, profit, stock, write-offs, top/stale products) and CSV export (completed 2026-07-10)
 
 ## Phase Details
 
@@ -211,7 +211,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion — shares app/routes/reports.py)*
 
-- [ ] 06-06-PLAN.md — Top-selling & stale products report: SQL aggregation + effective stale-days threshold, /reports/products (RPT-04)
+- [x] 06-06-PLAN.md — Top-selling & stale products report: SQL aggregation + effective stale-days threshold, /reports/products (RPT-04)
 
 ## Progress
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
 | 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
-| 6. Reports & Data Export | 5/6 | In Progress|  |
+| 6. Reports & Data Export | 6/6 | Complete   | 2026-07-10 |
