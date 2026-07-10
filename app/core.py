@@ -5,7 +5,7 @@ Never use float for money (Pitfall 3) and never store naive datetimes.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -57,3 +57,24 @@ def iso_to_local(iso_str: str, tz_name: str) -> str:
     """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'."""
     moment = datetime.fromisoformat(iso_str)
     return moment.astimezone(ZoneInfo(tz_name)).strftime("%d.%m.%Y %H:%M")
+
+
+def local_day_bounds_utc(start_day: date, end_day: date, tz_name: str) -> tuple[str, str]:
+    """UTC ISO bounds for the LOCAL half-open range [start_day, end_day] inclusive.
+
+    end_day is the LAST included local calendar day; the returned upper
+    bound is local midnight of the day AFTER end_day, converted to UTC —
+    so callers filter created_at >= start AND created_at < end (never a
+    closed range, which would double-count a row landing exactly on a
+    UTC-midnight boundary). This is the ONLY sanctioned way to turn a
+    local calendar day/range into a UTC filter range (D-02): never slice
+    the UTC created_at string by date directly, or an evening sale near
+    local midnight shifts into the wrong day's report.
+    """
+    tz = ZoneInfo(tz_name)
+    start_local = datetime.combine(start_day, time.min, tzinfo=tz)
+    end_local = datetime.combine(end_day, time.min, tzinfo=tz) + timedelta(days=1)
+    return (
+        start_local.astimezone(UTC).isoformat(timespec="seconds"),
+        end_local.astimezone(UTC).isoformat(timespec="seconds"),
+    )
