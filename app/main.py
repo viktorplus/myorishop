@@ -14,6 +14,7 @@ from app.routes import (
     home,
     products,
     receipts,
+    reports,
     returns,
     sales,
     writeoffs,
@@ -45,3 +46,4 @@ app.include_router(writeoffs.router)
 app.include_router(returns.router)
 app.include_router(corrections.router)
 app.include_router(history.router)
+app.include_router(reports.router)

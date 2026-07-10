@@ -121,6 +121,14 @@ select {
   margin-bottom: 0;
 }
 
+/* Period filter preset bar (Phase 6, D-01): reused by every period-based report. */
+.preset-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 /* Visible focus state — never outline:none without replacement. */
 input:focus,
 select:focus,
