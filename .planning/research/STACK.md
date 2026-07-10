@@ -1,143 +1,203 @@
 # Stack Research
 
-**Domain:** Local-first warehouse inventory & sales app (single operator, browser UI at localhost, Windows, future PostgreSQL server sync)
-**Researched:** 2026-07-08
-**Confidence:** HIGH (all versions verified against PyPI / GitHub / unpkg registry metadata on 2026-07-08)
+**Domain:** Warehouse inventory web app — v1.1 "Multi-Warehouse & Batch Tracking" milestone
+**Researched:** 2026-07-10
+**Confidence:** HIGH
 
-## Verdict on the User's Chosen Stack
+> Scope note: this file is scoped to the v1.1 milestone (multi-warehouse, batch/lot tracking,
+> category page, min-price warning, mobile-responsive layout). The full v1.0 stack rationale
+> (FastAPI/SQLAlchemy/SQLite/HTMX/Jinja2/uv/Alembic, versions, "what not to use") is preserved
+> verbatim in the project's `CLAUDE.md` "Technology Stack" section and is not repeated here —
+> it is unchanged and not re-researched per milestone instructions.
 
-**Python + FastAPI + SQLAlchemy + SQLite + HTMX (server-rendered) is validated.** This is the current mainstream "simple Python web app" stack for exactly this use case: one user, local machine, browser UI, no build toolchain, clean upgrade path to PostgreSQL. No changes recommended to the core choices — only specific versions, supporting libraries, and a few "do not use" guardrails below.
+## Bottom Line
 
-## Recommended Stack
+**No new runtime dependency is needed for any of the four target features.** Multi-warehouse,
+batch/lot tracking, the category page, and the minimum-price warning are all schema + query +
+service-layer additions on top of the existing FastAPI / SQLAlchemy 2.0 / SQLite / HTMX / Jinja2
+stack, following patterns the codebase already established in Phases 1-6 (append-only
+`operations` ledger via `record_operation()`, native `ALTER TABLE ADD COLUMN` on `operations` to
+preserve its triggers, TEXT-encoded ISO dates/money-as-cents, warn-but-allow gates). Mobile
+responsiveness is a CSS/HTML concern, solvable with plain CSS media queries and a CSS-only nav
+disclosure — introducing a CSS framework or a JS library would violate the project's own
+"no build step, no JS framework" constraint for zero benefit at this scale.
+
+## Recommended Stack (unchanged — reused, not added)
 
 ### Core Technologies
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Python | 3.13.x (3.12+ OK) | Language/runtime | Current stable line; every library below supports it. FastAPI requires >=3.10. Confidence: HIGH |
-| FastAPI | 0.139.0 | Web framework, routing, validation | User's choice, validated: minimal boilerplate, first-class form/validation support via Pydantic v2, huge docs/community. Confidence: HIGH |
-| Uvicorn | 0.51.0 | ASGI server (runs the app) | The standard server for FastAPI; works fine on Windows. Install with `uvicorn[standard]` extras. Confidence: HIGH |
-| SQLAlchemy | 2.0.51 | ORM / database layer | User's choice, validated. Use the **2.0 declarative style** (`Mapped[]` / `mapped_column()`) — same models will run on PostgreSQL later with only a connection-string change. Confidence: HIGH |
-| SQLite | bundled with Python (`sqlite3`) | Local database | Zero-install, single file (trivial backups = copy the file), perfect for 1 operator. Enable WAL mode + `foreign_keys=ON` via an SQLAlchemy connect event. Confidence: HIGH |
-| Jinja2 | 3.1.6 | HTML templating | The standard for server-rendered FastAPI (`fastapi.templating.Jinja2Templates` wraps it). Confidence: HIGH |
-| htmx | **2.0.10 (stable)** | Frontend interactivity (search, autocomplete, partial updates) | User's choice, validated. **Vendor the file locally** (`app/static/htmx.min.js`) — the app must work offline, so no CDN. Do NOT use the 4.0 beta (see below). Confidence: HIGH |
+| Technology | Version (pinned, unchanged) | Purpose for v1.1 | Why no change needed |
+|------------|------|---------|-----------------|
+| SQLAlchemy | 2.0.* (2.0.51 validated) | New `warehouses` and `batches` tables, `Operation.batch_id`/`Product.min_price_cents` columns | 2.0 declarative style (`Mapped[]`/`mapped_column()`) already used throughout `app/models.py`; new tables are ordinary FK-related mapped classes, nothing exotic |
+| Alembic | 1.18.* (1.18.5 validated) | Migrations 0006+ for the new tables/columns | Already the sole schema-change tool (5 migrations exist: `0001`-`0005`); `render_as_batch` already configured for SQLite |
+| SQLite (stdlib `sqlite3` via SQLAlchemy) | bundled | Stores the new tables | No new storage engine; composite/partial indexes and multi-table joins used elsewhere (`uq_products_code_active` partial unique index in `0003`) cover everything batches need |
+| FastAPI + Jinja2 + HTMX 2.0.10 (vendored) | 0.139.*/3.1.*/2.0.10 | Warehouse/category pages, batch picker partial, mobile nav | Batch picker is the same "type code -> `hx-get` a filtered partial" pattern already used for product/customer autocomplete (`app/routes/sales.py`, `app/routes/customers.py`) |
 
 ### Supporting Libraries
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| Alembic | 1.18.5 | Database migrations | From day one — schema WILL change. Configure `render_as_batch=True` in `env.py` (SQLite can't `ALTER` most things without batch mode). Confidence: HIGH |
-| python-multipart | 0.0.32 | HTML form parsing | Required by FastAPI for any `Form(...)` endpoint — and an HTMX app is all forms. Confidence: HIGH |
-| pydantic-settings | 2.14.2 | Config from `.env` (DB path, port) | Small, standard, keeps secrets/paths out of code. Confidence: HIGH |
-| jinja2-fragments | 1.12.0 | Render a single Jinja2 `{% block %}` for HTMX partial responses | Optional but recommended once HTMX partials multiply — avoids one-file-per-fragment template sprawl. Its `Jinja2Blocks` is a drop-in replacement for FastAPI's `Jinja2Templates`. Confidence: HIGH (version), MEDIUM (necessity — can start without it) |
-| pytest | 9.1.1 | Test runner | Standard; simplest test workflow for a beginner. Confidence: HIGH |
-| httpx | 0.28.1 | Required by FastAPI's `TestClient` | Test dependency only; lets tests call endpoints without a running server. Confidence: HIGH |
-| Pico.css (classless) | 2.x, vendored | Styling with zero build step | Optional: drop one CSS file into `/static`, semantic HTML looks decent immediately. No npm, no Tailwind build. Confidence: MEDIUM |
+**None required.** Specifically checked and rejected as unnecessary:
 
-Note: Pydantic 2.13.4 is installed automatically as a FastAPI dependency — don't pin it separately.
+| Considered | Verdict | Reason |
+|------------|---------|--------|
+| A date/calendar library (e.g. `python-dateutil`, `pendulum`) for batch `expiry_date` | Not needed | `app/core.py` already handles all dates with stdlib `datetime.date`/`zoneinfo` (`local_day_bounds_utc`, `iso_to_local`) — zero third-party date library exists in this codebase today; expiry date needs only `date.fromisoformat()`/`date.isoformat()`, both stdlib |
+| A CSS framework (Pico.css, Bootstrap, Tailwind) for "mobile-responsive" | Not needed | `app/static/style.css` is already a hand-rolled, from-scratch stylesheet (not Pico — the original stack doc's "optional" Pico.css was never actually adopted); it needs media queries added, not replaced |
+| Alpine.js / a JS library for a mobile hamburger nav toggle | Not needed | A CSS-only `<details>`/checkbox disclosure toggles the nav with zero JavaScript — matches the "no JS framework" constraint exactly |
+| `jinja2-fragments` (listed "optional" in the original stack doc, still not installed) | Optional, not mandatory this milestone | v1.1 adds a few more HTMX partials (batch picker, warehouse/category views), but the existing one-partial-per-`{% include %}` pattern has scaled through 6 phases already; adding it now is a template-sprawl call for the roadmap/planning step, not a hard requirement — YAGNI for this milestone |
+| A dedicated "inventory batch/FEFO" package (none exist as a general-purpose Python + SQLAlchemy library) | Not applicable | Batch selection here is manual (operator picks from a list), not automatic FIFO/FEFO allocation — explicitly out of scope per PROJECT.md ("Batch FIFO costing" listed under Out of Scope); no library solves "render a list, let a human click one" |
 
 ### Development Tools
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| uv | 0.11.28 | Package/env manager: `uv init`, `uv add`, `uv run`. One tool replaces pip+venv; fast; the current community default. Works great on Windows. |
-| Ruff | 0.15.20 | Linter + formatter in one (`ruff check`, `ruff format`). Replaces flake8+black+isort — one tool for a beginner. |
-| A `run.bat` launcher | Local "packaging" for v1 | Two lines: `uv run uvicorn app.main:app --port 8000` + open browser. This IS the Windows deployment story for v1 (see What NOT to Use: PyInstaller). |
+No changes. Same `uv` / `ruff` / `pytest` workflow as v1.0.
 
 ## Installation
 
 ```bash
-# One-time: install uv (Windows PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Project setup
-uv init myorishop --python 3.13
-cd myorishop
-
-# Core
-uv add "fastapi==0.139.*" "uvicorn[standard]" sqlalchemy alembic jinja2 python-multipart pydantic-settings
-
-# Optional (HTMX partials helper)
-uv add jinja2-fragments
-
-# Dev dependencies
-uv add --dev pytest httpx ruff
-
-# htmx: download once and commit to the repo (offline requirement)
-# https://unpkg.com/htmx.org@2.0.10/dist/htmx.min.js  ->  app/static/htmx.min.js
-
-# Run
-uv run uvicorn app.main:app --reload
+# No new packages. Existing environment is sufficient:
+uv sync
 ```
+
+No `uv add` is required for this milestone.
+
+## Schema & Integration Design (the actual work, not a library choice)
+
+This is what "no new dependency" cashes out to concretely, so the roadmap can plan phases against it.
+
+### 1. Multi-warehouse + free-text location (WH-01, WH-02)
+
+- New `warehouses` table: `id` (UUID String(36) PK, matching every other table), `name`,
+  `created_at`, `deleted_at` (soft delete — matches `Product`'s pattern, never hard-delete).
+- Location is **not** its own table — PROJECT.md specifies "free-text storage location tag", so
+  it is a plain `String` column on the batch row (see below), not a normalized `locations` table.
+  Adding a table for it would be over-engineering a field the operator types freely.
+- `Operation` needs to know which warehouse a stock movement affects. Since every operation will
+  also carry a `batch_id` (batches are already warehouse-scoped), the warehouse is reachable via
+  `batch.warehouse_id` — no separate `warehouse_id` column needed on `operations` itself. Keep the
+  ledger schema minimal (one join to `batches`, same cost as the existing join to `products`).
+
+### 2. Batch/lot tracking (LOT-01..04) — the core schema change
+
+- New `batches` table: `id` (UUID PK), `product_id` (FK -> products), `warehouse_id` (FK ->
+  warehouses), `location` (nullable free text), `expiry_date` (nullable, **`String(10)`**, ISO-8601
+  `'YYYY-MM-DD'` — deliberately matching the project's existing convention of TEXT-encoded dates
+  that "sort lexicographically == chronologically" (`app/core.py:utcnow_iso` docstring), not a
+  SQLAlchemy `Date`/`DateTime` type; the codebase has never used those column types and mixing
+  conventions would break the beginner-consistency goal), `price_cents` (Integer, same
+  integer-cents convention as `Product.cost_cents`/`sale_cents`), `comment` (nullable free text),
+  `quantity` (Integer, cached projection — same pattern as `Product.quantity`), `created_at`,
+  `deleted_at`.
+- **`Operation` gains a nullable `batch_id` FK column.** This must be added via a **native**
+  `op.add_column("operations", sa.Column("batch_id", sa.String(36), nullable=True))` — **never**
+  `batch_alter_table("operations")`. Migration `0001` installs `operations_no_update` /
+  `operations_no_delete` triggers on the table, and migration `0004`'s docstring already
+  documents (and migration `0004` itself demonstrates, adding `sale_id` the same way) that
+  Alembic's batch mode on SQLite recreates the table and **silently drops those triggers**. Any
+  future migration touching `operations` must follow the exact `0004` recipe: bare column, ORM
+  level `ForeignKey` only (SQLite's `ALTER` can't add an inline FK constraint either — the same
+  `NotImplementedError` fallback `0004` already hit and documented).
+- **`record_operation()`** (`app/services/ledger.py`) is the single write path and must gain an
+  optional `batch_id: str | None = None` parameter, mirroring how it already accepts optional
+  `sale_id`. Inside the same transaction it should also do
+  `batch.quantity = Batch.quantity + qty_delta` alongside the existing
+  `product.quantity = Product.quantity + qty_delta` — the exact same "SQL-side atomic increment,
+  no stale-ORM-value window" pattern (`IN-02` in the current code), just applied to a second
+  cached-projection row. Add a `compute_batch_stock()` next to `compute_stock()` for the same
+  recompute-from-ledger repair story `rebuild_stock()` already provides for products.
+- Selling from a batch still writes exactly **one** `sale` operation row (with both `product_id`
+  and `batch_id` set) — the append-only, single-write-path invariant is unchanged, only the row
+  shape grows one nullable column, matching how `sale_id` was added in `0004` for the sales
+  feature.
+
+### 3. "Товары на складе" category page (CAT-01)
+
+Pure read-side: `GROUP BY Product.category` / `ORDER BY category, name_lc` query plus a Jinja2
+template — same shape as the existing catalog listing code in `app/services/catalog.py`. No
+schema change beyond what batches/warehouses already add (the page will also need to roll up
+batch quantities per product per warehouse, which `compute_batch_stock` and the cached
+`batches.quantity` support directly).
+
+### 4. Minimum sale price warning (PRICE-01)
+
+- Add nullable `min_price_cents` to `products` via a plain native `op.add_column` (SQLite can
+  `ADD COLUMN` a nullable column without batch mode) — same shape as the `0005` migration that
+  added `low_stock_threshold`/`stale_days`.
+- Reuse the **exact** warn-but-allow shape already implemented for the oversell check in
+  `app/services/sales.py` (`confirm != "1"` -> return a warning dict with **zero writes**;
+  `confirm == "1"` -> proceed). Add a `below_min_price` check alongside the existing `oversold`
+  aggregate check in the same function, so a sale can warn on both conditions in one round trip.
+
+### 5. Mobile-responsive layout (UI-01)
+
+- `app/templates/base.html` already ships a correct `<meta name="viewport">` tag — that part of
+  "mobile-ready" is done.
+- The real gap: `<nav>` is a flat `flex` row of 11 links (`app/templates/base.html`) with no
+  wrapping/collapse behavior, and `app/static/style.css` has zero `@media` queries today. Fix
+  entirely in CSS:
+  - Add `@media (max-width: 640px)` rules to the existing hand-rolled `style.css` (narrower
+    padding, stacked form rows, full-width tap targets — forms are the majority of this app's UI).
+  - Collapse the nav using a **CSS-only** `<details>`/`<summary>` (or hidden-checkbox + `:checked`
+    sibling selector) disclosure pattern below the breakpoint. Zero JavaScript, zero new markup
+    dependency, and it does not conflict with htmx (htmx only needs the links/forms it already
+    has; a collapsed nav is invisible to it).
+  - Do **not** reach for Alpine.js "just for the hamburger toggle" — that is exactly the kind of
+    small addition the project's own CLAUDE.md flags as unnecessary until real client-side state
+    is needed, and a hamburger open/close is pure CSS, not state.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| FastAPI | Django | If you wanted built-in admin UI + auth + ORM in one box. Rejected: much bigger learning surface for a beginner, and its ORM/migrations lock you into Django patterns. |
-| FastAPI | Flask | Nearly as simple, but FastAPI gives free validation, better docs momentum, and typed patterns worth learning. No reason to switch. |
-| SQLAlchemy 2.0 | SQLModel | SQLModel (same author as FastAPI) merges Pydantic + SQLAlchemy models. Tempting for beginners, but it lags SQLAlchemy releases, has thinner docs for non-trivial queries, and you'd still learn SQLAlchemy underneath. Plain SQLAlchemy 2.0 is the safer investment. |
-| Sync SQLAlchemy `Session` | Async SQLAlchemy + aiosqlite | Only worth it at high concurrency with a network DB. Single user + local SQLite gains nothing and doubles concept load (async sessions, greenlets). Use regular `def` endpoints — FastAPI runs them in a threadpool automatically. |
-| htmx | Alpine.js sprinkles | Add Alpine later only if you need pure client-side state (e.g., a complex multi-line sale form). Start without it. |
-| uv | pip + venv | Fine if uv ever misbehaves; everything here works with plain pip too. |
+| Plain SQLAlchemy 2.0 tables (`warehouses`, `batches`) | A generic "multi-tenancy" or "inventory" library/extension | None exist as a good SQLAlchemy fit for this domain; hand-rolled tables are simpler and match the codebase's existing hand-rolled `Product`/`Sale`/`Operation` models |
+| CSS-only nav disclosure | Alpine.js sprinkle | If a later milestone needs real client-side state (multi-step wizards, optimistic UI) beyond simple show/hide — not needed for a nav toggle |
+| Hand-rolled `style.css` + media queries | Pico.css (classless) | If the hand-rolled stylesheet ever becomes a maintenance burden and the team wants semantic-HTML-only styling; today it already has an established scale (spacing/type/colors) that Pico would fight with, not complement |
+| `String(10)` ISO date for `expiry_date` | SQLAlchemy `Date`/`DateTime` column type | If the project ever needs native date arithmetic in SQL (e.g. `expiry_date - CURRENT_DATE`) rather than in Python/Jinja2 — not needed here since "batches expiring soon" can be computed the same way `local_day_bounds_utc` already compares ISO strings |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| React / Vue / any SPA | Node toolchain, build step, separate API layer, state management — triples the learning surface for zero benefit at this scale | HTMX + Jinja2 server-rendered |
-| **htmx 4.0 (currently 4.0.0-beta5, 2026-06-26)** | Beta, with breaking changes vs 2.x; ecosystem/docs still on 2.x | htmx 2.0.10 stable; migrate to 4 later if ever needed |
-| htmx from a CDN `<script src>` | App must work with no internet | Vendored `app/static/htmx.min.js` |
-| aiosqlite / `async_sessionmaker` | Needless async complexity for a single-user SQLite app (see Alternatives) | Sync `Session` + `def` endpoints |
-| PyInstaller / cx_Freeze for v1 | Freezing FastAPI+Uvicorn into an .exe is notoriously fiddly (hidden imports, uvloop/watchfiles hooks); a rabbit hole for a beginner | `run.bat` + uv; revisit real packaging in a later milestone if distribution is needed |
-| Docker | Overhead with no payoff for one local Windows user | uv-managed venv |
-| `FLOAT`/`REAL` columns for money | SQLite has no true DECIMAL; floats corrupt profit math | Store prices as `Integer` minor units (cents/kopecks) or `Numeric` rendered carefully; integers are simplest and port cleanly to PostgreSQL |
-| SQLite-specific SQL (e.g., `INSERT OR REPLACE`, `strftime` in queries) | Breaks the future PostgreSQL migration | Portable SQLAlchemy Core/ORM constructs only |
-| Tailwind CSS | Requires an npm build pipeline (standalone CLI exists but is still an extra moving part) | Pico.css classless or plain CSS |
-| SQLAlchemy 1.x tutorials / `declarative_base()` legacy style | The web is full of outdated 1.x examples; mixing styles confuses beginners | 2.0 style: `DeclarativeBase`, `Mapped[]`, `mapped_column()`, `select()` |
+| `batch_alter_table("operations")` for the new `batch_id` column | Recreates the table on SQLite and silently drops the `operations_no_update`/`operations_no_delete` append-only triggers (documented pitfall already hit once in migration `0004`) | Native `op.add_column("operations", ...)` with a bare column (no inline FK) + ORM-level `ForeignKey` in `app/models.py`, exactly as `0004` did for `sale_id` |
+| Inline FK constraint in `op.add_column` on SQLite | Alembic's SQLite dialect raises `NotImplementedError` ("No support for ALTER of constraints in SQLite dialect") — already confirmed by the team in `0004`'s docstring | Bare column + ORM-side `ForeignKey` only |
+| `FLOAT`/`REAL` for `batches.price_cents` | SQLite has no true DECIMAL; floats corrupt profit math (already a documented "What NOT to Use" for the whole project) | Integer cents, same as every other money column |
+| A CSS framework (Pico.css/Bootstrap/Tailwind) to "make it responsive faster" | Would require either an npm build step (Tailwind) or fighting the already-established custom spacing/type scale (Pico/Bootstrap) for a problem that is 3-4 media-query rules | Extend the existing hand-rolled `style.css` with `@media` breakpoints |
+| A JS library/framework for the mobile nav | Violates the project's explicit "no JS framework, no build step" constraint for a problem that is pure CSS (disclosure widget) | `<details>`/checkbox CSS-only toggle |
+| Adding `jinja2-fragments` reactively mid-milestone without a concrete pain point | Premature dependency for a "might need it" concern; the existing partial-template pattern has scaled through 6 phases | Keep current pattern this milestone; revisit only if template duplication becomes a real, felt problem |
 
 ## Stack Patterns by Variant
 
-**For the future PostgreSQL sync milestone (design for it now, build later):**
-- Keep every query portable (ORM only, no raw SQLite SQL) — then PostgreSQL is a connection-string change (`postgresql+psycopg://...`) plus the same Alembic history.
-- Give business entities (products, operations, sales) a `uuid` column (stored as 36-char text in SQLite, `UUID` in PostgreSQL) alongside the integer PK — integer autoincrement IDs collide across devices during sync; UUIDs don't.
-- The append-only operation/event log table (already a project decision) is the sync foundation — never UPDATE/DELETE its rows.
-- Use timezone-aware UTC timestamps (`datetime.now(timezone.utc)`) everywhere; SQLite stores them as text, PostgreSQL as `timestamptz`.
+**If a future phase needs automatic FEFO/FIFO batch allocation (explicitly out of scope for
+v1.1 per PROJECT.md):**
+- Do not retrofit a generic Python inventory-allocation package at that point either — the
+  allocation rule (soonest-expiry-first, oldest-first, etc.) is a two-line `ORDER BY` on the
+  existing `batches` table. Keep it in the service layer, not a dependency.
 
-**SQLite engine setup (do this on day one):**
-- On every connection (SQLAlchemy `connect` event): `PRAGMA journal_mode=WAL;` and `PRAGMA foreign_keys=ON;` — WAL prevents reader/writer lockups, and SQLite does NOT enforce foreign keys by default.
-- Backups = copy the `.db` file while app is closed, or `sqlite3 .backup` — worth a one-click "Backup" button early.
-
-**If the app later needs auth (sync milestone):**
-- Add session-cookie auth then (e.g., itsdangerous-signed cookies or fastapi-users). Do not add auth machinery in v1 — single local user.
+**If v2.0 multi-operator sync (deferred) later needs per-warehouse device scoping:**
+- `Operation.device_id`/`seq` already exist for sync provenance (D-05); no schema rework is
+  needed for warehouses/batches specifically — `batch_id` on `operations` and `warehouse_id` on
+  `batches` are both UUID FKs already, so they carry across devices exactly like every other
+  UUID-keyed table in this codebase.
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| fastapi 0.139.0 | pydantic 2.13.4 | FastAPI >=0.100 is Pydantic-v2 only; never install Pydantic v1 |
-| fastapi 0.139.0 | Python >=3.10 | 3.13 fully supported |
-| alembic 1.18.5 | sqlalchemy 2.0.51 | Fully compatible; use `render_as_batch=True` for SQLite |
-| pytest 9.1.1 | Python >=3.10 | TestClient needs `httpx` installed |
-| htmx 2.0.10 | any backend | Pure static JS file; no server-side coupling |
-| jinja2-fragments 1.12.0 | fastapi/starlette Jinja2Templates | Drop-in `Jinja2Blocks` subclass |
+|-----------|------------------|-------|
+| sqlalchemy 2.0.51 | alembic 1.18.5 | Unchanged from v1.0; no version bump needed for composite/partial indexes or additional FK tables — both already used (`0003`'s partial unique index, `0004`'s FK tables) |
+| htmx 2.0.10 (vendored) | new batch-picker partial (`hx-get`/`hx-target`/`hx-swap`) | No htmx feature beyond what `sales.py`'s product/customer autocomplete already exercises is required for the batch picker |
 
 ## Sources
 
-- https://pypi.org/pypi/fastapi/json — version 0.139.0, requires-python >=3.10 (verified 2026-07-08, HIGH)
-- https://pypi.org/pypi/sqlalchemy/json — 2.0.51 latest stable (HIGH)
-- https://pypi.org/pypi/alembic/json — 1.18.5 (HIGH)
-- https://pypi.org/pypi/uvicorn/json — 0.51.0 (HIGH)
-- https://pypi.org/pypi/jinja2/json — 3.1.6 (HIGH)
-- https://pypi.org/pypi/pydantic/json, /pydantic-settings/json — 2.13.4 / 2.14.2 (HIGH)
-- https://pypi.org/pypi/python-multipart/json — 0.0.32 (HIGH)
-- https://pypi.org/pypi/pytest/json, /httpx/json — 9.1.1 / 0.28.1 (HIGH)
-- https://pypi.org/pypi/ruff/json, /uv/json — 0.15.20 / 0.11.28 (HIGH)
-- https://unpkg.com/htmx.org/package.json — htmx stable line 2.0.10 (HIGH)
-- https://api.github.com/repos/bigskysoftware/htmx/releases/latest — 4.0.0-beta5 published 2026-06-26, confirming 4.x is NOT stable (HIGH)
-- https://pypi.org/pypi/jinja2-fragments/json — 1.12.0, FastAPI/Starlette support confirmed (HIGH)
-- Ecosystem judgments (sync-vs-async for SQLite, PyInstaller pitfalls, WAL/foreign_keys pragmas, UUID-for-sync pattern) — practitioner consensus from official SQLAlchemy/FastAPI/SQLite docs knowledge (MEDIUM-HIGH)
+- Direct inspection of the existing codebase (`app/models.py`, `app/services/ledger.py`,
+  `app/services/operations.py`, `app/core.py`, `alembic/versions/0001_initial_schema.py`,
+  `alembic/versions/0004_sales_customers.py`, `app/templates/base.html`, `app/static/style.css`,
+  `pyproject.toml`) — HIGH confidence, these are the ground truth for what already exists and
+  what conventions must be matched.
+- `.planning/PROJECT.md` — v1.1 milestone scope, explicit Out of Scope list (batch FIFO costing,
+  barcodes) that rules out certain library categories. HIGH confidence (first-party project doc).
+- No external package research was performed because the conclusion — zero new runtime
+  dependencies — makes version verification of a *new* package moot. The already-pinned
+  technologies named in this doc (htmx 2.0.10, SQLAlchemy 2.0.51, Alembic 1.18.5) are carried
+  over unchanged from the project's existing, already-verified `CLAUDE.md` stack table and were
+  not re-verified per the milestone instructions ("DO NOT re-research the existing stack").
 
 ---
-*Stack research for: local-first FastAPI + HTMX + SQLite inventory app (MyOriShop)*
-*Researched: 2026-07-08*
+*Stack research for: MyOriShop v1.1 — Multi-Warehouse & Batch Tracking*
+*Researched: 2026-07-10*

@@ -1,305 +1,248 @@
 # Architecture Research
 
-**Domain:** Local-first inventory & sales tracking (single operator, sync-ready)
-**Researched:** 2026-07-08
-**Confidence:** MEDIUM-HIGH (patterns are well-established industry practice: ledger-based inventory à la SAP S/4HANA NSDM, operation-log sync à la offline-first mobile apps; verified against multiple independent sources)
+**Domain:** Multi-warehouse + batch/lot stock tracking, integrated into MyOriShop's existing single-choke-point ledger architecture (FastAPI + SQLAlchemy 2.0 + SQLite/WAL + HTMX + Jinja2)
+**Researched:** 2026-07-10
+**Confidence:** HIGH — grounded in direct reading of the current codebase (`app/models.py`, `app/services/ledger.py`, `stock.py`, `sales.py`, `receipts.py`, `writeoffs.py`, `reports.py`, `alembic/versions/0001_initial_schema.py`, `0005_product_thresholds.py`), not external research. This is project-specific integration analysis for the v1.1 milestone; it supersedes the v1.0-era architecture research previously in this file.
 
 ## Standard Architecture
 
 ### System Overview
 
-The v1 app is a single FastAPI monolith serving server-rendered HTML (Jinja2 + HTMX) at localhost, backed by one SQLite file. The critical architectural move for sync-readiness is: **all stock changes go through an append-only operation log**; current stock is a *derived* value.
-
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Browser (localhost)                            │
-│        HTMX: forms, partial swaps, autocomplete search            │
-├──────────────────────────────────────────────────────────────────┤
-│                    FastAPI (routes layer)                         │
-│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌────────┐ │
-│  │ catalog  │ │operations│ │ customers │ │ reports  │ │ search │ │
-│  │ routes   │ │ routes   │ │ routes    │ │ routes   │ │ routes │ │
-│  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └───┬────┘ │
-│       │    returns Jinja2 templates / HTML partials       │      │
-├───────┴────────────┴─────────────┴────────────┴───────────┴──────┤
-│                    Service layer (business logic)                 │
-│  ┌────────────────┐  ┌─────────────────────┐  ┌───────────────┐  │
-│  │ CatalogService │  │  OperationService   │  │ ReportService │  │
-│  │ (products,     │  │  (receipt, sale,    │  │ (aggregates   │  │
-│  │  dictionary)   │  │  write-off, return, │  │  over ledger) │  │
-│  └───────┬────────┘  │  correction)        │  └──────┬────────┘  │
-│          │           └─────────┬───────────┘         │           │
-├──────────┴─────────────────────┴─────────────────────┴───────────┤
-│              SQLAlchemy models / repositories                     │
-│  ┌──────────┐ ┌───────────────────────────┐ ┌───────────┐        │
-│  │ products │ │ operations (APPEND-ONLY   │ │ customers │        │
-│  │ (cached  │ │ event log = stock ledger  │ │ product_  │        │
-│  │  stock)  │ │ = audit log = sync queue) │ │ dictionary│        │
-│  └──────────┘ └───────────────────────────┘ └───────────┘        │
-├───────────────────────────────────────────────────────────────────┤
-│                    SQLite (single file, WAL mode)                  │
-└───────────────────────────────────────────────────────────────────┘
-
-Future (v2+, no rework needed):
-  operations WHERE synced_at IS NULL  ──push──▶  Central FastAPI + PostgreSQL
-  local DB  ◀──pull── operations from other devices since last cursor
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Routes (app/routes/*.py) — thin, return HTMX partials                     │
+│ sales.py  receipts.py  writeoffs.py  returns.py  corrections.py           │
+│ products.py  reports.py  history.py                                       │
+│ + NEW: warehouses.py (CRUD)   + NEW: batch-picker partial endpoints       │
+│   (likely added to sales.py/receipts.py routes, not a standalone router)  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Services (app/services/*.py) — "fat services", routes stay thin           │
+│ sales.py  receipts.py  writeoffs.py  returns.py  corrections.py  stock.py │
+│ reports.py  catalog.py  dictionary.py                                     │
+│ + NEW: warehouses.py (CRUD, soft-delete)                                   │
+│ + NEW: batches.py (resolve-or-create, list-for-picker, rebuild helpers)   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ LEDGER CHOKE POINT — app/services/ledger.py::record_operation()            │
+│ record_operation(type_, product_id, qty_delta, batch_id=None, ...)        │
+│ — the ONLY writer of `operations` rows AND of BOTH stock cache columns    │
+│   (Product.quantity rollup  +  NEW Batch.quantity detail)                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Models (app/models.py)                                                     │
+│  Product  (quantity = cross-batch rollup cache, UNCHANGED semantics)      │
+│  Operation (append-only; product_id UNCHANGED; + nullable batch_id)       │
+│  NEW Warehouse (mutable, soft-delete, mirrors Product's WR-04 pattern)    │
+│  NEW Batch (mutable, FK product_id + warehouse_id, its own quantity cache)│
+├─────────────────────────────────────────────────────────────────────────┤
+│ SQLite (WAL) — DB-level triggers enforce operations append-only           │
+│ (operations_no_update / operations_no_delete — unconditional, no WHEN)    │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| Routes layer | HTTP handling, form parsing, template rendering, HTMX partials. No business logic. | FastAPI `APIRouter` per domain area; Jinja2Templates; full page vs partial decided by `HX-Request` header |
-| CatalogService | Product CRUD, dictionary lookups/auto-fill, price history | Plain Python class/module functions taking a SQLAlchemy session |
-| OperationService | **The heart.** Validates and records receipt/sale/write-off/return/correction as immutable operation rows; updates cached stock in the same transaction; raises warnings (oversell) | Single service so every stock mutation goes through one code path |
-| CustomerService | Customer profiles, purchase history, frequency/"running low" heuristics, interested-customer matching | Queries over `operations` (sales) joined with customers |
-| ReportService | Period reports: sales, profit, stock, write-offs, top products, stale products, low stock | Read-only SQL aggregations over the operations ledger |
-| Operations table (event log) | Source of truth for all stock movement + audit trail + future sync queue. INSERT-only. | One table, typed rows, UUID PK, never UPDATE/DELETE |
-| Products table | Catalog fields + **cached** `quantity` column (derived from ledger, recomputable) | Mutable table; quantity maintained transactionally alongside ledger insert |
-| product_dictionary | Pre-loaded code→name reference | Read-mostly table, seeded once |
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| `Warehouse` model | Physical location entity (name, soft-delete). No stock lives here directly. | NEW |
+| `Batch` model | The actual stock-holding unit: one product × one warehouse × one expiry/price/location/comment combination, with its own cached `quantity`. | NEW |
+| `Product.quantity` | Cross-warehouse, cross-batch rollup cache (`SUM(operations.qty_delta)` for that product). Drives catalog list, low-stock report, stale report. | UNCHANGED semantics |
+| `Batch.quantity` | Per-lot cache (`SUM(operations.qty_delta)` for that batch). Drives the sale-time batch picker and per-batch oversell. | NEW |
+| `record_operation()` | Single ledger write path. Gains an optional `batch_id` param; when present, atomically increments `Batch.quantity` in the SAME transaction it already uses to increment `Product.quantity`. | MODIFIED (additive) |
+| `app/services/stock.py` | Low-stock report. Stays product-level (reads `Product.quantity`, unaffected by batches existing underneath it). | UNCHANGED |
+| `app/services/reports.py` | Sales/profit/write-off/top-selling/stale reports. All currently join `Operation.product_id → Product`; keep working unmodified. Batch adds an *optional* future drill-down, not a required rewrite. | UNCHANGED (this milestone) |
+| `app/services/sales.py` | Oversell check moves from "requested vs `Product.quantity`" to "requested vs `Batch.quantity` for the batch actually picked". | MODIFIED |
+| `app/services/receipts.py` | Must resolve-or-create a `Batch` (mirrors today's resolve-or-create `Product` for unknown codes) before calling `record_operation`. | MODIFIED |
+| `app/services/writeoffs.py` / `returns.py` / `corrections.py` | Must also target a specific `batch_id` once stock lives at batch granularity. | MODIFIED |
+| `app/services/catalog.py` + new category page | Reads the existing `Product.category` field (already in the v1.0 schema) — a pure new read-only route/template, no model change. | NEW route, model unchanged |
 
-## Recommended Project Structure
+## Does stock move from "per product" to "per product+warehouse+batch"?
 
-```
-app/
-├── main.py              # FastAPI app factory, static files, template config
-├── config.py            # settings (DB path, device_id)
-├── db.py                # engine, session dependency, SQLite PRAGMAs (WAL, foreign_keys)
-├── models/              # SQLAlchemy models, one file per aggregate
-│   ├── product.py       # Product, PriceHistory, ProductDictionary
-│   ├── operation.py     # Operation (the event log)
-│   └── customer.py      # Customer
-├── schemas/             # Pydantic form/validation schemas
-├── services/            # ALL business logic lives here
-│   ├── catalog.py
-│   ├── operations.py    # record_receipt(), record_sale(), record_writeoff()...
-│   ├── customers.py
-│   └── reports.py
-├── routes/              # thin HTTP handlers, one router per UI area
-│   ├── catalog.py
-│   ├── operations.py    # receipt/sale/write-off/return/correction forms
-│   ├── customers.py
-│   ├── reports.py
-│   └── search.py        # autocomplete endpoints (HTMX)
-├── templates/
-│   ├── base.html
-│   ├── partials/        # HTMX fragments (search results, table rows, alerts)
-│   └── pages/           # full pages per area
-├── static/              # css, htmx.min.js (vendored — app must work offline)
-└── alembic/             # migrations from day one
-```
+**Yes, for the operational/detail layer — but keep `Product.quantity` as an honest rollup, do not repurpose or remove it.**
 
-### Structure Rationale
+This is a two-tier cache, and both tiers are maintained by the exact same mechanism the app already uses (atomic SQL-side increment inside `record_operation`, always re-derivable from the ledger via `compute_stock`/`rebuild_stock`):
 
-- **services/ separated from routes/:** when sync arrives, the central server reuses `services/operations.py` replay logic verbatim; routes are the only web-specific part. Also the single most valuable habit for a learning developer.
-- **models/ per aggregate:** keeps the four domains (catalog, ledger, customers, dictionary) visibly separate; mirrors the future sync boundary (operations sync as events; catalog/customers sync as rows).
-- **partials/ vs pages/:** standard HTMX convention — every interactive element (search dropdown, operation confirmation, table refresh) is a fragment endpoint; pages compose fragments.
-- **htmx vendored in static/:** hard requirement — the app runs without internet, so no CDN.
+- **`Product.quantity`** (existing column) = total stock of that product across *every* warehouse and batch. Formula unchanged: `SUM(operations.qty_delta) WHERE product_id = X`. Adding batches doesn't change this — a batch-tagged `sale`/`receipt`/`writeoff` operation still carries `product_id` directly (see "Operation.product_id stays" below), so the existing rollup query needs zero changes.
+- **`Batch.quantity`** (new column) = stock of one specific lot. Formula: `SUM(operations.qty_delta) WHERE batch_id = Y`. This is what the sale-time picker (LOT-02) and the per-batch oversell check need.
+
+`rebuild_stock()` in `app/services/ledger.py` should be extended to also recompute every `Batch.quantity` alongside every `Product.quantity` — same repair philosophy, no new concept.
+
+### What happens to `Operation`
+
+Add **one** new nullable column: `batch_id: Mapped[str | None] = mapped_column(ForeignKey("batches.id"), index=True)`.
+
+Do **not** also add `warehouse_id` to `Operation`. `Batch` already owns `warehouse_id`; a second FK on `Operation` would be redundant denormalization with no read pattern that needs it (any "stock by warehouse" report groups `Batch.warehouse_id` and joins `Operation.batch_id`, one hop).
+
+`Operation.product_id` **stays exactly as-is** — it is not derived from `batch_id` and is not deprecated. Every existing report (`sales_profit_report`, `writeoff_report`, `top_selling_products`, `stale_products`) already joins on `Operation.product_id → Product` directly; keeping this column means **zero changes to any existing report query**. This mirrors how the ledger already denormalizes `unit_cost_cents`/`unit_price_cents` onto the operation row instead of forcing every read to chase a foreign key — same design principle, applied consistently.
+
+`batch_id` is only meaningful for stock-affecting operation types (`receipt`, `sale`, `writeoff`, `return`, `correction`); it stays `NULL` for the audit-only, `qty_delta=0` types (`product_created`, `product_edited`, `price_change`), which have no batch concept.
+
+### What happens to oversell checks
+
+Today (`app/services/sales.py::register_sale`): aggregate requested qty **per `product_id`** across all basket lines, compare to `Product.quantity`.
+
+After batches: since LOT-02 requires the operator to manually pick a batch per line, the natural (and *more* accurate) check becomes: aggregate requested qty **per `batch_id`** across all basket lines (same double-counting guard as today — Pitfall 6 in the existing code — just re-keyed), compare to `Batch.quantity`. This is a straightforward re-key of existing logic, not a new pattern. The same re-keying applies to the write-off oversell check in `app/services/writeoffs.py`.
+
+### What happens to low-stock and stale-product reports
+
+**Recommendation: leave both at product granularity, unchanged.** `low_stock_products()` (`app/services/stock.py`) keeps reading `Product.quantity` and `Product.low_stock_threshold` exactly as today — "is this product running low across all warehouses/batches combined" is still the useful operator question, and the per-product threshold field already exists. `stale_products()` (`app/services/reports.py`) keeps its `Operation.product_id` join — "has this product sold recently" doesn't care which batch fulfilled the sale.
+
+A **separate, later** "batches nearing expiry" or "stock by warehouse" report is a natural follow-on once `Batch` exists, but it is not one of this milestone's requirements (PROJECT.md lists only WH-01/02, CAT-01, LOT-01..04, PRICE-01, UI-01) — flag it as a gap/future differentiator rather than building it now.
+
+## New vs Modified Components
+
+| Component | New / Modified | Notes |
+|-----------|-----------------|-------|
+| `Warehouse` model + `warehouses` table | NEW | Mutable entity, soft-delete (mirror `Product`'s `deleted_at` + partial-unique-active pattern on `name`, same as `uq_products_code_active`). |
+| `Batch` model + `batches` table | NEW | `id` (UUID PK), `product_id` FK, `warehouse_id` FK, `expiry_date` (nullable), `price_cents` (nullable — the lot's own sale-price pre-fill, see below), `location` (nullable free text, WH-02), `comment` (nullable free text, LOT-04), `quantity` (cached, default 0), `created_at`/`updated_at`. No soft-delete needed (see Anti-Patterns). |
+| `Operation.batch_id` | NEW column | Nullable FK to `batches.id`, indexed. Pre-migration rows stay `NULL` (see Anti-Pattern 3). |
+| `Product.min_sale_cents` | NEW column | Nullable Integer, for PRICE-01. Fully independent of warehouses/batches. |
+| `record_operation()` | MODIFIED (additive) | New optional `batch_id` param; when given, also does `batch.quantity = Batch.quantity + qty_delta` in the same transaction, and validates `batch.product_id == product_id` (mirrors the existing IN-01 deleted-product guard). |
+| `rebuild_stock()` | MODIFIED | Also recomputes every `Batch.quantity`. |
+| `app/services/sales.py`, `writeoffs.py`, `returns.py`, `corrections.py` | MODIFIED | Oversell/removal checks re-keyed to `batch_id`; each now requires resolving a batch before writing. |
+| `app/services/receipts.py` | MODIFIED | Resolve-or-create a `Batch` (new expiry/price/location/comment or top up an existing batch), same transaction as today's resolve-or-create `Product`. |
+| Category browsing page (`CAT-01`) | NEW route + template | Reads existing `Product.category`; zero model/ledger changes. |
+| Mobile-responsive CSS (`UI-01`) | MODIFIED (styling only) | Touches templates/CSS across the whole app; zero backend/model coupling. |
+| Reports (`app/services/reports.py`, `stock.py`) | UNCHANGED (this milestone) | Stay product-level as designed today. |
 
 ## Architectural Patterns
 
-### Pattern 1: Append-Only Operation Log as Source of Truth (Event Sourcing "Lite")
+### Pattern 1: Two-tier denormalized stock cache
 
-**What:** Every stock-affecting action (receipt, sale, write-off, return, correction) is an immutable INSERT into one `operations` table. Current stock is derived: `products.quantity` is a cached projection updated in the same transaction, and can always be recomputed by summing the ledger. Mistakes are fixed by *compensating operations* (e.g., a correction), never by editing history.
+**What:** `Product.quantity` (rollup) and `Batch.quantity` (detail) are both maintained inside the same `record_operation()` transaction via atomic SQL-side increments (`col = col + delta`, no read-modify-write race), and both are fully re-derivable from the ledger (`compute_stock`/`rebuild_stock`).
+**When to use:** Any time a new aggregation grain is added on top of an existing single-grain cache that must stay correct.
+**Trade-offs:** One extra `UPDATE` per stock-affecting operation (cheap, single row by PK). Keeps the "cache is always a `SUM(ledger)` projection" invariant (`FND-01`) intact at both grains — no drift risk, no reconciliation job needed.
 
-**When to use:** Exactly this project — it simultaneously delivers three PROJECT.md requirements (operation history, audit log, sync-readiness) with one table. This is how serious inventory systems work (SAP S/4HANA's NSDM moved to a single INSERT-only material-document table for the same reasons: no lock contention, no redundancy, full history).
+### Pattern 2: Batch as the stock-holding unit; Operation keeps its direct product_id
 
-**Trade-offs:** Slightly more discipline (never UPDATE operations; corrections are new rows). Reports read the ledger, which stays fast for a single operator for years (tens of thousands of rows is nothing for SQLite). In exchange: perfect audit trail, trivially recomputable stock, and the sync queue already exists.
+**What:** `Batch` becomes the true unit that holds quantity/expiry/price/location; `Operation` gets `batch_id` *in addition to* (not instead of) `product_id`.
+**When to use:** When a new finer-grained entity is introduced under an existing ledger that many reports already query directly by the coarser key.
+**Trade-offs:** One column of "redundant" data (`product_id` is technically derivable via `batch_id → Batch.product_id`), but it avoids rewriting every existing report join and avoids ever leaving `Operation.product_id` unset for historical rows. Consistent with the ledger's existing willingness to denormalize (`unit_cost_cents`, `unit_price_cents` are already snapshots, not FKs to look up elsewhere).
 
-**Example (core schema — the key design artifact):**
-```python
-class Operation(Base):
-    __tablename__ = "operations"
-    id = mapped_column(String, primary_key=True)          # UUID (uuid4 ok; uuid7 nicer for sorting)
-    device_id = mapped_column(String, nullable=False)     # constant per install; "main" in v1
-    seq = mapped_column(Integer, nullable=False)          # local monotonic counter per device
-    op_type = mapped_column(String, nullable=False)       # receipt|sale|writeoff|return|correction
-    product_id = mapped_column(String, ForeignKey("products.id"), nullable=False)
-    qty_delta = mapped_column(Integer, nullable=False)    # +N receipt, -N sale/writeoff, signed for correction
-    unit_cost = mapped_column(Numeric(10, 2))             # cost at receipt
-    unit_price = mapped_column(Numeric(10, 2))            # actual sale price
-    catalog_price = mapped_column(Numeric(10, 2))
-    customer_id = mapped_column(String, ForeignKey("customers.id"))  # optional, sales only
-    note = mapped_column(String)
-    created_at = mapped_column(DateTime, nullable=False)  # UTC wall clock
-    created_by = mapped_column(String, nullable=False)    # operator name; "owner" in v1
-    synced_at = mapped_column(DateTime)                   # NULL in v1; used by future sync push
-    # UNIQUE(device_id, seq) — gives total order per device; id gives global dedup key
-```
-The five sync-enabling fields cost nothing now: `id` (UUID = idempotent replay key on the server), `device_id` + `seq` (per-device total order, replaces fragile wall-clock ordering — the poor-man's logical clock), `created_at` (human timeline), `synced_at` (outbox cursor). This is precisely the "operation with opId + logical position, dedup by opId, replay in per-device order" pattern used by production offline-first sync engines.
+### Pattern 3: Mutable reference entity with soft-delete, reused from `Product`
 
-### Pattern 2: Transactional Ledger Insert + Projection Update
+**What:** `Warehouse` gets `deleted_at` + a partial unique index on `name` (`WHERE deleted_at IS NULL`), exactly mirroring `uq_products_code_active`.
+**When to use:** Any reference entity that can be renamed/retired but is permanently FK-referenced by historical ledger rows (via `Batch.warehouse_id`) and must never be hard-deleted.
+**Trade-offs:** `Batch` does **not** need this pattern — it has no natural-key uniqueness concern like `Product.code`/`Warehouse.name` do, so a batch simply stops appearing in the picker once `quantity` reaches 0 (a `WHERE quantity > 0` filter), with no soft-delete flag required. Keep it simpler than `Product`/`Warehouse` on purpose.
 
-**What:** One service function per operation type does, inside a single DB transaction: (1) validate (product exists, warn on oversell), (2) INSERT operation row, (3) UPDATE `products.quantity += qty_delta`, (4) append price history if prices changed. A `rebuild_stock()` maintenance function recomputes all quantities from the ledger (consistency check / repair tool).
+### Pattern 4: Warn-but-allow guardrail, reused verbatim for the minimum-price check
 
-**When to use:** Always — this is the only write path for stock. UI code never touches `products.quantity` directly.
-
-**Trade-offs:** Cached quantity is denormalized (two places), but the transaction + rebuild function keeps them honest. The alternative (compute stock on every read) is purer but makes every product list a SUM query — unnecessary complexity for v1.
-
-**Example:**
-```python
-def record_sale(session, *, product_id, qty, unit_price, customer_id=None, allow_oversell=False):
-    product = session.get(Product, product_id)
-    if product.quantity < qty and not allow_oversell:
-        raise OversellWarning(product.quantity)          # UI shows confirm dialog
-    op = Operation(id=str(uuid4()), device_id=DEVICE_ID, seq=next_seq(session),
-                   op_type="sale", product_id=product_id, qty_delta=-qty,
-                   unit_price=unit_price, customer_id=customer_id,
-                   created_at=utcnow(), created_by="owner")
-    session.add(op)
-    product.quantity += op.qty_delta
-    session.commit()
-    return op
-```
-
-### Pattern 3: Sync-Ready Row Conventions (applied everywhere, exercised later)
-
-**What:** Conventions on *all* tables so future merge with a central PostgreSQL is a data-shipping problem, not a remodeling problem:
-- **UUID string primary keys** on products, customers, operations (never autoincrement ints — two offline devices would mint colliding ids).
-- **`created_at`/`updated_at` (UTC)** on mutable tables (products, customers) → enables last-write-wins merge for catalog-type data.
-- **Soft delete** (`deleted_at` tombstone) instead of `DELETE` on products/customers → deletions can propagate.
-- **Store money as `Numeric`/integer cents, times as UTC** — merging currencies/timezones later is much worse.
-
-**When to use:** From the first migration. Retrofitting UUID PKs later means rewriting every FK — that is the "rework" PROJECT.md forbids.
-
-**Trade-offs:** UUIDs are uglier in URLs and debugging than `1, 2, 3`; negligible cost otherwise at this scale. Future conflict strategy stays simple because the ledger side has *no conflicts by construction* (append-only sets merge as unions; stock = sum of all operations from all devices), and only catalog/customer field edits need LWW-by-`updated_at` — an acceptable policy for one team.
-
-### Pattern 4: HTMX Fragment Endpoints
-
-**What:** Routes return full pages normally and HTML fragments for HTMX requests (`HX-Request` header). Autocomplete = `GET /search/products?q=...` returning a `<ul>` partial; posting a sale returns an updated stock row + toast partial.
-
-**When to use:** All interactive elements (search-as-you-type by code/name, inline warnings, table refreshes) — this delivers the "fast, minimal clicks" requirement with zero JavaScript build step.
-
-**Trade-offs:** Some duplication between page and partial templates (solved with Jinja2 includes); state lives on the server, which is exactly right for a localhost single-user app.
+**What:** PRICE-01's "selling below minimum warns but allows override" is the *exact* existing `confirm != "1"` / `confirm == "1"` pattern already used for sale oversell (`SAL-04`) and write-off oversell.
+**When to use:** Any new "soft block" business rule in this codebase — do not invent a second confirmation mechanism.
+**Trade-offs:** Needs a product decision (flag for the roadmap, not answered here): should a below-minimum-price line and an oversold-batch line on the *same* basket surface as one combined warning screen, or two sequential ones? Reusing one `confirm` flag for both is simplest for the operator (one "yes, I'm sure" covers everything) and is the recommended default, but should be confirmed during phase planning.
 
 ## Data Flow
 
-### Request Flow (write path — e.g., recording a sale)
+### Sale-time batch picker (new, LOT-02)
 
 ```
-Operator types product code → HTMX GET /search/products?q=134
-    ↓ (fragment: matching products from dictionary+catalog, auto-fill name/prices)
-Operator submits sale form → POST /operations/sale
+Operator types product code
     ↓
-routes/operations.py (parse form, no logic)
+HTMX GET → batches.list_for_picker(product_id)
+    → SELECT * FROM batches WHERE product_id = ? AND quantity > 0
+      ORDER BY expiry_date ASC NULLS LAST  (soonest-to-expire first — an
+      operator convenience ordering ONLY; this is not FIFO/FEFO costing,
+      which PROJECT.md explicitly puts Out of Scope)
     ↓
-services/operations.record_sale()
-    ├─ validate stock → OversellWarning? → return confirm partial, re-submit with allow_oversell
-    ├─ INSERT operations row  ──────────────┐ one
-    ├─ UPDATE products.quantity            ─┤ transaction
-    └─ (link customer if provided)  ────────┘
+Rendered list: price | expiry | remaining qty | comment  (per Batch row)
     ↓
-route renders partial: updated stock badge + "sale recorded" toast → HTMX swaps into page
+Operator picks one row → basket line stores {product_id, batch_id, qty, price}
+    ↓
+On submit: register_sale() aggregates requested qty PER batch_id (re-keyed
+Pitfall-6 guard), compares to Batch.quantity, warns or writes
+    ↓
+record_operation(type_="sale", product_id=…, batch_id=…, qty_delta=-qty, …)
+    → increments Product.quantity AND Batch.quantity atomically
 ```
 
-### Read path (reports)
+### Receipt flow (modified, resolve-or-create batch)
 
 ```
-GET /reports?period=month
+Operator enters code + qty + cost/sale/catalog prices
+    ↓ (unchanged) resolve-or-create Product if code unknown
+    ↓ NEW: resolve-or-create Batch
+      - "add to existing batch" (pick from this product's open batches
+        in the chosen warehouse) → just tops up quantity
+      - "new batch" → operator enters expiry_date / price / location /
+        comment for a NEW batches row (same transaction, mirrors how a
+        new Product is created today for an unknown code)
     ↓
-services/reports.py → SQL aggregates over operations
-   (profit = Σ sales.unit_price·qty − Σ matched cost;  v1: average cost, FIFO deferred)
-    ↓
-full page render (reports don't need HTMX interactivity beyond period picker)
+record_operation(type_="receipt", product_id=…, batch_id=…, qty_delta=+qty, …)
 ```
-
-### Key Data Flows
-
-1. **Stock truth flow:** UI → OperationService → `operations` INSERT (+ cached quantity). All reads of "current stock" hit the cache; all *history* reads (reports, audit, customer purchase history, price history) hit the ledger. One direction, one write path.
-2. **Dictionary auto-fill flow:** product code entry → dictionary lookup → pre-filled form; on first receipt of unknown-to-catalog code, a product row is created from the dictionary entry.
-3. **Future sync flow (designed now, built later):** background task pushes `operations WHERE synced_at IS NULL` ordered by `seq` to central server; server dedups by `id`, appends to global log, replays through the *same* service code against PostgreSQL; client pulls foreign devices' operations since a cursor and applies them locally. No schema change required — only new code.
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| v1: 1 operator, localhost | Exactly as above. SQLite in WAL mode; single process uvicorn. Nothing else. |
-| v2: 2–5 operators, occasional internet | Add sync service (push/pull of operations), central FastAPI + PostgreSQL with identical `operations` schema, `device_id` becomes meaningful, add auth + `created_by` becomes real users. Local app unchanged otherwise. |
-| Beyond | Only if ledger reads slow down (≫100k operations): add monthly stock snapshots table so reports sum from last snapshot instead of from zero. |
+This is a single-operator, single-machine SQLite app — scale here is about row count over years, not concurrent users. Add:
 
-### Scaling Priorities
-
-1. **First bottleneck (v2):** conflict policy for concurrent *catalog edits* (not stock — stock merges automatically as ledger union). Mitigated now by `updated_at` on products/customers → LWW.
-2. **Second bottleneck:** report queries summing a large ledger → snapshot/rollup table. Purely additive change.
+| Concern | Approach |
+|---------|----------|
+| Batch-picker query speed | Index `batches(product_id, quantity)` (or a partial index `WHERE quantity > 0`) so "open batches for this product" stays a single index seek even after years of exhausted batches accumulate. |
+| Operation table growth | Add `Index("ix_operations_batch_id", "batch_id")`, mirroring the existing `ix_operations_product_id` — same query patterns (recompute/report joins) will hit it. |
+| Warehouse/batch counts | Realistically dozens of warehouses and low hundreds of batches per product at worst for a single reseller — no partitioning or archiving strategy is needed at this scale. |
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Mutable `quantity` column as the only record
+### Anti-Pattern 1: Duplicating `warehouse_id` onto `Operation`
 
-**What people do:** `UPDATE products SET quantity = quantity - 3` with a separate, optional "history" table written as an afterthought (or not at all).
-**Why it's wrong:** No audit trail, no way to answer "why is stock wrong?", and — fatally for this project — nothing to sync. Two offline devices both setting `quantity = 7` cannot be merged; two devices each appending "-3 sold" merge trivially.
-**Do this instead:** Ledger is truth (Pattern 1); quantity is a cache.
+**What people do:** Add both `warehouse_id` and `batch_id` to `Operation` "to make warehouse reports faster."
+**Why it's wrong:** `Batch.warehouse_id` already answers "which warehouse" for any batch-tagged operation; a second FK is redundant state that can drift if a batch is ever reassigned, and there is no read pattern in this milestone's requirements that needs it un-joined.
+**Do this instead:** Join `Operation.batch_id → Batch.warehouse_id` when a warehouse-scoped report is needed later.
 
-### Anti-Pattern 2: Autoincrement integer primary keys
+### Anti-Pattern 2: Repurposing `Product.quantity`
 
-**What people do:** Default SQLAlchemy `id = Column(Integer, primary_key=True, autoincrement=True)`.
-**Why it's wrong:** Two offline devices generate the same ids; merging requires renumbering every row and rewriting every foreign key — the definition of the rework we must avoid.
-**Do this instead:** UUID string PKs from migration #1 (Pattern 3).
+**What people do:** Try to make `Product.quantity` mean "unassigned/legacy stock not yet in a batch" once batches exist.
+**Why it's wrong:** Breaks the catalog list, the low-stock report, and every v1.0 screen that reads `Product.quantity` as "total on hand" — a silent semantic change with no migration signal.
+**Do this instead:** Keep `Product.quantity` computed exactly as it is today (`SUM` across ALL operations for that product, batch-agnostic). `record_operation()`'s existing line `product.quantity = Product.quantity + qty_delta` does not change at all.
 
-### Anti-Pattern 3: Editing or deleting operation history
+### Anti-Pattern 3: Backfilling `operations.batch_id` for existing rows with a plain `UPDATE`
 
-**What people do:** "Fix" a mistyped sale by UPDATE-ing or DELETE-ing the operation row.
-**Why it's wrong:** Breaks the audit requirement, silently desyncs cached stock, and makes replay non-idempotent (a device that already synced the original row diverges forever).
-**Do this instead:** Compensating operations — a `correction` row (and UI affordance "cancel/fix last operation" that *generates* the compensating row).
+**What people do:** Write a normal Alembic migration that does `UPDATE operations SET batch_id = ...` to assign historical operations to a synthetic "legacy batch."
+**Why it's wrong:** Confirmed by reading `alembic/versions/0001_initial_schema.py`: `operations_no_update` is `BEFORE UPDATE ON operations ... RAISE(ABORT, ...)` with **no `WHEN` clause** — it fires on *any* `UPDATE`, migration or application code alike. That migration's own docstring already warns that any future batch-mode migration touching `operations` must re-create these triggers (because SQLite's move-and-copy `ALTER TABLE` strategy drops them); backfilling existing rows compounds this into "drop trigger → UPDATE → recreate trigger" territory.
+**Do this instead:** Add `batch_id` as nullable and leave it `NULL` on every pre-migration row — they simply represent "legacy stock, no batch assigned," which is honest and requires zero trigger surgery. Only require `batch_id` going forward for new writes of stock-affecting operation types. Before finalizing this migration, confirm with the user whether the SQLite file already holds real operator-entered data (v1.0 shipped the same day this milestone starts, and one Phase-1 human-verification item is still deferred per PROJECT.md) — if the DB is still empty/demo-only, this question is moot and a fresh dev DB sidesteps it entirely.
 
-### Anti-Pattern 4: Building sync/CRDT machinery in v1
+### Anti-Pattern 4: Building the batch-picker UI before the mobile-responsive pass
 
-**What people do:** Add Lamport/HLC libraries, vector clocks, CRDT columns, or a sync framework before there is a second device.
-**Why it's wrong:** Massive complexity for a learning solo developer, zero v1 value, and half of it will be wrong until real sync requirements exist. The research consensus for local-first SQLite apps is: append-only op log + stable ids + per-device sequence is *sufficient groundwork*; the merge engine can come later.
-**Do this instead:** Pattern 3's five cheap fields. Defer everything else to the sync milestone.
-
-### Anti-Pattern 5: Business logic in route handlers
-
-**What people do:** Stock math and validation inline in the FastAPI endpoint.
-**Why it's wrong:** The future sync server must replay operations through the same logic without HTTP; also untestable.
-**Do this instead:** Thin routes, fat `services/` (standard FastAPI layering).
+**What people do:** Build a dense desktop-only multi-column batch picker (price/expiry/qty/comment) first, then try to make it responsive afterward.
+**Why it's wrong:** A 4-5 column picker table is one of the harder responsive-retrofit cases in this app (harder than the existing product/customer lists); designing it card-based-on-mobile from the start is much cheaper than reflowing it later.
+**Do this instead:** Do the mobile-responsive CSS pass early (before batches), establishing a shared responsive list/table pattern that the batch picker and warehouse-management screens can reuse from day one.
 
 ## Integration Points
 
 ### External Services
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| None in v1 | — | Fully offline; vendor htmx.js locally |
-| Future central server | HTTPS push/pull of operation batches (JSON), dedup by operation `id` | Same FastAPI codebase can host it; PostgreSQL mirror of `operations` schema |
-| Backups | File copy of the SQLite DB (app is single-file DB by design) | Offer "Backup now" button + auto-copy on startup; use `VACUUM INTO` for a consistent snapshot |
+None — this feature stays fully local/offline, consistent with v1.0's constraints. No new integration surface.
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| routes ↔ services | Direct function calls, session passed in | Routes never import models for writes |
-| services ↔ models | SQLAlchemy session | OperationService is the *only* writer of `operations` and `products.quantity` |
-| CustomerService ↔ ledger | Read-only queries on `operations` (op_type='sale') | Purchase history is a ledger view, not a separate table |
-| ReportService ↔ ledger | Read-only SQL aggregates | Never writes |
+| `record_operation()` ↔ `Batch` model | Direct SQL-side increment (`batch.quantity = Batch.quantity + qty_delta`), same transaction as the existing `Product.quantity` increment | Only path that may write `Batch.quantity`; mirrors `IN-02`. |
+| `sales.py`/`writeoffs.py`/`returns.py`/`corrections.py` ↔ new `batches.py` service | Resolve/select a `Batch` before calling `record_operation` | Same "resolve before write, whole basket is one transaction" discipline as today (D-03). |
+| `receipts.py` ↔ new `batches.py` service | Resolve-or-create a `Batch` in the same transaction as resolve-or-create `Product` | Direct extension of the existing D-05 auto-create pattern. |
+| `reports.py`/`stock.py` ↔ `Product` | Unchanged — stays product-level, no new dependency on `Batch` this milestone | Explicit scope boundary to keep the milestone's report surface stable. |
+| Category page ↔ `Product.category` | Read-only query, no new FK | `category` already exists on `Product` since v1.0; CAT-01 is additive UI only. |
 
-## Build Order Implications (for roadmap)
+## Suggested Build Order
 
-Dependencies point one way, suggesting this phase order:
+Dependency reasoning: `Batch.warehouse_id` is a hard FK dependency on `Warehouse` existing first. `Operation.batch_id` and the whole ledger/report rework depend on `Batch` existing. Category browsing, the minimum-price guardrail, and the mobile-responsive CSS pass have **no** dependency on any of the above or on each other — they are free to sequence wherever is cheapest.
 
-1. **Foundation:** project skeleton, DB setup (WAL, Alembic), core models with sync-ready conventions (UUID PKs, timestamps), `operations` table — *everything else depends on the schema being right first*.
-2. **Catalog + dictionary:** products, code→name dictionary seed, search/autocomplete — needed before any operation can reference a product.
-3. **Receipts:** first real operation type; proves the ledger write path + price history.
-4. **Sales:** second operation type + optional customer link (customers table can start minimal here).
-5. **Remaining operations:** write-off, return, correction — small variations on the proven path.
-6. **Customers:** profiles, purchase history views, frequency/reminders, interested-customers — pure reads over the now-populated ledger.
-7. **Reports:** aggregates over ledger — last because they need all operation types to exist.
-8. **Polish:** oversell warnings flow, backups, operation-log browsing UI.
-
-Sync itself is a separate future milestone; phases 1–5 above are what make it possible without rework.
+1. **Quick, independent wins first — Category browsing (CAT-01) + minimum sale price guardrail (PRICE-01).** Both are additive, low-risk, and touch nothing that the warehouse/batch work will later change (`Product.category` already exists; `Product.min_sale_cents` is a lone new nullable column reusing the existing warn-but-allow pattern). Shipping these first reduces the size of the later, riskier phase and gives visible progress immediately.
+2. **Mobile-responsive CSS pass (UI-01).** Pure styling/template layer, zero schema coupling. Doing this *before* batches means the new batch-picker UI (the most layout-dense screen this milestone adds) gets built mobile-first instead of retrofitted (Anti-Pattern 4).
+3. **Warehouses (WH-01, WH-02 minus the per-batch location, i.e. warehouse CRUD itself).** New `warehouses` table + management page + soft-delete. This is a structural prerequisite for batches (`Batch.warehouse_id` FK) but is not independently very useful without batches, since v1.0 has no per-warehouse stock split yet — treat it as a short phase whose main job is to exist before Phase 4, possibly seeding one default warehouse for continuity.
+4. **Batches (LOT-01..04, plus the deferred half of WH-02 — the free-text location, which lives on the batch row).** The largest phase: `batches` table, `Operation.batch_id`, `record_operation()` extension, `rebuild_stock()` extension, resolve-or-create batch in receipts, batch-keyed oversell in sales/write-offs/returns/corrections, the sale-time batch picker UI, and the migration decision from Anti-Pattern 3 (nullable `batch_id`, no backfill of historical rows). Do this last because it is the only phase that touches the append-only ledger's schema and every stock-affecting service.
 
 ## Sources
 
-- [SAP S/4HANA Inventory Management NSDM — INSERT-only material document table rationale](https://community.sap.com/t5/enterprise-resource-planning-blog-posts-by-sap/sap-s-4hana-inventory-management-tables-new-simplified-data-model-nsdm/ba-p/13497469) — MEDIUM-HIGH (vendor engineering blog)
-- [System Design Handbook — Inventory Management System design (immutable transaction ledger)](https://www.systemdesignhandbook.com/guides/design-inventory-management-system/) — MEDIUM
-- [Local-First Architecture Series V: Bidirectional Sync & Conflict Resolution](https://www.welcomedeveloper.com/posts/local-first-architecture-5-bidirectional-sync/) — MEDIUM
-- [sqlite-sync (CRDT-based offline-first sync for SQLite → PostgreSQL)](https://github.com/sqliteai/sqlite-sync) — MEDIUM (existence proof that op-log SQLite→Postgres sync is the standard shape)
-- [Building Offline-First Apps with SQLite: Sync Strategies](https://www.sqliteforum.com/p/building-offline-first-applications) — MEDIUM
-- [Offline sync without race conditions — opId dedup, per-entity ordering, outbox loop](https://medium.com/@connect.hashblock/7-js-pwas-at-scale-offline-sync-without-race-conditions-069a4bc41b10) — MEDIUM
-- [Hybrid Logical Clock in Distributed Systems](https://singhajit.com/distributed-systems/hybrid-clock/) — MEDIUM (background; deliberately deferred past v1)
-- [TestDriven.io — Using HTMX with FastAPI](https://testdriven.io/blog/fastapi-htmx/) — MEDIUM-HIGH (established tutorial site)
-- [FastAPI + HTMX layered structure guides](https://medium.com/@sylvesterranjithfrancis/complete-guide-building-production-ready-web-apps-with-fastapi-and-htmx-from-setup-to-deployment-3010b1c8ff5c) — MEDIUM
+- Direct reading of the project codebase (HIGH confidence — verified firsthand, not web research):
+  - `E:\dev\myorishop\app\models.py`
+  - `E:\dev\myorishop\app\services\ledger.py`
+  - `E:\dev\myorishop\app\services\stock.py`
+  - `E:\dev\myorishop\app\services\sales.py`
+  - `E:\dev\myorishop\app\services\receipts.py`
+  - `E:\dev\myorishop\app\services\writeoffs.py`
+  - `E:\dev\myorishop\app\services\reports.py`
+  - `E:\dev\myorishop\alembic\versions\0001_initial_schema.py`
+  - `E:\dev\myorishop\alembic\versions\0005_product_thresholds.py`
+  - `E:\dev\myorishop\.planning\PROJECT.md`
 
 ---
-*Architecture research for: local-first inventory & sales tracking (MyOriShop)*
-*Researched: 2026-07-08*
+*Architecture research for: MyOriShop v1.1 (Multi-Warehouse & Batch Tracking)*
+*Researched: 2026-07-10*
