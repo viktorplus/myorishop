@@ -7,10 +7,13 @@ this codebase.
 """
 
 from collections import defaultdict
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import WRITEOFF_REASONS, Operation, Product
 
 
@@ -124,3 +127,95 @@ def writeoff_report(session: Session, start_iso: str, end_iso: str) -> dict:
         "by_reason": result,
         "total_qty": sum(entry["qty"] for entry in result),
     }
+
+
+def _effective_stale_days(product: Product) -> int:
+    """Product's own stale_days if set (even 0), else the global default.
+
+    Deliberately NOT imported from app.services.stock: stale_days is a
+    reports-only concern distinct from stock levels, so this stays a
+    separate small helper local to this module (mirrors
+    app.services.stock.effective_low_stock_threshold's exact "is not None"
+    discipline — Pitfall 3 — without cross-module coupling).
+    """
+    return product.stale_days if product.stale_days is not None else settings.stale_days
+
+
+def top_selling_products(
+    session: Session, start_iso: str, end_iso: str, limit: int = 10
+) -> list[dict]:
+    """Top products by units sold (descending) in a UTC [start_iso, end_iso) period.
+
+    RESEARCH Pattern 4: SQL-side aggregation (func.sum/.group_by()/.order_by()
+    /.limit()), not a Python accumulator — sales history can be large,
+    unlike the small fixed-cardinality write-off grouping in writeoff_report.
+    """
+    units_sold = func.sum(-Operation.qty_delta).label("units_sold")
+    stmt = (
+        select(Product, units_sold)
+        .join(Operation, Operation.product_id == Product.id)
+        .where(
+            Operation.type == "sale",
+            Operation.created_at >= start_iso,
+            Operation.created_at < end_iso,
+        )
+        .group_by(Product.id)
+        .order_by(units_sold.desc())
+        .limit(limit)
+    )
+    rows = session.execute(stmt).all()
+    return [{"product": product, "units_sold": units} for product, units in rows]
+
+
+def stale_products(session: Session) -> list[dict]:
+    """Active products with no sale in longer than their effective stale_days.
+
+    RESEARCH Pattern 4: LEFT OUTER JOIN so a product with zero matching
+    Operation rows still appears in the base result set (last_sale=None,
+    i.e. genuinely never sold) — a plain .join() would silently drop it.
+    Independent of any period filter (RPT-04/D-03). Excludes soft-deleted
+    products (RESEARCH Open Question 2: nothing actionable on a deleted
+    product), unlike sales_profit_report/writeoff_report which are
+    historical and deliberately do NOT filter deleted_at (Pitfall 5 — that
+    rule applies to THOSE functions, not this one).
+    """
+    last_sale = func.max(Operation.created_at).label("last_sale")
+    stmt = (
+        select(Product, last_sale)
+        .outerjoin(
+            Operation,
+            (Operation.product_id == Product.id) & (Operation.type == "sale"),
+        )
+        .where(Product.deleted_at.is_(None))
+        .group_by(Product.id)
+    )
+    rows = session.execute(stmt).all()
+
+    today_local: date = datetime.now(ZoneInfo(settings.display_tz)).date()
+
+    never_sold: list[dict] = []
+    stale_with_date: list[dict] = []
+    for product, last_sale_iso in rows:
+        if last_sale_iso is None:
+            never_sold.append(
+                {"product": product, "last_sale_iso": None, "days_since": None}
+            )
+            continue
+        days_since = (
+            today_local - datetime.fromisoformat(last_sale_iso).astimezone(
+                ZoneInfo(settings.display_tz)
+            ).date()
+        ).days
+        if days_since > _effective_stale_days(product):
+            stale_with_date.append(
+                {
+                    "product": product,
+                    "last_sale_iso": last_sale_iso,
+                    "days_since": days_since,
+                }
+            )
+
+    # Never-sold first, then stale-with-a-date sorted by days_since descending
+    # (two lists concatenated, rather than one combined sort key, for clarity).
+    stale_with_date.sort(key=lambda row: row["days_since"], reverse=True)
+    return never_sold + stale_with_date
