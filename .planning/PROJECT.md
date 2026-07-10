@@ -8,6 +8,19 @@ A warehouse inventory and sales tracking application for a single Oriflame resel
 
 The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
 
+## Current Milestone: v1.1 Multi-Warehouse & Batch Tracking
+
+**Goal:** Support multiple physical warehouses with in-warehouse locations, batch/lot-level stock (distinct expiry dates and prices per batch, chosen manually at sale time), category browsing, minimum-price guardrails, and a mobile-friendly UI.
+
+**Target features:**
+- Multiple warehouses, each stock item tagged with a free-text storage location
+- "Товары на складе" page grouping products by category/rubric
+- Batch/lot tracking: one product code can have several batches with different expiry dates and prices; operator manually picks a batch at sale time from a list showing price, expiry, remaining quantity, and comment
+- Optional expiry date per batch
+- Optional per-product minimum sale price — selling below it shows a warning but allows override (same pattern as oversell)
+- Optional free-text comment per batch, shown in the sale-time batch picker
+- Mobile-responsive layout
+
 ## Requirements
 
 ### Validated
@@ -27,11 +40,15 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ### Active
 
-- [ ] Multi-operator sync across countries via a central server (PostgreSQL), conflict resolution over the operations ledger (SYNC-V2-01)
-- [ ] Multi-currency support (CUR-V2-01)
-- [ ] User roles: administrator, operator, report viewer (AUTH-V2-01)
-- [ ] Customer purchase-frequency analysis and "running low" reminders — needs months of sales history (CST-V2-01)
-- [ ] On goods receipt, show customers likely interested in the product based on purchase history (CST-V2-02)
+- [ ] User can create and manage multiple warehouses (WH-01)
+- [ ] Stock item has an optional free-text storage location tag within its warehouse (WH-02)
+- [ ] "Товары на складе" page groups products by category/rubric (CAT-01)
+- [ ] Product code can have multiple batches (lots) with distinct expiry date and price (LOT-01)
+- [ ] At sale, operator sees a list of matching batches (price, expiry, remaining qty, comment) and manually selects one (LOT-02)
+- [ ] Optional expiry date field per batch (LOT-03)
+- [ ] Optional free-text comment per batch, shown in the sale-time batch picker (LOT-04)
+- [ ] Optional minimum sale price per product — selling below it warns but allows override (PRICE-01)
+- [ ] Mobile-responsive layout, usable on a smartphone screen (UI-01)
 
 ### Out of Scope
 
@@ -48,6 +65,7 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 - Architecture must not paint us into a corner: local-first design (SQLite + operation/event log) should keep the door open for later server sync (PostgreSQL) without rework.
 - **v1.0 shipped 2026-07-10** (started 2026-07-08, 3 days): 6 phases, 31 plans, 263 files changed, ~35.5k insertions, ~9,000 LOC Python. Stack held as planned: FastAPI + SQLAlchemy 2.0 + SQLite (WAL) + HTMX 2.0.10 (vendored) + Jinja2, uv, Alembic.
 - One Phase 1 human-verification item (offline `run.bat` launch + browser correction flow + restart persistence) remains unexecuted — acknowledged and deferred at milestone close (see STATE.md Deferred Items). Recommend running it before relying on the app for real daily data entry.
+- **v2.0 (deferred, after v1.1):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Deferred because v1.1 first needs the local data model changes (multi-warehouse, batches) that sync will have to account for.
 
 ## Constraints
 
@@ -88,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after v1.0 milestone (6 phases, 31 plans, shipped)*
+*Last updated: 2026-07-10 after starting v1.1 milestone (Multi-Warehouse & Batch Tracking)*
