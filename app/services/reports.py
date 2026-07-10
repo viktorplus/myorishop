@@ -6,10 +6,12 @@ SQLite-specific SQL (D-05 sync-readiness), matching every other service in
 this codebase.
 """
 
+from collections import defaultdict
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Operation, Product
+from app.models import WRITEOFF_REASONS, Operation, Product
 
 
 def sales_profit_report(session: Session, start_iso: str, end_iso: str) -> dict:
@@ -74,4 +76,51 @@ def sales_profit_report(session: Session, start_iso: str, end_iso: str) -> dict:
         "totals": totals,
         "by_product": by_product,
         "cost_unknown_count": cost_unknown_count,
+    }
+
+
+def writeoff_report(session: Session, start_iso: str, end_iso: str) -> dict:
+    """Write-offs in a UTC [start_iso, end_iso) period, grouped by reason_code.
+
+    RESEARCH/UI-SPEC: one row per WRITEOFF_REASONS key PRESENT in the
+    period, in WRITEOFF_REASONS' own declared key order — not insertion
+    order, not quantity order, so the list is stable across reports. A
+    reason with zero write-offs in the period is omitted entirely.
+
+    RESEARCH Pitfall 5 (same rule as sales_profit_report): this report is
+    historical — it deliberately does NOT filter Product.deleted_at, so a
+    product soft-deleted after the period still appears in a report for a
+    period before its deletion.
+    """
+    rows = session.execute(
+        select(Operation, Product)
+        .join(Product, Operation.product_id == Product.id)
+        .where(
+            Operation.type == "writeoff",
+            Operation.created_at >= start_iso,
+            Operation.created_at < end_iso,
+        )
+    ).all()
+
+    by_reason: dict[str, dict] = defaultdict(lambda: {"qty": 0, "lines": []})
+    for op, product in rows:
+        qty = -op.qty_delta
+        reason_code = (op.payload or {}).get("reason_code", "other")
+        by_reason[reason_code]["qty"] += qty
+        by_reason[reason_code]["lines"].append({"op": op, "product": product})
+
+    result = [
+        {
+            "reason_code": code,
+            "label": label,
+            "qty": by_reason[code]["qty"],
+            "lines": by_reason[code]["lines"],
+        }
+        for code, label in WRITEOFF_REASONS.items()
+        if code in by_reason
+    ]
+
+    return {
+        "by_reason": result,
+        "total_qty": sum(entry["qty"] for entry in result),
     }

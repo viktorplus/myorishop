@@ -194,7 +194,7 @@ def test_writeoff_report_groups_by_reason(session, product, monkeypatch):
     assert report["total_qty"] == 5
 
 
-def test_writeoff_report_excludes_reason_with_zero_writeoffs_in_period(session, product, monkeypatch):
+def test_writeoff_report_excludes_reason_with_zero_writeoffs(session, product, monkeypatch):
     start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
