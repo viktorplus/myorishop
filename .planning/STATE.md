@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-10)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Milestone v1.0 complete — all 6 phases shipped; awaiting /gsd-complete-milestone
+**Current focus:** Milestone v1.0 shipped and archived. Planning next milestone via /gsd-new-milestone.
 
 ## Current Position
 
@@ -74,50 +74,8 @@ Last activity: 2026-07-10 — Milestone v1.0 completed and archived
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Roadmap: Append-only operations ledger is the single source of truth for stock; cached quantity is a recomputable projection
-- Roadmap: Automated backup (BCK-01) placed in Phase 3, before real daily data entry begins (research flag)
-- Roadmap: Customers folded into the Sales phase (Phase 4) — SAL-03 needs customer profiles; keeps a full vertical slice
-- [Phase ?]: 01-01: Python 3.13.13 installed via uv; 3.12 fallback not needed
-- [Phase ?]: 01-01: pytest pythonpath=['.'] added so app package resolves for Plans 01-02/01-03
-- [Phase 01]: 01-02: raw sqlite3 raises IntegrityError for RAISE(ABORT) trigger aborts; tests catch both exception classes
-- [Phase 01]: 01-02: datetime.UTC alias adopted per ruff UP017 (py313 target)
-- [Phase ?]: 01-03: tzdata added as runtime dep - Windows has no system IANA tz database for zoneinfo
-- [Phase ?]: 01-03: ruff B008 handled via flake8-bugbear extend-immutable-calls for fastapi.Depends/Form
-- [Phase ?]: 02-01: dictionary table uses UUID String(36) surrogate PK + UNIQUE(code) (PD-1) — keeps Phase 1 conventions test green and D-05 sync-readiness
-- [Phase ?]: 02-01: IN-01 guard placed inside record_operation itself — one guard rejects ops on soft-deleted products for all current and future op types
-- [Phase ?]: 02-01: name_lc maintained by Python str.lower(); migration 0002 backfills in Python — SQLite lower()/LIKE are ASCII-only and cannot fold Cyrillic
-- [Phase 02]: 02-02: destructive/restore zone reuses .form-actions for UI-SPEC lg separation - no CSS additions needed
-- [Phase 02]: 02-02: h2 «История цен» lives inside price_history.html partial so the artifact contains-gate holds; form page only includes the partial
-- [Phase 02]: 02-02: PD-4 confirmed - vendored htmx 2.0.10 handles HX-Redirect; delete/restore answer 200 + header, no fallback needed
-- [Phase ?]: 02-03: no-results message gated by q.strip() - whitespace-only query on an empty catalog shows «Товаров пока нет», not a quoted blank query
-- [Phase ?]: 02-03: GET /products renders via search_view(session, ''); list_products kept in the service for existing 02-01/02-02 tests
-- [Phase ?]: 02-04: dictionary row editing uses HTML form= attribute association - inline per-row forms in the table without nested form elements
-- [Phase 03]: 03-01: recent_receipts landed in Task 2 - RED test module imports it at module level, Task 2 verify could not collect otherwise
-- [Phase 03]: 03-01: receipt quantity validated via str.isdigit() + int > 0 - one strict positive-int rule, one RU message (D-01)
-- [Phase 03]: 03-01: typed name ignored for existing products - renames only via /products/{id}/edit (PD-9 preview)
-- [Phase 03]: 03-02: _PRICE_FIELDS imported from app.services.catalog - single source of truth for the price-field tuple
-- [Phase 03]: 03-02: dictionary-source lookup passes empty hint - name_input.html default filter supplies the dictionary wording
-- [Phase 03]: 03-02: oob-before-swap guard derives input id from wrap id - one guard covers all three price fields
-- [Phase 03]: 03-03: prune_backups guards keep>0 explicitly - naive files[:-keep] slice keeps everything at keep=0
-- [Phase 03]: 03-03: backup created_iso stored as UTC isoformat so the shared local_dt filter renders backup timestamps
-- [Phase 03]: 03-03: GET /backup takes no session dependency - only POST needs session.get_bind() (PD-12)
-- [Phase 04-06]: row stays unaliased in /sales/lookup - hx-vals sends bare "row" key via a separate JS object literal, not through hx-include's array-form serialization
-- [Phase ?]: 05-01: price_change RU label = "Изменение цены" (PLAN.md task text authoritative over 05-PATTERNS.md draft "Цена")
-- [Phase ?]: 05-01: Wave-0 tests fix route contract - GET/POST /writeoff + /writeoff/lookup, GET/POST /returns, POST /corrections (replaces POST /ops), GET /history
-- [Phase 05]: 05-02: register_writeoff never auto-creates a product (unlike register_receipt) - unknown code is always an error directing to receipt first (D-04)
-- [Phase 05]: 05-02: write-off oversell reuses the Phase 4 SAL-04 warn-but-allow pattern verbatim (.error-block + button.danger + hx-vals confirm=1) - no new CSS
-- [Phase 05]: 05-03: sold_qty() exposed as public helper alongside returnable_qty()/register_return() so the route renders the returnable hint denominator without a duplicate aggregation query
-- [Phase 05]: 05-03: #return-slot moved outside the oob-swapped #recent-sales wrapper, emitted only on non-oob render - an oob refresh must never wipe an in-progress/just-saved return form nested inside it
-- [Phase 05]: 05-04: zero-net rejection applies uniformly after parsing in both modes (delta "-0" also parses to 0), matching D-10's plain-language rule
-- [Phase 05]: 05-04: retired POST /ops (D-12) - deleted app/routes/ops.py, removed its two smoke tests; /corrections is now the single correction path
-- [Phase 05]: 05-05: /history renders rows-only whenever a type/product filter is present (not only on HX-Request) - the full page's filter select always lists every RU type label/product code, which would otherwise leak unselected options into an already-filtered response
-- [Phase 06]: 06-01/06-03/06-06: low-stock/stale-days effective-threshold pattern uses explicit `is not None` (never bare `or`) so an operator-set 0 threshold stays meaningful instead of falling back to the global default
-- [Phase 06]: 06-02: single shared `_resolve_period`/`local_day_bounds_utc` helper reused unmodified by all four period-based reports (sales, stock, writeoffs, top-selling) - one code path for date math
-- [Phase 06]: 06-04: CSV export uses BOM-once + `;` delimiter + apostrophe-escape of `=+-@`-prefixed cells (Excel formula-injection guard); zero client-supplied filename/path params on any export route
-- [Phase 06]: code review found and fixed a CSV-injection gap (consultant_number bypassed the escape helper) plus 4 warnings (soft-delete visibility, missing content-level export tests, unbounded threshold input, negative price acceptance) - all fixed and re-verified by the security auditor (14/14 threats closed, see 06-SECURITY.md)
+Decisions are logged in PROJECT.md Key Decisions table (v1.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+No decisions carried forward — fresh slate for the next milestone.
 
 ### Pending Todos
 
@@ -125,7 +83,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- (resolved) Phase 2 dictionary source: entries are entered manually via /dictionary UI; CSV import remains out of scope for v1
+None open — v1.0 blockers resolved and closed at milestone archive.
 
 ## Deferred Items
 
