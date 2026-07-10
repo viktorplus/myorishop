@@ -197,8 +197,8 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Product threshold configuration slice: migration 0005 (low_stock_threshold/stale_days) + product-form fields + audit trail (RPT-02, RPT-04)
-- [ ] 06-02-PLAN.md — Sales & profit report + reporting infrastructure: local_day_bounds_utc, /reports landing, period filter partial, nav (RPT-01)
+- [x] 06-01-PLAN.md — Product threshold configuration slice: migration 0005 (low_stock_threshold/stale_days) + product-form fields + audit trail (RPT-02, RPT-04)
+- [x] 06-02-PLAN.md — Sales & profit report + reporting infrastructure: local_day_bounds_utc, /reports landing, period filter partial, nav (RPT-01)
 
 **Wave 2** *(blocked on Wave 1 completion; 06-03 and 06-04 run in parallel — zero file overlap)*
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Goods Receipt & Backup | 3/3 | Complete   | 2026-07-09 |
 | 4. Sales & Customers | 6/6 | Complete   | 2026-07-09 |
 | 5. Stock Operations & History | 9/9 | Complete   | 2026-07-10 |
-| 6. Reports & Data Export | 0/6 | Not started | - |
+| 6. Reports & Data Export | 2/6 | In Progress|  |
