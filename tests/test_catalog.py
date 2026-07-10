@@ -25,6 +25,7 @@ from app.services.catalog import (
     create_product,
     list_products,
     price_history,
+    products_by_category,
     restore_product,
     soft_delete_product,
     update_product,
@@ -349,6 +350,44 @@ def test_category_options_distinct_active_only(session):
     create_product(session, code="A4", name="Без категории", category="", **EMPTY_MONEY)
 
     assert category_options(session) == ["Ароматы", "Макияж"]
+
+
+def test_products_by_category_groups_alphabetically_uncategorized_last(session):
+    """D-03/D-04: named groups alphabetical, "Без категории" always last, never split."""
+    create_product(session, code="B1", name="Духи", category="Парфюмерия", **EMPTY_MONEY)
+    create_product(session, code="A1", name="Помада", category="Макияж", **EMPTY_MONEY)
+    create_product(session, code="C1", name="Крем", category="Уход", **EMPTY_MONEY)
+    create_product(session, code="U1", name="Товар Без Категории 1", category="", **EMPTY_MONEY)
+    create_product(session, code="U2", name="Товар Без Категории 2", category="", **EMPTY_MONEY)
+
+    groups = products_by_category(session)
+    labels = [g["label"] for g in groups]
+    assert labels == ["Макияж", "Парфюмерия", "Уход", "Без категории"]
+    uncategorized = groups[-1]["products"]
+    assert {p.code for p in uncategorized} == {"U1", "U2"}
+
+
+def test_products_by_category_excludes_deleted(session):
+    """D-05: a soft-deleted product never appears in any group."""
+    kept, errors = create_product(
+        session, code="K1", name="Остаётся", category="Уход", **EMPTY_MONEY
+    )
+    assert errors == {}
+    gone, errors = create_product(
+        session, code="G1", name="Удалён", category="Уход", **EMPTY_MONEY
+    )
+    assert errors == {}
+    soft_delete_product(session, gone.id)
+
+    groups = products_by_category(session)
+    all_ids = {p.id for g in groups for p in g["products"]}
+    assert kept.id in all_ids
+    assert gone.id not in all_ids
+
+
+def test_products_by_category_empty_catalog_returns_empty_list(session):
+    """Zero active products -> []."""
+    assert products_by_category(session) == []
 
 
 def test_web_products_page_lists_created_product(client, session):
