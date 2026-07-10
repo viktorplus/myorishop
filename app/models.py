@@ -97,6 +97,10 @@ class Product(Base):
     cost_cents: Mapped[int | None] = mapped_column(Integer)
     sale_cents: Mapped[int | None] = mapped_column(Integer)
     catalog_cents: Mapped[int | None] = mapped_column(Integer)
+    # D-06 (Phase 7): optional minimum sale price guardrail; NULL = no floor
+    # set (NO global-settings fallback, unlike low_stock_threshold/stale_days).
+    # Checked with is not None, never a bare "or".
+    min_sale_cents: Mapped[int | None] = mapped_column(Integer)
     # D-04/D-05 (Phase 6): per-product report thresholds; NULL = use
     # settings.{low_stock_threshold,stale_days}.
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer)

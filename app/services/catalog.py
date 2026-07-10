@@ -65,6 +65,7 @@ def create_product(
     cost_raw: str,
     sale_raw: str,
     catalog_raw: str,
+    min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
 ) -> tuple[Product | None, dict[str, str]]:
@@ -94,6 +95,7 @@ def create_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
+    min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
     )
@@ -112,6 +114,7 @@ def create_product(
         cost_cents=cost_cents,
         sale_cents=sale_cents,
         catalog_cents=catalog_cents,
+        min_sale_cents=min_sale_cents,
         low_stock_threshold=low_stock_threshold,
         stale_days=stale_days,
         quantity=0,
@@ -141,7 +144,7 @@ def get_product(session: Session, product_id: str) -> Product | None:
     return session.get(Product, product_id)
 
 
-_PRICE_FIELDS = ("cost_cents", "sale_cents", "catalog_cents")
+_PRICE_FIELDS = ("cost_cents", "sale_cents", "catalog_cents", "min_sale_cents")
 
 
 def update_product(
@@ -154,6 +157,7 @@ def update_product(
     cost_raw: str,
     sale_raw: str,
     catalog_raw: str,
+    min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
 ) -> tuple[Product | None, dict[str, str]]:
@@ -196,6 +200,7 @@ def update_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
+    min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
     )
@@ -220,6 +225,7 @@ def update_product(
         "cost_cents": cost_cents,
         "sale_cents": sale_cents,
         "catalog_cents": catalog_cents,
+        "min_sale_cents": min_sale_cents,
     }
     new_fields = {
         "code": code,
@@ -244,6 +250,7 @@ def update_product(
     product.cost_cents = cost_cents
     product.sale_cents = sale_cents
     product.catalog_cents = catalog_cents
+    product.min_sale_cents = min_sale_cents
     product.low_stock_threshold = low_stock_threshold
     product.stale_days = stale_days
 
