@@ -1,0 +1,11 @@
+{# History HX response (CR-01 fix, 05-09): combines two DISTINCT DOM
+   targets in one response body — the data rows (main-swap payload into
+   #history-tbody, either innerHTML for a filter change or beforeend for a
+   "Показать ещё" click) and an oob update of the now-<tfoot>-isolated
+   #load-more row. Because the two targets are structural siblings, not
+   parent/child, extracting the oob element no longer interferes with the
+   main swap the way it did when both lived inside #history-tbody. #}
+{% include "partials/history_rows.html" %}
+{% with oob = True %}
+{% include "partials/history_load_more.html" %}
+{% endwith %}

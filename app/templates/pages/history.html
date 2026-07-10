@@ -18,9 +18,12 @@
     </tr>
   </thead>
   <tbody id="history-tbody">
-    {% with oob = False %}
     {% include "partials/history_rows.html" %}
-    {% endwith %}
   </tbody>
+  <tfoot>
+    {% with oob = False %}
+    {% include "partials/history_load_more.html" %}
+    {% endwith %}
+  </tfoot>
 </table>
 {% endblock %}
