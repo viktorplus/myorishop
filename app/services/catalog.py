@@ -20,15 +20,24 @@ THRESHOLD_ERROR = "Введите целое число 0 или больше."
 
 
 def parse_optional_cents(raw: str, errors: dict, field: str) -> int | None:
-    """Empty string -> NULL column; otherwise to_cents; RU error on garbage."""
+    """Empty string -> NULL column; otherwise to_cents; RU error on garbage.
+
+    WR-04: negative amounts have no domain meaning for a purchase/sale/
+    catalog price, so they are rejected with the same PRICE_ERROR as
+    unparsable input, not silently stored as a negative cents value.
+    """
     raw = raw.strip()
     if not raw:
         return None
     try:
-        return to_cents(raw)
+        cents = to_cents(raw)
     except ValueError:
         errors[field] = PRICE_ERROR
         return None
+    if cents < 0:
+        errors[field] = PRICE_ERROR
+        return None
+    return cents
 
 
 def parse_optional_int(raw: str, errors: dict, field: str) -> int | None:

@@ -91,6 +91,23 @@ def test_create_product_rejects_duplicate_active_code(session):
     assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 1
 
 
+def test_create_product_rejects_negative_price(session):
+    """WR-04: a negative amount has no domain meaning for a price field and
+    must be rejected with PRICE_ERROR, not stored as negative cents."""
+    product, errors = create_product(
+        session,
+        code="1234",
+        name="Помада",
+        category="",
+        cost_raw="-12,50",
+        sale_raw="",
+        catalog_raw="",
+    )
+    assert product is None
+    assert "cost" in errors
+    assert session.scalar(text("SELECT COUNT(*) FROM products")) == 0
+
+
 def test_create_product_threshold_fields_empty_means_none(session):
     """D-05: empty threshold raw strings -> NULL columns ('use global default')."""
     product, errors = create_product(
