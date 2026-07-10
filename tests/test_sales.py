@@ -21,6 +21,7 @@ from app.services.sales import lookup_prefill, recent_sales, register_sale  # no
 from sqlalchemy import select
 
 from app.models import Operation
+from app.services import catalog
 from app.services.ledger import compute_stock, record_operation
 
 
@@ -157,6 +158,53 @@ def test_null_cost_empty_price_rejected(session, stocked_product):
     )
     assert result is None
     assert "Укажите цену продажи." in errors.values()
+    assert _sale_ops(session) == []
+
+
+def test_negative_price_rejected_without_min_sale_configured(session, stocked_product):
+    """CR-01/gap-fix: a negative price is rejected even when min_sale_cents is unset.
+
+    Documents the default state (D-06: min_sale_cents is None for every
+    product until an operator opts in) so this test proves the guard fires
+    independent of the min-price feature ever being configured.
+    """
+    assert stocked_product.min_sale_cents is None
+
+    result, errors = register_sale(
+        session, customer_id=None, codes=[stocked_product.code], qtys=["1"], prices=["-5,00"]
+    )
+    assert result is None
+    assert catalog.PRICE_ERROR in errors.values()
+    assert _sale_ops(session) == []
+
+
+def test_negative_price_rejected_with_min_sale_configured(session, stocked_product):
+    """CR-01/gap-fix: the negative-price guard fires independently of below_minimum."""
+    stocked_product.min_sale_cents = 2000
+    session.commit()
+
+    result, errors = register_sale(
+        session, customer_id=None, codes=[stocked_product.code], qtys=["1"], prices=["-5,00"]
+    )
+    assert result is None
+    assert catalog.PRICE_ERROR in errors.values()
+    assert _sale_ops(session) == []
+
+
+def test_web_sale_negative_price_rejected(client, session, stocked_product):
+    """CR-01/gap-fix: POST /sales with a negative price[] returns 422, 0 writes."""
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["-5,00"],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert catalog.PRICE_ERROR in response.text
     assert _sale_ops(session) == []
 
 
