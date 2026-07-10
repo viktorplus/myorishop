@@ -17,13 +17,14 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 - ✓ Reference dictionary: product code → name with debounced auto-fill (never overwrites typed name) — Phase 2
 - ✓ Fast search by code/name with in-place HTMX updates and match highlighting — Phase 2 (part of operator UI requirement)
 - ✓ Other operations: write-off, sale-linked return, stock correction — all logged in operation history, with a dedicated /history browsing view (OPS-01..04) — Phase 5
+- ✓ Reports: day/week/month/custom period — sales, profit, stock levels, write-offs, top products, stale products, low-stock items — Phase 6 (RPT-01..04)
+- ✓ Data export: full products/sales/customers dump as three Excel-compatible CSV files — Phase 6 (BCK-02)
 
 ### Active
 
 - [ ] Goods receipt: add stock by product code with quantity, cost, catalog and sale prices; price change history preserved
 - [ ] Sales: by product code with auto-fill, custom sale price, optional customer (name, surname, consultant number); stock decremented; sale saved to history
 - [ ] Customers: profile, purchase history, purchase frequency, "running low" reminders, interested-customers list on new stock arrival
-- [ ] Reports: day/week/month/custom period — sales, profit, stock levels, write-offs, top products, active customers, stale products, low-stock items
 - [ ] Simple operator UI: minimal clicks, autocomplete, warnings (e.g., selling more than in stock) — search/autocomplete shipped in Phase 2
 - [ ] Operation audit log (who did what and when)
 
@@ -56,6 +57,9 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 | FastAPI + HTMX + SQLite | Simplest maintainable stack for a learning solo developer | — Pending |
 | Event/operation log from day one | Cheap now, enables future sync and full audit history | — Pending |
 | Single currency, no roles in v1 | One user, one country initially | — Pending |
+| Per-product threshold with global fallback (`is not None`, never bare `or`) for low-stock/stale-days | An explicit zero threshold must stay meaningful, not collapse into "use the default" | Shipped Phase 6 |
+| Single shared period-filter + local-day-boundary helper reused unchanged across all four period-based reports | One code path for date math avoids drift between sales/stock/writeoffs/top-selling reports | Shipped Phase 6 |
+| CSV export: BOM-once + `;` delimiter + apostrophe-escape of formula-injection prefixes, zero client-supplied params | Must open correctly in Excel with Cyrillic and be safe against formula injection, with a minimal server attack surface | Shipped Phase 6 |
 
 ## Evolution
 
@@ -75,4 +79,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after Phase 5*
+*Last updated: 2026-07-10 after Phase 6 (milestone v1.0 — all 6 phases complete)*

@@ -3,32 +3,32 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 6 UI-SPEC approved
-last_updated: "2026-07-10T14:11:10.688Z"
-last_activity: 2026-07-10 -- Phase 06 execution started
+stopped_at: Phase 6 complete — milestone v1.0 100% done
+last_updated: "2026-07-10T16:45:45.527Z"
+last_activity: 2026-07-10
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 31
-  completed_plans: 25
-  percent: 81
+  completed_plans: 31
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-08)
+See: .planning/PROJECT.md (updated 2026-07-10)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 06 — reports-data-export
+**Current focus:** Milestone v1.0 complete — all 6 phases shipped; awaiting /gsd-complete-milestone
 
 ## Current Position
 
-Phase: 06 (reports-data-export) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 06
-Last activity: 2026-07-10 -- Phase 06 execution started
+Phase: 06 (complete — last phase in milestone v1.0)
+Plan: 6/6 complete
+Status: Milestone v1.0 complete
+Last activity: 2026-07-10
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 16
+- Total plans completed: 22
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -47,6 +47,7 @@ Progress: [██████████] 100%
 | 1 | 3 | - | - |
 | 2 | 4 | - | - |
 | 05 | 9 | - | - |
+| 06 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -115,6 +116,10 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-04: zero-net rejection applies uniformly after parsing in both modes (delta "-0" also parses to 0), matching D-10's plain-language rule
 - [Phase 05]: 05-04: retired POST /ops (D-12) - deleted app/routes/ops.py, removed its two smoke tests; /corrections is now the single correction path
 - [Phase 05]: 05-05: /history renders rows-only whenever a type/product filter is present (not only on HX-Request) - the full page's filter select always lists every RU type label/product code, which would otherwise leak unselected options into an already-filtered response
+- [Phase 06]: 06-01/06-03/06-06: low-stock/stale-days effective-threshold pattern uses explicit `is not None` (never bare `or`) so an operator-set 0 threshold stays meaningful instead of falling back to the global default
+- [Phase 06]: 06-02: single shared `_resolve_period`/`local_day_bounds_utc` helper reused unmodified by all four period-based reports (sales, stock, writeoffs, top-selling) - one code path for date math
+- [Phase 06]: 06-04: CSV export uses BOM-once + `;` delimiter + apostrophe-escape of `=+-@`-prefixed cells (Excel formula-injection guard); zero client-supplied filename/path params on any export route
+- [Phase 06]: code review found and fixed a CSV-injection gap (consultant_number bypassed the escape helper) plus 4 warnings (soft-delete visibility, missing content-level export tests, unbounded threshold input, negative price acceptance) - all fixed and re-verified by the security auditor (14/14 threats closed, see 06-SECURITY.md)
 
 ### Pending Todos
 
@@ -134,6 +139,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T13:26:59.834Z
-Stopped at: Phase 6 UI-SPEC approved
-Resume file: .planning/phases/06-reports-data-export/06-UI-SPEC.md
+Last session: 2026-07-10
+Stopped at: Phase 6 complete, milestone v1.0 100% done, ready for /gsd-complete-milestone
+Resume file: None
