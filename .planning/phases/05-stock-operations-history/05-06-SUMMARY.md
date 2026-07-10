@@ -94,3 +94,7 @@ None - no external service configuration required.
 ---
 *Phase: 05-stock-operations-history*
 *Completed: 2026-07-10*
+
+## Self-Check: PASSED
+
+All modified files (`app/templates/base.html`, `app/templates/pages/home.html`, `tests/test_writeoffs.py`) and this SUMMARY.md verified present on disk. Both commits (`337ad94` feat, `277249f` docs) verified present in git log.
