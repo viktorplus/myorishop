@@ -6,13 +6,19 @@ full revenue) and the "reports are historical, never filter
 Product.deleted_at" contract (RESEARCH Pitfall 5).
 """
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.config import settings
 from app.core import local_day_bounds_utc, new_id
 from app.models import WRITEOFF_REASONS, Product
 from app.services.ledger import record_operation
-from app.services.reports import sales_profit_report, writeoff_report
+from app.services.reports import (
+    sales_profit_report,
+    stale_products,
+    top_selling_products,
+    writeoff_report,
+)
 from app.services.stock import (
     all_active_products,
     effective_low_stock_threshold,
@@ -423,3 +429,154 @@ def test_web_reports_landing_links_to_writeoffs(client):
     response = client.get("/reports")
     assert response.status_code == 200
     assert 'href="/reports/writeoffs"' in response.text
+
+
+def _iso_days_ago(n: int) -> str:
+    """UTC ISO timestamp for local 'now minus n days' (real clock, not DAY fixture).
+
+    stale_products uses the real datetime.now(settings.display_tz) (not a
+    caller-supplied period), so these tests must place sales relative to the
+    actual current local date, not the fixed DAY constant used elsewhere.
+    """
+    local_now = datetime.now(ZoneInfo(TZ))
+    target = local_now - timedelta(days=n)
+    return target.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def test_top_selling_orders_by_units(session, product, monkeypatch):
+    other = Product(id=new_id(), code="TEST-002", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+
+    _record_sale_at(
+        session, monkeypatch, mid_day_iso, product=product, qty=3, price_cents=1000, cost_cents=500
+    )
+    _record_sale_at(
+        session, monkeypatch, mid_day_iso, product=other, qty=5, price_cents=1000, cost_cents=500
+    )
+
+    result = top_selling_products(session, start_iso, end_iso)
+    assert result[0]["product"] is other
+    assert result[0]["units_sold"] == 5
+    assert result[1]["product"] is product
+    assert result[1]["units_sold"] == 3
+
+
+def test_top_selling_respects_limit(session, monkeypatch):
+    products = []
+    for i in range(11):
+        p = Product(id=new_id(), code=f"TS-{i:03d}", name=f"Товар {i}", quantity=0)
+        session.add(p)
+        products.append(p)
+    session.commit()
+
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+    for p in products:
+        _record_sale_at(
+            session, monkeypatch, mid_day_iso, product=p, qty=1, price_cents=1000, cost_cents=500
+        )
+
+    result = top_selling_products(session, start_iso, end_iso)
+    assert len(result) == 10
+
+
+def test_stale_includes_never_sold(session, product):
+    """A genuinely never-sold active product appears with days_since=None (LEFT OUTER JOIN)."""
+    result = stale_products(session)
+    assert len(result) == 1
+    assert result[0]["product"] is product
+    assert result[0]["last_sale_iso"] is None
+    assert result[0]["days_since"] is None
+
+
+def test_stale_threshold_zero_not_fallback(session, product, monkeypatch):
+    """Pitfall 3 applied to stale_days: explicit 0 never falls back to settings.stale_days.
+
+    A sale from yesterday IS included (more than 0 days since); a sale from
+    TODAY is excluded (not yet more than 0 days since).
+    """
+    product.stale_days = 0
+    session.commit()
+
+    yesterday_iso = _iso_days_ago(1)
+    _record_sale_at(
+        session, monkeypatch, yesterday_iso, product=product, qty=1, price_cents=1000,
+        cost_cents=500,
+    )
+
+    result = stale_products(session)
+    matching = [row for row in result if row["product"].id == product.id]
+    assert len(matching) == 1
+    assert matching[0]["days_since"] == 1
+
+    today_iso = _iso_days_ago(0)
+    _record_sale_at(
+        session, monkeypatch, today_iso, product=product, qty=1, price_cents=1000, cost_cents=500
+    )
+
+    result = stale_products(session)
+    matching = [row for row in result if row["product"].id == product.id]
+    assert matching == []
+
+
+def test_stale_excludes_soft_deleted_never_sold_product(session, product):
+    product.deleted_at = "2026-07-10T00:00:00+00:00"
+    session.commit()
+
+    result = stale_products(session)
+    assert result == []
+
+
+def test_web_reports_products_top_selling_ranked(client, session, product):
+    other = Product(id=new_id(), code="TEST-002", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-3,
+        unit_price_cents=1000,
+    )
+    record_operation(
+        session,
+        type_="sale",
+        product_id=other.id,
+        qty_delta=-5,
+        unit_price_cents=1000,
+    )
+
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+    assert "Топ продаж" in response.text
+    assert response.text.index(other.name) < response.text.index(product.name)
+
+
+def test_web_reports_products_stale_shows_never_sold_as_nikogda(client, product):
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+    assert "Никогда" in response.text
+    assert product.code in response.text
+
+
+def test_web_reports_products_stale_independent_of_bad_period(client, product):
+    response = client.get("/reports/products", params={"from": "garbage"})
+    assert response.status_code == 200
+    assert "Некорректная дата." in response.text
+    # stale section still renders correctly despite the top-selling half's error
+    assert "Никогда" in response.text
+    assert product.code in response.text
+
+
+def test_web_reports_landing_links_to_all_four_reports(client):
+    response = client.get("/reports")
+    assert response.status_code == 200
+    assert 'href="/reports/sales"' in response.text
+    assert 'href="/reports/stock"' in response.text
+    assert 'href="/reports/writeoffs"' in response.text
+    assert 'href="/reports/products"' in response.text

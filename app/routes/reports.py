@@ -10,7 +10,12 @@ from app.config import settings
 from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.routes import templates
-from app.services.reports import sales_profit_report, writeoff_report
+from app.services.reports import (
+    sales_profit_report,
+    stale_products,
+    top_selling_products,
+    writeoff_report,
+)
 from app.services.stock import (
     all_active_products,
     effective_low_stock_threshold,
@@ -158,3 +163,45 @@ def reports_stock_page(request: Request, session: Session = Depends(get_session)
         "low_stock_ids": {row["product"].id for row in low_stock_rows},
     }
     return templates.TemplateResponse(request, "pages/reports_stock.html", context)
+
+
+@router.get("/reports/products")
+def reports_products_page(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """RPT-04: period-ranked top-selling table + always-current stale table.
+
+    The stale half has NO period dependency at all (D-03/D-05): it must
+    render correctly even when the period query params are garbage, since
+    staleness is entirely independent of the period filter — so
+    stale_products is called UNCONDITIONALLY, never inside the
+    "if not period error" branch that gates the top-selling half.
+    """
+    period = _resolve_period(from_, to, settings.display_tz)
+    top_selling = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        top_selling = top_selling_products(session, start_iso, end_iso)
+
+    stale_rows = stale_products(session)
+
+    context = {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "top_selling": top_selling,
+        "stale_rows": stale_rows,
+    }
+    # CR-01 precedent: only a genuine HX-Request header (fired by the
+    # top-selling half's period_filter form/preset links, scoped to
+    # #top-selling-results) gets the chrome-less top-selling partial.
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(request, "partials/top_selling_rows.html", context)
+    return templates.TemplateResponse(request, "pages/reports_products.html", context)
