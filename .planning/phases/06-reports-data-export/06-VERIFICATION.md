@@ -1,7 +1,8 @@
 ---
 phase: 06-reports-data-export
 verified: 2026-07-10T18:15:00Z
-status: human_needed
+status: passed
+human_verification_resolved: "2026-07-10T16:26:31Z (see 06-UAT.md — CSV Excel open check: pass)"
 score: 5/5 must-haves verified
 overrides_applied: 0
 notes:
