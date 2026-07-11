@@ -44,7 +44,9 @@ def test_migration_0007_creates_and_seeds_default_warehouse(tmp_path, monkeypatc
 
 
 def test_add_warehouse_creates_row(session):
-    warehouse, errors = add_warehouse(session, name="  Главный склад  ", address="  ул. Ленина, 1  ")
+    warehouse, errors = add_warehouse(
+        session, name="  Главный склад  ", address="  ул. Ленина, 1  "
+    )
 
     assert errors == {}
     assert warehouse is not None
