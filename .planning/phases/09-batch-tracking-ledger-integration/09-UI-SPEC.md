@@ -1,7 +1,8 @@
 ---
 phase: 9
 slug: batch-tracking-ledger-integration
-status: draft
+status: approved
+reviewed_at: 2026-07-12
 shadcn_initialized: false
 preset: none
 created: 2026-07-11
