@@ -90,7 +90,7 @@ None yet.
 
 ### Coverage Gate Overrides
 
-- **Phase 8 (2026-07-11):** Mechanical decision-coverage-plan gate flagged D-03, D-07, D-08, D-10 as "uncovered" (grep-based check). Manually verified all four are textually cited and addressed in 08-01-PLAN.md/08-02-PLAN.md (compound citations like `(D-06/D-07)` and `(D-01/D-02)` appear to trip the gate's matcher). The semantic gsd-plan-checker agent independently confirmed all D-01..D-10 are covered (Dimension 7: Context Compliance — PASS). Proceeded anyway; no re-plan needed.
+- **Phase 8 (2026-07-11):** The globally-installed `gsd-tools` on PATH (an older `gsd-sdk` build) flagged D-03, D-07, D-08, D-10 as "uncovered" via its `decision-coverage-plan` check. Re-ran the project's own `$HOME/.claude/gsd-core/bin/gsd-tools.cjs gap-analysis` (the up-to-date tool) which confirmed all 11 items (WH-01 + D-01..D-10) are covered — the older global binary's matcher choked on compound citations like `(D-06/D-07)`. The semantic gsd-plan-checker agent also independently confirmed full coverage (Dimension 7: Context Compliance — PASS). No re-plan needed.
 
 ### Blockers/Concerns
 
@@ -107,10 +107,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T00:56:41.377Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-warehouses/08-CONTEXT.md
+Last session: 2026-07-11T01:32:30.588Z
+Stopped at: Phase 8 planning complete (2 plans, verified)
+Resume file: .planning/phases/08-warehouses/08-01-PLAN.md
 
 ## Operator Next Steps
 
-- Plan the first v1.1 phase with `/gsd-plan-phase 7`
+- Execute Phase 8 with `/gsd-execute-phase 8`
