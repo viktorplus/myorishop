@@ -116,6 +116,27 @@ class Product(Base):
     deleted_at: Mapped[str | None] = mapped_column(String(32))
 
 
+class Warehouse(Base):
+    """Physical stock location (WH-01): standalone table, no FK wiring yet.
+
+    D-01/D-02: this table has no FK to/from `products`/`operations` in
+    Phase 8 — `Batch.warehouse_id` (Phase 9) is the real stock link.
+    D-03: the migration's seeded default row is the stable identity
+    Phase 9's legacy-batch migration will point at. D-04: no unique
+    constraint on `name` — duplicate names are allowed.
+    """
+
+    __tablename__ = "warehouses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+    # D-05: soft delete only; no hard deletes (matches Product convention).
+    deleted_at: Mapped[str | None] = mapped_column(String(32))
+
+
 class Dictionary(Base):
     """Code -> name reference (CAT-02), helper only; products stay the truth.
 

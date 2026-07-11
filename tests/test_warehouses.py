@@ -7,9 +7,9 @@ tests are prefixed test_web_, everything else is service/schema level.
 import sqlite3
 from contextlib import closing
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from app.config import settings
 
 
