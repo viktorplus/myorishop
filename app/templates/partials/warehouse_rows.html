@@ -1,0 +1,85 @@
+{# Swap target for add/edit/delete/restore posts — stable id, partial-only
+   responses (D-08: no HX-Redirect anywhere in this flow). #}
+<div id="warehouse-rows">
+  {% if errors and not error_entry_id %}
+  <div class="error-block">
+    {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
+    {% if form and (form.name or form.address) %}
+    <p class="muted">Не сохранено: {{ form.name }} — {{ form.address }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if warehouses %}
+  <table>
+    <thead>
+      <tr>
+        <th>Название</th>
+        <th>Адрес</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in warehouses %}
+      <tr{% if w.deleted_at %} class="muted"{% endif %}>
+        {% if error_entry_id == w.id and error_form %}
+        {% set row = error_form %}
+        {% else %}
+        {% set row = {"name": w.name, "address": w.address} %}
+        {% endif %}
+        <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ w.id }}"></td>
+        <td><input type="text" name="address" value="{{ row.address or '' }}" form="edit-{{ w.id }}"></td>
+        <td>
+          <form id="edit-{{ w.id }}"
+                hx-post="/warehouses/{{ w.id }}"
+                hx-target="#warehouse-rows"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button">
+            <button type="submit" class="secondary">Сохранить склад</button>
+          </form>
+          {% if not w.deleted_at %}
+          <button type="button" class="danger"
+                  hx-post="/warehouses/{{ w.id }}/delete"
+                  hx-confirm="Удалить склад «{{ w.name }}»? Он будет скрыт из списка выбора, история операций сохранится."
+                  hx-target="#warehouse-rows"
+                  hx-swap="outerHTML">Удалить</button>
+          {% else %}
+          <button type="button" class="secondary"
+                  hx-post="/warehouses/{{ w.id }}/restore"
+                  hx-target="#warehouse-rows"
+                  hx-swap="outerHTML">Восстановить</button>
+          {% endif %}
+          {% if error_entry_id == w.id %}
+          {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% if warning_id == w.id %}
+      <tr>
+        <td colspan="3">
+          <div class="error-block">
+            <p><strong>Это последний активный склад</strong></p>
+            <p>Удалить «{{ w.name }}» всё равно? Он будет скрыт из списка выбора, история операций сохранится, но в системе временно не останется ни одного активного склада.</p>
+            <div class="form-actions">
+              {# No native hx-confirm stacked on top of this custom warning
+                 (UI-SPEC Interaction Contract) — confirm=1 re-POSTs directly. #}
+              <button type="button" class="danger"
+                      hx-post="/warehouses/{{ w.id }}/delete"
+                      hx-vals='{"confirm": "1"}'
+                      hx-target="#warehouse-rows"
+                      hx-swap="outerHTML">Удалить всё равно</button>
+              {# Client-side dismiss only — no server call, no write. #}
+              <button type="button" class="secondary"
+                      hx-on:click="this.closest('tr').remove()">Отмена</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">Складов пока нет. Добавьте первый склад выше.</p>
+  {% endif %}
+</div>
