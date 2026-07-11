@@ -1,10 +1,11 @@
 ---
 phase: 8
 slug: warehouses
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-11
+reviewed_at: 2026-07-11
 ---
 
 # Phase 8 — UI Design Contract
