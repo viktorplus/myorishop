@@ -87,7 +87,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — WH-01 (schema + service): Warehouse model, migration 0007 (seeded default warehouse, frozen id `00000000-0000-4000-8000-000000000010`), CRUD + warn-but-allow service layer
+- [x] 08-01-PLAN.md — WH-01 (schema + service): Warehouse model, migration 0007 (seeded default warehouse, frozen id `00000000-0000-4000-8000-000000000010`), CRUD + warn-but-allow service layer
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Stock Operations & History | v1.0 | 9/9 | Complete | 2026-07-10 |
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
-| 8. Warehouses | v1.1 | 0/2 | Not started | - |
+| 8. Warehouses | v1.1 | 1/2 | In Progress|  |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
