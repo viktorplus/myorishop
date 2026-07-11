@@ -86,7 +86,7 @@ def warehouse_delete(
     session: Session = Depends(get_session),
 ):
     # Warn-but-allow last-active-warehouse guard (D-06/D-07): this is a
-    # 200 warn state, not a validation error, so it never uses 422/HX-Redirect.
+    # plain 200 warn state, not a validation error or a redirect response.
     _, warning = soft_delete_warehouse(session, warehouse_id, confirm=confirm == "1")
     context = {
         "warehouses": list_warehouses(session),
