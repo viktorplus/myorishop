@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Склады</h1>
+
+{# Inline add row (D-08): no separate /new page for this entity. #}
+<form hx-post="/warehouses"
+      hx-target="#warehouse-rows"
+      hx-swap="outerHTML"
+      hx-disabled-elt="find button"
+      class="form-actions">
+  <input type="text" name="name" placeholder="Название склада" autofocus>
+  <input type="text" name="address" placeholder="Адрес (необязательно)">
+  <button type="submit">Добавить склад</button>
+</form>
+
+{% include "partials/warehouse_rows.html" %}
+{% endblock %}
