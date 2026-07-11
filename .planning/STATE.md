@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: Multi-Warehouse & Batch Tracking
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-11T00:56:41.431Z"
-last_activity: 2026-07-10
+last_updated: "2026-07-11T01:32:30.588Z"
+last_activity: 2026-07-11 -- Phase 8 planning complete
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 4
+  total_plans: 6
   completed_plans: 4
   percent: 20
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-10)
 
 Phase: 8
 Plan: Not started
-Status: Executing Phase 07
-Last activity: 2026-07-10
+Status: Ready to execute
+Last activity: 2026-07-11 -- Phase 8 planning complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -87,6 +87,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0 milestone decisions
 ### Pending Todos
 
 None yet.
+
+### Coverage Gate Overrides
+
+- **Phase 8 (2026-07-11):** Mechanical decision-coverage-plan gate flagged D-03, D-07, D-08, D-10 as "uncovered" (grep-based check). Manually verified all four are textually cited and addressed in 08-01-PLAN.md/08-02-PLAN.md (compound citations like `(D-06/D-07)` and `(D-01/D-02)` appear to trip the gate's matcher). The semantic gsd-plan-checker agent independently confirmed all D-01..D-10 are covered (Dimension 7: Context Compliance — PASS). Proceeded anyway; no re-plan needed.
 
 ### Blockers/Concerns
 
