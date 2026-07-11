@@ -4,6 +4,7 @@ Naming convention (mirrors test_dictionary.py/test_catalog.py): route/e2e
 tests are prefixed test_web_, everything else is service/schema level.
 """
 
+import re
 import sqlite3
 from contextlib import closing
 
@@ -140,3 +141,90 @@ def test_restore_warehouse_is_idempotent_when_already_active(session):
     restore_warehouse(session, warehouse.id)
 
     assert warehouse.deleted_at is None
+
+
+# --- Web slice (routes + templates, Plan 08-02) ---
+#
+# Note: tests/conftest.py's `engine` fixture builds schema via
+# `Base.metadata.create_all` (per 08-VALIDATION.md Wave 0: "No new fixtures
+# needed"), which does NOT run the Alembic seed migration. So the `client`
+# fixture starts with ZERO warehouses, unlike a real post-migration DB —
+# tests below create their own warehouses instead of relying on the
+# migration-seeded "Склад по умолчанию" row.
+
+
+def test_web_warehouses_page_renders(client):
+    response = client.get("/warehouses")
+    assert response.status_code == 200
+    assert "Склады" in response.text
+    assert "Добавить склад" in response.text
+    # No warehouses exist yet in this test DB (create_all, no seed) -> empty state.
+    assert "Складов пока нет" in response.text
+
+
+def test_web_add_and_edit_rows(client):
+    response = client.post(
+        "/warehouses", data={"name": "Второй склад", "address": "ул. Мира, 5"}
+    )
+    assert response.status_code == 200
+    assert 'id="warehouse-rows"' in response.text
+    assert "Второй склад" in response.text
+    assert "<html" not in response.text
+
+    match = re.search(r'id="edit-([0-9a-f-]{36})"', response.text)
+    assert match is not None
+    warehouse_id = match.group(1)
+
+    response = client.post(
+        f"/warehouses/{warehouse_id}",
+        data={"name": "Второй склад (переименован)", "address": "ул. Мира, 5"},
+    )
+    assert response.status_code == 200
+    assert 'id="warehouse-rows"' in response.text
+    assert "Второй склад (переименован)" in response.text
+
+
+def test_web_add_invalid_returns_swappable_422_partial(client):
+    response = client.post("/warehouses", data={"name": "  ", "address": ""})
+    assert response.status_code == 422
+    assert 'id="warehouse-rows"' in response.text
+    assert "Укажите название склада." in response.text
+
+
+def test_web_deleted_warehouse_stays_visible_with_restore(client, session):
+    # Two active warehouses so the one being deleted is not the last active one.
+    add_warehouse(session, name="Склад А", address="")
+    target, _ = add_warehouse(session, name="Склад на удаление", address="")
+
+    response = client.post(f"/warehouses/{target.id}/delete")
+
+    assert response.status_code == 200
+    assert "HX-Redirect" not in response.headers
+    assert "Склад на удаление" in response.text
+    assert "Восстановить" in response.text
+
+
+def test_web_delete_last_active_warehouse_warns_then_confirm_deletes(client, session):
+    only, _ = add_warehouse(session, name="Единственный склад", address="")
+
+    response = client.post(f"/warehouses/{only.id}/delete")
+
+    assert response.status_code == 200
+    assert "Это последний активный склад" in response.text
+    assert "Удалить всё равно" in response.text
+
+    follow_up = client.get("/warehouses")
+    assert "Восстановить" not in follow_up.text
+
+    confirm_response = client.post(
+        f"/warehouses/{only.id}/delete", data={"confirm": "1"}
+    )
+    assert confirm_response.status_code == 200
+    assert "Восстановить" in confirm_response.text
+
+
+def test_web_nav_has_warehouses_link(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/warehouses"' in response.text
+    assert "Склады" in response.text
