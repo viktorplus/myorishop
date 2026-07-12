@@ -1,30 +1,22 @@
 {# D-09/criterion 4: correction over-removal warning — the server already
    wrote ZERO ops (mirrors desktop's correction_oversell.html verbatim).
-   T-11-18: re-posts the SAME hidden fields plus confirm=1 via one <form>,
-   so "Сохранить всё равно" completes with zero re-serialization risk.
-   Product names are untrusted stored input: autoescape only, never |safe. #}
-<div id="corrections-step-wrap">
-  <p class="mobile-step-indicator">Шаг 4 из 4</p>
-  <h1>Значение</h1>
-  <div class="error-block" id="corrections-warning">
-    <p><strong>В партии не хватает остатка</strong></p>
-    <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, снимаете {{ oversell.requested }}.</p>
+   CR-02 fix: included INSIDE corrections_step_value.html, ABOVE the still-
+   visible/editable value/note fields (mirrors writeoff_warning.html /
+   transfers_warning.html), instead of replacing the whole form with a
+   hand-rolled hidden-field copy. The danger button re-submits the SAME
+   visible #corrections-value-form via form association, adding confirm=1
+   through hx-vals — zero re-serialization risk, and dismissing the warning
+   leaves the operator looking at their still-editable value/note. Product
+   names are untrusted stored input: autoescape only, never |safe. #}
+<div class="error-block" id="corrections-warning">
+  <p><strong>В партии не хватает остатка</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, снимаете {{ oversell.requested }}.</p>
+  <div class="mobile-actions">
+    <button type="submit" class="danger" form="corrections-value-form"
+            hx-post="/m/corrections" hx-vals='{"confirm": "1"}'
+            hx-target="#corrections-step-wrap" hx-swap="outerHTML"
+            hx-disabled-elt="this">Сохранить всё равно</button>
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#corrections-warning').remove()">Вернуться к форме</button>
   </div>
-  <form class="stacked-form"
-        hx-post="/m/corrections"
-        hx-target="#corrections-step-wrap"
-        hx-swap="outerHTML"
-        hx-disabled-elt="find button">
-    <input type="hidden" name="code" value="{{ code }}">
-    <input type="hidden" name="batch_id" value="{{ batch_id }}">
-    <input type="hidden" name="mode" value="{{ mode }}">
-    <input type="hidden" name="value" value="{{ form.value if form is defined and form.value else '' }}">
-    <input type="hidden" name="note" value="{{ form.note if form is defined and form.note else '' }}">
-    <input type="hidden" name="confirm" value="1">
-    <div class="mobile-actions">
-      <button type="submit" class="danger">Сохранить всё равно</button>
-      <button type="button" class="secondary"
-              hx-on:click="this.closest('#corrections-warning').remove()">Вернуться к форме</button>
-    </div>
-  </form>
 </div>

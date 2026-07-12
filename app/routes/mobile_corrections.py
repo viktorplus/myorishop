@@ -195,9 +195,12 @@ def mobile_correction_create(
             request, "mobile_partials/corrections_step_value.html", context, status_code=422
         )
 
-    # T-11-18/D-09 criterion 4: over-removal -- zero writes, warn above the
-    # step 4 form (the danger button re-POSTs the same hidden fields plus
-    # confirm=1).
+    # T-11-18/D-09 criterion 4: over-removal -- zero writes, warn ABOVE the
+    # still-editable step 4 form (CR-02 fix: re-render the real step-4
+    # template with `oversell` set, mirroring writeoff_step_reason.html /
+    # transfers_step_dest.html, instead of a hand-rolled hidden-field copy).
+    # The danger button re-POSTs the same visible #corrections-value-form
+    # plus confirm=1 via form association (see corrections_warning.html).
     if result and result.get("oversell"):
         context = {
             "oversell": result["oversell"],
@@ -205,9 +208,10 @@ def mobile_correction_create(
             "code": code.strip(),
             "batch_id": batch_id.strip(),
             "mode": mode or "count",
+            "batch_qty": batch_qty,
         }
         return templates.TemplateResponse(
-            request, "mobile_partials/corrections_warning.html", context
+            request, "mobile_partials/corrections_step_value.html", context
         )
 
     if errors:

@@ -1,7 +1,11 @@
 {# Mobile Корректировка wizard, step 4 "Значение" (D-09/D-11/Pitfall 7).
    Label adapts to the chosen mode; the muted hint mirrors desktop's
    batch-scoped #current-qty-hint — batch_qty is an opaque value computed
-   once at batch-pick time and carried forward, never re-derived here. #}
+   once at batch-pick time and carried forward, never re-derived here.
+   CR-02 fix: the oversell warning (if any) is included ABOVE the still-
+   visible/editable value/note fields (mirrors writeoff_step_reason.html /
+   transfers_step_dest.html), instead of a separate hand-rolled fragment
+   that replaced the form with hidden inputs. #}
 <div id="corrections-step-wrap">
   <p class="mobile-step-indicator">Шаг 4 из 4</p>
   <h1>Значение</h1>
@@ -10,7 +14,10 @@
     {% for message in errors.values() %}<p>{{ message }}</p>{% endfor %}
   </div>
   {% endif %}
-  <form class="stacked-form"
+  {% if oversell %}
+  {% include "mobile_partials/corrections_warning.html" %}
+  {% endif %}
+  <form class="stacked-form" id="corrections-value-form"
         hx-post="/m/corrections"
         hx-target="#corrections-step-wrap"
         hx-swap="outerHTML"
