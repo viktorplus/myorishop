@@ -12,7 +12,7 @@
    on that tbody. #}
 {% if not rows %}
 <tr>
-  <td colspan="8" class="empty-state muted">
+  <td colspan="10" class="empty-state muted">
     {% if type_filter or product_id %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
   </td>
 </tr>
@@ -21,12 +21,17 @@
 <tr>
   <td>{{ r.op.created_at | local_dt }}</td>
   <td>{{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</td>
+  {# 09-07: dedicated «Код» column (scannable), mirroring recent_sales.html /
+     purchase_history.html which keep code and name in separate columns. Sits
+     between «Тип» and «Товар»; the inline `(code)` was removed from the «Товар»
+     cell so the code lives in exactly one place. Autoescape only (T-05-18). #}
+  <td>{{ r.product.code }}</td>
   {# D-15: muted batch attribution as a SECOND line in the «Товар» cell — no
-     ninth column. Stock-affecting op with a batch -> «Партия: …»; with NULL
+     extra column. Stock-affecting op with a batch -> «Партия: …»; with NULL
      batch_id (pre-Phase-9) -> the legacy label «До внедрения партий» (read-time
      only, the ledger is never rewritten); audit types -> no second line. Batch
      comment is untrusted stored text (T-05-18): autoescape only, never |safe. #}
-  <td>{{ r.product.name }} ({{ r.product.code }})
+  <td>{{ r.product.name }}
     {%- if r.op.type not in ("price_change", "product_created", "product_edited") %}
     <br><span class="muted">
       {%- if r.batch -%}
@@ -50,6 +55,17 @@
     {%- endif %}
   </td>
   <td>{{ r.op.created_by }}</td>
+  {# D-05/09-07: «Действие» — sale rows expose the same «Вернуть» entry point as
+     recent_sales.html / purchase_history.html (carries sale_id/product_id/id so
+     GET /returns can resolve the frozen sale line and reach legacy returns from
+     /history). Non-sale rows show «—» to keep the 10-column grid aligned.
+     Neutral text link (UI-SPEC). #}
+  {% if r.op.type == "sale" %}
+  <td><a href="#" hx-get="/returns?sale_id={{ r.op.sale_id }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
+         hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></td>
+  {% else %}
+  <td><span class="muted">—</span></td>
+  {% endif %}
 </tr>
 {% endfor %}
 {% endif %}
