@@ -15,7 +15,9 @@ from app.models import OPERATION_TYPES, Batch, Operation, Product
 # D-12: the stock-affecting operation types. A batch_id is MANDATORY for these
 # (they move stock into/out of a specific lot); the remaining OPERATION_TYPES
 # are qty_delta==0 audit rows that must stay batch-less (batch_id is None).
-STOCK_AFFECTING_TYPES = frozenset({"receipt", "sale", "writeoff", "return", "correction"})
+STOCK_AFFECTING_TYPES = frozenset(
+    {"receipt", "sale", "writeoff", "return", "correction", "transfer"}
+)
 
 
 def next_seq(session: Session, device_id: str) -> int:
