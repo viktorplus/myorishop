@@ -1,0 +1,46 @@
+{# Mobile history cards (Phase 11 Plan 08): 10-column desktop history_rows.html
+   restacked into one .mobile-card per operation, nothing hidden — same
+   "everything visible" rule as the batch card. Autoescape only — product
+   names, payload notes, and created_by are untrusted-at-rest text
+   (T-05-18 precedent); NEVER |safe.
+
+   DATA ROWS ONLY: this partial contains no load-more control (that lives
+   in history_load_more.html, a structural sibling in the page, isolated
+   from this partial's own innerHTML/beforeend swaps — CR-01 precedent). #}
+{% if not rows %}
+<p class="empty-state muted">
+  {%- if type_filter -%}
+  Нет операций по выбранным фильтрам.
+  {%- else -%}
+  Операций пока нет.
+  {%- endif -%}
+</p>
+{% else %}
+{% for r in rows %}
+<div class="mobile-card">
+  <p class="muted">{{ r.op.created_at | local_dt }} · {{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</p>
+  <p><strong>{{ r.product.name }} ({{ r.product.code }})</strong></p>
+  {%- if r.op.type not in ("price_change", "product_created", "product_edited") %}
+  <p class="muted">
+    {%- if r.batch -%}
+    Партия: {% if r.batch.expiry %}{{ r.batch.expiry | ru_date }}{% else %}без срока{% endif %}{% if r.batch.comment %} — {{ r.batch.comment }}{% endif %}
+    {%- else -%}
+    До внедрения партий
+    {%- endif -%}
+  </p>
+  {%- endif %}
+  <p class="num">Кол-во {% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %} · Цена {% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% else %}—{% endif %} · Себестоимость {% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}—{% endif %}</p>
+  {%- if r.op.type == "writeoff" and r.op.payload -%}
+  <p class="muted">{{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}</p>
+  {%- elif r.op.type == "correction" and r.op.payload -%}
+  <p class="muted">{{ "Пересчёт" if r.op.payload.mode == "count" else "Изменение" }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}</p>
+  {%- else -%}
+  <p class="muted">{{ r.op.created_by }}</p>
+  {%- endif %}
+  {%- if r.op.type == "sale" %}
+  <p><a href="#" hx-get="/m/returns?sale_id={{ r.op.sale_id or '' }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
+        hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></p>
+  {%- endif %}
+</div>
+{% endfor %}
+{% endif %}

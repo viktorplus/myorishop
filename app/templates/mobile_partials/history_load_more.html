@@ -1,0 +1,14 @@
+{# Mobile history load-more control (Phase 11 Plan 08): reuses desktop's
+   "Показать ещё" copy/behavior unchanged. Rendered as its own element — a
+   DOM sibling of #history-cards in mobile_pages/history.html, never nested
+   inside it — so a filter-select innerHTML swap on #history-cards can
+   never destroy this control (CR-01 precedent, app/templates/partials/
+   history_load_more.html). The `oob` variable drives hx-swap-oob so every
+   HX response can update this control in place. #}
+<div id="history-load-more"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if has_next %}
+  <button type="button" class="secondary"
+          hx-get="/m/history?type={{ type_filter }}&page={{ page + 1 }}"
+          hx-target="#history-cards" hx-swap="beforeend" hx-disabled-elt="this">Показать ещё</button>
+  {% endif %}
+</div>
