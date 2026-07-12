@@ -1,0 +1,64 @@
+{# Mobile Перемещение wizard, step 3 «Куда и количество» (WH-03/D-05 — one
+   combined decision per screen, mirroring how desktop groups them on one
+   form). Also doubles as: the D-06/T-11-21 over-transfer warn-but-allow
+   screen (transfers_warning.html include, zero writes until confirm=1) and
+   the D-05 post-success confirmation screen mobile adds on top of desktop's
+   silent reset. #}
+<div id="wizard-step">
+{% if saved %}
+  <p class="mobile-step-indicator">Готово</p>
+  <h2>Перемещение сохранено</h2>
+  <p>Перемещение сохранено: {{ saved.name }} — {{ saved.qty }} шт.</p>
+  <div class="mobile-actions">
+    <a class="button" href="/m/transfers">Добавить ещё</a>
+    <a class="button" href="/m/">На главную</a>
+  </div>
+{% else %}
+  <p class="mobile-step-indicator">{{ step_label }}</p>
+  <h2>Куда и количество</h2>
+
+  {% if errors is defined and errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+  {% if oversell %}
+  {% include "mobile_partials/transfers_warning.html" %}
+  {% endif %}
+
+  <form class="stacked-form" id="transfer-dest-form"
+        hx-post="/m/transfers"
+        hx-target="#wizard-step"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="batch_id" value="{{ batch_id }}">
+
+    <div class="field">
+      <label>Склад назначения</label>
+      {% if warehouses %}
+      {% for w in warehouses %}
+      <label class="mobile-card">
+        <input type="radio" name="dest_warehouse_id" value="{{ w.id }}" required>
+        {{ w.name }}
+      </label>
+      {% endfor %}
+      {% else %}
+      <p class="muted">Нет доступных складов назначения.</p>
+      {% endif %}
+      {% if errors is defined and errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label for="qty">Количество</label>
+      <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ qty }}">
+      {% if errors is defined and errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+
+    <div class="mobile-actions">
+      <button type="button" class="secondary"
+              hx-post="/m/transfers/step/batch"
+              hx-vals='{"code": "{{ code }}"}'
+              hx-target="#wizard-step"
+              hx-swap="outerHTML">Назад</button>
+      <button type="submit">Переместить</button>
+    </div>
+  </form>
+{% endif %}
+</div>

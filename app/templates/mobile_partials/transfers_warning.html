@@ -1,0 +1,19 @@
+{# D-06/T-11-21: mobile over-transfer warning — server already wrote ZERO
+   ops for this transfer. Verbatim body/copy of
+   app/templates/partials/transfer_oversell.html, re-POSTing the mobile
+   #transfer-dest-form via form association instead of #transfer-form.
+   Product names are untrusted stored input: autoescape only, never | safe. #}
+<div class="error-block" id="transfer-oversell-warning">
+  <p><strong>Товара не хватает в партии</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, перемещаете {{ oversell.requested }}.</p>
+  <div class="mobile-actions">
+    <button type="submit" class="danger" form="transfer-dest-form"
+            hx-post="/m/transfers" hx-vals='{"confirm": "1"}'
+            hx-target="#wizard-step" hx-swap="outerHTML"
+            hx-disabled-elt="this">Переместить всё равно</button>
+    {# Client-side dismiss only — no server call, no write; the form
+       underneath was never swapped, so entered values are intact. #}
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#transfer-oversell-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>
