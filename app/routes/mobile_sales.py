@@ -292,6 +292,11 @@ def mobile_sale_create(
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-01: rollback FIRST — an unexpected failure may have left the
+        # session needing rollback (e.g. a failed flush/commit); the
+        # _basket_lines query below would otherwise raise an unhandled
+        # PendingRollbackError instead of this graceful 422.
+        session.rollback()
         logger.exception("register_sale failed")
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
