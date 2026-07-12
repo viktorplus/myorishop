@@ -46,6 +46,17 @@
       {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
     </div>
 
+    {# LOT-05: batch picker (scalar batch_id). Empty until a code lookup swaps
+       the open batches in oob; on a 422/warn re-render the picked batch is
+       re-echoed via `selected_batch` so the operator's choice survives. #}
+    {% set _sb = selected_batch if selected_batch is defined else none %}
+    {% with code = form.code or "",
+            batches = [_sb] if _sb else [],
+            selected_batch_id = _sb.id if _sb else none,
+            batch_id_value = _sb.id if _sb else "" %}
+    {% include "partials/writeoff_batch_wrap.html" %}
+    {% endwith %}
+
     <div class="field">
       <label for="reason_code">Причина списания</label>
       {# D-02/D-03/V5: stored value is the latin reason_code; the visible RU

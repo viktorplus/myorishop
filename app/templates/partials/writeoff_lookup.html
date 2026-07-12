@@ -4,3 +4,10 @@
 {% with autofilled = True %}
 {% include "partials/name_input.html" %}
 {% endwith %}
+{# LOT-05: oob-swap the shared batch picker for the resolved product (empty
+   state «Нет партий с остатком.» when the product has no open batches). #}
+{% if batches or show_empty %}
+{% with oob_batch = True %}
+{% include "partials/writeoff_batch_wrap.html" %}
+{% endwith %}
+{% endif %}
