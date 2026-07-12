@@ -13,6 +13,10 @@ test_web_; everything else is service level. Selectors mirror
 history_frozen).
 """
 
+from sqlalchemy import select
+
+from app.models import Customer
+from app.services.batches import open_batches
 from app.services.customers import (
     create_customer,
     get_customer,
@@ -20,11 +24,7 @@ from app.services.customers import (
     search_customers,
     update_customer,
 )
-from app.services.batches import open_batches
 from app.services.sales import register_sale  # noqa: F401 (used to seed linked sales)
-from sqlalchemy import select
-
-from app.models import Customer
 
 # --- Service level ---
 

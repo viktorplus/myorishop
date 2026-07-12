@@ -9,6 +9,7 @@
 {% set name_wrap_id = "name-wrap" if not row_id else "name-" + row_id %}
 {% set qty_id = "qty" if not row_id else "qty-" + row_id %}
 {% set price_wrap_id = "price-wrap" if not row_id else "price-" + row_id %}
+{% set batch_wrap_id = "batch-wrap-" + (row_id or "first") %}
 <tr id="row-{{ row_id or 'first' }}"{% if focus_new %} hx-on::load="document.getElementById('{{ code_id }}').focus()"{% endif %}>
   <td>
     {# D-10/RCP-02 analog: debounced per-line lookup; server decides fill vs 204. #}
@@ -35,6 +36,27 @@
     {% if error_price %}<p class="error">{{ error_price }}</p>{% endif %}
   </td>
   <td>
-    <button type="button" class="secondary" hx-on:click="this.closest('tr').remove()">Удалить строку</button>
+    {# Pitfall 2: deleting a line removes BOTH its input row AND its batch
+       wrapper row, so the code[]/qty[]/price[]/batch_id[] arrays stay
+       index-aligned no matter what order rows are added/removed in. #}
+    <button type="button" class="secondary" hx-on:click="this.closest('tr').remove(); var w=document.getElementById('{{ batch_wrap_id }}'); if (w) w.remove()">Удалить строку</button>
+  </td>
+</tr>
+{# Always-rendered batch wrapper row (RESEARCH Pattern 2): the hidden
+   batch_id[] input is present for EVERY line from the start, so the parallel
+   array can never drift. The picker table appears once a batch is echoed
+   (422/warn selected-only re-echo) or swapped in oob by /sales/lookup. #}
+<tr id="{{ batch_wrap_id }}">
+  <td colspan="5">
+    {% if selected_batch %}
+    {% with batch_id = selected_batch.id, batches = [selected_batch], selected_batch_id = selected_batch.id %}
+    {% include "partials/batch_picker.html" %}
+    {% endwith %}
+    {% else %}
+    {% with batch_id = "" %}
+    {% include "partials/batch_picker.html" %}
+    {% endwith %}
+    {% endif %}
+    {% if error_batch %}<p class="error">{{ error_batch }}</p>{% endif %}
   </td>
 </tr>

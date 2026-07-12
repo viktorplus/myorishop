@@ -15,14 +15,14 @@ Naming convention (used by -k filters): route/e2e tests are prefixed
 test_web_; everything else is service level.
 """
 
-from app.services.sales import lookup_prefill, recent_sales, register_sale  # noqa: F401
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation
+from app.models import Batch, Operation, Product
 from app.services import catalog
 from app.services.batches import open_batches
 from app.services.ledger import compute_stock, record_operation
+from app.services.sales import lookup_prefill, recent_sales, register_sale  # noqa: F401
 
 
 def _sale_ops(session):
@@ -49,6 +49,26 @@ def _two_batches(session, product, warehouse, qty_a, qty_b):
         unit_price_cents=1000, batch_id=b.id,
     )
     return a, b
+
+
+def _batch(session, product, warehouse, qty, expiry=None, price=None, comment=None):
+    """Seed one ledger-backed batch with the given readable attributes."""
+    b = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+        expiry=expiry,
+        price_cents=price,
+        comment=comment,
+    )
+    session.add(b)
+    session.commit()
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=qty,
+        unit_price_cents=price if price is not None else 1000, batch_id=b.id,
+    )
+    return b
 
 
 # --- Service level ---
@@ -732,3 +752,177 @@ def test_web_sale_links_selected_customer(client, session, stocked_product, cust
         },
     )
     assert response.status_code == 200
+
+
+# --- Batch picker slice (LOT-02/D-04..D-07, Phase 9) ---
+
+
+def test_web_sale_lookup_renders_batch_picker_columns_in_expiry_order(
+    client, session, product, warehouse
+):
+    """LOT-02/D-07: /sales/lookup for a 2-batch product shows the four picker
+    columns, no warehouse column, batches earliest-expiry-first."""
+    _batch(session, product, warehouse, qty=3, expiry="2026-12-01", comment="Поздняя")
+    _batch(session, product, warehouse, qty=5, expiry="2026-01-15", comment="Ранняя")
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert "Цена" in text
+    assert "Срок годности" in text
+    assert "Остаток" in text
+    assert "Комментарий" in text
+    assert "Склад" not in text  # D-04: no warehouse column in the picker
+    # D-07: earliest expiry first (NULL last), so «Ранняя» precedes «Поздняя».
+    assert text.index("Ранняя") < text.index("Поздняя")
+    assert "15.01.2026" in text  # ru_date renders the ISO expiry
+
+
+def test_web_sale_lookup_autoselect_single_batch(client, session, product, warehouse):
+    """D-06: a single-batch product auto-selects — pre-checked, highlighted, noted."""
+    b = _batch(session, product, warehouse, qty=4, expiry="2026-06-01", price=999)
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert "Партия выбрана автоматически — единственная" in text
+    assert b.id in text
+    assert "checked" in text
+    assert 'class="selected-batch"' in text
+
+
+def test_web_sale_lookup_empty_state_when_no_open_batches(client, session, product):
+    """A product with zero open batches shows «Нет партий с остатком.»."""
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert "Нет партий с остатком." in response.text
+
+
+def test_web_sale_batch_pick_selects_and_fills_batch_price(client, session, product, warehouse):
+    """/sales/batch-pick re-renders the wrapper with the selection + oob batch price."""
+    _batch(session, product, warehouse, qty=3, expiry="2026-01-15", price=1234)
+    b2 = _batch(session, product, warehouse, qty=5, expiry="2026-12-01", price=5678)
+
+    response = client.get(
+        "/sales/batch-pick", params={"row": "", "batch_id": b2.id, "code": product.code}
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert b2.id in text  # hidden batch_id[] value set to the pick
+    assert 'class="selected-batch"' in text
+    assert 'hx-swap-oob="true"' in text  # oob price fill
+    assert "56,78" in text  # the picked batch's price
+    assert "Цена подставлена из партии" in text
+
+
+def test_web_sale_batch_pick_legacy_null_price_falls_back_to_card(
+    client, session, product, warehouse
+):
+    """D-14: picking a NULL-price legacy batch fills the card sale_cents instead."""
+    product.sale_cents = 4200
+    session.commit()
+    b = _batch(session, product, warehouse, qty=3, price=None)
+
+    response = client.get(
+        "/sales/batch-pick", params={"row": "", "batch_id": b.id, "code": product.code}
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert "42,00" in text
+    assert "Цена подставлена из карточки товара" in text
+
+
+def test_web_sale_batch_drift_attribution_holds(client, session, warehouse):
+    """Pitfall 2: each line's op stays attributed to its OWN picked batch."""
+    p1 = Product(id=new_id(), code="DRIFT-1", name="Товар один", quantity=0)
+    p2 = Product(id=new_id(), code="DRIFT-2", name="Товар два", quantity=0)
+    session.add_all([p1, p2])
+    session.commit()
+    b1 = _batch(session, p1, warehouse, qty=5, price=1000)
+    b2 = _batch(session, p2, warehouse, qty=5, price=2000)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [p1.code, p2.code],
+            "qty[]": ["1", "1"],
+            "price[]": ["10,00", "20,00"],
+            "batch_id[]": [b1.id, b2.id],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    ops = {op.product_id: op for op in _sale_ops(session)}
+    assert ops[p1.id].batch_id == b1.id
+    assert ops[p2.id].batch_id == b2.id
+
+
+def test_web_sale_short_batch_array_degrades_to_missing_not_drift(
+    client, session, warehouse
+):
+    """Pitfall 2: a short batch_id[] pads to «no batch» for the trailing line,
+    never shifting an earlier pick onto it."""
+    p1 = Product(id=new_id(), code="PAD-1", name="Товар один", quantity=0)
+    p2 = Product(id=new_id(), code="PAD-2", name="Товар два", quantity=0)
+    session.add_all([p1, p2])
+    session.commit()
+    b1 = _batch(session, p1, warehouse, qty=5, price=1000)
+    _batch(session, p2, warehouse, qty=5, price=2000)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [p1.code, p2.code],
+            "qty[]": ["1", "1"],
+            "price[]": ["10,00", "20,00"],
+            "batch_id[]": [b1.id],  # only one id for two lines
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert "Выберите партию." in response.text
+    assert _sale_ops(session) == []
+
+
+def test_web_sale_422_re_echoes_picked_batch(client, session, stocked_product):
+    """Pitfall 3: a 422 (bad qty) re-render keeps the picked batch hidden value."""
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["abc"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert bid in response.text  # the pick survives the re-render
+
+
+def test_web_sale_missing_batch_pick_returns_422(client, session, stocked_product):
+    """LOT-02: submitting a line with no picked batch is a 422 «Выберите партию.»."""
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [""],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert "Выберите партию." in response.text
+    assert _sale_ops(session) == []
