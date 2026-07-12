@@ -98,6 +98,10 @@ None - no external service configuration required.
 
 Verified in git log: `test(10-01): add failing WH-03 unit suite for register_transfer` (78268b8, RED) precedes `feat(10-01): implement register_transfer + recent_transfers (WH-03)` (6f4d3fe, GREEN). Gate sequence satisfied; no refactor commit was needed (implementation was clean on first pass, only ruff formatting applied before commit).
 
+## Self-Check: PASSED
+
+All created files verified on disk (app/services/transfers.py, tests/test_transfers.py, this SUMMARY.md); all four task/plan commits (315700e, 78268b8, 6f4d3fe, 54a86bf) verified present in git log.
+
 ---
 *Phase: 10-warehouse-transfers-expiry-reporting*
 *Completed: 2026-07-12*
