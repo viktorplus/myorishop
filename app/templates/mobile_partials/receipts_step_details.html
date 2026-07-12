@@ -1,0 +1,44 @@
+{# Приход wizard, step 3 «Количество и цены» (UI-01, Phase 11 Plan 03).
+   New-batch fields (expiry/location/comment) are entirely OMITTED (not just
+   disabled, unlike desktop) when batch_choice != "new" — the choice was
+   already made server-side on step 2, so a top-up receipt never posts stray
+   batch-birth fields. #}
+<p class="mobile-step-indicator">Шаг 3 из 4</p>
+<input type="hidden" name="code" value="{{ code }}">
+<input type="hidden" name="warehouse_id" value="{{ warehouse_id }}">
+<input type="hidden" name="name" value="{{ name }}">
+<input type="hidden" name="batch_choice" value="{{ batch_choice }}">
+<div class="field">
+  <label for="receipt-qty">Количество</label>
+  <input type="text" id="receipt-qty" name="qty" inputmode="numeric" value="{{ qty }}" required>
+</div>
+<div class="field">
+  <label for="receipt-cost">Закупочная цена <span class="muted">(необязательно)</span></label>
+  <input type="text" id="receipt-cost" name="cost" inputmode="decimal" value="{{ cost }}">
+</div>
+<div class="field">
+  <label for="receipt-sale">Цена продажи <span class="muted">(необязательно)</span></label>
+  <input type="text" id="receipt-sale" name="sale" inputmode="decimal" value="{{ sale }}">
+</div>
+<div class="field">
+  <label for="receipt-catalog">Цена по каталогу <span class="muted">(необязательно)</span></label>
+  <input type="text" id="receipt-catalog" name="catalog" inputmode="decimal" value="{{ catalog }}">
+</div>
+{% if is_new_batch %}
+<div class="field">
+  <label for="receipt-expiry">Срок годности <span class="muted">(необязательно)</span></label>
+  <input type="date" id="receipt-expiry" name="expiry" value="{{ expiry }}">
+</div>
+<div class="field">
+  <label for="receipt-location">Место хранения <span class="muted">(необязательно)</span></label>
+  <input type="text" id="receipt-location" name="location" placeholder="например, стеллаж А3" value="{{ location }}">
+</div>
+<div class="field">
+  <label for="receipt-comment">Комментарий к партии <span class="muted">(необязательно)</span></label>
+  <input type="text" id="receipt-comment" name="comment" value="{{ comment }}">
+</div>
+{% endif %}
+<div class="mobile-actions">
+  <button type="button" class="secondary" hx-post="/m/receipts/step/batch" hx-include="closest form">Назад</button>
+  <button type="submit" hx-post="/m/receipts/step/confirm" hx-include="closest form">Далее</button>
+</div>
