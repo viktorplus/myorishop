@@ -1,0 +1,4 @@
+{# D-11-mirrored: debounced code->name lookup echo for the mobile
+   "Товар" step (GET /m/corrections/lookup). Untrusted stored text
+   (product.name) — Jinja autoescape only, never |safe. #}
+<p class="muted" id="name-wrap">{{ name or '' }}</p>

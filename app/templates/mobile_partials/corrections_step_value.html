@@ -1,0 +1,36 @@
+{# Mobile Корректировка wizard, step 4 "Значение" (D-09/D-11/Pitfall 7).
+   Label adapts to the chosen mode; the muted hint mirrors desktop's
+   batch-scoped #current-qty-hint — batch_qty is an opaque value computed
+   once at batch-pick time and carried forward, never re-derived here. #}
+<div id="corrections-step-wrap">
+  <p class="mobile-step-indicator">Шаг 4 из 4</p>
+  <h1>Значение</h1>
+  {% if errors %}
+  <div class="error-block">
+    {% for message in errors.values() %}<p>{{ message }}</p>{% endfor %}
+  </div>
+  {% endif %}
+  <form class="stacked-form"
+        hx-post="/m/corrections"
+        hx-target="#corrections-step-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="batch_id" value="{{ batch_id }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <div class="field">
+      <label for="value">{% if mode == "count" %}Фактический остаток{% else %}Изменение (+ или −){% endif %}</label>
+      <input type="text" id="value" name="value" inputmode="numeric"
+             value="{{ form.value if form is defined and form.value else '' }}">
+      <span class="muted">Остаток в партии: {{ batch_qty if batch_qty is not none and batch_qty != '' else '—' }}</span>
+    </div>
+    <div class="field">
+      <label for="note">Примечание <span class="muted">(необязательно)</span></label>
+      <input type="text" id="note" name="note" value="{{ form.note if form is defined and form.note else '' }}">
+    </div>
+    <div class="mobile-actions">
+      <a class="mobile-back" href="/m/corrections">Назад</a>
+      <button type="submit">Сохранить корректировку</button>
+    </div>
+  </form>
+</div>
