@@ -1,0 +1,20 @@
+{# D-04/D-06: oversell warning — server already wrote ZERO ops for this
+   transfer. Reuses the existing .error-block treatment and button.danger
+   (mirrors writeoff_oversell.html). Product names are untrusted stored
+   input: autoescape only — the safe filter is never applied. #}
+<div class="error-block" id="transfer-oversell-warning">
+  <p><strong>Товара не хватает в партии</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, перемещаете {{ oversell.requested }}.</p>
+  <div class="form-actions">
+    {# Re-POSTs the SAME form via form association (mirrors writeoff_oversell.html):
+       hx-vals merges confirm=1 into the transfer-form fields, no re-serialization. #}
+    <button type="submit" class="danger" form="transfer-form"
+            hx-post="/transfers" hx-vals='{"confirm": "1"}'
+            hx-target="#transfer-form-wrap" hx-swap="outerHTML"
+            hx-disabled-elt="this">Переместить всё равно</button>
+    {# Client-side dismiss only — no server call, no write; the form
+       underneath was never swapped, so entered values are intact. #}
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#transfer-oversell-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>

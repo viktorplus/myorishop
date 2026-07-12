@@ -1,0 +1,77 @@
+{# Save-and-next form partial (mirrors writeoff_form.html, D-02 ergonomics):
+   swapped WHOLE on every POST response. Focus returns to «Код» via the
+   explicit hx-on::load hook below — autofocus does NOT fire inside swapped
+   content (RESEARCH Pitfall 6); the autofocus attribute covers the initial
+   page load only. Destination-warehouse <select> replaces the reason/note
+   fields of the write-off form (D-02): active warehouses minus the source
+   batch's own warehouse. #}
+<div id="transfer-form-wrap"{% if focus_code %} hx-on::load="document.getElementById('code').focus()"{% endif %}>
+  {% if saved %}<p>Перемещение сохранено: {{ saved.name }} — {{ saved.qty }} шт.</p>{% endif %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  {% if oversell %}
+  {% include "partials/transfer_oversell.html" %}
+  {% endif %}
+
+  {# Swap-time guard (RESEARCH Pitfall 7): the #name-wrap swap from the
+     lookup response is discarded if the operator typed into the name field
+     while the request was in flight — a lookup never clobbers typed input. #}
+  <form class="stacked-form"
+        id="transfer-form"
+        hx-post="/transfers"
+        hx-target="#transfer-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button"
+        hx-on::before-swap="if (event.detail.target.id === 'name-wrap'
+          && document.getElementById('name').value.trim()) event.detail.shouldSwap = false">
+    <div class="field">
+      <label for="code">Код</label>
+      {# D-04: debounced code->name lookup — the server decides fill vs 204. #}
+      <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus
+             hx-get="/transfers/lookup"
+             hx-trigger="input changed delay:300ms"
+             hx-include="[name='name']"
+             hx-target="#name-wrap"
+             hx-swap="outerHTML"
+             hx-sync="this:replace">
+      {% if errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+    </div>
+
+    {# PD-6: single source for the name field — shared with the product/receipt forms. #}
+    {% with name = form.name or '', autofilled = False %}
+    {% include "partials/name_input.html" %}
+    {% endwith %}
+
+    <div class="field">
+      <label for="qty">Количество</label>
+      <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ form.qty or '' }}">
+      {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+
+    {# WH-03: source batch picker (scalar batch_id). Empty until a code
+       lookup swaps the open batches in oob; on a 422/warn re-render the
+       picked batch is re-echoed via `selected_batch` (and the filtered
+       destination-warehouse list via `warehouses`) so the operator's
+       choice survives. #}
+    {% set _sb = selected_batch if selected_batch is defined else none %}
+    {% with code = form.code or "",
+            batches = [_sb] if _sb else [],
+            selected_batch_id = _sb.id if _sb else none,
+            batch_id_value = _sb.id if _sb else "",
+            warehouses = warehouses | default([]) %}
+    {% include "partials/transfer_batch_wrap.html" %}
+    {% endwith %}
+
+    <div class="form-actions">
+      <button type="submit">Переместить</button>
+    </div>
+  </form>
+
+  {# The POST success response carries the refreshed recent list out-of-band;
+     on 422/oversell htmx only swaps the form (include_oob_rows False). #}
+  {% if include_oob_rows %}
+  {% with oob = True, transfers = transfers %}
+  {% include "partials/transfer_rows.html" %}
+  {% endwith %}
+  {% endif %}
+</div>

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Перемещение</h1>
+
+{% include "partials/transfer_form.html" %}
+
+{% with oob = False %}
+{% include "partials/transfer_rows.html" %}
+{% endwith %}
+{% endblock %}
