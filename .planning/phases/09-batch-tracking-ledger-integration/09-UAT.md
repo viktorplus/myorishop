@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 09-batch-tracking-ledger-integration
 source: [09-VERIFICATION.md]
 started: 2026-07-12T00:00:00Z
-updated: 2026-07-12T15:10:00Z
+updated: 2026-07-12T16:45:00Z
 ---
 
 ## Current Test
@@ -14,9 +14,8 @@ updated: 2026-07-12T15:10:00Z
 
 ### 1. Receipt batch chooser — top-up vs new batch + conditional new-batch fields
 expected: For a product with existing batches, after entering the code and picking a warehouse, the chooser lists «Пополнить партию» radios per open batch AND a «Новая партия» radio; the new-batch fields (срок/место/комментарий) appear only when «Новая партия» is selected, and disabled inputs never submit on top-up.
-result: issue
-reported: "при загрузке форм не понятно какая форма выбрана радиокнопка всего одна и непонятно к чему относится и уже выбрана. при вводе кода существующего продукта название не подставляется. партия должна иметь название при создании имя и текущая дата"
-severity: major
+result: pass
+prior_result: issue (fixed by 09-08 + 09-09; re-verified pass)
 
 ### 2. Sale batch picker — four columns, D-07 order, oob price fill
 expected: For a 2-batch product, the inline picker shows exactly four columns (Цена, Срок годности, Остаток, Комментарий) in earliest-expiry-first / NULL-last order; picking a batch fills the line price with the batch price via hx-swap-oob and shows the hint «Цена подставлена из партии — можно изменить».
@@ -28,27 +27,26 @@ result: pass
 
 ### 4. Per-batch oversell warn-but-allow across sale/write-off/correction
 expected: Picking a batch whose remaining is smaller than another batch of the same product and requesting more than that batch holds shows a warning scoped to the picked batch's remaining (not the product total); no write happens until «...всё равно» (confirm=1), which then commits.
-result: issue
-reported: "выберите партию написано дважды после клика на партию, внизу появляется еще одна таблица, поля количество что бы ввести 8 нет, или не подписано. при нажатии на кнопку оформить продажу - введите партию, хотя партия была выбрана"
-severity: blocker
+result: pass
+prior_result: blocker (fixed by 09-06 <template>-wrapped OOB; re-verified pass)
+note: "User: 'Все работает'. Minor UX idea — sale line has no warehouse selector; suggest displaying which warehouse the picked batch is on (informational). See ## Notes."
 
 ### 5. Basket array-drift — delete middle line keeps batch attribution
 expected: With three sale lines each on a distinct batch, deleting the MIDDLE line removes both its <tr>s; on submit each remaining line's op is attributed to its own picked batch, and a 422 re-render keeps every pick.
-result: issue
-reported: "все сработало до оформления продажи, запросило количество после ввода ошибка выберите партию под каждой позицией"
-severity: blocker
+result: pass
+prior_result: blocker (fixed by 09-06; re-verified pass with 3-line basket)
 
 ### 6. /history legacy vs batched attribution after migration
 expected: A pre-Phase-9 (NULL batch_id) stock op renders the muted «До внедрения партий» second line; a batched op renders «Партия: {срок}{ — comment}»; price-change/product rows show no batch second line; a return of a legacy sale shows «Возврат в партию: Остаток до внедрения партий».
-result: issue
-reported: "все хорошо но кнопки возврат не нашел и нужна еще одна колонка код продукта вместо поиска ее в поле Товар"
-severity: major
+result: pass
+prior_result: major (fixed by 09-07 «Код» column + «Вернуть» link; re-verified pass)
+note: "User: pass. Minor UX idea — clicking «Вернуть» should scroll the page down to the return form in #return-slot, otherwise the form isn't obvious. See ## Notes."
 
 ## Summary
 
 total: 6
-passed: 2
-issues: 4
+passed: 6
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -127,3 +125,15 @@ blocked: 0
     - "Add a «Действие» <td> with the same «Вернуть» hx-get=\"/returns?sale_id=...&product_id=...&origin_op_id=...\" link (conditional on r.op.type == 'sale'), mirroring purchase_history.html/recent_sales.html"
     - "Add a <div id=\"return-slot\"></div> to history.html, respecting the existing oob/#history-tbody swap boundaries noted in history_rows.html's CR-01 comments"
   debug_session: .planning/debug/history-return-button-and-code-column.md
+
+## Notes
+
+<!-- Non-blocking enhancement ideas surfaced during re-verification; not failed tests -->
+- source: test 4 (re-verify)
+  idea: "Sale line has no warehouse selector — only batch pick. Consider showing (read-only) which warehouse the picked batch belongs to, so the operator sees the location without needing to choose it."
+  severity: minor / enhancement
+  status: captured (not scheduled)
+- source: test 6 (re-verify)
+  idea: "Clicking «Вернуть» on /history should scroll the page down to the return form in #return-slot — otherwise the form appearing below the table is not obvious to the operator."
+  severity: minor / enhancement
+  status: captured (not scheduled)
