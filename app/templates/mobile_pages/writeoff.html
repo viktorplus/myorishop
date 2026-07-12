@@ -1,0 +1,39 @@
+{# Mobile write-off wizard, step 1 «Товар» (UI-01/LOT-05) — GET /m/writeoff.
+   Also doubles as the post-success screen (D-05 addition): POST /m/writeoff
+   re-renders this SAME template with `saved` set instead of a separate file,
+   since the two states never appear together and share the "Списание" title.
+   The code field's debounced lookup is display-only feedback (D-04) — a
+   write-off never creates/edits a product from this field, unlike receipts. #}
+{% extends "mobile_base.html" %}
+{% block step_indicator %}
+{% if not saved %}<p class="mobile-step-indicator">Шаг 1 из 4</p>{% endif %}
+{% endblock %}
+{% block content %}
+<h1>Списание</h1>
+
+{% if saved %}
+<p>Списание сохранено: {{ saved.name }} — {{ saved.qty }} шт.</p>
+<div class="mobile-actions">
+  <a class="button" href="/m/writeoff">Добавить ещё</a>
+  <a class="mobile-back" href="/m/">На главную</a>
+</div>
+{% else %}
+{% if errors is defined and errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+<form method="post" action="/m/writeoff/step/batch" class="stacked-form">
+  <div class="field">
+    <label for="code">Код</label>
+    <input type="text" id="code" name="code" value="{{ code or '' }}" required autofocus
+           hx-get="/m/writeoff/lookup"
+           hx-trigger="input changed delay:300ms"
+           hx-target="#name-fill"
+           hx-swap="outerHTML">
+  </div>
+  <div id="name-fill">
+    {% if name %}<p class="muted">Название: {{ name }}</p>{% endif %}
+  </div>
+  <div class="mobile-actions">
+    <button type="submit">Далее</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

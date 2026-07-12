@@ -1,0 +1,21 @@
+{# Mobile write-off wizard, step 3 «Количество» (D-04) — rendered by
+   POST /m/writeoff/step/qty. No price fields — write-off never has prices. #}
+{% extends "mobile_base.html" %}
+{% block step_indicator %}<p class="mobile-step-indicator">Шаг 3 из 4</p>{% endblock %}
+{% block content %}
+<h1>Списание</h1>
+<h2>Количество</h2>
+{% if errors is defined and errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+<form method="post" action="/m/writeoff/step/reason" class="stacked-form">
+  <input type="hidden" name="code" value="{{ code }}">
+  <input type="hidden" name="batch_id" value="{{ batch_id }}">
+  <div class="field">
+    <label for="qty">Количество</label>
+    <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ qty or '' }}" required autofocus>
+  </div>
+  <div class="mobile-actions">
+    <button type="button" class="secondary" onclick="history.back()">Назад</button>
+    <button type="submit">Далее</button>
+  </div>
+</form>
+{% endblock %}

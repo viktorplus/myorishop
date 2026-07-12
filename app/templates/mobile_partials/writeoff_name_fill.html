@@ -1,0 +1,8 @@
+{# Debounced code->name display for the mobile «Товар» step (D-04): read-only
+   feedback fragment, swapped into #name-fill on every code keystroke via
+   GET /m/writeoff/lookup. A 204 (unknown code) leaves the target untouched
+   per the shared htmx-config 204->no-swap rule, so this file only ever
+   renders when a product/dictionary match was found. #}
+<div id="name-fill">
+  <p class="muted">Название: {{ name }}</p>
+</div>

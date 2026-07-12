@@ -1,0 +1,10 @@
+{# Standalone batch-wrap fragment (D-07/T-11-13): returned by GET
+   /m/writeoff/step/batch-pick on every card tap, swapped into #batch-wrap
+   (outerHTML, batch_card_picker.html's default batch_target) inside the
+   step-2 form (mobile_partials/writeoff_step_batch.html). Duplicates that
+   file's div#batch-wrap + batch_card_picker.html include on purpose — kept
+   in sync manually, the identical role desktop's writeoff_batch_wrap.html
+   plays for its 3-in-1 form. #}
+<div id="batch-wrap">
+  {% include "mobile_partials/batch_card_picker.html" %}
+</div>
