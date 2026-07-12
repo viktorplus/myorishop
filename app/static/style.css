@@ -276,3 +276,13 @@ mark {
 
 .mobile-actions { display: flex; gap: 16px; margin-top: 24px; }
 .mobile-actions button, .mobile-actions a.button { flex: 1; min-height: 44px; }
+
+/* Accessibility utility (Plan 05): keeps a native input focusable/keyboard-
+   operable (e.g. the write-off reason radio inside a .mobile-card row) while
+   visually hiding it — the wrapping label is the tap/visual target. Standard
+   clip-rect technique, not a new design token. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

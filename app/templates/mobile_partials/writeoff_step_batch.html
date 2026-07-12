@@ -1,0 +1,27 @@
+{# Mobile write-off wizard, step 2 «Партия» (LOT-05/D-07) — rendered by
+   POST /m/writeoff/step/batch. Includes the shared batch_card_picker.html
+   fragment (Plan 01 output) directly; tapping a card echoes the pick via
+   GET /m/writeoff/step/batch-pick into #batch-wrap (mirrors
+   writeoff_batch_wrap.html, kept in sync manually — same two-render-sites
+   shape as desktop's writeoff_batch_wrap.html). Pitfall 6: zero open
+   batches (show_empty) renders NO forward control — the wizard cannot
+   proceed without a picked batch. #}
+{% extends "mobile_base.html" %}
+{% block step_indicator %}<p class="mobile-step-indicator">Шаг 2 из 4</p>{% endblock %}
+{% block content %}
+<h1>Списание</h1>
+<h2>Выберите партию</h2>
+{% if errors is defined and errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+<form method="post" action="/m/writeoff/step/qty" class="stacked-form">
+  <input type="hidden" name="code" value="{{ code }}">
+  <div id="batch-wrap">
+    {% include "mobile_partials/batch_card_picker.html" %}
+  </div>
+  <div class="mobile-actions">
+    <button type="button" class="secondary" onclick="history.back()">Назад</button>
+    {% if not show_empty %}
+    <button type="submit">Далее</button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
