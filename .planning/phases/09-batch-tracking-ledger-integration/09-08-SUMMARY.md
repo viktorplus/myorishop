@@ -90,6 +90,10 @@ None - plan executed exactly as written. (The kept auto-select-new default is an
 - UAT test 1 symptoms 1 & 2 addressed; remaining browser UAT (live JS dirty-flag behavior) is verified manually per the plan.
 - Symptom 3 (batches need a name — schema change) remains scoped to plan 09-09.
 
+## Self-Check: PASSED
+
+All modified files present on disk; all task + docs commits (83658fe, c27bc4a, 606dacb, f6a4f58) verified in git history.
+
 ---
 *Phase: 09-batch-tracking-ledger-integration*
 *Completed: 2026-07-12*
