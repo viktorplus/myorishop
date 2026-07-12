@@ -14,13 +14,14 @@ from contextlib import closing
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from alembic import command
 from app.config import settings
-from app.core import format_ru_date, new_id
-from app.models import Batch, Operation, Warehouse
+from app.core import format_ru_date, new_id, utcnow_iso
+from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses, legacy_batch, open_batches
+from app.services.ledger import rebuild_stock, record_operation
 
 
 def _make_warehouse(session, name="Основной склад"):
@@ -310,3 +311,119 @@ def test_migration_0008_downgrade_reverses_cleanly(tmp_path, monkeypatch):
             "WHERE type = 'trigger' AND name LIKE 'operations_no_%'"
         ).fetchone()[0]
         assert trigger_count == 2
+
+
+# --- Task 3: record_operation dual projection + rebuild_stock invariant ----
+
+
+def test_record_operation_dual_projection(session, product, batch):
+    """D-11: a batched receipt bumps BOTH product.quantity and batch.quantity."""
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        batch_id=batch.id,
+    )
+    session.expire_all()
+    assert product.quantity == 5
+    assert batch.quantity == 5
+
+
+def test_record_operation_rejects_foreign_batch(session, product, batch):
+    """D-12 ownership backstop: a batch of another product is rejected (T-09)."""
+    other = Product(id=new_id(), code="OTHER-1", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+    with pytest.raises(ValueError, match="does not belong"):
+        record_operation(
+            session,
+            type_="sale",
+            product_id=other.id,
+            qty_delta=-1,
+            batch_id=batch.id,
+        )
+    session.rollback()
+    assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 0
+
+
+def test_record_operation_unknown_batch_raises(session, product):
+    """An unresolvable batch id raises before any write."""
+    with pytest.raises(ValueError, match="unknown batch"):
+        record_operation(
+            session,
+            type_="sale",
+            product_id=product.id,
+            qty_delta=-1,
+            batch_id="no-such-batch",
+        )
+    session.rollback()
+    assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 0
+
+
+def test_record_operation_without_batch_still_works(session, product):
+    """batch_id stays OPTIONAL this plan — a batch-less op still succeeds."""
+    record_operation(session, type_="correction", product_id=product.id, qty_delta=3)
+    session.expire_all()
+    assert product.quantity == 3
+
+
+def test_rebuild_stock_invariant_holds_for_legacy_null_bucket(
+    session, product, warehouse
+):
+    """rebuild_stock: a legacy batch absorbs the NULL bucket; caches stay consistent."""
+    legacy = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+        is_legacy=1,
+    )
+    session.add(legacy)
+    session.commit()
+    # NULL-bucket op (pre-batch style, no batch_id) + a batched op on the legacy batch.
+    record_operation(session, type_="receipt", product_id=product.id, qty_delta=4)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=2,
+        batch_id=legacy.id,
+    )
+    rebuild_stock(session)
+    session.expire_all()
+    assert product.quantity == 6
+    assert legacy.quantity == 6  # 2 direct + 4 absorbed NULL bucket
+
+
+def test_rebuild_stock_raises_on_corrupted_ledger(session, product, warehouse):
+    """A cross-product ledger row breaks the per-product invariant (D-11)."""
+    other = Product(id=new_id(), code="OTH-2", name="Чужой", quantity=0)
+    session.add(other)
+    b = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+    )
+    session.add(b)
+    session.commit()
+    # Inject a cross-product row directly (bypassing record_operation's guard):
+    # batch b belongs to `product`, but the op is attributed to `other`.
+    session.add(
+        Operation(
+            id=new_id(),
+            type="receipt",
+            product_id=other.id,
+            qty_delta=5,
+            batch_id=b.id,
+            device_id="corrupt",
+            seq=1,
+            created_at=utcnow_iso(),
+            created_by="test",
+        )
+    )
+    session.commit()
+    with pytest.raises(ValueError, match="invariant"):
+        rebuild_stock(session)
+    session.rollback()
