@@ -110,3 +110,117 @@ def mobile_correction_batch_pick(
     return templates.TemplateResponse(
         request, "mobile_partials/corrections_step_batch.html", context
     )
+
+
+@router.post("/m/corrections/step/mode")
+def mobile_correction_step_mode(
+    request: Request,
+    code: str = Form(""),
+    batch_id: str = Form(""),
+    batch_qty: str = Form(""),
+):
+    context = {
+        "code": code.strip(),
+        "batch_id": batch_id.strip(),
+        "batch_qty": batch_qty,
+        "mode": "",
+    }
+    return templates.TemplateResponse(
+        request, "mobile_partials/corrections_step_mode.html", context
+    )
+
+
+@router.post("/m/corrections/step/value")
+def mobile_correction_step_value(
+    request: Request,
+    code: str = Form(""),
+    batch_id: str = Form(""),
+    batch_qty: str = Form(""),
+    mode: str = Form(""),
+):
+    context = {
+        "code": code.strip(),
+        "batch_id": batch_id.strip(),
+        "batch_qty": batch_qty,
+        "mode": mode,
+    }
+    return templates.TemplateResponse(
+        request, "mobile_partials/corrections_step_value.html", context
+    )
+
+
+@router.post("/m/corrections")
+def mobile_correction_create(
+    request: Request,
+    code: str = Form(""),
+    mode: str = Form(""),
+    value: str = Form(""),
+    note: str = Form(""),
+    batch_id: str = Form(""),
+    batch_qty: str = Form(""),
+    confirm: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    # Mode/qty fields arrive as strings on purpose: parsing/validation
+    # happens in the service, which returns RU errors.
+    form_echo = {"value": value, "note": note}
+    try:
+        result, errors = register_correction(
+            session,
+            code=code,
+            mode=mode,
+            value_raw=value,
+            note=note,
+            batch_id=batch_id,
+            confirm=confirm,
+        )
+    except Exception:  # noqa: BLE001 -- UI-SPEC: block error, never a raw 500
+        # WR-03: defensive rollback, mirroring correction_create.
+        session.rollback()
+        logger.exception("register_correction failed")
+        context = {
+            "errors": {"form": SAVE_FAILED_ERROR},
+            "form": form_echo,
+            "code": code.strip(),
+            "batch_id": batch_id.strip(),
+            "mode": mode or "count",
+            "batch_qty": batch_qty,
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/corrections_step_value.html", context, status_code=422
+        )
+
+    # T-11-18/D-09 criterion 4: over-removal -- zero writes, warn above the
+    # step 4 form (the danger button re-POSTs the same hidden fields plus
+    # confirm=1).
+    if result and result.get("oversell"):
+        context = {
+            "oversell": result["oversell"],
+            "form": form_echo,
+            "code": code.strip(),
+            "batch_id": batch_id.strip(),
+            "mode": mode or "count",
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/corrections_warning.html", context
+        )
+
+    if errors:
+        context = {
+            "errors": errors,
+            "form": form_echo,
+            "code": code.strip(),
+            "batch_id": batch_id.strip(),
+            "mode": mode or "count",
+            "batch_qty": batch_qty,
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/corrections_step_value.html", context, status_code=422
+        )
+
+    # D-05: success -> mobile confirmation screen (mobile_pages/corrections.html
+    # doubles as this screen), not desktop's silent form reset.
+    context = {
+        "saved": {"name": result["product"].name, "new_qty": result["new_qty"]},
+    }
+    return templates.TemplateResponse(request, "mobile_pages/corrections.html", context)

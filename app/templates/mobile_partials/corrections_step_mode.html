@@ -1,0 +1,35 @@
+{# Mobile Корректировка wizard, step 3 "Режим" (D-09/D-11). Two large
+   tappable rows wrapping visually-hidden native radios — keeps the field
+   keyboard-accessible (Interaction Contract) while the label is the visual
+   ≥44px tap target. Only "count"/"delta" are ever offered; the server-side
+   allow-list in register_correction is unchanged (T-11-17). #}
+<div id="corrections-step-wrap">
+  <p class="mobile-step-indicator">Шаг 3 из 4</p>
+  <h1>Режим</h1>
+  <form class="stacked-form"
+        hx-post="/m/corrections/step/value"
+        hx-target="#corrections-step-wrap"
+        hx-swap="outerHTML">
+    <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="batch_id" value="{{ batch_id }}">
+    <input type="hidden" name="batch_qty" value="{{ batch_qty if batch_qty is not none else '' }}">
+    <div class="field">
+      <label class="mobile-card{% if mode == 'count' %} selected{% endif %}">
+        <input type="radio" name="mode" value="count" required
+               style="position:absolute;opacity:0;"
+               {% if mode == "count" %}checked{% endif %}>
+        Пересчёт (фактический остаток)
+      </label>
+      <label class="mobile-card{% if mode == 'delta' %} selected{% endif %}">
+        <input type="radio" name="mode" value="delta"
+               style="position:absolute;opacity:0;"
+               {% if mode == "delta" %}checked{% endif %}>
+        Изменение (±)
+      </label>
+    </div>
+    <div class="mobile-actions">
+      <a class="mobile-back" href="/m/corrections">Назад</a>
+      <button type="submit">Далее</button>
+    </div>
+  </form>
+</div>
