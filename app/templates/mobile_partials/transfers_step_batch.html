@@ -20,7 +20,9 @@
   <button type="button"
           class="mobile-card"
           hx-get="/m/transfers/step/batch-pick"
-          hx-vals='{"batch_id": "{{ b.id }}", "code": "{{ code }}"}'
+          {# WR-02: tojson correctly escapes a double quote inside code for
+             both JSON and this HTML attribute. #}
+          hx-vals="{{ {'batch_id': b.id, 'code': code} | tojson }}"
           hx-target="#wizard-step"
           hx-swap="outerHTML">
     <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>

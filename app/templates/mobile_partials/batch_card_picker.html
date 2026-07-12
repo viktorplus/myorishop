@@ -40,7 +40,10 @@
 <button type="button"
         class="mobile-card{% if b.id == selected_batch_id %} selected{% endif %}"
         hx-get="{{ pick_url }}"
-        hx-vals='{"batch_id": "{{ b.id }}", "code": "{{ code | default('') }}"{% if row_id %}, "row": "{{ row_id }}"{% endif %}}'
+        {# WR-02: tojson (not manual string concatenation) correctly escapes
+           a double quote inside code/row_id for both JSON and this HTML
+           attribute — manual concatenation broke on a quote character. #}
+        hx-vals="{{ ({'batch_id': b.id, 'code': code | default(''), 'row': row_id} if row_id else {'batch_id': b.id, 'code': code | default('')}) | tojson }}"
         hx-target="{{ batch_target }}"
         hx-swap="outerHTML">
   <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
