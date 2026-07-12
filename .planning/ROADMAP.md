@@ -187,13 +187,13 @@ Plans:
 
 **Wave 2** *(7 independent plans — no file overlap, run in parallel, all depend only on 11-01)*
 
-- [ ] 11-02-PLAN.md — UI-01: mobile home (D-03 tile grid), search, expiry report (all read-only, reuse existing services unchanged)
-- [ ] 11-03-PLAN.md — UI-01: receipt wizard (Приход) — 4 steps, register_receipt() reused
-- [ ] 11-04-PLAN.md — UI-01: sale wizard (Продажа) — basket wizard, register_sale(), price-floor + oversell guardrails (D-06)
-- [ ] 11-05-PLAN.md — UI-01: write-off wizard (Списание) — 4 steps, register_writeoff(), oversell guardrail
-- [ ] 11-06-PLAN.md — UI-01: correction wizard (Корректировка) — 4 steps, register_correction(), over-removal guardrail
-- [ ] 11-07-PLAN.md — UI-01: transfer wizard (Перемещение) — 3 steps, register_transfer(), dest-warehouse exclusion
-- [ ] 11-08-PLAN.md — UI-01: history card list (single filter) + return flow entry from a history card, register_return()
+- [x] 11-02-PLAN.md — UI-01: mobile home (D-03 tile grid), search, expiry report (all read-only, reuse existing services unchanged)
+- [x] 11-03-PLAN.md — UI-01: receipt wizard (Приход) — 4 steps, register_receipt() reused
+- [x] 11-04-PLAN.md — UI-01: sale wizard (Продажа) — basket wizard, register_sale(), price-floor + oversell guardrails (D-06)
+- [x] 11-05-PLAN.md — UI-01: write-off wizard (Списание) — 4 steps, register_writeoff(), oversell guardrail
+- [x] 11-06-PLAN.md — UI-01: correction wizard (Корректировка) — 4 steps, register_correction(), over-removal guardrail
+- [x] 11-07-PLAN.md — UI-01: transfer wizard (Перемещение) — 3 steps, register_transfer(), dest-warehouse exclusion
+- [x] 11-08-PLAN.md — UI-01: history card list (single filter) + return flow entry from a history card, register_return()
 
 **Wave 3** *(blocked on all of Wave 2 — the only plan touching app/main.py)*
 
@@ -218,4 +218,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
-| 11. Dedicated Mobile Flow | v1.1 | 1/9 | In Progress|  |
+| 11. Dedicated Mobile Flow | v1.1 | 8/9 | In Progress|  |
