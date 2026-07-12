@@ -34,7 +34,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 
 - [x] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product (completed 2026-07-10)
 - [x] **Phase 8: Warehouses** - Operators create and manage multiple physical warehouses (completed 2026-07-11)
-- [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
+- [~] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (built 2026-07-12; gap closure in progress from 09-UAT.md)
 - [ ] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
 - [ ] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set
 
@@ -108,7 +108,7 @@ Plans:
   4. Selling, writing off, or correcting more than a batch's remaining quantity shows an oversell/over-removal warning scoped to that batch, not the product's total across all its batches
   5. Existing v1.0 stock and sales history remain intact after migration — legacy operations show as belonging to a default legacy batch, with totals and reports still balancing
 
-**Plans**: 5 plans
+**Plans**: 9 plans (5 original + 4 gap closure from 09-UAT.md)
 Plans:
 **Wave 1**
 
@@ -126,6 +126,18 @@ Plans:
 **Wave 4** *(blocked on Wave 3 — D-12 guard flip needs all services batch-aware)*
 
 - [x] 09-05-PLAN.md — LOT-05: return batch inheritance (+ legacy lazy-create), /history legacy display, D-12 mandatory batch guard flip
+
+**Gap closure (from 09-UAT.md — 4 UAT issues across tests 1/4/5/6)**
+
+**Wave 1** *(three independent fixes, no file overlap — run in parallel)*
+
+- [ ] 09-06-PLAN.md — LOT-02 (blocker, UAT tests 4+5): wrap sale_lookup.html / sale_batch_pick.html OOB table fragments in `<template>` so htmx stops folding the batch-picker `<tr>` into the open sale line (kills the duplicate `batch_id[]` → «Выберите партию.» rejection); regression test for one `batch_id[]` per line + 3-line attribution
+- [ ] 09-07-PLAN.md — LOT-05 (UAT test 6): /history dedicated «Код» column + «Действие»/«Вернуть» return link + `#return-slot` (template-only, mirrors recent_sales.html/purchase_history.html)
+- [ ] 09-08-PLAN.md — WH-02/LOT-03/LOT-04 (UAT test 1, symptoms 1+2): receipt batch chooser `<fieldset>/<legend>` + state-adaptive helper; name-autofill dirty flag (`autocomplete=off` + `data-autofilled` reset-on-code-edit)
+
+**Wave 2** *(blocked on 09-08 — shares receipt_batch_chooser.html)*
+
+- [ ] 09-09-PLAN.md — LOT-01/LOT-04 (UAT test 1, symptom 3): migration 0009 native add-column `batches.name`, auto-generated «{product} — {date}» at creation, surfaced in the chooser top-up label
 
 **UI hint**: yes
 
@@ -174,6 +186,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 5/5 | Complete   | 2026-07-12 |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 5/9 | Gap closure | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
