@@ -35,7 +35,8 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 - [x] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product (completed 2026-07-10)
 - [x] **Phase 8: Warehouses** - Operators create and manage multiple physical warehouses (completed 2026-07-11)
 - [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
-- [x] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report (completed 2026-07-12)
+- [x] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
+ (completed 2026-07-12)
 - [ ] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set
 
 ## Phase Details
@@ -178,7 +179,26 @@ Plans:
   4. The existing desktop pages — including the category page, batch picker, transfer form, and expiry report built earlier in this milestone — remain visually and functionally unchanged at desktop widths; the mobile flow is purely additive
   5. Landing on the app from a phone-width viewport routes the operator into the mobile flow (or offers an unmistakable entry point to it) rather than silently rendering the dense desktop templates
 
-**Plans**: TBD
+**Plans**: 9 plans
+Plans:
+**Wave 1**
+
+- [ ] 11-01-PLAN.md — Foundation: mobile_base.html, viewport-redirect script (D-02), mobile CSS classes, shared batch_card_picker.html (D-07), mobile_client_factory test fixture
+
+**Wave 2** *(7 independent plans — no file overlap, run in parallel, all depend only on 11-01)*
+
+- [ ] 11-02-PLAN.md — UI-01: mobile home (D-03 tile grid), search, expiry report (all read-only, reuse existing services unchanged)
+- [ ] 11-03-PLAN.md — UI-01: receipt wizard (Приход) — 4 steps, register_receipt() reused
+- [ ] 11-04-PLAN.md — UI-01: sale wizard (Продажа) — basket wizard, register_sale(), price-floor + oversell guardrails (D-06)
+- [ ] 11-05-PLAN.md — UI-01: write-off wizard (Списание) — 4 steps, register_writeoff(), oversell guardrail
+- [ ] 11-06-PLAN.md — UI-01: correction wizard (Корректировка) — 4 steps, register_correction(), over-removal guardrail
+- [ ] 11-07-PLAN.md — UI-01: transfer wizard (Перемещение) — 3 steps, register_transfer(), dest-warehouse exclusion
+- [ ] 11-08-PLAN.md — UI-01: history card list (single filter) + return flow entry from a history card, register_return()
+
+**Wave 3** *(blocked on all of Wave 2 — the only plan touching app/main.py)*
+
+- [ ] 11-09-PLAN.md — UI-01: register all 10 mobile routers in app/main.py + end-to-end reachability regression test + full suite verification
+
 **UI hint**: yes
 
 ## Progress
