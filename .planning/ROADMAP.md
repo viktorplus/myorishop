@@ -35,7 +35,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 - [x] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product (completed 2026-07-10)
 - [x] **Phase 8: Warehouses** - Operators create and manage multiple physical warehouses (completed 2026-07-11)
 - [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
-- [ ] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
+- [x] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report (completed 2026-07-12)
 - [ ] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set
 
 ## Phase Details
@@ -161,7 +161,7 @@ Plans:
 
 **Wave 2** *(blocked on 10-01 — reuses transfers.py + the "transfer" op type; extends tests/test_transfers.py)*
 
-- [ ] 10-02-PLAN.md — WH-03 (web): `/transfers` page + lookup + batch-pick (dest `<select>` excludes source warehouse) + POST, six transfer templates reusing `batch_picker.html`, router registration, «Перемещение» nav link, «Перемещение» in /history
+- [x] 10-02-PLAN.md — WH-03 (web): `/transfers` page + lookup + batch-pick (dest `<select>` excludes source warehouse) + POST, six transfer templates reusing `batch_picker.html`, router registration, «Перемещение» nav link, «Перемещение» in /history
 
 **UI hint**: yes
 
@@ -197,5 +197,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
-| 10. Warehouse Transfers & Expiry Reporting | v1.1 | 2/3 | In Progress|  |
+| 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete   | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
