@@ -267,8 +267,9 @@ def test_migration_0008_seeds_legacy_batches_and_preserves_triggers(
         ).fetchone()[0]
         assert trigger_count == 2
 
-        # (d) an UPDATE on operations still ABORTs (ledger immutable).
-        with pytest.raises(sqlite3.OperationalError) as exc:
+        # (d) an UPDATE on operations still ABORTs (ledger immutable). RAISE(ABORT)
+        # surfaces as IntegrityError through the raw sqlite3 driver.
+        with pytest.raises(sqlite3.IntegrityError) as exc:
             conn.execute("UPDATE operations SET qty_delta = qty_delta")
         assert "append-only" in str(exc.value)
 
