@@ -34,7 +34,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 
 - [x] **Phase 7: Category Browsing & Minimum Price Guardrail** - Operators browse stock grouped by category and get a warn-but-allow guardrail before underselling a product (completed 2026-07-10)
 - [x] **Phase 8: Warehouses** - Operators create and manage multiple physical warehouses (completed 2026-07-11)
-- [ ] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch
+- [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
 - [ ] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
 - [ ] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set
 
@@ -125,7 +125,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — D-12 guard flip needs all services batch-aware)*
 
-- [ ] 09-05-PLAN.md — LOT-05: return batch inheritance (+ legacy lazy-create), /history legacy display, D-12 mandatory batch guard flip
+- [x] 09-05-PLAN.md — LOT-05: return batch inheritance (+ legacy lazy-create), /history legacy display, D-12 mandatory batch guard flip
 
 **UI hint**: yes
 
@@ -174,6 +174,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 4/5 | In Progress|  |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 5/5 | Complete   | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
