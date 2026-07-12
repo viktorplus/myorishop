@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import OPERATION_TYPES, Operation, Product
+from app.models import OPERATION_TYPES, Batch, Operation, Product
 
 
 def next_seq(session: Session, device_id: str) -> int:
@@ -36,6 +36,7 @@ def record_operation(
     unit_price_cents: int | None = None,
     payload: dict | None = None,
     sale_id: str | None = None,
+    batch_id: str | None = None,
     commit: bool = True,
 ) -> Operation:
     """Append one immutable ledger row and update the cached stock projection.
@@ -52,6 +53,14 @@ def record_operation(
     sale_id (D-03) links a `sale` op back to its Sale header; it is set at
     INSERT time only — the operations_no_update trigger ABORTs any later
     UPDATE. All other callers keep working untouched (default None).
+
+    batch_id (D-10/D-11) attributes this ledger line to a Batch. It is
+    OPTIONAL this plan (default None) — the mandatory-when-missing guard
+    (D-12) is flipped ON only once every operation service passes a batch,
+    to keep the suite green at each wave boundary. When supplied, the batch
+    is resolved and validated (D-12 ownership backstop: a client-submitted
+    batch_id naming another product's batch is rejected), and Batch.quantity
+    is incremented in the SAME transaction as Product.quantity (D-11).
     """
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
@@ -67,6 +76,17 @@ def record_operation(
     if product.deleted_at is not None:
         raise ValueError(f"product is deleted: {product_id!r}")
 
+    # D-11/D-12: resolve+validate the batch only when one is supplied (still
+    # optional this plan). The ownership check is the T-09 tampering
+    # mitigation — a client batch_id is untrusted (mirrors the IN-01 guard).
+    batch = None
+    if batch_id is not None:
+        batch = session.get(Batch, batch_id)
+        if batch is None:
+            raise ValueError(f"unknown batch: {batch_id!r}")
+        if batch.product_id != product_id:
+            raise ValueError("batch does not belong to product")
+
     op = Operation(
         id=new_id(),
         type=type_,
@@ -76,6 +96,7 @@ def record_operation(
         unit_price_cents=unit_price_cents,
         payload=payload,
         sale_id=sale_id,
+        batch_id=batch_id,
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),
@@ -85,6 +106,10 @@ def record_operation(
     # IN-02: SQL-side increment (UPDATE ... SET quantity = quantity + ?) —
     # atomic, no stale-ORM-value window. Same transaction (D-09).
     product.quantity = Product.quantity + qty_delta
+    # D-11: dual projection — the per-lot cache updates in the same
+    # transaction with the same SQL-side increment.
+    if batch is not None:
+        batch.quantity = Batch.quantity + qty_delta
     if commit:
         session.commit()
     return op
@@ -99,11 +124,64 @@ def compute_stock(session: Session, product_id: str) -> int:
     )
 
 
+def compute_batch_stock(session: Session, batch: Batch) -> int:
+    """Recompute one batch's quantity from the ledger alone (D-11).
+
+    Normal batch: SUM(qty_delta WHERE batch_id = batch.id).
+    Legacy batch: also absorbs the frozen NULL bucket —
+        SUM(qty_delta WHERE product_id = batch.product_id AND batch_id IS NULL)
+    — so pre-Phase-9 rows (D-15) stay accounted for without a data rewrite.
+    """
+    total = session.scalar(
+        select(func.coalesce(func.sum(Operation.qty_delta), 0)).where(
+            Operation.batch_id == batch.id
+        )
+    )
+    if batch.is_legacy:
+        total += session.scalar(
+            select(func.coalesce(func.sum(Operation.qty_delta), 0)).where(
+                Operation.product_id == batch.product_id,
+                Operation.batch_id.is_(None),
+            )
+        )
+    return total
+
+
 def rebuild_stock(session: Session) -> None:
-    """Repair every cached quantity from the ledger (including soft-deleted)."""
-    products = session.scalars(select(Product)).all()
-    for product in products:
+    """Repair every cached quantity from the ledger and assert the invariant.
+
+    Two passes (D-11): (1) recompute each Product.quantity (the batch-agnostic
+    rollup, unchanged); (2) recompute each Batch.quantity. Then assert per
+    product that Product.quantity == SUM(its batch quantities) PLUS the
+    uncaptured NULL bucket — the latter added only for products the migration
+    seeded NO legacy batch for (ledger stock <= 0, D-13). Raises on mismatch.
+    """
+    for product in session.scalars(select(Product)).all():
         product.quantity = compute_stock(session, product.id)
+
+    batch_total_by_product: dict[str, int] = {}
+    legacy_products: set[str] = set()
+    for batch in session.scalars(select(Batch)).all():
+        batch.quantity = compute_batch_stock(session, batch)
+        batch_total_by_product[batch.product_id] = (
+            batch_total_by_product.get(batch.product_id, 0) + batch.quantity
+        )
+        if batch.is_legacy:
+            legacy_products.add(batch.product_id)
+
+    for product in session.scalars(select(Product)).all():
+        expected = batch_total_by_product.get(product.id, 0)
+        if product.id not in legacy_products:
+            # No legacy batch captured this product's NULL bucket — add it.
+            expected += session.scalar(
+                select(func.coalesce(func.sum(Operation.qty_delta), 0)).where(
+                    Operation.product_id == product.id,
+                    Operation.batch_id.is_(None),
+                )
+            )
+        if product.quantity != expected:
+            raise ValueError(f"stock invariant violated for product {product.id!r}")
+
     session.commit()
 
 

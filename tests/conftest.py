@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
-from app.models import Base, Customer, Product
+from app.models import Base, Batch, Customer, Product, Warehouse
 from app.services.ledger import record_operation
 
 
@@ -50,8 +50,36 @@ def product(session):
 
 
 @pytest.fixture()
+def warehouse(session):
+    """Seed one active warehouse (Phase 9: batch receipt/picker tests)."""
+    warehouse = Warehouse(id=new_id(), name="Тестовый склад")
+    session.add(warehouse)
+    session.commit()
+    return warehouse
+
+
+@pytest.fixture()
+def batch(session, product, warehouse):
+    """Seed one empty batch for `product` in `warehouse` (quantity grows via ops)."""
+    batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+    )
+    session.add(batch)
+    session.commit()
+    return batch
+
+
+@pytest.fixture()
 def stocked_product(session):
-    """Seed a product with real ledger-backed stock (Phase 4: sale/oversell tests)."""
+    """Seed a product with real ledger-backed stock (Phase 4: sale/oversell tests).
+
+    Phase 9: the receipt is attributed to a batch so the product and batch
+    quantity projections agree (D-11). batch_id is still optional, so batch-less
+    call sites keep working — this fixture just exercises the batched path.
+    """
     product = Product(
         id=new_id(),
         code="STK-001",
@@ -59,6 +87,16 @@ def stocked_product(session):
         quantity=0,
     )
     session.add(product)
+    warehouse = Warehouse(id=new_id(), name="Склад для остатка")
+    session.add(warehouse)
+    session.commit()
+    batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+    )
+    session.add(batch)
     session.commit()
     record_operation(
         session,
@@ -67,6 +105,7 @@ def stocked_product(session):
         qty_delta=8,
         unit_cost_cents=1000,
         unit_price_cents=1500,
+        batch_id=batch.id,
     )
     return product
 
