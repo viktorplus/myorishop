@@ -121,7 +121,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — reuses batch_picker.html)*
 
-- [ ] 09-04-PLAN.md — LOT-05: write-off + correction batch pickers, batch-scoped count diff, per-batch over-removal warnings
+- [x] 09-04-PLAN.md — LOT-05: write-off + correction batch pickers, batch-scoped count diff, per-batch over-removal warnings
 
 **Wave 4** *(blocked on Wave 3 — D-12 guard flip needs all services batch-aware)*
 
@@ -174,6 +174,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 3/5 | In Progress|  |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 4/5 | In Progress|  |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
