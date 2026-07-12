@@ -7,9 +7,9 @@ STOCK_AFFECTING_TYPES) or record_operation silently mistreats it.
 
 from app.core import new_id
 from app.models import OPERATION_TYPE_LABELS, OPERATION_TYPES, Batch, Warehouse
-from app.services.ledger import STOCK_AFFECTING_TYPES, record_operation, rebuild_stock
 from app.services.batches import open_batches
-from app.services.transfers import register_transfer, recent_transfers
+from app.services.ledger import STOCK_AFFECTING_TYPES, rebuild_stock, record_operation
+from app.services.transfers import recent_transfers, register_transfer
 
 
 def test_transfer_type_registered():
@@ -27,8 +27,9 @@ def _second_warehouse(session):
     return wh
 
 
-def _source_batch(session, stocked_product, qty=8, price_cents=1500, expiry=None,
-                   comment=None, location=None):
+def _source_batch(
+    session, stocked_product, qty=8, price_cents=1500, expiry=None, comment=None, location=None
+):
     """Return the pre-seeded stocked_product's open batch, adjusted to `qty`.
 
     stocked_product fixture already has a batch with 8 units (receipt at
@@ -94,11 +95,10 @@ def test_transfer_writes_two_rows(session, stocked_product):
     assert errors == {}
     assert result is not None
     from sqlalchemy import select
+
     from app.models import Operation
 
-    ops = session.scalars(
-        select(Operation).where(Operation.type == "transfer")
-    ).all()
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
     assert len(ops) == 2
     deltas = sorted(op.qty_delta for op in ops)
     assert deltas == [-3, 3]
@@ -196,6 +196,7 @@ def test_over_qty_confirm_gate(session, stocked_product):
         "oversell": {"available": source.quantity, "requested": 20, "product": stocked_product}
     }
     from sqlalchemy import select
+
     from app.models import Operation
 
     ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
@@ -229,6 +230,7 @@ def test_reject_same_warehouse(session, stocked_product):
     assert result is None
     assert "warehouse" in errors
     from sqlalchemy import select
+
     from app.models import Operation
 
     ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
@@ -274,6 +276,7 @@ def test_reject_tampered_ids(session, stocked_product, product):
     assert "warehouse" in errors2
 
     from sqlalchemy import select
+
     from app.models import Operation
 
     ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
