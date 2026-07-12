@@ -1,0 +1,20 @@
+{# Search result cards for /m/search (T-11-04). Context: q + rows of
+   {product, code_seg, name_seg} from catalog.search_view (unchanged).
+   Pattern 5: segments are autoescaped; <mark> is literal template HTML —
+   never |safe. Gated on q (not just rows): search_view("") returns the
+   first 20 active products (Pitfall 6 in catalog.search_products), but the
+   mobile result list must stay empty until the operator actually types
+   (UI-SPEC: "result list starts empty until input"). #}
+{% if q and q.strip() %}
+  {% if rows %}
+  {% for row in rows %}
+  {% set product = row.product %}
+  <a class="mobile-card" href="/m/search/product/{{ product.id }}">
+    <p><strong>{% set pre, match, post = row.code_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</strong></p>
+    <p>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</p>
+  </a>
+  {% endfor %}
+  {% else %}
+  <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте код или название.</p>
+  {% endif %}
+{% endif %}

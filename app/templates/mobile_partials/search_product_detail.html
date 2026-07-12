@@ -1,0 +1,18 @@
+{# Read-only product detail reached from /m/search (T-11-05). Reached by a
+   plain top-level link click (not HTMX), so it renders the full mobile
+   chrome via mobile_base.html. No edit/POST capability exists on mobile
+   this phase. Context: product + stock_rows of {warehouse_name, total_qty}. #}
+{% extends "mobile_base.html" %}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>{{ product.name }} ({{ product.code or "" }})</h1>
+{% if product.category %}
+<p>{{ product.category }}</p>
+{% else %}
+<p class="muted">—</p>
+{% endif %}
+<p>Мин. цена: {% if product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% else %}—{% endif %}</p>
+{% for row in stock_rows %}
+<p>{{ row.warehouse_name }}: {{ row.total_qty }} шт.</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "mobile_base.html" %}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Сроки годности</h1>
+{% if not rows %}
+<p class="muted">Партий со сроком годности нет.</p>
+{% else %}
+{% for row in rows %}
+<div class="mobile-card">
+  <p><strong>{{ row.product.name }} ({{ row.product.code or "" }})</strong></p>
+  <p>{{ row.warehouse.name }}</p>
+  <p>Срок годности: {{ row.batch.expiry | ru_date }}{% if row.batch.expiry < today %} <span class="muted">просрочено</span>{% endif %}</p>
+  <p class="num">Остаток {{ row.batch.quantity }} · Цена {% if row.batch.price_cents is not none %}{{ row.batch.price_cents | cents }}{% else %}—{% endif %}</p>
+  {%- if row.batch.comment %}
+  <p class="muted">{{ row.batch.comment }}</p>
+  {%- endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
