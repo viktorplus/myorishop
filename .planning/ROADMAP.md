@@ -37,7 +37,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 - [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
 - [x] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
  (completed 2026-07-12)
-- [x] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set (completed 2026-07-12)
+- [x] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set (completed 2026-07-12)
 
 ## Phase Details
 
@@ -179,7 +179,7 @@ Plans:
   4. The existing desktop pages — including the category page, batch picker, transfer form, and expiry report built earlier in this milestone — remain visually and functionally unchanged at desktop widths; the mobile flow is purely additive
   5. Landing on the app from a phone-width viewport routes the operator into the mobile flow (or offers an unmistakable entry point to it) rather than silently rendering the dense desktop templates
 
-**Plans**: 9 plans
+**Plans**: 10 plans (9 original + 1 gap closure from 11-UAT.md)
 Plans:
 **Wave 1**
 
@@ -198,6 +198,10 @@ Plans:
 **Wave 3** *(blocked on all of Wave 2 — the only plan touching app/main.py)*
 
 - [x] 11-09-PLAN.md — UI-01: register all 10 mobile routers in app/main.py + end-to-end reachability regression test + full suite verification
+
+**Gap closure (wave 1, from 11-UAT.md Test 4 — Bug A blocker + Bug B major)**
+
+- [ ] 11-10-PLAN.md — UI-01: fix invisible batch-card text (button.mobile-card color, scoped to the actual broken element) + fix Sale wizard's Назад skipping the batch step (from_batch_step context flag + conditional hx-get wiring)
 
 **UI hint**: yes
 
@@ -218,4 +222,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
-| 11. Dedicated Mobile Flow | v1.1 | 9/9 | Complete   | 2026-07-12 |
+| 11. Dedicated Mobile Flow | v1.1 | 9/10 | Gap closure planned   | 2026-07-13 |
