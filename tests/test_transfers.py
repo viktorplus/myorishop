@@ -316,3 +316,125 @@ def test_recent_transfers_lists_outbound_row(session, stocked_product):
     assert len(rows) == 1
     assert rows[0]["op"].qty_delta == -3
     assert rows[0]["product"].id == stocked_product.id
+
+
+# --- Route/integration tests (WH-03 wiring) -------------------------------
+
+
+def test_transfers_page_renders(client):
+    response = client.get("/transfers")
+    assert response.status_code == 200
+    assert 'id="code"' in response.text
+    assert "Переместить" in response.text
+
+
+def test_transfer_lookup_fills(client, session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8)
+
+    response = client.get("/transfers/lookup", params={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert stocked_product.name in response.text
+    assert f'value="{source.id}"' in response.text
+
+
+def test_transfer_batch_pick_dest_excludes_source(client, session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    response = client.get(
+        "/transfers/batch-pick",
+        params={"batch_id": source.id, "code": stocked_product.code},
+    )
+
+    assert response.status_code == 200
+    assert f'value="{source.id}"' in response.text
+    assert f'value="{dest_wh.id}"' in response.text
+    assert f'value="{source.warehouse_id}"' not in response.text
+
+
+def test_transfer_post_moves_stock(client, session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+    assert "recent-transfers" in response.text
+
+    session.refresh(source)
+    assert source.quantity == 5
+    dest_batches = open_batches(session, stocked_product.id, dest_wh.id)
+    assert len(dest_batches) == 1
+    assert dest_batches[0].quantity == 3
+
+
+def test_transfer_post_oversell_then_confirm(client, session, stocked_product):
+    from sqlalchemy import select
+
+    from app.models import Operation
+
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "20",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+    assert response.status_code == 200
+    assert "Товара не хватает в партии" in response.text
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
+
+    response2 = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "20",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+            "confirm": "1",
+        },
+    )
+    assert response2.status_code == 200
+    assert "Перемещение сохранено" in response2.text
+
+
+def test_transfer_in_history(client, session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert "Перемещение" in response.text
+    assert "-3" in response.text
+    assert "+3" in response.text
