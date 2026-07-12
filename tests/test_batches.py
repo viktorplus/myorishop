@@ -9,8 +9,15 @@ Covers LOT-01/LOT-03 write-path foundation:
     per-batch invariant.
 """
 
+import sqlite3
+from contextlib import closing
+
+import pytest
+from alembic.config import Config
 from sqlalchemy import inspect
 
+from alembic import command
+from app.config import settings
 from app.core import format_ru_date, new_id
 from app.models import Batch, Operation, Warehouse
 from app.services.batches import active_warehouses, legacy_batch, open_batches
@@ -176,3 +183,129 @@ def test_format_ru_date():
     assert format_ru_date("2026-07-12") == "12.07.2026"
     assert format_ru_date(None) == ""
     assert format_ru_date("") == ""
+
+
+# --- Task 2: migration 0008 replay ----------------------------------------
+
+_MIG_NOW = "2026-07-11T00:00:00+00:00"
+PRODUCT_POS_ID = "00000000-0000-4000-8000-000000000091"  # ledger SUM > 0
+PRODUCT_NONPOS_ID = "00000000-0000-4000-8000-000000000092"  # ledger SUM <= 0
+
+
+def _seed_pre_batch_operations(conn):
+    """Two products: one with positive ledger stock, one with non-positive."""
+    for pid, code, name in (
+        (PRODUCT_POS_ID, "POS-001", "Товар с остатком"),
+        (PRODUCT_NONPOS_ID, "NEG-001", "Товар без остатка"),
+    ):
+        conn.execute(
+            "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (pid, code, name, 0, _MIG_NOW, _MIG_NOW),
+        )
+    # POS product: +10 receipt, -3 sale => SUM 7 (> 0, gets a legacy batch).
+    # NEG product: +4 receipt, -5 sale => SUM -1 (<= 0, gets NO legacy batch).
+    ops = [
+        (PRODUCT_POS_ID, "receipt", 10, 1),
+        (PRODUCT_POS_ID, "sale", -3, 2),
+        (PRODUCT_NONPOS_ID, "receipt", 4, 3),
+        (PRODUCT_NONPOS_ID, "sale", -5, 4),
+    ]
+    for pid, op_type, qty, seq in ops:
+        conn.execute(
+            "INSERT INTO operations "
+            "(id, type, product_id, qty_delta, device_id, seq, created_at, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_id(), op_type, pid, qty, "seed-device", seq, _MIG_NOW, "seed"),
+        )
+    conn.commit()
+
+
+def test_migration_0008_seeds_legacy_batches_and_preserves_triggers(
+    tmp_path, monkeypatch
+):
+    """Migration 0008: legacy seed from the ledger SUM, triggers intact (D-13/D-10)."""
+    db_file = tmp_path / "migrate.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    # Upgrade to just before batches, then seed pre-batch data.
+    command.upgrade(cfg, "0007")
+    with closing(sqlite3.connect(db_file)) as conn:
+        _seed_pre_batch_operations(conn)
+
+    # Run migration 0008.
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        # (a) exactly one legacy batch for the SUM>0 product, quantity == ledger SUM.
+        pos_rows = conn.execute(
+            "SELECT quantity, is_legacy, warehouse_id, comment, expiry, price_cents "
+            "FROM batches WHERE product_id = ? AND is_legacy = 1",
+            (PRODUCT_POS_ID,),
+        ).fetchall()
+        assert len(pos_rows) == 1
+        qty, is_legacy, warehouse_id, comment, expiry, price_cents = pos_rows[0]
+        assert qty == 7  # ledger SUM, not the (zeroed) products.quantity cache
+        assert is_legacy == 1
+        assert warehouse_id == "00000000-0000-4000-8000-000000000010"
+        assert comment == "Остаток до внедрения партий"
+        assert expiry is None
+        assert price_cents is None
+
+        # (b) NO legacy batch for the non-positive product.
+        neg_count = conn.execute(
+            "SELECT count(*) FROM batches WHERE product_id = ?",
+            (PRODUCT_NONPOS_ID,),
+        ).fetchone()[0]
+        assert neg_count == 0
+
+        # (c) both append-only triggers survive the migration.
+        trigger_count = conn.execute(
+            "SELECT count(*) FROM sqlite_master "
+            "WHERE type = 'trigger' AND name LIKE 'operations_no_%'"
+        ).fetchone()[0]
+        assert trigger_count == 2
+
+        # (d) an UPDATE on operations still ABORTs (ledger immutable).
+        with pytest.raises(sqlite3.OperationalError) as exc:
+            conn.execute("UPDATE operations SET qty_delta = qty_delta")
+        assert "append-only" in str(exc.value)
+
+        # operations.batch_id column exists and is indexed.
+        op_cols = {row[1] for row in conn.execute("PRAGMA table_info(operations)")}
+        assert "batch_id" in op_cols
+        indexes = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+        }
+        assert "ix_operations_batch_id" in indexes
+        assert "ix_batches_product_id" in indexes
+
+
+def test_migration_0008_downgrade_reverses_cleanly(tmp_path, monkeypatch):
+    """downgrade() drops batches + operations.batch_id, leaving 0007 schema."""
+    db_file = tmp_path / "downgrade.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0007")
+    with closing(sqlite3.connect(db_file)) as conn:
+        _seed_pre_batch_operations(conn)
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "0007")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        assert "batches" not in tables
+        op_cols = {row[1] for row in conn.execute("PRAGMA table_info(operations)")}
+        assert "batch_id" not in op_cols
+        # Triggers survive a full round-trip.
+        trigger_count = conn.execute(
+            "SELECT count(*) FROM sqlite_master "
+            "WHERE type = 'trigger' AND name LIKE 'operations_no_%'"
+        ).fetchone()[0]
+        assert trigger_count == 2
