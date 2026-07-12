@@ -43,9 +43,9 @@ def _chooser_context(session: Session, code: str, warehouse_id: str, actives: li
     """Chooser render context (D-01/D-02). Zero active warehouses -> blocking
     hint; otherwise the product's open batches in that warehouse (empty for an
     unknown/new code -> the template shows the new-batch-only path)."""
-    if not actives:
-        return {"zero_warehouses": True, "batches": []}
     code = code.strip()
+    if not actives:
+        return {"zero_warehouses": True, "batches": [], "code_entered": bool(code)}
     product = None
     if code:
         product = session.scalars(
@@ -56,7 +56,7 @@ def _chooser_context(session: Session, code: str, warehouse_id: str, actives: li
         if product is not None and warehouse_id
         else []
     )
-    return {"zero_warehouses": False, "batches": batches}
+    return {"zero_warehouses": False, "batches": batches, "code_entered": bool(code)}
 
 
 def _form_extras(session: Session, *, code: str = "", warehouse_id: str = "") -> dict:
@@ -130,7 +130,7 @@ def receipt_lookup(
     else:
         fill_fields = []
         hint = ""  # name_input.html falls back to the dictionary wording
-        chooser = {"zero_warehouses": False, "batches": []}
+        chooser = {"zero_warehouses": False, "batches": [], "code_entered": False}
         include_chooser = False
     context = {
         "name": result["name"],
