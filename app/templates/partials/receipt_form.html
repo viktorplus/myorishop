@@ -25,7 +25,7 @@
       <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus
              hx-get="/receipts/lookup"
              hx-trigger="input changed delay:300ms"
-             hx-include="[name='name'],[name='cost'],[name='sale'],[name='catalog']"
+             hx-include="[name='name'],[name='cost'],[name='sale'],[name='catalog'],[name='warehouse_id']"
              hx-target="#name-wrap"
              hx-swap="outerHTML"
              hx-sync="this:replace">
@@ -36,6 +36,29 @@
     {% with name = form.name or '', autofilled = False %}
     {% include "partials/name_input.html" %}
     {% endwith %}
+
+    {# D-02: required warehouse select (active only), preselected to the seeded
+       default when active else the first active one. A change refreshes the
+       #batch-chooser below (D-01); the code lookup does the same oob. #}
+    <div class="field">
+      <label for="warehouse_id">Склад</label>
+      <select id="warehouse_id" name="warehouse_id" required
+              hx-get="/receipts/batches"
+              hx-trigger="change"
+              hx-include="[name='code']"
+              hx-target="#batch-chooser">
+        {% for w in active_warehouses %}
+        <option value="{{ w.id }}"{% if w.id == selected_warehouse_id %} selected{% endif %}>{{ w.name }}</option>
+        {% endfor %}
+      </select>
+      {% if errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
+    </div>
+
+    {# D-01: resolve-or-create chooser — populated on load and refreshed by the
+       warehouse select / code lookup. #}
+    <div id="batch-chooser">
+      {% include "partials/receipt_batch_chooser.html" %}
+    </div>
 
     <div class="field">
       <label for="qty">Количество</label>

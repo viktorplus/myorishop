@@ -15,3 +15,10 @@
 {% endwith %}
 {% endfor %}
 {% endif %}
+{# D-01: for an existing product oob-refresh the batch chooser with its open
+   batches so the operator can pick top-up vs new without re-triggering. #}
+{% if include_chooser %}
+<div id="batch-chooser" hx-swap-oob="true">
+{% include "partials/receipt_batch_chooser.html" %}
+</div>
+{% endif %}

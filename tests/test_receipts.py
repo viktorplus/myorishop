@@ -724,5 +724,54 @@ def test_web_lookup_form_wiring(client):
     assert "delay:300ms" in response.text
     assert 'hx-target="#name-wrap"' in response.text
     assert 'hx-sync="this:replace"' in response.text
-    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog']"
+    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog'],[name='warehouse_id']"
     assert f'hx-include="{include}"' in response.text
+
+
+# --- Plan 09-02: warehouse select + /receipts/batches chooser (routes) ---
+
+
+def test_web_receipt_form_warehouse_select_and_chooser(client, session, warehouse):
+    """The receipt form gains a required «Склад» select and a #batch-chooser target."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert 'name="warehouse_id"' in response.text
+    assert 'id="batch-chooser"' in response.text
+    assert "[name='warehouse_id']" in response.text  # code input hx-include grew
+    assert warehouse.name in response.text  # active warehouse rendered as an option
+
+
+def test_web_receipt_batches_chooser_lists_open_batches(client, session, product, warehouse):
+    """GET /receipts/batches returns a «Пополнить партию» radio per open batch + «Новая партия»."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="5",
+        cost_raw="",
+        sale_raw="12,50",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        location_raw="стеллаж А3",
+    )
+    assert errors == {}
+
+    response = client.get(
+        "/receipts/batches", params={"code": "TEST-001", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert "Пополнить партию" in response.text
+    assert "Новая партия" in response.text
+    assert "стеллаж А3" in response.text  # WH-02 location echoed in the radio
+
+
+def test_web_receipt_batches_zero_warehouses_blocks_with_link(client):
+    """No active warehouses -> blocking «Нет активных складов» hint + /warehouses link."""
+    response = client.get(
+        "/receipts/batches", params={"code": "TEST-001", "warehouse_id": "whatever"}
+    )
+    assert response.status_code == 200
+    assert "Нет активных складов" in response.text
+    assert 'href="/warehouses"' in response.text
+    assert "Пополнить партию" not in response.text
