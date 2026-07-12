@@ -164,6 +164,9 @@ class Batch(Base):
     price_cents: Mapped[int | None] = mapped_column(Integer)
     location: Mapped[str | None] = mapped_column(String(100))  # WH-02 free-text tag
     comment: Mapped[str | None] = mapped_column(String(200))  # LOT-04
+    # UAT test 1 symptom 3: auto-generated «{product.name} — {creation date}»
+    # label, snapshotted at batch creation; NULL for legacy/pre-0009 batches.
+    name: Mapped[str | None] = mapped_column(String(200))
     # D-11: cached projection of SUM(operations.qty_delta WHERE batch_id=...);
     # recomputable (mirror Product.quantity).
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

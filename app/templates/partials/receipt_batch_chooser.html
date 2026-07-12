@@ -33,7 +33,7 @@
                document.getElementById('receipt-expiry').disabled = true;
                document.getElementById('receipt-location').disabled = true;
                document.getElementById('receipt-comment').disabled = true;">
-      Пополнить партию: {{ (batch.expiry | ru_date) if batch.expiry else "без срока" }} ·
+      Пополнить партию: {% if batch.name %}{{ batch.name }} · {% endif %}{{ (batch.expiry | ru_date) if batch.expiry else "без срока" }} ·
       {{ (batch.price_cents | cents) if batch.price_cents is not none else "—" }} ·
       {{ batch.quantity }} шт.{% if batch.comment %} · {{ batch.comment }}{% endif %}{% if batch.location %} · <span class="muted">{{ batch.location }}</span>{% endif %}
     </label>

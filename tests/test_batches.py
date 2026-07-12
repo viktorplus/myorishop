@@ -9,6 +9,7 @@ Covers LOT-01/LOT-03 write-path foundation:
     per-batch invariant.
 """
 
+import re
 import sqlite3
 from contextlib import closing
 
@@ -22,6 +23,7 @@ from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses, legacy_batch, open_batches
 from app.services.ledger import next_seq, rebuild_stock, record_operation
+from app.services.receipts import register_receipt
 
 
 def _make_warehouse(session, name="Основной склад"):
@@ -449,3 +451,106 @@ def test_rebuild_stock_raises_on_corrupted_ledger(session, product, warehouse):
     with pytest.raises(ValueError, match="invariant"):
         rebuild_stock(session)
     session.rollback()
+
+
+# --- Plan 09-09: batches.name column, migration 0009, auto-name, chooser ---
+
+
+def test_batch_model_has_name_column(session):
+    """UAT test 1 symptom 3: Batch exposes a nullable `name` label column."""
+    columns = {c.name for c in inspect(Batch).columns}
+    assert "name" in columns
+    assert inspect(Batch).columns["name"].nullable is True
+
+
+def test_migration_0009_adds_batch_name_column(tmp_path, monkeypatch):
+    """Migration 0009 adds a nullable batches.name via a NATIVE add-column.
+
+    Asserts the two append-only `operations_no_%` triggers survive (proving no
+    move-and-copy rebuild touched the ledger) and that downgrade drops the
+    column cleanly, back to the 0008 schema.
+    """
+    db_file = tmp_path / "migrate_0009.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0008")
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        batch_cols = {row[1] for row in conn.execute("PRAGMA table_info(batches)")}
+        assert "name" in batch_cols
+        # Native add-column must NOT have rebuilt/dropped the ledger triggers.
+        trigger_count = conn.execute(
+            "SELECT count(*) FROM sqlite_master "
+            "WHERE type = 'trigger' AND name LIKE 'operations_no_%'"
+        ).fetchone()[0]
+        assert trigger_count == 2
+
+    command.downgrade(cfg, "0008")
+    with closing(sqlite3.connect(db_file)) as conn:
+        batch_cols = {row[1] for row in conn.execute("PRAGMA table_info(batches)")}
+        assert "name" not in batch_cols
+
+
+def test_register_receipt_autogenerates_batch_name(session):
+    """A new batch gets «{product.name} — dd.mm.yyyy»; a top-up never rewrites it."""
+    warehouse = _make_warehouse(session)
+    product_name = "Крем для рук «Молоко»"
+
+    result, errors = register_receipt(
+        session,
+        code="AUTO-NAME-1",
+        name=product_name,
+        qty_raw="5",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    batch = result["batch"]
+    assert re.fullmatch(
+        rf"{re.escape(product_name)} — \d{{2}}\.\d{{2}}\.\d{{4}}", batch.name
+    )
+    original_name = batch.name
+
+    # A top-up on the same batch leaves its stored name untouched.
+    topup_result, topup_errors = register_receipt(
+        session,
+        code="AUTO-NAME-1",
+        name=product_name,
+        qty_raw="3",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice=batch.id,
+    )
+    assert topup_errors == {}
+    assert topup_result["batch"].id == batch.id
+    session.expire_all()
+    assert session.get(Batch, batch.id).name == original_name
+
+
+def test_web_chooser_shows_batch_name_in_topup_label(client, session, product):
+    """The chooser top-up label surfaces batch.name when the batch has one."""
+    warehouse = _make_warehouse(session)
+    batch_name = "Тестовый товар — 01.02.2026"
+    batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name=batch_name,
+        quantity=5,
+    )
+    session.add(batch)
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": product.code, "warehouse_id": warehouse.id},
+    )
+    assert response.status_code == 200
+    assert batch_name in response.text
