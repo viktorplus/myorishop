@@ -12,6 +12,11 @@ from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import OPERATION_TYPES, Batch, Operation, Product
 
+# D-12: the stock-affecting operation types. A batch_id is MANDATORY for these
+# (they move stock into/out of a specific lot); the remaining OPERATION_TYPES
+# are qty_delta==0 audit rows that must stay batch-less (batch_id is None).
+STOCK_AFFECTING_TYPES = frozenset({"receipt", "sale", "writeoff", "return", "correction"})
+
 
 def next_seq(session: Session, device_id: str) -> int:
     """Next per-device sequence number.
@@ -54,13 +59,15 @@ def record_operation(
     INSERT time only — the operations_no_update trigger ABORTs any later
     UPDATE. All other callers keep working untouched (default None).
 
-    batch_id (D-10/D-11) attributes this ledger line to a Batch. It is
-    OPTIONAL this plan (default None) — the mandatory-when-missing guard
-    (D-12) is flipped ON only once every operation service passes a batch,
-    to keep the suite green at each wave boundary. When supplied, the batch
-    is resolved and validated (D-12 ownership backstop: a client-submitted
-    batch_id naming another product's batch is rejected), and Batch.quantity
-    is incremented in the SAME transaction as Product.quantity (D-11).
+    batch_id (D-10/D-11/D-12) attributes this ledger line to a Batch. It is
+    now MANDATORY for stock-affecting types (STOCK_AFFECTING_TYPES): a missing
+    batch raises ValueError — the single-write-path enforcement backstop for
+    LOT-05 across all current and future callers. Audit types (qty_delta==0)
+    stay batch-less: passing a batch_id to one raises ValueError. When a batch
+    is supplied it is resolved and validated (ownership backstop: a
+    client-submitted batch_id naming another product's batch is rejected), and
+    Batch.quantity is incremented in the SAME transaction as Product.quantity
+    (D-11).
     """
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
@@ -76,16 +83,21 @@ def record_operation(
     if product.deleted_at is not None:
         raise ValueError(f"product is deleted: {product_id!r}")
 
-    # D-11/D-12: resolve+validate the batch only when one is supplied (still
-    # optional this plan). The ownership check is the T-09 tampering
-    # mitigation — a client batch_id is untrusted (mirrors the IN-01 guard).
+    # D-12: the mandatory batch guard — the phase's write-path invariant.
+    # Stock-affecting types REQUIRE a batch; audit types must not carry one.
+    # The ownership check is the T-09 tampering mitigation — a client batch_id
+    # is untrusted (mirrors the IN-01 guard).
     batch = None
-    if batch_id is not None:
+    if type_ in STOCK_AFFECTING_TYPES:
+        if batch_id is None:
+            raise ValueError(f"batch_id is required for {type_!r} operations")
         batch = session.get(Batch, batch_id)
         if batch is None:
             raise ValueError(f"unknown batch: {batch_id!r}")
         if batch.product_id != product_id:
             raise ValueError("batch does not belong to product")
+    elif batch_id is not None:
+        raise ValueError(f"{type_!r} operations are batch-less")
 
     op = Operation(
         id=new_id(),
