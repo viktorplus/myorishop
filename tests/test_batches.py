@@ -21,7 +21,12 @@ from alembic import command
 from app.config import settings
 from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
-from app.services.batches import active_warehouses, legacy_batch, open_batches
+from app.services.batches import (
+    active_warehouses,
+    expiring_batches,
+    legacy_batch,
+    open_batches,
+)
 from app.services.ledger import next_seq, rebuild_stock, record_operation
 from app.services.receipts import register_receipt
 
@@ -165,6 +170,45 @@ def test_legacy_batch_lookup(session, product):
         is_legacy=1,
     )
     assert legacy_batch(session, product.id).id == seeded.id
+
+
+def test_expiring_batches_filter_and_order(session, product):
+    """LOT-06/D-07: earliest expiry first; zero-quantity and NULL-expiry excluded."""
+    warehouse = _make_warehouse(session)
+    batch_a = _make_batch(
+        session,
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry="2026-09-01",
+        quantity=5,
+    )
+    batch_b = _make_batch(
+        session,
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry="2026-07-01",
+        quantity=3,
+    )
+    _make_batch(
+        session,
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry="2026-08-01",
+        quantity=0,
+    )
+    _make_batch(
+        session,
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry=None,
+        quantity=4,
+    )
+
+    rows = expiring_batches(session)
+    assert [row["batch"].id for row in rows] == [batch_b.id, batch_a.id]
+    for row in rows:
+        assert row["product"].id == product.id
+        assert row["warehouse"].id == warehouse.id
 
 
 def test_active_warehouses_excludes_deleted(session):
