@@ -9,7 +9,7 @@ templates), mirroring the warehouses service shape.
 from sqlalchemy import nullslast, select
 from sqlalchemy.orm import Session
 
-from app.models import Batch, Warehouse
+from app.models import Batch, Product, Warehouse
 
 
 def open_batches(
@@ -37,6 +37,23 @@ def legacy_batch(session: Session, product_id: str) -> Batch | None:
     return session.scalars(
         select(Batch).where(Batch.product_id == product_id, Batch.is_legacy == 1)
     ).first()
+
+
+def expiring_batches(session: Session) -> list[dict]:
+    """Open batches (quantity > 0) with a set expiry, earliest first (LOT-06/D-07).
+
+    NULL expiry (legacy batches) is excluded by `is_not(None)`, so
+    `nullslast` is unnecessary here (unlike `open_batches`, which must show
+    NULL-expiry batches too). Joined to Product + Warehouse for display.
+    """
+    rows = session.execute(
+        select(Batch, Product, Warehouse)
+        .join(Product, Batch.product_id == Product.id)
+        .join(Warehouse, Batch.warehouse_id == Warehouse.id)
+        .where(Batch.quantity > 0, Batch.expiry.is_not(None))
+        .order_by(Batch.expiry.asc(), Batch.created_at.asc())
+    ).all()
+    return [{"batch": b, "product": p, "warehouse": w} for b, p, w in rows]
 
 
 def active_warehouses(session: Session) -> list[Warehouse]:
