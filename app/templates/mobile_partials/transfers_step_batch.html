@@ -1,0 +1,44 @@
+{# Mobile Перемещение wizard, step 2 «Партия» (WH-03). Own card markup
+   (NOT batch_card_picker.html verbatim): a transfer card needs a field the
+   shared partial doesn't show by default — the SOURCE warehouse — so this
+   composes the same 4-line body (price/expiry/remaining/location·comment,
+   identical wording+filters to batch_card_picker.html) plus a 5th
+   «Склад:» line. Tapping a card GETs /m/transfers/step/batch-pick, which
+   re-validates ownership and advances straight to «Куда и количество»
+   (D-07 — no separate confirm sub-step). Zero open batches -> show_empty,
+   no forward control (Pitfall 6). Batch comment/location/warehouse name are
+   untrusted stored text: Jinja autoescape only, never | safe. #}
+<div id="wizard-step">
+  <p class="mobile-step-indicator">{{ step_label }}</p>
+  <h2>Выберите партию</h2>
+  <input type="hidden" name="code" value="{{ code }}">
+
+  {% if product_missing %}
+  <p class="error">Товар с кодом „{{ code }}“ не найден. Сначала оприходуйте товар.</p>
+  {% elif batches %}
+  {% for b in batches %}
+  <button type="button"
+          class="mobile-card"
+          hx-get="/m/transfers/step/batch-pick"
+          hx-vals='{"batch_id": "{{ b.id }}", "code": "{{ code }}"}'
+          hx-target="#wizard-step"
+          hx-swap="outerHTML">
+    <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
+    <p>{% if b.expiry %}Срок годности: {{ b.expiry | ru_date }}{% else %}Срок годности: без срока{% endif %}</p>
+    <p>Остаток: {{ b.quantity }} шт.</p>
+    {%- if b.location or b.comment %}
+    <p class="muted">{%- if b.location %}{{ b.location }}{% endif -%}
+      {%- if b.location and b.comment %} · {% endif -%}
+      {%- if b.comment %}{{ b.comment }}{% endif -%}</p>
+    {%- endif %}
+    <p>Склад: {{ warehouse_names.get(b.warehouse_id, "") }}</p>
+  </button>
+  {% endfor %}
+  {% elif show_empty %}
+  <p class="muted">Нет партий с остатком.</p>
+  {% endif %}
+
+  <div class="mobile-actions">
+    <a class="mobile-back" href="/m/transfers">Назад</a>
+  </div>
+</div>
