@@ -17,18 +17,31 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import Operation, Sale
-from app.services.ledger import compute_stock, record_operation
+from app.models import Batch, Operation, Product, Sale, Warehouse
+from app.services.batches import legacy_batch, open_batches
+from app.services.ledger import compute_stock, next_seq, record_operation
 from app.services.returns import register_return, returnable_qty  # noqa: F401
+
+# 0007 D-03 seeded default warehouse (frozen copy — the lazy-created legacy
+# batch's warehouse target; mirrors app.services.returns.DEFAULT_WAREHOUSE_ID).
+DEFAULT_WAREHOUSE_ID = "00000000-0000-4000-8000-000000000010"
+LEGACY_COMMENT = "Остаток до внедрения партий"
 
 
 def _return_ops(session):
     return session.scalars(select(Operation).where(Operation.type == "return")).all()
 
 
-def _make_sale(session, product, qty, unit_price_cents=1500, unit_cost_cents=1000):
-    """Build a real sale inline: one Sale header + one `sale` op (mirrors
-    tests/test_ledger.py::test_record_operation_sets_sale_id)."""
+def _make_sale(
+    session, product, qty, unit_price_cents=1500, unit_cost_cents=1000, batch_id=None
+):
+    """Build a real BATCHED sale inline: one Sale header + one `sale` op through
+    the single write path (mirrors tests/test_ledger.py::test_record_operation_sets_sale_id).
+
+    Phase 9: a sale is batch-attributed. When no batch_id is given, the first
+    open batch of the product is used, so the origin op carries a batch_id the
+    return can inherit (D-08) and the sale survives the mandatory D-12 flip.
+    """
     header = Sale(
         id=new_id(),
         customer_id=None,
@@ -36,6 +49,9 @@ def _make_sale(session, product, qty, unit_price_cents=1500, unit_cost_cents=100
         created_by=settings.operator_name,
     )
     session.add(header)
+    if batch_id is None:
+        batches = open_batches(session, product.id)
+        batch_id = batches[0].id if batches else None
     op = record_operation(
         session,
         type_="sale",
@@ -44,7 +60,42 @@ def _make_sale(session, product, qty, unit_price_cents=1500, unit_cost_cents=100
         unit_cost_cents=unit_cost_cents,
         unit_price_cents=unit_price_cents,
         sale_id=header.id,
+        batch_id=batch_id,
     )
+    return header, op
+
+
+def _make_legacy_sale(
+    session, product, qty, unit_price_cents=1500, unit_cost_cents=1000
+):
+    """Simulate a pre-Phase-9 sale: a raw NULL-batch_id ledger row inserted
+    directly, bypassing record_operation (which after the mandatory D-12 flip
+    rejects a stock-affecting op with no batch). This is exactly the legacy
+    data shape the return path's inheritance fallback must handle (D-08)."""
+    header = Sale(
+        id=new_id(),
+        customer_id=None,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(header)
+    op = Operation(
+        id=new_id(),
+        type="sale",
+        product_id=product.id,
+        qty_delta=-qty,
+        unit_cost_cents=unit_cost_cents,
+        unit_price_cents=unit_price_cents,
+        sale_id=header.id,
+        batch_id=None,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(op)
+    product.quantity = Product.quantity + (-qty)
+    session.commit()
     return header, op
 
 
@@ -107,7 +158,113 @@ def test_returnable_cap(session, stocked_product):
     assert len(_return_ops(session)) == 1  # only the first partial return landed
 
 
+# --- Batch inheritance (D-08, LOT-05) ---
+
+
+def test_return_inherits_origin_batch(session, stocked_product):
+    """D-08: a return of a BATCHED sale restores stock to the ORIGIN op's batch
+    (the return op inherits origin.batch_id and the batch quantity increments)."""
+    batch = open_batches(session, stocked_product.id)[0]
+    _header, sale_op = _make_sale(session, stocked_product, qty=2, batch_id=batch.id)
+    assert sale_op.batch_id == batch.id
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="1")
+    assert errors == {}
+    assert result
+
+    ops = _return_ops(session)
+    assert len(ops) == 1
+    assert ops[0].batch_id == batch.id
+
+    session.expire_all()
+    # batch quantity: 8 (receipt) - 2 (sale) + 1 (return) = 7
+    assert session.get(Batch, batch.id).quantity == 7
+
+
+def test_return_targets_seeded_legacy_batch(session, product, warehouse):
+    """D-08: a return of a pre-Phase-9 (NULL batch_id) sale for a product WITH a
+    seeded legacy batch targets that legacy batch — no re-ask, no new batch."""
+    legacy = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=0,
+        is_legacy=1,
+        comment=LEGACY_COMMENT,
+    )
+    session.add(legacy)
+    session.commit()
+
+    _header, sale_op = _make_legacy_sale(session, product, qty=3)
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="2")
+    assert errors == {}
+    assert result
+
+    ops = _return_ops(session)
+    assert len(ops) == 1
+    assert ops[0].batch_id == legacy.id
+    session.expire_all()
+    assert session.get(Batch, legacy.id).quantity == 2
+
+
+def test_return_lazy_creates_legacy_batch(session, product):
+    """Open Q1: a return of a NULL-batch sale for a product with NO legacy batch
+    lazily creates one (is_legacy=1, «Остаток до внедрения партий») inside the
+    return transaction and completes without error (the third batch birth path)."""
+    # The lazy-created legacy batch targets the seeded default warehouse.
+    session.add(Warehouse(id=DEFAULT_WAREHOUSE_ID, name="Основной склад"))
+    session.commit()
+
+    _header, sale_op = _make_legacy_sale(session, product, qty=2)
+    assert legacy_batch(session, product.id) is None  # none seeded
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="1")
+    assert errors == {}
+    assert result
+
+    lb = legacy_batch(session, product.id)
+    assert lb is not None
+    assert lb.is_legacy == 1
+    assert lb.comment == LEGACY_COMMENT
+    assert lb.warehouse_id == DEFAULT_WAREHOUSE_ID
+
+    ops = _return_ops(session)
+    assert len(ops) == 1
+    assert ops[0].batch_id == lb.id
+    session.expire_all()
+    assert session.get(Batch, lb.id).quantity == 1
+
+
 # --- Web slice (routes + templates) ---
+
+
+def test_web_return_shows_readonly_origin_batch_line(client, session, stocked_product):
+    """D-08: the return form shows the target batch as a READ-ONLY muted line —
+    no picker, no batch input."""
+    batch = open_batches(session, stocked_product.id)[0]
+    header, _op = _make_sale(session, stocked_product, qty=2, batch_id=batch.id)
+
+    response = client.get(
+        "/returns", params={"sale_id": header.id, "product_id": stocked_product.id}
+    )
+    assert response.status_code == 200
+    assert "Возврат в партию:" in response.text
+    # D-08: no batch picker and no batch input on the return form.
+    assert 'name="batch_id"' not in response.text
+    assert "batch_picker" not in response.text
+
+
+def test_web_return_legacy_shows_legacy_label(client, session, product):
+    """UAT gate 8: a return of a legacy (NULL batch_id) sale shows
+    «Возврат в партию: Остаток до внедрения партий»."""
+    header, _op = _make_legacy_sale(session, product, qty=2)
+
+    response = client.get(
+        "/returns", params={"sale_id": header.id, "product_id": product.id}
+    )
+    assert response.status_code == 200
+    assert "Возврат в партию: Остаток до внедрения партий" in response.text
 
 
 def test_web_return_entry_point(client, session, stocked_product):
