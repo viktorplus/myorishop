@@ -1,0 +1,26 @@
+{# Step "Партия" (2 of 3, conditional — D-07). The whole step is wrapped in
+   #batch-wrap so a card tap (GET /m/sales/step/batch, hx-target defaults to
+   "#batch-wrap", hx-swap="outerHTML" per batch_card_picker.html's fixed
+   contract) can self-replace this entire step, not just the card list. #}
+<div id="batch-wrap">
+  <p class="mobile-step-indicator">Шаг 2 из 3</p>
+  {% for c in code_acc %}<input type="hidden" name="code_acc[]" value="{{ c }}">{% endfor %}
+  {% for q in qty_acc %}<input type="hidden" name="qty_acc[]" value="{{ q }}">{% endfor %}
+  {% for p in price_acc %}<input type="hidden" name="price_acc[]" value="{{ p }}">{% endfor %}
+  {% for b in batch_acc %}<input type="hidden" name="batch_acc[]" value="{{ b }}">{% endfor %}
+  <input type="hidden" name="code" value="{{ code }}">
+  <h2>Выберите партию</h2>
+  {% set pick_url = "/m/sales/step/batch" %}
+  {% set batch_input_name = "batch_id" %}
+  {% include "mobile_partials/batch_card_picker.html" %}
+  <div class="mobile-actions">
+    <button type="button" class="secondary"
+            hx-post="/m/sales/step/product" hx-vals='{"back": "1"}'
+            hx-target="#wizard-step" hx-swap="innerHTML">Назад</button>
+    {% if not show_empty %}
+    <button type="button"
+            hx-post="/m/sales/step/qty-price"
+            hx-target="#wizard-step" hx-swap="innerHTML">Далее</button>
+    {% endif %}
+  </div>
+</div>
