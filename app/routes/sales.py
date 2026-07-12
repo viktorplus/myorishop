@@ -40,7 +40,7 @@ def _build_lines(codes: list[str], qtys: list[str], prices: list[str], errors: d
     """
     non_blank = non_blank_lines(codes, qtys, prices)
     lines = []
-    for i, (code, qty, price) in enumerate(non_blank):
+    for i, (code, qty, price, _batch_id) in enumerate(non_blank):
         lines.append(
             {
                 "row_id": "" if i == 0 else new_id(),
@@ -179,6 +179,7 @@ def sale_create(
     code: list[str] = Form([], alias="code[]"),
     qty: list[str] = Form([], alias="qty[]"),
     price: list[str] = Form([], alias="price[]"),
+    batch_id: list[str] = Form([], alias="batch_id[]"),
     customer_id: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
@@ -190,6 +191,7 @@ def sale_create(
             codes=code,
             qtys=qty,
             prices=price,
+            batch_ids=batch_id,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
