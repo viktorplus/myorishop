@@ -1,0 +1,24 @@
+{% extends "mobile_base.html" %}
+{# Mobile history screen (Phase 11 Plan 08): single "Тип операции" filter
+   (desktop's second filter, по товару, is dropped per UI-SPEC's CONTEXT
+   discretion), a paginated card list, and #return-slot placed OUTSIDE
+   #history-cards so a card-list swap or filter change can never wipe an
+   in-progress return confirmation rendered there (mirrors desktop's
+   pages/history.html placement rationale for #return-slot). #}
+{% block content %}
+<h1>История</h1>
+<div class="field">
+  <label for="type">Тип операции</label>
+  <select id="type" name="type"
+          hx-get="/m/history" hx-trigger="change"
+          hx-target="#history-cards" hx-push-url="true">
+    <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
+    {% for t, label in OPERATION_TYPE_LABELS.items() %}
+    <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div id="history-cards">{% include "mobile_partials/history_cards.html" %}</div>
+{% include "mobile_partials/history_load_more.html" %}
+<div id="return-slot"></div>
+{% endblock %}

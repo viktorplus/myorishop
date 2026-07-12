@@ -1,0 +1,50 @@
+{# Mobile return confirm (Phase 11 Plan 08): swapped into #return-slot on a
+   history card's «Вернуть» tap. Whole-block swap on GET load and every POST
+   response (mirrors desktop partials/return_form.html). D-07:
+   unit_price_cents is copied server-side from the FROZEN origin sale op and
+   shown read-only — this form has NO editable price field. Product
+   name/batch comment are untrusted stored text (T-11-24): autoescape only,
+   never |safe. #}
+<div id="return-confirm-wrap" class="mobile-card">
+  <h2>Возврат</h2>
+  {% if saved %}
+  <p>Возврат оформлен: {{ saved.name }} — {{ saved.qty }} шт.</p>
+  <p><a href="/m/history">Готово</a></p>
+  {% else %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  {% if product %}
+  <p>Возврат из продажи от {{ origin_created_at | local_dt }} — {{ product.name }} ({{ product.code }}), цена {{ unit_price_cents | cents }}</p>
+  {# D-08: the target batch is server-resolved and READ-ONLY — no picker, no
+     input. A batched origin shows срок/комментарий; a legacy/NULL origin (or
+     a to-be-lazily-created legacy batch) shows the frozen legacy label. #}
+  <p class="muted">
+    {%- if origin_batch and not origin_batch.is_legacy -%}
+    Возврат в партию: {% if origin_batch.expiry %}{{ origin_batch.expiry | ru_date }}{% else %}без срока{% endif %}{% if origin_batch.comment %} — {{ origin_batch.comment }}{% endif %}
+    {%- else -%}
+    Возврат в партию: Остаток до внедрения партий
+    {%- endif -%}
+  </p>
+  <p class="muted">Доступно к возврату: {{ remaining }} из {{ sold }}.</p>
+
+  {% if remaining <= 0 %}
+  <p class="muted">Эта позиция уже возвращена полностью.</p>
+  {% else %}
+  <form hx-post="/m/returns"
+        hx-target="#return-confirm-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="origin_op_id" value="{{ origin_op_id }}">
+    <div class="field">
+      <label for="qty">Количество к возврату</label>
+      <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ remaining }}" max="{{ remaining }}">
+      {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+    <div class="mobile-actions">
+      <button type="submit">Оформить возврат</button>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
