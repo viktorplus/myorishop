@@ -70,7 +70,11 @@ def test_history_pagination(session, stocked_product):
     batch_id = _batch_id(session, stocked_product)
     for _ in range(5):
         record_operation(
-            session, type_="correction", product_id=stocked_product.id, qty_delta=1, batch_id=batch_id
+            session,
+            type_="correction",
+            product_id=stocked_product.id,
+            qty_delta=1,
+            batch_id=batch_id,
         )
     # stocked_product already carries 1 receipt op from its fixture -> 6 rows total.
 
@@ -163,7 +167,11 @@ def test_web_history_load_more_survives_filter_change(client, session, stocked_p
     batch_id = _batch_id(session, stocked_product)
     for _ in range(51):
         record_operation(
-            session, type_="writeoff", product_id=stocked_product.id, qty_delta=-1, batch_id=batch_id
+            session,
+            type_="writeoff",
+            product_id=stocked_product.id,
+            qty_delta=-1,
+            batch_id=batch_id,
         )
 
     full_page = client.get("/history", params={"type": "writeoff"})

@@ -21,7 +21,22 @@
 <tr>
   <td>{{ r.op.created_at | local_dt }}</td>
   <td>{{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</td>
-  <td>{{ r.product.name }} ({{ r.product.code }})</td>
+  {# D-15: muted batch attribution as a SECOND line in the «Товар» cell — no
+     ninth column. Stock-affecting op with a batch -> «Партия: …»; with NULL
+     batch_id (pre-Phase-9) -> the legacy label «До внедрения партий» (read-time
+     only, the ledger is never rewritten); audit types -> no second line. Batch
+     comment is untrusted stored text (T-05-18): autoescape only, never |safe. #}
+  <td>{{ r.product.name }} ({{ r.product.code }})
+    {%- if r.op.type not in ("price_change", "product_created", "product_edited") %}
+    <br><span class="muted">
+      {%- if r.batch -%}
+      Партия: {% if r.batch.expiry %}{{ r.batch.expiry | ru_date }}{% else %}без срока{% endif %}{% if r.batch.comment %} — {{ r.batch.comment }}{% endif %}
+      {%- else -%}
+      До внедрения партий
+      {%- endif -%}
+    </span>
+    {%- endif -%}
+  </td>
   <td class="num">{% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}</td>
   <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="num">{% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>

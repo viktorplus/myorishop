@@ -8,7 +8,7 @@ only, no SQLite-specific SQL (D-05 sync-readiness).
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import OPERATION_TYPES, Operation, Product
+from app.models import OPERATION_TYPES, Batch, Operation, Product
 
 
 def history_view(
@@ -25,10 +25,15 @@ def history_view(
     a has-next sentinel so the whole ledger is never materialized in one
     response (T-05-19). An unknown/tampered type_filter is ignored (treated
     as no filter) rather than raising (T-05-20).
+
+    D-15: LEFT OUTER JOIN Batch so each row carries its batch (or None for a
+    pre-Phase-9 NULL batch_id op) — batch attribution is resolved at READ time;
+    the append-only ledger is NEVER rewritten.
     """
     stmt = (
-        select(Operation, Product)
+        select(Operation, Product, Batch)
         .join(Product, Operation.product_id == Product.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
     )
     if type_filter and type_filter in OPERATION_TYPES:
@@ -40,7 +45,7 @@ def history_view(
     rows = session.execute(stmt).all()
     has_next = len(rows) > page_size
     return {
-        "rows": [{"op": op, "product": p} for op, p in rows[:page_size]],
+        "rows": [{"op": op, "product": p, "batch": b} for op, p, b in rows[:page_size]],
         "has_next": has_next,
         "page": page,
         "type_filter": type_filter or "",
