@@ -8,8 +8,10 @@ Naming: "step_batch" selects the Task 1 slice (steps 1-2 — route skeleton +
 Подтверждение) and the final write, added in Task 2.
 """
 
+from sqlalchemy import select
+
 from app.core import new_id
-from app.models import Batch
+from app.models import Batch, Operation
 from app.routes import mobile_receipts
 
 # --- Task 1: steps 1-2 (Товар, Партия chooser) ---
@@ -90,3 +92,152 @@ def test_web_step_batch_zero_warehouses_defensive_block(mobile_client_factory, s
         in response.text
     )
     assert "Далее" not in response.text
+
+
+# --- Task 2: steps 3-4 (Количество/Цены, Подтверждение) + final write ---
+
+
+def test_web_step_details_shows_new_batch_fields_when_new(mobile_client_factory, session):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "Крем", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "Шаг 3 из 4" in response.text
+    assert 'name="qty"' in response.text
+    assert 'name="expiry"' in response.text
+    assert 'name="location"' in response.text
+    assert "стеллаж А3" in response.text  # placeholder, verbatim from desktop
+
+
+def test_web_step_details_omits_new_batch_fields_for_topup(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=2
+    )
+    session.add(batch)
+    session.commit()
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={
+            "code": product.code,
+            "warehouse_id": warehouse.id,
+            "name": product.name,
+            "batch_choice": batch.id,
+        },
+    )
+    assert response.status_code == 200
+    assert 'name="qty"' in response.text
+    assert 'name="expiry"' not in response.text
+    assert 'name="location"' not in response.text
+    assert 'name="comment"' not in response.text
+
+
+def test_web_step_confirm_renders_summary(mobile_client_factory, session):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/confirm",
+        data={
+            "code": "9999",
+            "warehouse_id": "wh-1",
+            "name": "Крем",
+            "batch_choice": "new",
+            "qty": "5",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Шаг 4 из 4" in response.text
+    assert "Подтверждение" in response.text
+    assert "Сохранить приход" in response.text
+    assert "9999" in response.text
+    assert "Крем" in response.text
+
+
+def test_web_receipt_create_new_batch_happy_path(mobile_client_factory, session, warehouse):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts",
+        data={
+            "code": "9999",
+            "name": "Губная помада",
+            "qty": "5",
+            "cost": "10",
+            "sale": "12,50",
+            "catalog": "15",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 200
+    assert "Приход сохранён: Губная помада — 5 шт." in response.text
+    assert "Добавить ещё" in response.text
+    assert "На главную" in response.text
+
+    ops = session.scalars(select(Operation).where(Operation.type == "receipt")).all()
+    assert len(ops) == 1
+    assert ops[0].qty_delta == 5
+
+
+def test_web_receipt_create_topup_happy_path(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=2,
+        price_cents=1000,
+    )
+    session.add(batch)
+    session.commit()
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "qty": "3",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": batch.id,
+        },
+    )
+    assert response.status_code == 200
+    assert f"Приход сохранён: {product.name} — 3 шт." in response.text
+
+    session.refresh(batch)
+    assert batch.quantity == 5  # 2 + 3, same batch topped up
+    assert batch.price_cents == 1000  # frozen — never rewritten by a top-up
+
+
+def test_web_receipt_create_validation_error_writes_zero_rows(
+    mobile_client_factory, session, product, warehouse
+):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "qty": "0",  # invalid — must be a positive int
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 422
+    assert "Подтверждение" in response.text
+    assert "Укажите количество — целое число больше нуля." in response.text
+    assert session.scalars(select(Operation)).all() == []

@@ -21,7 +21,7 @@ from app.db import get_session
 from app.models import Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
-from app.services.receipts import lookup_prefill
+from app.services.receipts import lookup_prefill, register_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -119,4 +119,144 @@ def mobile_receipt_step_batch(
     }
     return templates.TemplateResponse(
         request, "mobile_partials/receipts_step_batch.html", context
+    )
+
+
+@router.post("/m/receipts/step/details")
+def mobile_receipt_step_details(
+    request: Request,
+    code: str = Form(""),
+    warehouse_id: str = Form(""),
+    name: str = Form(""),
+    batch_choice: str = Form(""),
+    qty: str = Form(""),
+    cost: str = Form(""),
+    sale: str = Form(""),
+    catalog: str = Form(""),
+    expiry: str = Form(""),
+    location: str = Form(""),
+    comment: str = Form(""),
+):
+    # Also serves as the "Назад" target from step 4 — re-rendering step 3
+    # with whatever qty/cost/sale/... the operator already typed, instead of
+    # discarding them (RESEARCH Pattern 1: the server just re-renders from
+    # posted state, no separate "back" endpoint needed).
+    context = {
+        "code": code,
+        "warehouse_id": warehouse_id,
+        "name": name,
+        "batch_choice": batch_choice,
+        "is_new_batch": batch_choice == "new",
+        "qty": qty,
+        "cost": cost,
+        "sale": sale,
+        "catalog": catalog,
+        "expiry": expiry,
+        "location": location,
+        "comment": comment,
+    }
+    return templates.TemplateResponse(
+        request, "mobile_partials/receipts_step_details.html", context
+    )
+
+
+@router.post("/m/receipts/step/confirm")
+def mobile_receipt_step_confirm(
+    request: Request,
+    code: str = Form(""),
+    warehouse_id: str = Form(""),
+    name: str = Form(""),
+    batch_choice: str = Form(""),
+    qty: str = Form(""),
+    cost: str = Form(""),
+    sale: str = Form(""),
+    catalog: str = Form(""),
+    expiry: str = Form(""),
+    location: str = Form(""),
+    comment: str = Form(""),
+):
+    context = {
+        "code": code,
+        "warehouse_id": warehouse_id,
+        "name": name,
+        "batch_choice": batch_choice,
+        "is_new_batch": batch_choice == "new",
+        "qty": qty,
+        "cost": cost,
+        "sale": sale,
+        "catalog": catalog,
+        "expiry": expiry,
+        "location": location,
+        "comment": comment,
+        "errors": {},
+    }
+    return templates.TemplateResponse(
+        request, "mobile_partials/receipts_step_confirm.html", context
+    )
+
+
+@router.post("/m/receipts")
+def mobile_receipt_create(
+    request: Request,
+    code: str = Form(""),
+    name: str = Form(""),
+    qty: str = Form(""),
+    cost: str = Form(""),
+    sale: str = Form(""),
+    catalog: str = Form(""),
+    warehouse_id: str = Form(""),
+    batch_choice: str = Form(""),
+    expiry: str = Form(""),
+    location: str = Form(""),
+    comment: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    form_echo = {
+        "code": code,
+        "name": name,
+        "qty": qty,
+        "cost": cost,
+        "sale": sale,
+        "catalog": catalog,
+        "warehouse_id": warehouse_id,
+        "batch_choice": batch_choice,
+        "is_new_batch": batch_choice == "new",
+        "expiry": expiry,
+        "location": location,
+        "comment": comment,
+    }
+    try:
+        result, errors = register_receipt(
+            session,
+            code=code,
+            name=name,
+            qty_raw=qty,
+            cost_raw=cost,
+            sale_raw=sale,
+            catalog_raw=catalog,
+            warehouse_id=warehouse_id,
+            batch_choice=batch_choice,
+            expiry_raw=expiry,
+            location_raw=location,
+            comment_raw=comment,
+        )
+    except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # CR-01: defensive rollback before re-rendering, mirroring
+        # app/routes/receipts.py::receipt_create.
+        session.rollback()
+        logger.exception("register_receipt failed")
+        context = {"errors": {"form": SAVE_FAILED_ERROR}, **form_echo}
+        return templates.TemplateResponse(
+            request, "mobile_partials/receipts_step_confirm.html", context, status_code=422
+        )
+    if errors:
+        context = {"errors": errors, **form_echo}
+        return templates.TemplateResponse(
+            request, "mobile_partials/receipts_step_confirm.html", context, status_code=422
+        )
+    context = {
+        "saved": {"name": result["product"].name, "qty": result["operation"].qty_delta},
+    }
+    return templates.TemplateResponse(
+        request, "mobile_partials/receipts_step_confirm.html", context
     )

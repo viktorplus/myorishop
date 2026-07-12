@@ -1,0 +1,54 @@
+{# Приход wizard, step 4 «Подтверждение» (UI-01, Phase 11 Plan 03).
+   Three states rendered by the SAME file (mirrors desktop's
+   partials/receipt_form.html {% if saved %} convention):
+     1. saved      -> post-success screen (final write succeeded)
+     2. errors     -> re-render this step with RU error(s), 422
+     3. otherwise  -> the normal read-only confirmation screen #}
+{% if saved %}
+<p class="mobile-step-indicator">Шаг 4 из 4</p>
+<h2>Приход сохранён: {{ saved.name }} — {{ saved.qty }} шт.</h2>
+<div class="mobile-actions">
+  <a class="button" href="/m/receipts">Добавить ещё</a>
+  <a class="button secondary" href="/m/">На главную</a>
+</div>
+{% else %}
+<p class="mobile-step-indicator">Шаг 4 из 4</p>
+<h2>Подтверждение</h2>
+{% if errors %}
+{% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+{% for key, message in errors.items() %}
+{% if key != "form" %}<p class="error">{{ message }}</p>{% endif %}
+{% endfor %}
+{% endif %}
+<input type="hidden" name="code" value="{{ code }}">
+<input type="hidden" name="name" value="{{ name }}">
+<input type="hidden" name="warehouse_id" value="{{ warehouse_id }}">
+<input type="hidden" name="batch_choice" value="{{ batch_choice }}">
+<input type="hidden" name="qty" value="{{ qty }}">
+<input type="hidden" name="cost" value="{{ cost }}">
+<input type="hidden" name="sale" value="{{ sale }}">
+<input type="hidden" name="catalog" value="{{ catalog }}">
+{% if is_new_batch %}
+<input type="hidden" name="expiry" value="{{ expiry }}">
+<input type="hidden" name="location" value="{{ location }}">
+<input type="hidden" name="comment" value="{{ comment }}">
+{% endif %}
+<dl>
+  <dt>Код</dt><dd>{{ code }}</dd>
+  <dt>Название</dt><dd>{{ name }}</dd>
+  <dt>Партия</dt><dd>{% if is_new_batch %}Новая партия{% else %}Пополнение существующей партии{% endif %}</dd>
+  <dt>Количество</dt><dd>{{ qty }} шт.</dd>
+  <dt>Закупочная цена</dt><dd>{{ cost or "—" }}</dd>
+  <dt>Цена продажи</dt><dd>{{ sale or "—" }}</dd>
+  <dt>Цена по каталогу</dt><dd>{{ catalog or "—" }}</dd>
+  {% if is_new_batch %}
+  <dt>Срок годности</dt><dd>{{ (expiry | ru_date) if expiry else "—" }}</dd>
+  <dt>Место хранения</dt><dd>{{ location or "—" }}</dd>
+  <dt>Комментарий</dt><dd>{{ comment or "—" }}</dd>
+  {% endif %}
+</dl>
+<div class="mobile-actions">
+  <button type="button" class="secondary" hx-post="/m/receipts/step/details" hx-include="closest form">Назад</button>
+  <button type="submit" hx-post="/m/receipts" hx-include="closest form">Сохранить приход</button>
+</div>
+{% endif %}
