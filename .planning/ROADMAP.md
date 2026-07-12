@@ -137,7 +137,7 @@ Plans:
 
 **Wave 2** *(blocked on 09-08 — shares receipt_batch_chooser.html)*
 
-- [ ] 09-09-PLAN.md — LOT-01/LOT-04 (UAT test 1, symptom 3): migration 0009 native add-column `batches.name`, auto-generated «{product} — {date}» at creation, surfaced in the chooser top-up label
+- [x] 09-09-PLAN.md — LOT-01/LOT-04 (UAT test 1, symptom 3): migration 0009 native add-column `batches.name`, auto-generated «{product} — {date}» at creation, surfaced in the chooser top-up label
 
 **UI hint**: yes
 
@@ -186,6 +186,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 8/9 | In Progress|  |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete   | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
