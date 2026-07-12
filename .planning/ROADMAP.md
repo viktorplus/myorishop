@@ -116,8 +116,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-02-PLAN.md — WH-02/LOT-01/LOT-03/LOT-04: receipt warehouse select + resolve-or-create batch chooser (batch birth path)
-- [ ] 09-03-PLAN.md — LOT-02/LOT-04/WH-02: sale batch picker (shared batch_picker.html), server-driven selection, per-batch oversell
+- [x] 09-02-PLAN.md — WH-02/LOT-01/LOT-03/LOT-04: receipt warehouse select + resolve-or-create batch chooser (batch birth path)
+- [x] 09-03-PLAN.md — LOT-02/LOT-04/WH-02: sale batch picker (shared batch_picker.html), server-driven selection, per-batch oversell
 
 **Wave 3** *(blocked on Wave 2 — reuses batch_picker.html)*
 
@@ -174,6 +174,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 1/5 | In Progress|  |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 3/5 | In Progress|  |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
