@@ -3,10 +3,13 @@
 import logging
 
 from fastapi import APIRouter, Depends, Form, Request, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import Batch, Product
 from app.routes import templates
+from app.services.batches import open_batches
 from app.services.receipts import lookup_prefill
 from app.services.writeoffs import recent_writeoffs, register_writeoff
 
@@ -44,8 +47,53 @@ def writeoff_lookup(
     result = lookup_prefill(session, code)
     if result is None:
         return Response(status_code=204)
-    context = {"name": result["name"]}
+
+    # LOT-05: an active product also gets its open batches so the shared picker
+    # can be oob-swapped into the form (empty state «Нет партий с остатком.»
+    # when there are none). Dictionary-only matches have no product row.
+    code_clean = code.strip()
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    batches = open_batches(session, product.id) if product is not None else []
+    context = {
+        "name": result["name"],
+        "code": code_clean,
+        "batches": batches,
+        "selected_batch_id": None,
+        "batch_id_value": "",
+        "show_empty": product is not None and not batches,
+    }
     return templates.TemplateResponse(request, "partials/writeoff_lookup.html", context)
+
+
+@router.get("/writeoff/batch-pick")
+def writeoff_batch_pick(
+    request: Request,
+    batch_id: str = "",
+    code: str = "",
+    session: Session = Depends(get_session),
+):
+    # T-09-08/T-09-12: re-query the open list on every pick (fresh remaining
+    # qty) and re-validate the client id's ownership before echoing it back.
+    code_clean = code.strip()
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    batches = open_batches(session, product.id) if product is not None else []
+    picked: Batch | None = None
+    if batch_id and product is not None:
+        candidate = session.get(Batch, batch_id)
+        if candidate is not None and candidate.product_id == product.id:
+            picked = candidate
+    context = {
+        "code": code_clean,
+        "batches": batches,
+        "selected_batch_id": picked.id if picked else None,
+        "batch_id_value": picked.id if picked else "",
+        "show_empty": product is not None and not batches,
+    }
+    return templates.TemplateResponse(request, "partials/writeoff_batch_wrap.html", context)
 
 
 @router.post("/writeoff")
@@ -56,6 +104,7 @@ def writeoff_create(
     qty: str = Form(""),
     reason_code: str = Form(""),
     note: str = Form(""),
+    batch_id: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -69,6 +118,9 @@ def writeoff_create(
         "reason_code": reason_code,
         "note": note,
     }
+    # LOT-05: resolve the picked batch (if any) for the re-echoed picker on a
+    # 422/warn re-render so the operator's selection survives.
+    selected_batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
     try:
         result, errors = register_writeoff(
             session,
@@ -77,6 +129,7 @@ def writeoff_create(
             qty_raw=qty,
             reason_code=reason_code,
             note=note,
+            batch_id=batch_id,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
@@ -90,14 +143,15 @@ def writeoff_create(
             "form": form_echo,
             "focus_code": False,
             "include_oob_rows": False,
+            "selected_batch": selected_batch,
         }
         return templates.TemplateResponse(
             request, "partials/writeoff_form.html", context, status_code=422
         )
 
-    # D-04/T-05-03: oversell — zero writes, warn above the still-intact form
-    # (the confirm button re-POSTs the same form via form="writeoff-form" +
-    # confirm=1).
+    # D-04/D-09/criterion 4: over-removal — zero writes, warn above the
+    # still-intact form (the confirm button re-POSTs the same form via
+    # form="writeoff-form" + confirm=1).
     if result and result.get("oversell"):
         context = {
             "errors": {},
@@ -105,6 +159,7 @@ def writeoff_create(
             "focus_code": False,
             "include_oob_rows": False,
             "oversell": result["oversell"],
+            "selected_batch": selected_batch,
         }
         return templates.TemplateResponse(request, "partials/writeoff_form.html", context)
 
@@ -114,6 +169,7 @@ def writeoff_create(
             "form": form_echo,
             "focus_code": False,
             "include_oob_rows": False,
+            "selected_batch": selected_batch,
         }
         return templates.TemplateResponse(
             request, "partials/writeoff_form.html", context, status_code=422

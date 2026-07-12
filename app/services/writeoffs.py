@@ -19,11 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import WRITEOFF_REASONS, Operation, Product
+from app.models import WRITEOFF_REASONS, Batch, Operation, Product
 from app.services.ledger import record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 REASON_ERROR = "Выберите причину списания."
+BATCH_REQUIRED_ERROR = "Выберите партию."
 PRODUCT_NOT_FOUND_TMPL = "Товар с кодом „{code}“ не найден. Сначала оприходуйте товар."
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
 
@@ -36,6 +37,7 @@ def register_writeoff(
     qty_raw: str,
     reason_code: str,
     note: str,
+    batch_id: str = "",
     confirm: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one write-off atomically; returns (result, errors).
@@ -78,13 +80,21 @@ def register_writeoff(
     if product is None:
         return None, {"code": PRODUCT_NOT_FOUND_TMPL.format(code=code)}
 
-    # D-04/T-05-03: warn-but-allow oversell check BEFORE any write.
-    if confirm != "1" and qty > product.quantity:
+    # LOT-05/T-09-12: the write-off MUST target a specific batch. The client id
+    # is untrusted — reject an empty/unknown id or one that belongs to another
+    # product (never trust the picker) BEFORE any write.
+    batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
+    if batch is None or batch.product_id != product.id:
+        return None, {"batch": BATCH_REQUIRED_ERROR}
+
+    # D-04/D-09/criterion 4: warn-but-allow over-removal check BEFORE any write,
+    # scoped to the PICKED batch's remaining (not the product total).
+    if confirm != "1" and qty > batch.quantity:
         return (
             {
                 "oversell": {
                     "product": product,
-                    "available": product.quantity,
+                    "available": batch.quantity,
                     "requested": qty,
                 }
             },
@@ -98,6 +108,7 @@ def register_writeoff(
             product_id=product.id,
             qty_delta=-qty,
             payload={"reason_code": reason_code, "note": note.strip()},
+            batch_id=batch.id,
             commit=True,
         )
     except (IntegrityError, ValueError):

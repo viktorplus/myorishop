@@ -4,8 +4,8 @@
    Product names are untrusted stored input (T-05-05): autoescape only —
    the safe filter is never applied. #}
 <div class="error-block" id="writeoff-oversell-warning">
-  <p><strong>Товара не хватает на складе</strong></p>
-  <p>{{ oversell.product.name }}: на складе {{ oversell.available }}, списываете {{ oversell.requested }}.</p>
+  <p><strong>Товара не хватает в партии</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, списываете {{ oversell.requested }}.</p>
   <div class="form-actions">
     {# Re-POSTs the SAME form via form association (mirrors sale_oversell.html):
        hx-vals merges confirm=1 into the writeoff-form fields, no re-serialization. #}

@@ -7,6 +7,13 @@
 {% with autofilled = True %}
 {% include "partials/name_input.html" %}
 {% endwith %}
-{% if quantity is not none %}
-<span id="current-qty-hint" class="muted" hx-swap-oob="true">Текущий остаток: {{ quantity }}</span>
+{# LOT-05: oob-swap the shared batch picker for the resolved product (empty
+   state «Нет партий с остатком.» when it has no open batches). The current-qty
+   hint is now batch-scoped (Pitfall 7): reset it to «—» because no batch is
+   picked yet — the real remaining arrives on /corrections/batch-pick. #}
+{% if batches or show_empty %}
+{% with oob_batch = True %}
+{% include "partials/correction_batch_wrap.html" %}
+{% endwith %}
+<span id="current-qty-hint" class="muted" hx-swap-oob="true">Остаток в партии: —</span>
 {% endif %}

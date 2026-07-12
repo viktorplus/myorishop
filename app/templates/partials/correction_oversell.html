@@ -1,0 +1,21 @@
+{# D-09/criterion 4: correction over-removal warning — the server already wrote
+   ZERO ops. Reuses the existing .error-block treatment and button.danger
+   (mirrors writeoff_oversell.html / sale_oversell.html) — no new CSS/color
+   role. Product names are untrusted stored input (T-09-15): autoescape only —
+   the safe filter is never applied. #}
+<div class="error-block" id="correction-oversell-warning">
+  <p><strong>В партии не хватает остатка</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, снимаете {{ oversell.requested }}.</p>
+  <div class="form-actions">
+    {# Re-POSTs the SAME form via form association (mirrors writeoff_oversell.html):
+       hx-vals merges confirm=1 into the correction-form fields, no re-serialization. #}
+    <button type="submit" class="danger" form="correction-form"
+            hx-post="/corrections" hx-vals='{"confirm": "1"}'
+            hx-target="#correction-form-wrap" hx-swap="outerHTML"
+            hx-disabled-elt="this">Сохранить всё равно</button>
+    {# Client-side dismiss only — no server call, no write; the form underneath
+       was never swapped, so entered values are intact. #}
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#correction-oversell-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>
