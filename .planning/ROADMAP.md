@@ -152,7 +152,17 @@ Plans:
   2. A transfer is recorded in the operation history like any other stock-affecting operation
   3. Operator can open a report page listing batches with an approaching or already-passed expiry date
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+**Wave 1** *(two independent plans — no file overlap, run in parallel)*
+
+- [ ] 10-01-PLAN.md — WH-03 (backend): register the `"transfer"` op type (models.py + ledger.py + label) and build `app/services/transfers.py` (`register_transfer()` two-row write via record_operation + destination batch copying source price/expiry/comment/location; `recent_transfers()`); no migration
+- [ ] 10-03-PLAN.md — LOT-06: `expiring_batches()` read helper + read-only `/reports/expiry` page (open+dated batches, earliest first, local-date «просрочено» marker) + reports-landing link
+
+**Wave 2** *(blocked on 10-01 — reuses transfers.py + the "transfer" op type; extends tests/test_transfers.py)*
+
+- [ ] 10-02-PLAN.md — WH-03 (web): `/transfers` page + lookup + batch-pick (dest `<select>` excludes source warehouse) + POST, six transfer templates reusing `batch_picker.html`, router registration, «Перемещение» nav link, «Перемещение» in /history
+
 **UI hint**: yes
 
 ### Phase 11: Dedicated Mobile Flow
@@ -187,5 +197,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
-| 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
+| 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/3 | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
