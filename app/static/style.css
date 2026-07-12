@@ -250,3 +250,29 @@ mark {
 /* Batch picker (Phase 9): nested batch table under a form field / basket line. */
 .batch-picker { margin: 8px 0 0; }                         /* sm gap instead of the default table margin-top */
 .batch-picker tr.selected-batch td { background: #e8effd; } /* selection highlight — existing mark/search tint, NOT a new color */
+
+/* Mobile flow (Phase 11): home tile grid, wizard shell, batch/basket cards.
+   All values reuse the existing token scale; the only new number is the
+   44px touch-target minimum (spacing exception, see UI-SPEC). */
+.mobile-shell { max-width: 480px; margin: 0 auto; padding: 16px; }
+.mobile-back { display: inline-block; min-height: 44px; line-height: 44px; }
+.mobile-step-indicator { font-size: 14px; color: #6b7280; margin: 0 0 16px; }
+
+.mobile-tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.mobile-tile {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 88px; padding: 16px;
+  background: #ffffff; border: 1px solid #d9d9d9; border-radius: 4px;
+  font-size: 16px; font-weight: 600; text-decoration: none; color: #222;
+  text-align: center;
+}
+
+.mobile-card {
+  display: block; width: 100%; min-height: 44px;
+  background: #ffffff; border: 1px solid #d9d9d9; border-radius: 4px;
+  padding: 16px; margin-bottom: 24px; text-align: left;
+}
+.mobile-card.selected { background: #e8effd; }
+
+.mobile-actions { display: flex; gap: 16px; margin-top: 24px; }
+.mobile-actions button, .mobile-actions a.button { flex: 1; min-height: 44px; }

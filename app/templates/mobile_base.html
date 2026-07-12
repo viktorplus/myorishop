@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# CR-01 (mirrored from base.html, Pitfall 3): htmx 2 does NOT swap 4xx
+     responses by default; wizard steps return their warning/error partial
+     with 422, so 422 must be opted into swapping or validation errors are
+     silently discarded. mobile_base.html is a standalone file (does not
+     inherit from base.html via Jinja template inheritance), so this tag is
+     NOT inherited from base.html and must be duplicated here verbatim. #}
+  <meta name="htmx-config"
+        content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+  <title>MyOriShop</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <main class="mobile-shell">
+    {% block back %}<a class="mobile-back" href="/m/">← Главная</a>{% endblock %}
+    {% block step_indicator %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
