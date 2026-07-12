@@ -11,7 +11,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 
 - [x] **WH-01**: User can create and manage multiple warehouses
 - [x] **WH-02**: Stock item has an optional free-text storage location tag within its warehouse (e.g. "стеллаж А3")
-- [ ] **WH-03**: User can transfer stock (a batch or part of it) from one warehouse to another without losing cost/price history
+- [x] **WH-03**: User can transfer stock (a batch or part of it) from one warehouse to another without losing cost/price history
 
 ### Categories
 
@@ -74,7 +74,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | WH-01 | Phase 8 | Complete |
 | WH-02 | Phase 9 | Complete |
-| WH-03 | Phase 10 | Pending |
+| WH-03 | Phase 10 | Complete |
 | CAT-01 | Phase 7 | Complete |
 | LOT-01 | Phase 9 | Complete |
 | LOT-02 | Phase 9 | Complete |

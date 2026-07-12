@@ -1,0 +1,41 @@
+{# Scalar-batch picker wrapper for the single-line transfer form (WH-03).
+   row_id "" -> the shared batch_picker.html targets #batch-wrap-first, so this
+   wrapper div carries that id. Rendered three ways from ONE markup source so
+   the states can never drift:
+     - inline in transfer_form.html (oob_batch unset -> plain div),
+     - oob-swapped by /transfers/lookup (oob_batch True -> hx-swap-oob),
+     - main swap by /transfers/batch-pick (oob_batch unset -> plain div).
+   The picker uses the scalar hidden input name "batch_id" and posts radio
+   picks to /transfers/batch-pick. BELOW the picker: the destination-
+   warehouse <select> (D-02) — rendered only once a source batch is picked
+   AND a `warehouses` list (active warehouses minus the source's own
+   warehouse) is supplied; before a source is picked `warehouses` is empty
+   so no select is shown. #}
+<div class="field" id="batch-wrap-first"{% if oob_batch | default(false) %} hx-swap-oob="outerHTML"{% endif %}>
+  {% with row_id = "",
+          code = code | default("") or "",
+          batch_id = batch_id_value | default("") or "",
+          batches = batches | default([]),
+          selected_batch_id = selected_batch_id | default(none),
+          batch_input_name = "batch_id",
+          pick_url = "/transfers/batch-pick",
+          show_empty = show_empty | default(false),
+          auto_note = false %}
+  {% include "partials/batch_picker.html" %}
+  {% endwith %}
+  {% if errors is defined and errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
+
+  {% set _wh_list = warehouses | default([]) %}
+  {% if selected_batch_id and _wh_list %}
+  <div class="field">
+    <label for="dest_warehouse_id">Склад назначения</label>
+    <select id="dest_warehouse_id" name="dest_warehouse_id">
+      <option value=""></option>
+      {% for w in _wh_list %}
+      <option value="{{ w.id }}">{{ w.name }}</option>
+      {% endfor %}
+    </select>
+    {% if errors is defined and errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
+  </div>
+  {% endif %}
+</div>

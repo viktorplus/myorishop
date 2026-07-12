@@ -1,0 +1,16 @@
+{# /transfers/lookup response fragment (D-04): name-only fill — transfer has
+   no price fields, so this is just the shared name_input.html fragment
+   (PD-6 — the fragment can never drift from the form markup). #}
+{% with autofilled = True %}
+{% include "partials/name_input.html" %}
+{% endwith %}
+{# WH-03: oob-swap the shared batch picker for the resolved product, listing
+   open batches across ALL warehouses (a transfer's source may be any
+   warehouse) — empty state «Нет партий с остатком.» when the product has no
+   open batches. No source is picked yet, so the destination-warehouse
+   select stays hidden (`warehouses` unset here). #}
+{% if batches or show_empty %}
+{% with oob_batch = True %}
+{% include "partials/transfer_batch_wrap.html" %}
+{% endwith %}
+{% endif %}

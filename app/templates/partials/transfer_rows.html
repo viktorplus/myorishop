@@ -1,0 +1,32 @@
+{# Recent transfers (mirrors writeoff_rows.html, D-04): stable id so the POST
+   success response can refresh the list with hx-swap-oob. The heading lives
+   IN the partial so the oob refresh carries it. Autoescape only — stored
+   product names are untrusted. recent_transfers() returns the OUTBOUND
+   (negative qty_delta) row per transfer, so |abs shows the moved quantity. #}
+<div id="recent-transfers"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h2>Последние перемещения</h2>
+  {% if not transfers %}
+  <p class="muted">Перемещений пока нет.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Кол-во</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in transfers %}
+      <tr>
+        <td>{{ r.op.created_at | local_dt }}</td>
+        <td>{{ r.product.code }}</td>
+        <td>{{ r.product.name }}</td>
+        <td class="num">{{ r.op.qty_delta | abs }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
