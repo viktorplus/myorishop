@@ -122,3 +122,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-dedicated-mobile-flow*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+All 9 created files verified present on disk. All 3 commits (`d7d12d2`, `ea4209e`, `b7b9995`) verified present in git log. Full test suite (`uv run pytest -q`) passes 371/371 with these changes included.
