@@ -459,6 +459,46 @@ def test_web_receipt_unexpected_error_shows_block(client, monkeypatch):
     assert "Не удалось сохранить. Проверьте данные и попробуйте ещё раз." in response.text
 
 
+def test_web_receipt_survives_unexpected_error(client, session, product, warehouse, monkeypatch):
+    """CR-01: an unexpected exception that leaves the Session needing a
+    rollback() must not crash via an unhandled PendingRollbackError when the
+    except block re-queries the (now-tainted) session for the error context.
+
+    A failed flush (duplicate primary key) is what genuinely poisons a
+    SQLAlchemy Session — mirroring returns.py's CR-03 regression test."""
+    from sqlalchemy.exc import IntegrityError
+
+    import app.routes.receipts as receipts_routes
+
+    def _boom(*args, **kwargs):
+        # Taint the session with a failed flush, mirroring a session left
+        # needing rollback() after register_receipt's own commit fails for a
+        # reason other than the IntegrityError it already handles.
+        session.add(Product(id=product.id, code="DUP", name="dup", quantity=0))
+        try:
+            session.flush()
+        except IntegrityError:
+            pass
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(receipts_routes, "register_receipt", _boom)
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "9999",
+            "name": "Крем",
+            "qty": "2",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 422
+    assert "Не удалось сохранить" in response.text
+
+
 # --- Recent receipts + nav (Task 3 slice — D-04) ---
 
 

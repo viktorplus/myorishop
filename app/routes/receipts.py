@@ -1,5 +1,7 @@
 """Goods receipt pages (RCP-01/RCP-02): thin routes, writes in app/services/receipts.py."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +11,8 @@ from app.models import Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
 from app.services.receipts import lookup_prefill, recent_receipts, register_receipt
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -187,6 +191,13 @@ def receipt_create(
             comment_raw=comment,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # CR-01: defensive rollback before re-querying the session, mirroring
+        # writeoffs.py (WR-03) / returns.py (CR-03). Without it a commit-time
+        # OperationalError (e.g. SQLite "database is locked") leaves the session
+        # in a pending-rollback state, so the _form_extras() SELECTs below raise
+        # PendingRollbackError → raw 500, violating the "never a raw 500" contract.
+        session.rollback()
+        logger.exception("register_receipt failed")
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
             "form": form_echo,
