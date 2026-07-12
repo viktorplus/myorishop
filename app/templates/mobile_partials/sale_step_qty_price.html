@@ -1,0 +1,30 @@
+{# Step "Количество и цена" (3 of 3). Reached either from the batch step's
+   "Далее" (a batch was picked/auto-selected) or directly from the product
+   step for a dictionary-only match (no batch to pick — fill_price_cents is
+   None, price pre-fill left empty). #}
+<div id="qty-price-wrap">
+  <p class="mobile-step-indicator">Шаг 3 из 3</p>
+  {% for c in code_acc %}<input type="hidden" name="code_acc[]" value="{{ c }}">{% endfor %}
+  {% for q in qty_acc %}<input type="hidden" name="qty_acc[]" value="{{ q }}">{% endfor %}
+  {% for p in price_acc %}<input type="hidden" name="price_acc[]" value="{{ p }}">{% endfor %}
+  {% for b in batch_acc %}<input type="hidden" name="batch_acc[]" value="{{ b }}">{% endfor %}
+  <input type="hidden" name="code" value="{{ code }}">
+  <input type="hidden" name="batch_id" value="{{ batch_id | default('') }}">
+  <h2>Количество и цена</h2>
+  <label>Количество
+    <input type="text" name="qty" inputmode="numeric" value="{{ qty | default('') }}">
+  </label>
+  <label>Цена продажи
+    <input type="text" name="price" inputmode="decimal" placeholder="0,00"
+           value="{{ (fill_price_cents | cents) if fill_price_cents is not none else (price | default('')) }}">
+  </label>
+  {% if fill_price_hint %}<p class="muted">{{ fill_price_hint }}</p>{% endif %}
+  <div class="mobile-actions">
+    <button type="button" class="secondary"
+            hx-post="/m/sales/step/product" hx-vals='{"back": "1"}'
+            hx-target="#wizard-step" hx-swap="innerHTML">Назад</button>
+    <button type="button"
+            hx-post="/m/sales/step/basket-add"
+            hx-target="#wizard-step" hx-swap="innerHTML">Добавить в корзину</button>
+  </div>
+</div>

@@ -1,0 +1,32 @@
+{# PRICE-01/SAL-04/D-08/D-09: price-floor + oversell warn-but-allow — the
+   server already wrote ZERO ops for this basket (T-11-12). Rendered ABOVE
+   the still-intact basket (included below, same accumulated hidden fields)
+   so "Вернуться к корзине" can dismiss with NO server call (T-4-05 analog:
+   the basket underneath was never swapped). Copy verbatim from
+   partials/sale_price_warning.html and partials/sale_oversell.html. #}
+<div id="wizard-warning">
+  {% if below_minimum %}
+  <div class="error-block">
+    <p><strong>Цена ниже минимальной</strong></p>
+    {% for e in below_minimum %}
+    <p>{{ e.product.name }}: цена {{ e.entered | cents }}, минимальная {{ e.minimum | cents }}.</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if oversell %}
+  <div class="error-block">
+    <p><strong>Товара не хватает в партии</strong></p>
+    {% for e in oversell %}
+    <p>{{ e.product.name }}: в партии {{ e.available }}, продаёте {{ e.requested }}.</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="mobile-actions">
+    <button type="button" class="danger"
+            hx-post="/m/sales" hx-vals='{"confirm": "1"}'
+            hx-target="#wizard-step" hx-swap="innerHTML">Продать всё равно</button>
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#wizard-warning').remove()">Вернуться к корзине</button>
+  </div>
+</div>
+{% include "mobile_partials/sale_basket.html" %}

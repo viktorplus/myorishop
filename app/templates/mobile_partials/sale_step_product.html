@@ -1,0 +1,25 @@
+{# Step "Товар" (1 of 3) — also doubles as the post-success confirmation
+   screen (`saved` set) since "Добавить ещё" restarts the wizard here. #}
+{% if saved %}
+<h2>Продажа оформлена</h2>
+<p>Продажа оформлена: {{ saved.line_count }} позиц. на сумму {{ saved.total_cents | cents }}.</p>
+<div class="mobile-actions">
+  <a class="button" href="/m/sales">Добавить ещё</a>
+  <a class="button secondary" href="/m/">На главную</a>
+</div>
+{% else %}
+<p class="mobile-step-indicator">Шаг 1 из 3</p>
+{# accumulated basket-so-far rides along untouched on every step response #}
+{% for c in code_acc %}<input type="hidden" name="code_acc[]" value="{{ c }}">{% endfor %}
+{% for q in qty_acc %}<input type="hidden" name="qty_acc[]" value="{{ q }}">{% endfor %}
+{% for p in price_acc %}<input type="hidden" name="price_acc[]" value="{{ p }}">{% endfor %}
+{% for b in batch_acc %}<input type="hidden" name="batch_acc[]" value="{{ b }}">{% endfor %}
+<label>Код товара
+  <input type="text" id="code" name="code" value="{{ code | default('') }}" autocomplete="off"
+         hx-post="/m/sales/step/product"
+         hx-trigger="input changed delay:300ms"
+         hx-target="#wizard-step"
+         hx-swap="innerHTML">
+</label>
+{% if error %}<p class="error-block">{{ error }}</p>{% endif %}
+{% endif %}

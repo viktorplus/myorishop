@@ -1,0 +1,16 @@
+{% extends "mobile_base.html" %}
+{# Продажа wizard shell (D-05): one persistent <form> wraps every step; the
+   step-content region #wizard-step is the ONLY thing later step responses
+   swap (hx-target="#wizard-step" hx-swap="innerHTML" everywhere, except the
+   batch-pick card tap which self-replaces its own #batch-wrap root via
+   outerHTML — RESEARCH.md Pattern 1). Each swapped step partial carries its
+   own step indicator ("Шаг N из 3") since the shell has no separate slot for
+   it — the basket/warning/success screens are deliberately unnumbered. #}
+{% block content %}
+<h1>Продажа</h1>
+<form id="sale-wizard-form">
+  <div id="wizard-step">
+    {% include "mobile_partials/sale_step_product.html" %}
+  </div>
+</form>
+{% endblock %}
