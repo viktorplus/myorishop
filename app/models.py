@@ -137,6 +137,42 @@ class Warehouse(Base):
     deleted_at: Mapped[str | None] = mapped_column(String(32))
 
 
+class Batch(Base):
+    """Stock-holding unit (LOT-01): one product x one warehouse x one lot.
+
+    D-03: NO deleted_at and NO standalone CRUD — a batch simply leaves the
+    pickers when its remaining quantity hits 0 (no soft-delete lifecycle,
+    unlike Product/Warehouse). is_legacy=1 is set ONLY by migration 0008's
+    seed (D-13/D-14) and marks the per-product "Остаток до внедрения партий"
+    batch, so returns fallback (D-08) and the rebuild_stock NULL-bucket pass
+    can find it without fragile string matching.
+    """
+
+    __tablename__ = "batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey("products.id"), nullable=False, index=True
+    )
+    warehouse_id: Mapped[str] = mapped_column(
+        ForeignKey("warehouses.id"), nullable=False
+    )
+    # LOT-03: optional ISO yyyy-mm-dd expiry; TEXT sorts lexicographically ==
+    # chronologically (input type=date always posts ISO regardless of locale).
+    expiry: Mapped[str | None] = mapped_column(String(10))
+    # D-02: sale-price snapshot frozen at batch creation; NULL for legacy.
+    price_cents: Mapped[int | None] = mapped_column(Integer)
+    location: Mapped[str | None] = mapped_column(String(100))  # WH-02 free-text tag
+    comment: Mapped[str | None] = mapped_column(String(200))  # LOT-04
+    # D-11: cached projection of SUM(operations.qty_delta WHERE batch_id=...);
+    # recomputable (mirror Product.quantity).
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # D-13/D-14: 1 only for the migration-seeded per-product legacy batch.
+    is_legacy: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
 class Dictionary(Base):
     """Code -> name reference (CAT-02), helper only; products stay the truth.
 
@@ -175,6 +211,15 @@ class Operation(Base):
     # the fact. Non-sale ops leave this NULL.
     sale_id: Mapped[str | None] = mapped_column(
         ForeignKey("sales.id", name="fk_operations_sale_id_sales"), index=True
+    )
+    # D-10/D-15: nullable link to the Batch this ledger line touched. Set at
+    # INSERT time only (via record_operation) — the operations_no_update
+    # trigger ABORTs any later UPDATE. NULL means a pre-Phase-9 (legacy) row,
+    # resolved display-side. Bare native column in migration 0008 (no inline
+    # FK — the sale_id precedent); the ORM ForeignKey here gives insert
+    # ordering + PostgreSQL portability.
+    batch_id: Mapped[str | None] = mapped_column(
+        ForeignKey("batches.id", name="fk_operations_batch_id_batches"), index=True
     )
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter

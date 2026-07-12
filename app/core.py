@@ -53,6 +53,19 @@ def format_cents(cents: int) -> str:
     return f"{sign}{whole},{frac:02d}"
 
 
+def format_ru_date(iso: str | None) -> str:
+    """Render a stored ISO date ('2026-07-12') as RU display 'dd.mm.yyyy'.
+
+    LOT-03 batch expiry is stored as ISO yyyy-mm-dd text; this is the display
+    filter for every batch surface. Empty/None -> "" (expiry is optional).
+    Locale-independent: `date.fromisoformat` validates, then reformats.
+    """
+    if not iso:
+        return ""
+    d = date.fromisoformat(iso)
+    return d.strftime("%d.%m.%Y")
+
+
 def iso_to_local(iso_str: str, tz_name: str) -> str:
     """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'."""
     moment = datetime.fromisoformat(iso_str)

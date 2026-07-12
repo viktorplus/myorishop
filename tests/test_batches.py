@@ -9,23 +9,11 @@ Covers LOT-01/LOT-03 write-path foundation:
     per-batch invariant.
 """
 
-import sqlite3
-from contextlib import closing
+from sqlalchemy import inspect
 
-import pytest
-from alembic.config import Config
-from sqlalchemy import inspect, text
-
-from alembic import command
-from app.config import settings
 from app.core import format_ru_date, new_id
 from app.models import Batch, Operation, Warehouse
 from app.services.batches import active_warehouses, legacy_batch, open_batches
-from app.services.ledger import rebuild_stock, record_operation
-
-# Migration 0008 frozen literals (re-declared, never imported from the module).
-DEFAULT_WAREHOUSE_ID = "00000000-0000-4000-8000-000000000010"
-LEGACY_COMMENT = "Остаток до внедрения партий"
 
 
 def _make_warehouse(session, name="Основной склад"):
