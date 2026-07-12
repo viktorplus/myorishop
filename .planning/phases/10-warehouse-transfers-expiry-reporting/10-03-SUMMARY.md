@@ -112,3 +112,7 @@ None - no external service configuration required.
 ---
 *Phase: 10-warehouse-transfers-expiry-reporting*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; all 5 task/metadata commit hashes (0a28ec6, 91da2a7, 795c3d0, 7d24e2b, 7d7d4db) verified in git log.
