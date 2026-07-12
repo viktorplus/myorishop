@@ -616,3 +616,48 @@ def test_web_reports_landing_links_to_all_four_reports(client):
     assert 'href="/reports/stock"' in response.text
     assert 'href="/reports/writeoffs"' in response.text
     assert 'href="/reports/products"' in response.text
+
+
+def test_expiry_report_page(client, session, product):
+    """LOT-06/D-07: earliest-first list, «просрочено» marker, legacy batches excluded."""
+    warehouse = Warehouse(id=new_id(), name="Склад для срока годности")
+    session.add(warehouse)
+    session.commit()
+
+    future_batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry="2099-01-01",
+        quantity=5,
+    )
+    past_batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry="2020-01-01",
+        quantity=2,
+    )
+    legacy_batch_row = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        expiry=None,
+        quantity=4,
+        is_legacy=1,
+    )
+    session.add_all([future_batch, past_batch, legacy_batch_row])
+    session.commit()
+
+    response = client.get("/reports/expiry")
+    assert response.status_code == 200
+    assert response.text.index("01.01.2020") < response.text.index("01.01.2099")
+    assert "просрочено" in response.text
+    past_pos = response.text.index("01.01.2020")
+    assert "просрочено" in response.text[past_pos : past_pos + 200]
+
+
+def test_expiry_report_page_empty_state(client):
+    response = client.get("/reports/expiry")
+    assert response.status_code == 200
+    assert "Партий со сроком годности нет." in response.text
