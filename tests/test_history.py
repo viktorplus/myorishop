@@ -114,9 +114,10 @@ def test_web_history_filters(client, session, stocked_product, product, batch):
     (that's normal <select> behavior, not a row match). So assertions must
     be scoped to the row markup (a `<td>`-prefixed occurrence) rather than a
     bare substring check, which would otherwise false-positive on the dropdown
-    text. The «Товар» cell now carries a muted batch second line (D-15), so the
-    scope is the opening `<td>{name} ({code})` — no trailing `</td>` (the batch
-    line sits between name and the closing tag).
+    text. Since 09-07 the product code lives in its OWN «Код» column, so the
+    «Товар» cell is now just `<td>{name}` (the muted D-15 batch second line
+    still sits between the name and the closing tag; the code is no longer
+    inlined here).
     """
     _seed_mixed_ops(session, stocked_product)
     # `batch` fixture seeds a batch for `product`; attribute its correction so
@@ -132,8 +133,8 @@ def test_web_history_filters(client, session, stocked_product, product, batch):
 
     product_response = client.get("/history", params={"product": stocked_product.id})
     assert product_response.status_code == 200
-    assert f"<td>{stocked_product.name} ({stocked_product.code})" in product_response.text
-    assert f"<td>{product.name} ({product.code})" not in product_response.text
+    assert f"<td>{stocked_product.name}" in product_response.text
+    assert f"<td>{product.name}" not in product_response.text
 
 
 def test_web_history_filtered_reload_returns_full_chrome(client, session, stocked_product):
@@ -248,11 +249,39 @@ def test_web_history_audit_op_has_no_batch_line(client, session, stocked_product
     assert "До внедрения партий" not in response.text
 
 
-def test_web_history_table_stays_8_columns(client, session, stocked_product):
-    """D-15: the batch annotation is a second line inside the «Товар» cell — the
-    table header still has exactly 8 columns (no ninth column added)."""
+def test_web_history_table_has_10_columns(client, session, stocked_product):
+    """09-07: /history now has exactly 10 columns — «Код» and «Действие» were
+    added (Когда, Тип, Код, Товар, Кол-во, Цена, Себестоимость, Причина, Кто,
+    Действие). The D-15 batch annotation is still a second line inside the
+    «Товар» cell, not its own column."""
     response = client.get("/history")
     assert response.status_code == 200
     header_start = response.text.index("<thead>") + len("<thead>")
     header_end = response.text.index("</thead>", header_start)
-    assert response.text.count("<th", header_start, header_end) == 8
+    assert response.text.count("<th", header_start, header_end) == 10
+
+
+def test_web_history_has_code_column_and_return_link(client, session, stocked_product):
+    """09-07: /history exposes the product code in its own «Код» cell and every
+    sale row carries a «Вернуть» link (same /returns?… shape as recent_sales.html)
+    targeting the #return-slot — so a legacy sale is reachable and returnable from
+    /history (the only view not capped at 10 recent sales)."""
+    _seed_mixed_ops(session, stocked_product)
+    # a sale op is what the «Вернуть» link renders for; seed one on the product.
+    record_operation(
+        session,
+        type_="sale",
+        product_id=stocked_product.id,
+        qty_delta=-1,
+        batch_id=_batch_id(session, stocked_product),
+    )
+
+    response = client.get("/history")
+    assert response.status_code == 200
+    # code renders in its own dedicated cell
+    assert f"<td>{stocked_product.code}</td>" in response.text
+    # sale-row return link + slot
+    assert "/returns?sale_id=" in response.text
+    assert "origin_op_id=" in response.text
+    assert ">Вернуть<" in response.text
+    assert 'id="return-slot"' in response.text
