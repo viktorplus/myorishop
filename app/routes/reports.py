@@ -10,6 +10,7 @@ from app.config import settings
 from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.routes import templates
+from app.services.batches import expiring_batches
 from app.services.reports import (
     sales_profit_report,
     stale_products,
@@ -163,6 +164,18 @@ def reports_stock_page(request: Request, session: Session = Depends(get_session)
         "low_stock_ids": {row["product"].id for row in low_stock_rows},
     }
     return templates.TemplateResponse(request, "pages/reports_stock.html", context)
+
+
+@router.get("/reports/expiry")
+def reports_expiry_page(request: Request, session: Session = Depends(get_session)):
+    """LOT-06/D-07/D-08: read-only expiry report, no period/warehouse filter.
+
+    `today` is the operator's LOCAL date (settings.display_tz), not UTC —
+    otherwise batches near local midnight would be mis-flagged (Pitfall 5).
+    """
+    today = datetime.now(ZoneInfo(settings.display_tz)).date().isoformat()
+    context = {"rows": expiring_batches(session), "today": today}
+    return templates.TemplateResponse(request, "pages/reports_expiry.html", context)
 
 
 @router.get("/reports/products")

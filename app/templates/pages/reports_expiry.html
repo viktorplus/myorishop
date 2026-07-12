@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Сроки годности</h1>
+
+{% if not rows %}
+<p class="empty-state muted">Партий со сроком годности нет.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Код</th>
+      <th>Название</th>
+      <th>Склад</th>
+      <th>Срок годности</th>
+      <th class="num">Остаток</th>
+      <th class="num">Цена</th>
+      <th>Комментарий</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.product.code or "" }}</td>
+      <td>{{ row.product.name }}</td>
+      <td>{{ row.warehouse.name }}</td>
+      <td>
+        {{ row.batch.expiry | ru_date }}
+        {% if row.batch.expiry < today %}
+        <span class="muted">просрочено</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ row.batch.quantity }}</td>
+      <td class="num">{% if row.batch.price_cents is not none %}{{ row.batch.price_cents | cents }}{% else %}—{% endif %}</td>
+      <td>{{ row.batch.comment or "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
