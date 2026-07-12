@@ -1,0 +1,22 @@
+{# D-09/T-11-15: mobile over-removal warning — the server already wrote ZERO
+   ops for this write-off (register_writeoff's oversell branch runs BEFORE
+   any write). Verbatim body copy from desktop's
+   app/templates/partials/writeoff_oversell.html. The danger button uses
+   native <form> association (form="writeoff-reason-form", defined in
+   writeoff_step_reason.html) plus its OWN name="confirm" value="1" — a
+   submit button's name/value pair is only included in the submission when
+   IT is the control that triggered it, so no htmx/JS is needed to add
+   confirm=1 on top of the reason form's existing fields. "Вернуться к форме"
+   is a client-side-only dismiss (hx-on, an already-vendored htmx idiom, no
+   server round trip) — the reason form underneath was never replaced, so
+   the picked reason/note survive. Product names are untrusted stored input:
+   autoescape only, the |safe filter is never applied. #}
+<div class="error-block" id="writeoff-oversell-warning">
+  <p><strong>Товара не хватает в партии</strong></p>
+  <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, списываете {{ oversell.requested }}.</p>
+  <div class="mobile-actions">
+    <button type="submit" form="writeoff-reason-form" name="confirm" value="1" class="danger">Списать всё равно</button>
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#writeoff-oversell-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>

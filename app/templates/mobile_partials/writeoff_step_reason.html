@@ -1,0 +1,50 @@
+{# Mobile write-off wizard, step 4 «Причина» (UI-SPEC "Write-off wizard
+   specifics") — rendered by POST /m/writeoff/step/reason (fresh) and re-
+   rendered by POST /m/writeoff on any 422/oversell (mirrors desktop's
+   partials/writeoff_form.html re-render shape). One large tappable
+   `<label class="mobile-card">` row per WRITEOFF_REASONS entry, each
+   wrapping a visually-hidden native radio input (keeps the field keyboard-
+   accessible per the Interaction Contract's accessibility bullet, while the
+   card itself is the ≥44px visual/tap target). The reason values come from
+   the WRITEOFF_REASONS Jinja global (app/routes/__init__.py) — never a
+   hardcoded list; the server re-validates the posted value against the same
+   allow-list regardless of what this template renders (V5/T-11-14). #}
+{% extends "mobile_base.html" %}
+{% block step_indicator %}<p class="mobile-step-indicator">Шаг 4 из 4</p>{% endblock %}
+{% block content %}
+<h1>Списание</h1>
+<h2>Причина списания</h2>
+
+{% if errors %}
+{% for _key, _msg in errors.items() %}
+<div class="error-block">{{ _msg }}</div>
+{% endfor %}
+{% endif %}
+
+{% if oversell %}
+{% include "mobile_partials/writeoff_warning.html" %}
+{% endif %}
+
+<form method="post" action="/m/writeoff" class="stacked-form" id="writeoff-reason-form">
+  <input type="hidden" name="code" value="{{ code }}">
+  <input type="hidden" name="batch_id" value="{{ batch_id }}">
+  <input type="hidden" name="qty" value="{{ qty }}">
+  {% for reason_code, reason_label in WRITEOFF_REASONS.items() %}
+  <label class="mobile-card{% if form_reason_code == reason_code %} selected{% endif %}">
+    <input type="radio" name="reason_code" value="{{ reason_code }}" class="visually-hidden"
+           {% if form_reason_code == reason_code %}checked{% endif %} required>
+    {{ reason_label }}
+  </label>
+  {% endfor %}
+
+  <div class="field">
+    <label for="note">Примечание <span class="muted">(необязательно)</span></label>
+    <input type="text" id="note" name="note" value="{{ note or '' }}">
+  </div>
+
+  <div class="mobile-actions">
+    <button type="button" class="secondary" onclick="history.back()">Назад</button>
+    <button type="submit">Списать</button>
+  </div>
+</form>
+{% endblock %}
