@@ -154,3 +154,35 @@ def client(engine, session, product, monkeypatch):
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def mobile_client_factory(session):
+    """Factory fixture: build an isolated TestClient for a mobile router.
+
+    Phase 11 foundation (Plan 01): every later mobile feature plan (02-08)
+    builds and tests its own new APIRouter completely in isolation, without
+    editing app/main.py or tests/conftest.py again, and without needing the
+    router registered in the real app (real registration happens once, in
+    Plan 09). Deliberately binds to a FRESH FastAPI() instance, NOT
+    app.main.app — a bare instance has no lifespan, so it never triggers the
+    startup backup and needs no `backup_on_startup` monkeypatch (contrast
+    with the `client` fixture above).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.db import get_session
+
+    def _make(*routers):
+        mobile_app = FastAPI()
+        for router in routers:
+            mobile_app.include_router(router)
+
+        def override_get_session():
+            yield session
+
+        mobile_app.dependency_overrides[get_session] = override_get_session
+        return TestClient(mobile_app)
+
+    return _make
