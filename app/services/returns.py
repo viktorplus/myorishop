@@ -10,14 +10,30 @@ per sale_id+product_id, enforced before any write.
 
 Single-write-path contract: the `return` op is written ONLY through
 app.services.ledger.record_operation.
+
+D-08 batch inheritance: a return NEVER re-asks for a batch — it restores stock
+to the ORIGIN sale op's batch. When the origin is a pre-Phase-9 sale (NULL
+batch_id), the return targets the product's legacy batch; if that product was
+sold out at migration (ledger stock <= 0, so D-13 seeded no legacy batch), the
+legacy batch is LAZILY created here with the frozen D-14 field values. That
+lazy-create is the deliberate THIRD batch birth path (alongside the 0008
+migration seed and the receipt flow) — the only way D-08 works for every
+legacy sale while keeping the single-write-path invariant.
 """
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Operation, Product
+from app.core import new_id
+from app.models import Batch, Operation, Product
+from app.services.batches import legacy_batch
 from app.services.ledger import record_operation
+
+# D-14 frozen literals (re-declared, NEVER imported from the migration): the
+# lazy-created legacy batch mirrors migration 0008's seed contract exactly.
+DEFAULT_WAREHOUSE_ID = "00000000-0000-4000-8000-000000000010"  # 0007 D-03 contract
+LEGACY_BATCH_COMMENT = "Остаток до внедрения партий"
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 ORIGIN_NOT_FOUND_ERROR = "Исходная продажа не найдена."
@@ -57,6 +73,46 @@ def returnable_qty(session: Session, sale_id: str, product_id: str) -> int:
     return sold_qty(session, sale_id, product_id) - returned
 
 
+def resolve_return_batch(session: Session, origin: Operation) -> Batch | None:
+    """The batch a return of `origin` targets (D-08), WITHOUT creating anything.
+
+    Batched origin -> its own batch. Pre-Phase-9 (NULL batch_id) origin -> the
+    product's seeded legacy batch, or None when none exists yet (the return
+    write path will lazily create it). Read-only: safe for the display path.
+    """
+    if origin.batch_id is not None:
+        return session.get(Batch, origin.batch_id)
+    return legacy_batch(session, origin.product_id)
+
+
+def _resolve_or_create_return_batch_id(session: Session, origin: Operation) -> str:
+    """The batch id a return WRITE must attribute stock to (D-08).
+
+    Batched origin -> origin.batch_id. NULL-batch origin -> the product's legacy
+    batch id, lazily creating that legacy batch (frozen D-14 contract, quantity
+    0) inside the caller's transaction when the product has none (Open Q1 — the
+    third batch birth path). record_operation then increments its quantity.
+    """
+    if origin.batch_id is not None:
+        return origin.batch_id
+    batch = legacy_batch(session, origin.product_id)
+    if batch is None:
+        batch = Batch(
+            id=new_id(),
+            product_id=origin.product_id,
+            warehouse_id=DEFAULT_WAREHOUSE_ID,
+            expiry=None,
+            price_cents=None,
+            location=None,
+            comment=LEGACY_BATCH_COMMENT,
+            quantity=0,
+            is_legacy=1,
+        )
+        session.add(batch)
+        session.flush()  # materialize batch.id for record_operation to resolve
+    return batch.id
+
+
 def register_return(
     session: Session, *, origin_op_id: str, qty_raw: str
 ) -> tuple[dict | None, dict[str, str]]:
@@ -89,6 +145,9 @@ def register_return(
         return None, {"quantity": _over_cap_error(remaining)}
 
     try:
+        # D-08: restore stock to the ORIGIN op's batch (or the product's legacy
+        # batch, lazily created when absent) — the return never re-asks.
+        batch_id = _resolve_or_create_return_batch_id(session, origin)
         op = record_operation(
             session,
             type_="return",
@@ -97,6 +156,7 @@ def register_return(
             unit_price_cents=origin.unit_price_cents,  # D-07 frozen copy
             unit_cost_cents=origin.unit_cost_cents,  # D-07 frozen copy
             sale_id=origin.sale_id,
+            batch_id=batch_id,
             payload={"origin_op_id": origin.id},
             commit=True,
         )
