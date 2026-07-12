@@ -80,3 +80,8 @@ No new trust surface. The «Вернуть» link reuses the exact `/returns?…
 ## Known Stubs
 
 None.
+
+## Self-Check: PASSED
+
+- Files verified present: history_rows.html, history.html, test_history.py, 09-07-SUMMARY.md
+- Commits verified: ab706c3 (templates), cdd2178 (tests), be609a0 (summary)
