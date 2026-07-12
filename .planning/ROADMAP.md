@@ -37,7 +37,7 @@ Full phase details archived in `.planning/milestones/v1.0-ROADMAP.md`.
 - [x] **Phase 9: Batch Tracking & Ledger Integration** - Stock is tracked per batch (warehouse, expiry, price, comment) and every stock-affecting operation requires picking a batch (completed 2026-07-12)
 - [x] **Phase 10: Warehouse Transfers & Expiry Reporting** - Stock moves between warehouses without losing cost history, and expiring batches are surfaced in a report
  (completed 2026-07-12)
-- [ ] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set
+- [x] **Phase 11: Dedicated Mobile Flow** - Operators can perform every core operation — including batch picking, transfers, and expiry checks — through simplified, single-purpose mobile screens, in one self-contained pass covering the complete final v1.1 operation set (completed 2026-07-12)
 
 ## Phase Details
 
@@ -197,7 +197,7 @@ Plans:
 
 **Wave 3** *(blocked on all of Wave 2 — the only plan touching app/main.py)*
 
-- [ ] 11-09-PLAN.md — UI-01: register all 10 mobile routers in app/main.py + end-to-end reachability regression test + full suite verification
+- [x] 11-09-PLAN.md — UI-01: register all 10 mobile routers in app/main.py + end-to-end reachability regression test + full suite verification
 
 **UI hint**: yes
 
@@ -218,4 +218,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
-| 11. Dedicated Mobile Flow | v1.1 | 8/9 | In Progress|  |
+| 11. Dedicated Mobile Flow | v1.1 | 9/9 | Complete   | 2026-07-12 |
