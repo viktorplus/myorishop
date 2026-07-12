@@ -183,7 +183,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — Foundation: mobile_base.html, viewport-redirect script (D-02), mobile CSS classes, shared batch_card_picker.html (D-07), mobile_client_factory test fixture
+- [x] 11-01-PLAN.md — Foundation: mobile_base.html, viewport-redirect script (D-02), mobile CSS classes, shared batch_card_picker.html (D-07), mobile_client_factory test fixture
 
 **Wave 2** *(7 independent plans — no file overlap, run in parallel, all depend only on 11-01)*
 
@@ -218,4 +218,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
-| 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
+| 11. Dedicated Mobile Flow | v1.1 | 1/9 | In Progress|  |
