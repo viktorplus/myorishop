@@ -23,6 +23,7 @@
       <label for="code">Код</label>
       {# D-03/RCP-02: debounced lookup — the server decides fill vs 204. #}
       <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus
+             hx-on:input="var n=document.getElementById('name'); if (n && n.dataset.autofilled==='true') { n.value=''; n.removeAttribute('data-autofilled'); }"
              hx-get="/receipts/lookup"
              hx-trigger="input changed delay:300ms"
              hx-include="[name='name'],[name='cost'],[name='sale'],[name='catalog'],[name='warehouse_id']"

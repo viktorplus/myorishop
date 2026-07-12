@@ -17,8 +17,15 @@
   </div>
 {% else %}
   {% set new_selected = not batches %}
-  <div class="field">
-    <label>Партия</label>
+  <fieldset class="field">
+    <legend>Партия</legend>
+    {% if not code_entered %}
+    <p class="muted">Введите код товара и выберите склад, чтобы увидеть его партии. Пока товар не выбран, приход создаст новую партию.</p>
+    {% elif not batches %}
+    <p class="muted">У этого товара нет открытых партий — приход создаст новую.</p>
+    {% else %}
+    <p class="muted">Выберите партию для пополнения или создайте новую.</p>
+    {% endif %}
     {% for batch in batches %}
     <label>
       <input type="radio" name="batch_choice" value="{{ batch.id }}"
@@ -40,7 +47,7 @@
       Новая партия
     </label>
     {% if errors and errors.batch_choice %}<p class="error">{{ errors.batch_choice }}</p>{% endif %}
-  </div>
+  </fieldset>
 
   {# New-batch fields: hidden AND disabled unless «Новая партия» is chosen — a
      disabled input never submits, so a top-up never posts stray batch fields. #}

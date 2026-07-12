@@ -824,3 +824,65 @@ def test_web_receipt_batches_zero_warehouses_blocks_with_link(client):
     assert "Нет активных складов" in response.text
     assert 'href="/warehouses"' in response.text
     assert "Пополнить партию" not in response.text
+
+
+# --- Plan 09-08: chooser clarity + name-autofill dirty-flag markers ---
+
+BARE_LOAD_HINT = "Введите код товара и выберите склад"
+TOPUP_HINT = "Выберите партию для пополнения"
+
+
+def test_web_receipt_chooser_has_fieldset_legend(client, warehouse):
+    """09-08: the batch radio group is a labelled <fieldset><legend>Партия</legend>."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert "<legend>Партия</legend>" in response.text
+
+
+def test_web_receipt_chooser_bare_load_hint(client, warehouse):
+    """09-08: bare load (no code) shows the «Введите код…» hint, not the top-up hint."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert BARE_LOAD_HINT in response.text
+    assert TOPUP_HINT not in response.text
+
+
+def test_web_receipt_chooser_topup_hint_with_open_batches(client, session, product, warehouse):
+    """09-08: an existing product with an open batch shows the top-up hint and
+    pre-checks no radio (D-01)."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="5",
+        cost_raw="",
+        sale_raw="12,50",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "TEST-001", "name": "", "warehouse_id": warehouse.id},
+    )
+    assert response.status_code == 200
+    assert TOPUP_HINT in response.text
+    assert "checked" not in response.text  # D-01: no radio pre-checked with open batches
+
+
+def test_web_receipt_name_input_has_autofill_markers(client, session, product):
+    """09-08: the autofill fragment carries data-autofilled + autocomplete=off; the
+    plain form include carries autocomplete=off but NOT the autofilled marker."""
+    lookup = client.get(
+        "/receipts/lookup", params={"code": "TEST-001", "name": ""}
+    )
+    assert lookup.status_code == 200
+    assert 'data-autofilled="true"' in lookup.text
+    assert 'autocomplete="off"' in lookup.text
+
+    form = client.get("/receipts/new")
+    assert form.status_code == 200
+    assert 'autocomplete="off"' in form.text
+    assert 'data-autofilled="true"' not in form.text
