@@ -381,17 +381,19 @@ STOCK_AFFECTING_TYPES = frozenset(
 
 **Note:** No assumptions touch compliance, security, retention, or performance targets. Both are cosmetic/discretionary and explicitly delegated to Claude's discretion in CONTEXT.md.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Destination batch `name` field**
    - What we know: D-05 lists `price_cents`, `expiry`, `comment`, `location` as inherited; `is_legacy=0`, fresh `id`, differing `warehouse_id`. `Batch.name` is a nullable auto-label.
    - What's unclear: copy source `name` vs regenerate «{product.name} — {today}».
    - Recommendation: **Copy the source `name`** — it preserves the batch's visual identity/history across the move (consistent with "don't lose history"). Regeneration is acceptable if the planner prefers a transfer-dated label. Flag for the planner as a one-line decision.
+   - **RESOLVED:** Plan 10-01 Task 2 sets `name=source.name` on the destination batch (copy). Decided.
 
 2. **`/history` rendering of the two paired rows**
    - What we know: `history_view` LEFT-JOINs Batch; each row already carries its own `batch`. Both `transfer` rows are stock-affecting, so `history_rows.html` renders the «Партия: …» second line for each automatically. The source row shows `qty_delta` negative, the destination positive.
    - What's unclear: whether to visually group the pair (D-03/discretion allows two separate lines).
    - Recommendation: **Two separate rows** (no template change needed beyond the label already covered by `OPERATION_TYPE_LABELS`). Both directions are visible, satisfying the "recorded in history" success criterion with zero extra work. Confirm this satisfies success criterion 2 during planning.
+   - **RESOLVED:** Adopted as two separate rows — no `history_rows.html` change; the «Перемещение» label from `OPERATION_TYPE_LABELS` (Plan 10-01 Task 1) covers both directions. Satisfies success criterion 2 (Plan 10-02 `test_transfer_in_history`). Decided.
 
 ## Validation Architecture
 
