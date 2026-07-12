@@ -286,7 +286,7 @@ def test_register_receipt_topup_freezes_batch_price(session, product, warehouse)
 
 
 def test_register_receipt_rejects_foreign_product_batch(session, product, warehouse):
-    """Pitfall 10 / T-09-04: batch_choice naming another product's batch -> rejected, zero writes."""
+    """Pitfall 10 / T-09-04: another product's batch -> rejected, zero writes."""
     other = Product(id=new_id(), code="OTHER-1", name="Другой", quantity=0)
     session.add(other)
     session.commit()

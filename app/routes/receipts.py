@@ -71,6 +71,11 @@ def receipt_create(
     cost: str = Form(""),
     sale: str = Form(""),
     catalog: str = Form(""),
+    warehouse_id: str = Form(""),
+    batch_choice: str = Form("new"),
+    expiry: str = Form(""),
+    location: str = Form(""),
+    comment: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money/qty fields arrive as strings on purpose: Pydantic v2 rejects ""
@@ -82,6 +87,11 @@ def receipt_create(
         "cost": cost,
         "sale": sale,
         "catalog": catalog,
+        "warehouse_id": warehouse_id,
+        "batch_choice": batch_choice,
+        "expiry": expiry,
+        "location": location,
+        "comment": comment,
     }
     try:
         result, errors = register_receipt(
@@ -92,6 +102,11 @@ def receipt_create(
             cost_raw=cost,
             sale_raw=sale,
             catalog_raw=catalog,
+            warehouse_id=warehouse_id,
+            batch_choice=batch_choice,
+            expiry_raw=expiry,
+            location_raw=location,
+            comment_raw=comment,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         context = {
