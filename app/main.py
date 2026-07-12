@@ -19,6 +19,7 @@ from app.routes import (
     reports,
     returns,
     sales,
+    transfers,
     warehouses,
     writeoffs,
 )
@@ -48,6 +49,7 @@ app.include_router(sales.router)
 app.include_router(customers.router)
 app.include_router(backup.router)
 app.include_router(writeoffs.router)
+app.include_router(transfers.router)
 app.include_router(returns.router)
 app.include_router(corrections.router)
 app.include_router(history.router)
