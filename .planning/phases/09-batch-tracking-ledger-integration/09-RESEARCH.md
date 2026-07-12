@@ -613,18 +613,18 @@ def parse_optional_expiry(raw: str, errors: dict, key: str = "expiry") -> str | 
 | A2 | The operator's production data is the dev DB `data/myorishop.db` (16 ops) or a similarly small file; no other live DB copies exist that migration 0008 must be rehearsed against | Runtime State Inventory | Migration is data-shape-driven (SUM per product), so size doesn't matter; but rehearse on a copy of whatever the real file is before upgrading it |
 | A3 | Pre-Phase-9 sale ops needing a return can reference a product that received NO legacy batch (ledger stock ≤ 0 at migration) — handled by lazy-create (Open Question 1) | Pattern 6 | If unhandled, such a return 500s or is rejected; the recommended lazy-create needs planner sign-off since it adds a third batch birth path beside D-03's two |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Return of a pre-batch sale line for a product WITHOUT a legacy batch (D-08 × D-13 tension)**
+1. **Return of a pre-batch sale line for a product WITHOUT a legacy batch (D-08 × D-13 tension)** — RESOLVED (Plan 09-05: lazy-create the legacy batch inside `register_return`, third birth path)
    - What we know: D-13 seeds legacy batches only for ledger stock > 0. A product fully sold out (ledger sum 0) before migration still has returnable sale ops with `batch_id NULL`; D-08 says such returns target "the product's legacy batch" — which doesn't exist. The dev DB verifiably contains a non-positive-stock product, so this is not hypothetical.
    - What's unclear: whether to lazily create the legacy batch (same frozen field values, `is_legacy=1`, quantity 0) inside `register_return`'s transaction, or reject the return with an RU error.
    - Recommendation: **lazy-create in `register_return`** — it is the only way D-08 works for all legacy sales, it reuses the exact D-14 field contract, and the batch is created with quantity 0 then incremented via `record_operation` (single-write-path preserved). Document it in the plan as an explicit, deliberate third birth path (migration + receipts + legacy-return fallback).
 
-2. **Default-warehouse preselect when the seeded default is soft-deleted**
+2. **Default-warehouse preselect when the seeded default is soft-deleted** — RESOLVED (Plan 09-02: preselect `DEFAULT_WAREHOUSE_ID` if active else first active alphabetically; zero active → blocking hint)
    - What we know: Phase 8 allows soft-deleting any warehouse (warn-but-allow on the last one). D-02 says preselect the seeded default.
    - Recommendation: preselect `DEFAULT_WAREHOUSE_ID` if active, else the first active warehouse alphabetically; zero active → blocking hint (already locked). Trivial; note it in the receipt plan so it isn't decided ad hoc in code review.
 
-3. **Where /history shows batch info (D-15 display shape)**
+3. **Where /history shows batch info (D-15 display shape)** — RESOLVED (Plan 09-05 Task 2: `history_view` LEFT OUTER JOIN to Batch, muted second line inside the existing «Товар» cell, no ninth column)
    - What we know: history_rows.html has 8 columns; `history_view` joins Product only. NULL batch_id must render a legacy label or dash.
    - Recommendation: `history_view` gains a LEFT OUTER JOIN to Batch (`select(Operation, Product, Batch).outerjoin(Batch, Operation.batch_id == Batch.id)`); render batch info as a muted second line inside the existing "Товар" cell (comment/expiry, or "До партий" for NULL on stock-affecting types, dash for audit types) rather than a ninth column — avoids widening the table ahead of the Phase 11 mobile pass. Planner's call on exact wording.
 
