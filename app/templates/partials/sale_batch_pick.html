@@ -15,8 +15,13 @@
   </td>
 </tr>
 {% if fill_price %}
+{# htmx table-OOB parse-context workaround (UAT tests 4/5): wrapping this oob <td>
+   in <template> removes the orphaned empty <tr> the browser otherwise emits after
+   the main <tr> swap. Do not remove. #}
+<template>
 <td id="{{ price_wrap_id }}" hx-swap-oob="true">
   <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
   <p class="muted">{{ fill_price_hint }}</p>
 </td>
+</template>
 {% endif %}

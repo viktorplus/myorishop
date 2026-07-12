@@ -15,12 +15,21 @@
   {% if source == "dictionary" %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
 </td>
 {% if fill_price %}
+{# htmx table-OOB parse-context workaround (UAT tests 4/5): an oob <td> must be
+   wrapped in <template> so htmx processes it instead of the browser folding it
+   into an open row. Do not remove. #}
+<template>
 <td id="{{ price_wrap_id }}" hx-swap-oob="true">
   <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
   <p class="muted">{{ fill_price_hint }}</p>
 </td>
+</template>
 {% endif %}
 {% if batches or show_empty %}
+{# htmx table-OOB parse-context workaround (UAT tests 4/5): this oob <tr> is the
+   one htmx misfiles into the open basket row when unwrapped; the <template>
+   gives it a valid parse context. Do not remove. #}
+<template>
 <tr id="{{ batch_wrap_id }}" hx-swap-oob="outerHTML">
   <td colspan="5">
     {% with row_id = row, batch_id = batch_id_value %}
@@ -28,4 +37,5 @@
     {% endwith %}
   </td>
 </tr>
+</template>
 {% endif %}
