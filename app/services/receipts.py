@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import new_id
+from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product
 from app.services.batches import active_warehouses
 from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
@@ -199,10 +199,16 @@ def register_receipt(
     # / T-09-04: re-validate product AND warehouse ownership of a submitted
     # batch id before writing — a stale/crafted POST is untrusted.
     if batch_choice == "new":
+        # UAT test 1 symptom 3: auto-generate a human-readable, snapshotted
+        # name «{product.name} — {dd.mm.yyyy}». UTC date (single local operator,
+        # label only — the test asserts the date PATTERN, not a fixed value).
+        # A top-up (else branch) leaves the chosen batch's stored name untouched.
+        batch_name = f"{product.name} — {format_ru_date(utcnow_iso()[:10])}"
         batch = Batch(
             id=new_id(),
             product_id=product.id,
             warehouse_id=warehouse_id,
+            name=batch_name,
             expiry=expiry,
             price_cents=sale_cents,
             location=location_raw.strip() or None,
