@@ -1,0 +1,18 @@
+{# Mobile Корректировка wizard — success confirmation fragment (CR-01 fix).
+   Returned as a bare htmx fragment (no {% extends %}) by the final POST
+   /m/corrections success branch: step 4's form uses
+   hx-target="#corrections-step-wrap" hx-swap="outerHTML", so a full page
+   response there duplicates <html>/<head>/<body>/<main> inside the DOM
+   instead of replacing the wrap. Mirrors the `saved` branch that
+   mobile_pages/corrections.html still renders defensively (unreachable in
+   normal flow now, kept only as a harmless fallback shape). The "Добавить
+   ещё" link does a plain-GET navigation to /m/corrections, which renders
+   the page fresh — not this fragment. #}
+<div id="corrections-step-wrap">
+  <h1>Корректировка</h1>
+  <p>Корректировка сохранена: {{ saved.name }}, остаток {{ saved.new_qty }}.</p>
+  <div class="mobile-actions">
+    <a class="button" href="/m/corrections">Добавить ещё</a>
+    <a class="button secondary" href="/m/">На главную</a>
+  </div>
+</div>

@@ -63,8 +63,13 @@ def mobile_correction_step_batch(
         select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
     ).first()
     if product is None:
+        # CR-01: this request is an htmx outerHTML swap targeting
+        # #corrections-step-wrap — must return a bare fragment, not the
+        # full mobile_pages/corrections.html document.
         context = {"code": code_clean, "not_found": True}
-        return templates.TemplateResponse(request, "mobile_pages/corrections.html", context)
+        return templates.TemplateResponse(
+            request, "mobile_partials/corrections_not_found.html", context, status_code=422
+        )
 
     batches = open_batches(session, product.id)
     context = {
@@ -218,9 +223,11 @@ def mobile_correction_create(
             request, "mobile_partials/corrections_step_value.html", context, status_code=422
         )
 
-    # D-05: success -> mobile confirmation screen (mobile_pages/corrections.html
-    # doubles as this screen), not desktop's silent form reset.
+    # D-05: success -> mobile confirmation screen, not desktop's silent form
+    # reset. CR-01: this request is an htmx outerHTML swap targeting
+    # #corrections-step-wrap, so it must return a bare fragment, not the
+    # full mobile_pages/corrections.html document.
     context = {
         "saved": {"name": result["product"].name, "new_qty": result["new_qty"]},
     }
-    return templates.TemplateResponse(request, "mobile_pages/corrections.html", context)
+    return templates.TemplateResponse(request, "mobile_partials/corrections_success.html", context)

@@ -1,0 +1,34 @@
+{# Mobile Корректировка wizard, step 1 "Товар" — product-not-found fragment
+   (CR-01 fix). Returned as a bare htmx fragment (no {% extends %}) by
+   POST /m/corrections/step/batch's not-found branch: that request comes
+   from a form with hx-target="#corrections-step-wrap" hx-swap="outerHTML",
+   and an outerHTML swap takes the ENTIRE response body verbatim — a full
+   page response there duplicates <html>/<head>/<body>/<main> inside the
+   DOM instead of replacing the wrap. Mirrors the not_found markup that
+   mobile_pages/corrections.html still renders for the plain-GET entry
+   point (mobile_correction_start), which is unaffected by this fix. #}
+<div id="corrections-step-wrap">
+  <p class="mobile-step-indicator">Шаг 1 из 4</p>
+  <h1>Корректировка</h1>
+  <div class="error-block">Товар с кодом «{{ code }}» не найден.</div>
+  <form class="stacked-form"
+        hx-post="/m/corrections/step/batch"
+        hx-target="#corrections-step-wrap"
+        hx-swap="outerHTML">
+    <div class="field">
+      <label for="code">Код</label>
+      {# Debounced code->name lookup, mirrors desktop's correction_lookup
+         (D-11): the server decides fill vs 204. #}
+      <input type="text" id="code" name="code" value="{{ code or '' }}" required autofocus
+             hx-get="/m/corrections/lookup"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#name-wrap"
+             hx-swap="outerHTML"
+             hx-sync="this:replace">
+    </div>
+    {% include "mobile_partials/corrections_name_echo.html" %}
+    <div class="mobile-actions">
+      <button type="submit">Далее</button>
+    </div>
+  </form>
+</div>
