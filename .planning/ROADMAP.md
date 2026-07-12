@@ -131,9 +131,9 @@ Plans:
 
 **Wave 1** *(three independent fixes, no file overlap — run in parallel)*
 
-- [ ] 09-06-PLAN.md — LOT-02 (blocker, UAT tests 4+5): wrap sale_lookup.html / sale_batch_pick.html OOB table fragments in `<template>` so htmx stops folding the batch-picker `<tr>` into the open sale line (kills the duplicate `batch_id[]` → «Выберите партию.» rejection); regression test for one `batch_id[]` per line + 3-line attribution
-- [ ] 09-07-PLAN.md — LOT-05 (UAT test 6): /history dedicated «Код» column + «Действие»/«Вернуть» return link + `#return-slot` (template-only, mirrors recent_sales.html/purchase_history.html)
-- [ ] 09-08-PLAN.md — WH-02/LOT-03/LOT-04 (UAT test 1, symptoms 1+2): receipt batch chooser `<fieldset>/<legend>` + state-adaptive helper; name-autofill dirty flag (`autocomplete=off` + `data-autofilled` reset-on-code-edit)
+- [x] 09-06-PLAN.md — LOT-02 (blocker, UAT tests 4+5): wrap sale_lookup.html / sale_batch_pick.html OOB table fragments in `<template>` so htmx stops folding the batch-picker `<tr>` into the open sale line (kills the duplicate `batch_id[]` → «Выберите партию.» rejection); regression test for one `batch_id[]` per line + 3-line attribution
+- [x] 09-07-PLAN.md — LOT-05 (UAT test 6): /history dedicated «Код» column + «Действие»/«Вернуть» return link + `#return-slot` (template-only, mirrors recent_sales.html/purchase_history.html)
+- [x] 09-08-PLAN.md — WH-02/LOT-03/LOT-04 (UAT test 1, symptoms 1+2): receipt batch chooser `<fieldset>/<legend>` + state-adaptive helper; name-autofill dirty flag (`autocomplete=off` + `data-autofilled` reset-on-code-edit)
 
 **Wave 2** *(blocked on 09-08 — shares receipt_batch_chooser.html)*
 
@@ -186,6 +186,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 5/9 | Gap closure | - |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 8/9 | In Progress|  |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
