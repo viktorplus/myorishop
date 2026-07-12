@@ -15,11 +15,36 @@ service-level tests (Task 1) must NOT contain those prefixes.
 import csv
 import io
 
+from sqlalchemy import select
+
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import Customer, Sale
+from app.models import Batch, Customer, Sale, Warehouse
 from app.services.export import _csv_rows, _csv_safe, _encode_once
 from app.services.ledger import record_operation
+
+
+def _ensure_batch(session, product):
+    """A valid batch id for a product — the mandatory D-12 write-path guard
+    (Plan 09-05) requires every stock op to name a batch."""
+    batch = session.scalars(
+        select(Batch).where(Batch.product_id == product.id)
+    ).first()
+    if batch is None:
+        warehouse = session.scalars(select(Warehouse)).first()
+        if warehouse is None:
+            warehouse = Warehouse(id=new_id(), name="Склад")
+            session.add(warehouse)
+            session.flush()
+        batch = Batch(
+            id=new_id(),
+            product_id=product.id,
+            warehouse_id=warehouse.id,
+            quantity=0,
+        )
+        session.add(batch)
+        session.flush()
+    return batch.id
 
 # --- service-level: BOM-once + delimiter correctness (Task 1) ---------------
 
@@ -120,6 +145,7 @@ def test_sales_csv_roundtrip(client, session, product):
         unit_cost_cents=1000,
         unit_price_cents=1500,
         sale_id=header.id,
+        batch_id=_ensure_batch(session, product),
     )
     session.commit()
 

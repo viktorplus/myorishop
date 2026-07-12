@@ -21,7 +21,7 @@ from app.config import settings
 from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses, legacy_batch, open_batches
-from app.services.ledger import rebuild_stock, record_operation
+from app.services.ledger import next_seq, rebuild_stock, record_operation
 
 
 def _make_warehouse(session, name="Основной склад"):
@@ -361,11 +361,17 @@ def test_record_operation_unknown_batch_raises(session, product):
     assert session.scalar(text("SELECT COUNT(*) FROM operations")) == 0
 
 
-def test_record_operation_without_batch_still_works(session, product):
-    """batch_id stays OPTIONAL this plan — a batch-less op still succeeds."""
-    record_operation(session, type_="correction", product_id=product.id, qty_delta=3)
-    session.expire_all()
-    assert product.quantity == 3
+def test_record_operation_batch_guard_is_mandatory(session, product):
+    """Plan 09-05 D-12 flip (supersedes Plan 01's optional-batch behavior): a
+    batch-less STOCK op now raises; an audit op still writes batch-less."""
+    with pytest.raises(ValueError, match="batch_id is required"):
+        record_operation(session, type_="correction", product_id=product.id, qty_delta=3)
+    session.rollback()
+
+    audit = record_operation(
+        session, type_="product_created", product_id=product.id, qty_delta=0
+    )
+    assert audit.batch_id is None
 
 
 def test_rebuild_stock_invariant_holds_for_legacy_null_bucket(
@@ -381,8 +387,24 @@ def test_rebuild_stock_invariant_holds_for_legacy_null_bucket(
     )
     session.add(legacy)
     session.commit()
-    # NULL-bucket op (pre-batch style, no batch_id) + a batched op on the legacy batch.
-    record_operation(session, type_="receipt", product_id=product.id, qty_delta=4)
+    # NULL-bucket op (pre-Phase-9 style, no batch_id): inserted directly since
+    # the mandatory D-12 guard now rejects a batch-less stock op via the write
+    # path. A batched op on the legacy batch then goes through record_operation.
+    session.add(
+        Operation(
+            id=new_id(),
+            type="receipt",
+            product_id=product.id,
+            qty_delta=4,
+            batch_id=None,
+            device_id=settings.device_id,
+            seq=next_seq(session, settings.device_id),
+            created_at=utcnow_iso(),
+            created_by=settings.operator_name,
+        )
+    )
+    product.quantity = Product.quantity + 4
+    session.commit()
     record_operation(
         session,
         type_="receipt",

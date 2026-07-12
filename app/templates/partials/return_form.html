@@ -9,6 +9,17 @@
 
   {% if product %}
   <p>Возврат из продажи от {{ origin_created_at | local_dt }} — {{ product.name }} ({{ product.code }}), цена {{ unit_price_cents | cents }}</p>
+  {# D-08: the target batch is server-resolved and READ-ONLY — no picker, no
+     input. A batched origin shows срок/комментарий; a legacy/NULL origin (or a
+     to-be-lazily-created legacy batch) shows the frozen legacy label. Batch
+     comment is untrusted stored text (LOT-04): autoescape only, never |safe. #}
+  <p class="muted">
+    {%- if origin_batch and not origin_batch.is_legacy -%}
+    Возврат в партию: {% if origin_batch.expiry %}{{ origin_batch.expiry | ru_date }}{% else %}без срока{% endif %}{% if origin_batch.comment %} — {{ origin_batch.comment }}{% endif %}
+    {%- else -%}
+    Возврат в партию: Остаток до внедрения партий
+    {%- endif -%}
+  </p>
   <p class="muted">Доступно к возврату: {{ remaining }} из {{ sold }}.</p>
 
   {% if remaining <= 0 %}

@@ -9,9 +9,11 @@ Product.deleted_at" contract (RESEARCH Pitfall 5).
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+
 from app.config import settings
 from app.core import local_day_bounds_utc, new_id
-from app.models import WRITEOFF_REASONS, Product
+from app.models import WRITEOFF_REASONS, Batch, Product, Warehouse
 from app.services.ledger import record_operation
 from app.services.reports import (
     sales_profit_report,
@@ -27,6 +29,30 @@ from app.services.stock import (
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
+
+
+def _ensure_batch(session, product):
+    """A valid batch id for a product. Reports aggregate by product/type, so any
+    batch of that product satisfies the mandatory D-12 write-path guard (Plan
+    09-05) without changing what the report tests measure."""
+    batch = session.scalars(
+        select(Batch).where(Batch.product_id == product.id)
+    ).first()
+    if batch is None:
+        warehouse = session.scalars(select(Warehouse)).first()
+        if warehouse is None:
+            warehouse = Warehouse(id=new_id(), name="Склад")
+            session.add(warehouse)
+            session.flush()
+        batch = Batch(
+            id=new_id(),
+            product_id=product.id,
+            warehouse_id=warehouse.id,
+            quantity=0,
+        )
+        session.add(batch)
+        session.flush()
+    return batch.id
 
 
 def _record_sale_at(
@@ -48,6 +74,7 @@ def _record_sale_at(
     """
     import app.services.ledger as ledger_module
 
+    batch_id = _ensure_batch(session, product)
     monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: iso)
     return record_operation(
         session,
@@ -56,6 +83,7 @@ def _record_sale_at(
         qty_delta=-qty,
         unit_cost_cents=cost_cents,
         unit_price_cents=price_cents,
+        batch_id=batch_id,
     )
 
 
@@ -168,6 +196,7 @@ def _record_writeoff_at(
     """
     import app.services.ledger as ledger_module
 
+    batch_id = _ensure_batch(session, product)
     monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: iso)
     return record_operation(
         session,
@@ -175,6 +204,7 @@ def _record_writeoff_at(
         product_id=product.id,
         qty_delta=-qty,
         payload={"reason_code": reason_code, "note": ""},
+        batch_id=batch_id,
     )
 
 
@@ -316,6 +346,7 @@ def test_low_stock_uses_global_fallback(session, product):
         qty_delta=settings.low_stock_threshold,
         unit_cost_cents=100,
         unit_price_cents=200,
+        batch_id=_ensure_batch(session, product),
     )
     assert effective_low_stock_threshold(product) == settings.low_stock_threshold
     assert product in low_stock_products(session)
@@ -385,12 +416,14 @@ def test_web_reports_landing_links_to_stock(client):
 
 
 def test_web_reports_writeoffs_groups_by_reason(client, session, product):
+    batch_id = _ensure_batch(session, product)
     record_operation(
         session,
         type_="writeoff",
         product_id=product.id,
         qty_delta=-3,
         payload={"reason_code": "expired", "note": ""},
+        batch_id=batch_id,
     )
     record_operation(
         session,
@@ -398,6 +431,7 @@ def test_web_reports_writeoffs_groups_by_reason(client, session, product):
         product_id=product.id,
         qty_delta=-2,
         payload={"reason_code": "damaged", "note": ""},
+        batch_id=batch_id,
     )
 
     response = client.get("/reports/writeoffs")
@@ -542,6 +576,7 @@ def test_web_reports_products_top_selling_ranked(client, session, product):
         product_id=product.id,
         qty_delta=-3,
         unit_price_cents=1000,
+        batch_id=_ensure_batch(session, product),
     )
     record_operation(
         session,
@@ -549,6 +584,7 @@ def test_web_reports_products_top_selling_ranked(client, session, product):
         product_id=other.id,
         qty_delta=-5,
         unit_price_cents=1000,
+        batch_id=_ensure_batch(session, other),
     )
 
     response = client.get("/reports/products")

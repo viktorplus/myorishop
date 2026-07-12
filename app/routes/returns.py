@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Operation, Product
 from app.routes import templates
-from app.services.returns import register_return, returnable_qty, sold_qty
+from app.services.returns import (
+    register_return,
+    resolve_return_batch,
+    returnable_qty,
+    sold_qty,
+)
 from app.services.sales import recent_sales
 
 router = APIRouter()
@@ -55,6 +60,7 @@ def _empty_context(origin_op_id: str, errors: dict[str, str]) -> dict:
         "remaining": 0,
         "origin_created_at": None,
         "unit_price_cents": None,
+        "origin_batch": None,
         "errors": errors,
         "saved": None,
     }
@@ -69,6 +75,8 @@ def _origin_context(session: Session, origin: Operation, errors: dict[str, str])
         "origin_created_at": origin.created_at,
         # D-07: the frozen origin price, display-only — never an editable input.
         "unit_price_cents": origin.unit_price_cents,
+        # D-08: the batch this return restores to, read-only (None -> legacy label).
+        "origin_batch": resolve_return_batch(session, origin),
         "errors": errors,
         "saved": None,
     }
@@ -143,6 +151,7 @@ def return_create(
         "remaining": result["remaining"],
         "origin_created_at": origin.created_at,
         "unit_price_cents": origin.unit_price_cents,
+        "origin_batch": resolve_return_batch(session, origin),
         "errors": {},
         "saved": {"name": result["product"].name, "qty": result["operation"].qty_delta},
         "sales": recent_sales(session),

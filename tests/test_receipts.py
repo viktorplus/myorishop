@@ -464,6 +464,14 @@ def test_web_receipt_unexpected_error_shows_block(client, monkeypatch):
 
 def test_recent_receipts_newest_first_capped_at_ten(session, product):
     """D-04: last 10 receipt ops, newest first (created_at desc, seq desc)."""
+    warehouse = Warehouse(id=new_id(), name="Склад")
+    session.add(warehouse)
+    session.flush()
+    batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0
+    )
+    session.add(batch)
+    session.flush()
     for i in range(12):
         record_operation(
             session,
@@ -471,6 +479,7 @@ def test_recent_receipts_newest_first_capped_at_ten(session, product):
             product_id=product.id,
             qty_delta=i + 1,
             payload={"catalog_cents": None},
+            batch_id=batch.id,
         )
 
     rows = recent_receipts(session)

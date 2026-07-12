@@ -18,22 +18,47 @@ import re
 import shutil
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import sessionmaker
+
+from app.config import settings
+from app.core import new_id
+from app.db import build_engine
+from app.models import Batch, Product, Warehouse
 from app.services.backup import (
     create_backup,
     prune_backups,
     startup_backup,
 )
-from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import sessionmaker
-
-from app.config import settings
-from app.db import build_engine
-from app.models import Product
 from app.services.ledger import compute_stock, record_operation
 
 BACKUP_NAME_RE = re.compile(r"myorishop-\d{8}-\d{6}.*\.db$")
 BACKUP_ERROR = "Не удалось создать резервную копию"
 EMPTY_LIST_TEXT = "Резервных копий пока нет"
+
+
+def _ensure_batch(session, product):
+    """A valid batch id for a product — the mandatory D-12 write-path guard
+    (Plan 09-05) requires every stock op to name a batch."""
+    batch = session.scalars(
+        select(Batch).where(Batch.product_id == product.id)
+    ).first()
+    if batch is None:
+        warehouse = session.scalars(select(Warehouse)).first()
+        if warehouse is None:
+            warehouse = Warehouse(id=new_id(), name="Склад")
+            session.add(warehouse)
+            session.flush()
+        batch = Batch(
+            id=new_id(),
+            product_id=product.id,
+            warehouse_id=warehouse.id,
+            quantity=0,
+        )
+        session.add(batch)
+        session.flush()
+    return batch.id
 
 
 def _seed_receipt(session, product, qty=5):
@@ -43,6 +68,7 @@ def _seed_receipt(session, product, qty=5):
         product_id=product.id,
         qty_delta=qty,
         unit_cost_cents=1000,
+        batch_id=_ensure_batch(session, product),
     )
 
 
@@ -170,9 +196,9 @@ def test_startup_backup_creates_and_prunes_when_enabled(
 
 
 def test_web_lifespan_invokes_startup_backup(monkeypatch):
-    import app.services.backup as backup_service
     from fastapi.testclient import TestClient
 
+    import app.services.backup as backup_service
     from app.main import app
 
     calls = []
