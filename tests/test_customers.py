@@ -13,6 +13,10 @@ test_web_; everything else is service level. Selectors mirror
 history_frozen).
 """
 
+from sqlalchemy import select
+
+from app.models import Customer
+from app.services.batches import open_batches
 from app.services.customers import (
     create_customer,
     get_customer,
@@ -21,11 +25,13 @@ from app.services.customers import (
     update_customer,
 )
 from app.services.sales import register_sale  # noqa: F401 (used to seed linked sales)
-from sqlalchemy import select
-
-from app.models import Customer
 
 # --- Service level ---
+
+
+def _only_batch(session, product):
+    """The single open batch id seeded by the stocked_product fixture (LOT-02)."""
+    return open_batches(session, product.id)[0].id
 
 
 def test_create_customer_maintains_search_lc(session):
@@ -87,6 +93,7 @@ def test_purchase_history_returns_rows_for_customer(session, stocked_product, cu
         codes=[stocked_product.code],
         qtys=["2"],
         prices=["15,00"],
+        batch_ids=[_only_batch(session, stocked_product)],
     )
     assert errors == {}
 
@@ -104,6 +111,7 @@ def test_purchase_history_frozen(session, stocked_product, customer):
         codes=[stocked_product.code],
         qtys=["1"],
         prices=["15,00"],
+        batch_ids=[_only_batch(session, stocked_product)],
     )
     assert errors == {}
 
@@ -143,6 +151,7 @@ def test_web_customer_detail_history(client, session, stocked_product, customer)
         codes=[stocked_product.code],
         qtys=["1"],
         prices=["15,00"],
+        batch_ids=[_only_batch(session, stocked_product)],
     )
     assert errors == {}
 

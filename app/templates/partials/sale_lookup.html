@@ -1,16 +1,31 @@
-{# /sales/lookup response fragment (D-10 / RCP-02 analog).
-   Main swap: #name-wrap (or #name-{row}) — replaces the whole wrapper
-   outerHTML. Oob fill: #price-wrap (or #price-{row}) with the card
-   sale_cents, only when the operator has not already typed a price. #}
+{# /sales/lookup response fragment (D-10 / RCP-02 analog, Phase 9 D-04/D-05).
+   Main swap: #name-wrap (or #name-{row}) — replaces the whole name wrapper.
+   Oob price fill: #price-wrap (or #price-{row}) — ONLY when the server
+   decided to fill (card sale_cents for a batch-less product, or the
+   auto-selected single batch's price; Pitfall 4: skipped when the product
+   has ≥2 open batches so the batch pick is the sole price source).
+   Oob batch picker: #batch-wrap-{row} — the shared batch_picker.html, either
+   the full radio list (or D-06 auto-selected single batch) or the
+   «Нет партий с остатком.» empty state. #}
 {% set name_wrap_id = "name-wrap" if not row else "name-" + row %}
 {% set price_wrap_id = "price-wrap" if not row else "price-" + row %}
+{% set batch_wrap_id = "batch-wrap-" + (row or "first") %}
 <td id="{{ name_wrap_id }}">
   <input type="text" name="name[]" value="{{ name }}">
   {% if source == "dictionary" %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
 </td>
 {% if fill_price %}
 <td id="{{ price_wrap_id }}" hx-swap-oob="true">
-  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (prices.sale | cents) if prices and prices.sale is not none else '' }}">
-  <p class="muted">Цена подставлена из карточки товара — можно изменить.</p>
+  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
+  <p class="muted">{{ fill_price_hint }}</p>
 </td>
+{% endif %}
+{% if batches or show_empty %}
+<tr id="{{ batch_wrap_id }}" hx-swap-oob="outerHTML">
+  <td colspan="5">
+    {% with row_id = row, batch_id = batch_id_value %}
+    {% include "partials/batch_picker.html" %}
+    {% endwith %}
+  </td>
+</tr>
 {% endif %}

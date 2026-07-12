@@ -1,0 +1,22 @@
+{# /sales/batch-pick response (RESEARCH Pattern 3): the radio's hx-target is
+   #batch-wrap-{row} (hx-swap outerHTML), so this MAIN swap re-renders the
+   whole wrapper row — selected radio checked, row highlighted, hidden
+   batch_id[] set (all via the shared batch_picker.html so the three states
+   can never disagree). An oob price <td> fills the line price by batch rules
+   (D-05 batch price; D-14 card fallback when the batch price is NULL). The
+   form-level oob-before-swap guard already protects an operator-typed price. #}
+{% set batch_wrap_id = "batch-wrap-" + (row or "first") %}
+{% set price_wrap_id = "price-wrap" if not row else "price-" + row %}
+<tr id="{{ batch_wrap_id }}">
+  <td colspan="5">
+    {% with row_id = row, batch_id = batch_id_value %}
+    {% include "partials/batch_picker.html" %}
+    {% endwith %}
+  </td>
+</tr>
+{% if fill_price %}
+<td id="{{ price_wrap_id }}" hx-swap-oob="true">
+  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
+  <p class="muted">{{ fill_price_hint }}</p>
+</td>
+{% endif %}

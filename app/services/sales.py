@@ -12,10 +12,14 @@ is frozen from Product.cost_cents at write time and may be NULL (a NULL card
 cost never blocks the sale; an empty/invalid PRICE does).
 
 SAL-04/D-08/D-09: after per-line validation and before any write, requested
-quantity is aggregated per product across the whole basket (Pitfall 6) and
-compared to the cached Product.quantity. An oversold basket with
-confirm != "1" returns {"oversell": [...]} with ZERO writes; confirm == "1"
-skips the check and the sale writes (stock may go negative).
+quantity is aggregated per PICKED BATCH across the whole basket (Pitfall 8)
+and compared to the cached Batch.quantity — a different batch's stock is
+irrelevant (criterion 4). An oversold basket with confirm != "1" returns
+{"oversell": [...]} with ZERO writes; confirm == "1" skips the check and the
+sale writes (stock may go negative).
+
+LOT-02/D-04: every line REQUIRES a picked batch owned by the line's product;
+a missing/foreign batch is rejected with «Выберите партию.» before any write.
 
 Single-write-path contract: Operation rows and products.quantity are
 written ONLY through app.services.ledger.record_operation — every line is
@@ -28,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
-from app.models import Operation, Product, Sale
+from app.models import Batch, Operation, Product, Sale
 from app.services import catalog
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
@@ -38,21 +42,38 @@ EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чт
 PRODUCT_NOT_FOUND_TMPL = "Товар с кодом „{code}“ не найден. Сначала оприходуйте товар."
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 SAVE_ROLLBACK = "Не удалось сохранить продажу. Попробуйте ещё раз."
+# LOT-02/D-04: service-level enforcement that every line has a picked, owned
+# batch. This is the primary guard (the record_operation D-12 guard is only a
+# Plan 05 backstop).
+BATCH_REQUIRED_ERROR = "Выберите партию."
 
 
 def non_blank_lines(
-    codes: list[str], qtys: list[str], prices: list[str]
-) -> list[tuple[str, str, str]]:
-    """Filter basket lines to those with any non-blank field.
+    codes: list[str],
+    qtys: list[str],
+    prices: list[str],
+    batch_ids: list[str] | None = None,
+) -> list[tuple[str, str, str, str]]:
+    """Filter basket lines to those with any non-blank code/qty/price field.
 
     WR-04: single source of truth for "a line counts only if code/qty/price
     is non-blank after strip", shared by register_sale (below) and the
     route's _build_lines (app/routes/sales.py) so error keys
-    (f"qty-{i}"/"price-{i}"/"code-{i}") stay in sync between the two.
+    (f"qty-{i}"/"price-{i}"/"code-{i}"/f"batch-{i}") stay in sync between them.
+
+    D-04/Pitfall 2: a 4th strictly-aligned batch_ids array rides along. Its
+    blankness NEVER affects the line filter (a stray batch_id must not
+    resurrect an otherwise-blank row); it is padded with "" up to len(codes)
+    BEFORE zipping so a short/missing array degrades to "no batch picked"
+    (which register_sale then rejects loudly) rather than shifting attribution
+    onto the wrong line.
     """
+    batch_ids = list(batch_ids or [])
+    if len(batch_ids) < len(codes):
+        batch_ids = batch_ids + [""] * (len(codes) - len(batch_ids))
     return [
-        (code, qty, price)
-        for code, qty, price in zip(codes, qtys, prices, strict=False)
+        (code, qty, price, batch_ids[i])
+        for i, (code, qty, price) in enumerate(zip(codes, qtys, prices, strict=False))
         if code.strip() or qty.strip() or price.strip()
     ]
 
@@ -64,6 +85,7 @@ def register_sale(
     codes: list[str],
     qtys: list[str],
     prices: list[str],
+    batch_ids: list[str] | None = None,
     confirm: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one walk-in/customer sale atomically; returns (result, errors).
@@ -71,17 +93,23 @@ def register_sale(
     Success: ({"header": ..., "line_count": ..., "total_cents": ...}, {}).
     Failure: (None, errors) with RU messages — NOTHING is staged or written
     on any validation error (D-03: the whole basket is one transaction).
+
+    LOT-02/D-04: `batch_ids` is the per-line picked-batch array, kept
+    index-aligned with codes/qtys/prices (padded in non_blank_lines). Every
+    line MUST resolve to a batch owned by that line's product; an empty,
+    unknown, or foreign batch id is rejected with «Выберите партию.» here at
+    the service level (the record_operation guard is Plan 05's backstop).
     """
     errors: dict[str, str] = {}
 
     # D-03: a line counts only if any of code/qty/price is non-blank after
     # strip; a fully blank basket cannot be finalized.
-    non_blank = non_blank_lines(codes, qtys, prices)
+    non_blank = non_blank_lines(codes, qtys, prices, batch_ids)
     if not non_blank:
         return None, {"basket": EMPTY_BASKET_ERROR}
 
     resolved: list[dict] = []
-    for i, (code_raw, qty_raw, price_raw) in enumerate(non_blank):
+    for i, (code_raw, qty_raw, price_raw, batch_id_raw) in enumerate(non_blank):
         code = code_raw.strip()
 
         # D-01: qty_delta strictly positive integer; corrections are Phase 5.
@@ -121,7 +149,23 @@ def register_sale(
         if product is None:
             errors[f"code-{i}"] = PRODUCT_NOT_FOUND_TMPL.format(code=code)
 
-        resolved.append({"product": product, "qty": qty, "price_cents": price_cents})
+        # LOT-02/D-04: resolve+validate the picked batch. Empty, unknown, or
+        # foreign (belongs to another product) -> «Выберите партию.» and the
+        # whole basket aborts (D-03). T-09-08: the client batch_id is
+        # untrusted, so ownership is re-checked server-side.
+        batch_id = batch_id_raw.strip()
+        batch: Batch | None = None
+        if not batch_id:
+            errors[f"batch-{i}"] = BATCH_REQUIRED_ERROR
+        else:
+            batch = session.get(Batch, batch_id)
+            if batch is None or (product is not None and batch.product_id != product.id):
+                errors[f"batch-{i}"] = BATCH_REQUIRED_ERROR
+                batch = None
+
+        resolved.append(
+            {"product": product, "qty": qty, "price_cents": price_cents, "batch": batch}
+        )
 
     # D-03: any invalid line aborts the WHOLE basket — nothing staged yet.
     if errors:
@@ -135,21 +179,28 @@ def register_sale(
     # oversells and confirm != "1", warn with ZERO writes. confirm == "1"
     # skips the block entirely (D-09: stock may go negative).
     if confirm != "1":
-        requested_by_product: dict[str, int] = {}
-        products_by_id: dict[str, Product] = {}
+        # D-09/criterion 4: oversell is scoped to the PICKED BATCH's remaining
+        # quantity, not the product total. The SAME batch on two lines is
+        # summed before the check (Pitfall 8); a different batch's stock is
+        # irrelevant. Every line has a validated batch here (errors is empty).
+        requested_by_batch: dict[str, int] = {}
+        batches_by_id: dict[str, Batch] = {}
+        products_by_batch: dict[str, Product] = {}
         for line in resolved:
-            product = line["product"]
-            requested_by_product[product.id] = requested_by_product.get(product.id, 0) + line["qty"]
-            products_by_id[product.id] = product
+            batch = line["batch"]
+            requested_by_batch[batch.id] = requested_by_batch.get(batch.id, 0) + line["qty"]
+            batches_by_id[batch.id] = batch
+            products_by_batch[batch.id] = line["product"]
 
         oversold = [
             {
-                "product": products_by_id[product_id],
-                "available": products_by_id[product_id].quantity,
+                "product": products_by_batch[batch_id],
+                "batch": batches_by_id[batch_id],
+                "available": batches_by_id[batch_id].quantity,
                 "requested": requested,
             }
-            for product_id, requested in requested_by_product.items()
-            if requested > products_by_id[product_id].quantity
+            for batch_id, requested in requested_by_batch.items()
+            if requested > batches_by_id[batch_id].quantity
         ]
 
         # PRICE-01/D-08/D-09/D-10: per-LINE minimum-price check (NOT
@@ -209,6 +260,7 @@ def register_sale(
                 unit_cost_cents=product.cost_cents,  # D-11 freeze (may be None)
                 unit_price_cents=price_cents,  # D-10 entered price
                 sale_id=header.id,
+                batch_id=line["batch"].id,  # LOT-02/D-11 per-line picked batch
                 commit=False,
             )
             total_cents += qty * price_cents

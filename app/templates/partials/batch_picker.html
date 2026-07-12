@@ -1,0 +1,68 @@
+{# Shared batch picker (LOT-02/D-04): the always-rendered hidden batch input
+   (array-aligned `batch_id[]` for the sale basket, scalar for the write-off /
+   correction forms in Plan 04) PLUS the radio table of the four readable
+   batch attributes — price, expiry, remaining quantity, comment (NO warehouse
+   column, WH-02 location echoed inside the comment cell). Reused verbatim by
+   the sale basket line wrapper, /sales/lookup (oob), and /sales/batch-pick.
+
+   Context (all optional except when a table is wanted):
+     row_id             row id ("" -> first) for radio grouping + hx-target
+     code               product code echoed into the pick round-trip
+     batch_id           current picked id -> hidden input value ("" when none)
+     batches            open batches to list as radios (full list, or a single
+                        [picked] for the 422/warn selected-only re-echo);
+                        empty -> no table
+     selected_batch_id  id of the checked + highlighted batch (or None)
+     auto_note          True -> D-06 single-batch auto-select note
+     show_empty         True -> «Нет партий с остатком.» when batches is empty
+                        (a looked-up product with zero open batches)
+     batch_input_name   hidden input name (default "batch_id[]")
+     pick_url           radio endpoint (default "/sales/batch-pick")
+
+   Batch comment/location are untrusted stored text (T-09-11): Jinja
+   autoescape only, never |safe. #}
+{% set batch_input_name = batch_input_name | default("batch_id[]") %}
+{% set pick_url = pick_url | default("/sales/batch-pick") %}
+{% set batch_target = "#batch-wrap-" + (row_id | default("") or "first") %}
+<input type="hidden" name="{{ batch_input_name }}" value="{{ batch_id | default('') or '' }}">
+{% if batches %}
+<p class="muted">Выберите партию:</p>
+<table class="batch-picker">
+  <thead>
+    <tr>
+      <th aria-label="Выбор"></th>
+      <th>Цена</th>
+      <th>Срок годности</th>
+      <th>Остаток</th>
+      <th>Комментарий</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in batches %}
+    <tr{% if b.id == selected_batch_id %} class="selected-batch"{% endif %}>
+      <td>
+        <input type="radio" name="batch_pick_{{ row_id | default('') or 'first' }}"
+               value="{{ b.id }}"{% if b.id == selected_batch_id %} checked{% endif %}
+               hx-get="{{ pick_url }}"
+               hx-vals='{"row": "{{ row_id | default('') }}", "batch_id": "{{ b.id }}", "code": "{{ code | default('') }}"}'
+               hx-target="{{ batch_target }}"
+               hx-swap="outerHTML">
+      </td>
+      <td class="num">{% if b.price_cents is not none %}{{ b.price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if b.expiry %}{{ b.expiry | ru_date }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{{ b.quantity }}</td>
+      <td>
+        {%- if b.location or b.comment -%}
+          {%- if b.location %}<span class="muted">{{ b.location }}</span>{% endif -%}
+          {%- if b.location and b.comment %} · {% endif -%}
+          {%- if b.comment %}{{ b.comment }}{% endif -%}
+        {%- else -%}<span class="muted">—</span>{%- endif -%}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if auto_note %}<p class="muted">Партия выбрана автоматически — единственная</p>{% endif %}
+{% elif show_empty %}
+<p class="muted">Нет партий с остатком.</p>
+{% endif %}

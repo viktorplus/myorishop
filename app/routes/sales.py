@@ -4,11 +4,14 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import new_id
 from app.db import get_session
+from app.models import Batch, Product
 from app.routes import templates
+from app.services.batches import open_batches
 from app.services.customers import create_customer, customer_search_view
 from app.services.sales import lookup_prefill, non_blank_lines, recent_sales, register_sale
 
@@ -28,19 +31,35 @@ SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте 
 _ROW_ID_RE = re.compile(r"[0-9a-fA-F-]{1,36}")
 
 
-def _build_lines(codes: list[str], qtys: list[str], prices: list[str], errors: dict[str, str]):
+def _build_lines(
+    session: Session,
+    codes: list[str],
+    qtys: list[str],
+    prices: list[str],
+    batch_ids: list[str],
+    errors: dict[str, str],
+):
     """Rebuild the echoed basket rows from submitted arrays + service errors.
 
     WR-04: uses the shared non_blank_lines helper (app/services/sales.py)
     so this filter always matches register_sale's own filtering — error
-    keys (f"qty-{i}"/"price-{i}"/"code-{i}") line up with the right row.
-    The first row keeps a bare row_id ("") so its input ids match the
-    sale-form-wrap focus hook (id="code") exactly like a fresh basket;
+    keys (f"qty-{i}"/"price-{i}"/"code-{i}"/f"batch-{i}") line up with the
+    right row. The first row keeps a bare row_id ("") so its input ids match
+    the sale-form-wrap focus hook (id="code") exactly like a fresh basket;
     later rows get a generated id to avoid DOM collisions.
+
+    D-04/Pitfall 3: each line carries its picked `batch_id` (padded by
+    non_blank_lines) and the resolved `selected_batch` so the wrapper row
+    re-renders the hidden batch_id[] + selected-only picker on a 422/warn
+    re-render — the operator's pick survives. An id that no longer resolves
+    renders as "no batch picked" (empty hidden), the service guard is the
+    backstop.
     """
-    non_blank = non_blank_lines(codes, qtys, prices)
+    non_blank = non_blank_lines(codes, qtys, prices, batch_ids)
     lines = []
-    for i, (code, qty, price) in enumerate(non_blank):
+    for i, (code, qty, price, batch_id) in enumerate(non_blank):
+        picked = batch_id.strip()
+        batch = session.get(Batch, picked) if picked else None
         lines.append(
             {
                 "row_id": "" if i == 0 else new_id(),
@@ -48,9 +67,12 @@ def _build_lines(codes: list[str], qtys: list[str], prices: list[str], errors: d
                 "name": "",
                 "qty": qty,
                 "price": price,
+                "batch_id": batch.id if batch is not None else "",
+                "selected_batch": batch,
                 "error_code": errors.get(f"code-{i}"),
                 "error_qty": errors.get(f"qty-{i}"),
                 "error_price": errors.get(f"price-{i}"),
+                "error_batch": errors.get(f"batch-{i}"),
             }
         )
     return lines
@@ -84,16 +106,116 @@ def sale_lookup(
     result = lookup_prefill(session, code)
     if result is None:
         return Response(status_code=204)
+
+    code_clean = code.strip()
+    batches: list[Batch] = []
+    selected_batch: Batch | None = None
+    auto_note = False
+    show_empty = False
+    # PD-10 analog: default is the card sale_cents fill when the price arrived
+    # empty and the match is an active product (dictionary matches carry no
+    # prices). The batch rules below may override this.
+    fill_price = result["source"] == "product" and not price.strip()
+    fill_price_cents = result["prices"]["sale"] if result["prices"] else None
+    fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+
+    if result["source"] == "product":
+        product = session.scalars(
+            select(Product).where(
+                Product.code == code_clean, Product.deleted_at.is_(None)
+            )
+        ).first()
+        if product is not None:
+            batches = open_batches(session, product.id)
+            show_empty = not batches
+            if batches:
+                # Pitfall 4: with open batches the batch pick is the SOLE price
+                # source — skip the card fill so it can't occupy the input and
+                # block the batch oob fill via the typed-value guard (D-05).
+                fill_price = False
+                if len(batches) == 1:
+                    # D-06: exactly one open batch auto-selects (pre-checked,
+                    # highlighted, hidden set) and fills the price by batch
+                    # rules — batch price, card sale_cents fallback (D-14).
+                    selected_batch = batches[0]
+                    auto_note = True
+                    if not price.strip():
+                        fill_price = True
+                        if selected_batch.price_cents is not None:
+                            fill_price_cents = selected_batch.price_cents
+                            fill_price_hint = "Цена подставлена из партии — можно изменить."
+                        else:
+                            fill_price_cents = product.sale_cents
+
     context = {
         "row": row,
         "name": result["name"],
         "source": result["source"],
-        # PD-10 analog: only fill Цена продажи when it arrived empty and the
-        # match is an active product (dictionary matches carry no prices).
-        "fill_price": result["source"] == "product" and not price.strip(),
-        "prices": result["prices"],
+        "fill_price": fill_price,
+        "fill_price_cents": fill_price_cents,
+        "fill_price_hint": fill_price_hint,
+        "batches": batches,
+        "selected_batch_id": selected_batch.id if selected_batch else None,
+        "batch_id_value": selected_batch.id if selected_batch else "",
+        "auto_note": auto_note,
+        "show_empty": show_empty,
+        "code": code_clean,
     }
     return templates.TemplateResponse(request, "partials/sale_lookup.html", context)
+
+
+@router.get("/sales/batch-pick")
+def sale_batch_pick(
+    request: Request,
+    row: str = "",
+    batch_id: str = "",
+    code: str = "",
+    session: Session = Depends(get_session),
+):
+    # T-09-10: `row` is echoed into the re-rendered picker's hx attributes, so
+    # a non-empty value must match the id shape new_id() produces (CR-01
+    # precedent); anything malformed collapses to the first-row semantics.
+    row = row.strip()
+    if row and not _ROW_ID_RE.fullmatch(row):
+        row = ""
+
+    code_clean = code.strip()
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    # Re-query the open list on every pick (fresh remaining qty — defuses stale
+    # picker drift). T-09-08: the client batch_id is untrusted, so re-validate
+    # ownership before echoing it as the selection.
+    batches = open_batches(session, product.id) if product is not None else []
+    picked: Batch | None = None
+    if batch_id and product is not None:
+        candidate = session.get(Batch, batch_id)
+        if candidate is not None and candidate.product_id == product.id:
+            picked = candidate
+
+    fill_price = picked is not None
+    fill_price_cents: int | None = None
+    fill_price_hint = ""
+    if picked is not None:
+        if picked.price_cents is not None:
+            fill_price_cents = picked.price_cents
+            fill_price_hint = "Цена подставлена из партии — можно изменить."
+        else:
+            # D-14: a legacy NULL-price batch falls back to the card sale_cents.
+            fill_price_cents = product.sale_cents
+            fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+
+    context = {
+        "row": row,
+        "code": code_clean,
+        "batches": batches,
+        "selected_batch_id": picked.id if picked else None,
+        "batch_id_value": picked.id if picked else "",
+        "fill_price": fill_price,
+        "fill_price_cents": fill_price_cents,
+        "fill_price_hint": fill_price_hint,
+    }
+    return templates.TemplateResponse(request, "partials/sale_batch_pick.html", context)
 
 
 @router.get("/sales/row")
@@ -179,6 +301,7 @@ def sale_create(
     code: list[str] = Form([], alias="code[]"),
     qty: list[str] = Form([], alias="qty[]"),
     price: list[str] = Form([], alias="price[]"),
+    batch_id: list[str] = Form([], alias="batch_id[]"),
     customer_id: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
@@ -190,6 +313,7 @@ def sale_create(
             codes=code,
             qtys=qty,
             prices=price,
+            batch_ids=batch_id,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
@@ -198,7 +322,7 @@ def sale_create(
         logger.exception("register_sale failed")
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
-            "lines": _build_lines(code, qty, price, {}),
+            "lines": _build_lines(session, code, qty, price, batch_id, {}),
             "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
@@ -216,7 +340,7 @@ def sale_create(
     if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
             "errors": {},
-            "lines": _build_lines(code, qty, price, {}),
+            "lines": _build_lines(session, code, qty, price, batch_id, {}),
             "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
@@ -228,7 +352,7 @@ def sale_create(
     if errors:
         context = {
             "errors": errors,
-            "lines": _build_lines(code, qty, price, errors),
+            "lines": _build_lines(session, code, qty, price, batch_id, errors),
             "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
