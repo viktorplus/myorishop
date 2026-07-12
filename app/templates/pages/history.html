@@ -9,12 +9,14 @@
     <tr>
       <th>Когда</th>
       <th>Тип</th>
+      <th>Код</th>
       <th>Товар</th>
       <th class="num">Кол-во</th>
       <th class="num">Цена</th>
       <th class="num">Себестоимость</th>
       <th>Причина</th>
       <th>Кто</th>
+      <th>Действие</th>
     </tr>
   </thead>
   <tbody id="history-tbody">
@@ -26,4 +28,8 @@
     {% endwith %}
   </tfoot>
 </table>
+{# 09-07: return-slot lives OUTSIDE the table (mirrors recent_sales.html /
+   purchase_history.html) so the #history-tbody innerHTML swap or a filter
+   change never wipes an in-progress return form rendered here. #}
+<div id="return-slot"></div>
 {% endblock %}
