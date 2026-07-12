@@ -1,0 +1,44 @@
+{# "Корзина" — unnumbered basket review (D-05 extended). Each line owns its
+   own 4 hidden accumulated-array inputs, so tapping «Удалить» (client-side
+   only, mirrors sale_row.html's Pitfall 2 precedent) removes that line's
+   values from the form with no server round trip and no index bookkeeping. #}
+<div id="wizard-basket">
+  <h2>Корзина</h2>
+  {% set errors = errors | default({}) %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+  {% if errors.basket %}<div class="error-block">{{ errors.basket }}</div>{% endif %}
+  {% if lines %}
+  {% for line in lines %}
+  <div class="mobile-card">
+    <input type="hidden" name="code_acc[]" value="{{ line.code }}">
+    <input type="hidden" name="qty_acc[]" value="{{ line.qty }}">
+    <input type="hidden" name="price_acc[]" value="{{ line.price }}">
+    <input type="hidden" name="batch_acc[]" value="{{ line.batch_id }}">
+    <p>{{ line.product_name }} ({{ line.code }})</p>
+    <p>Кол-во: {{ line.qty }} · Цена: {{ line.price }}</p>
+    <p class="muted">
+      {%- if line.batch -%}
+        Партия: {% if line.batch.expiry %}срок годности {{ line.batch.expiry | ru_date }}{% else %}без срока{% endif -%}
+        {%- if line.batch.comment %} · {{ line.batch.comment }}{% endif -%}
+      {%- else -%}
+        без партии
+      {%- endif %}
+    </p>
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('.mobile-card').remove()">Удалить</button>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="muted">Корзина пуста.</p>
+  {% endif %}
+  <div class="mobile-actions">
+    <button type="button" class="secondary"
+            hx-post="/m/sales/step/product"
+            hx-target="#wizard-step" hx-swap="innerHTML">Добавить товар</button>
+    {% if lines %}
+    <button type="button"
+            hx-post="/m/sales"
+            hx-target="#wizard-step" hx-swap="innerHTML">Оформить продажу</button>
+    {% endif %}
+  </div>
+</div>

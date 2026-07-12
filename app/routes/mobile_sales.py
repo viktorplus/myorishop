@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import open_batches
-from app.services.sales import PRODUCT_NOT_FOUND_TMPL, lookup_prefill
+from app.services.sales import PRODUCT_NOT_FOUND_TMPL, lookup_prefill, register_sale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -162,3 +162,167 @@ def mobile_sale_step_batch(
         **acc,
     }
     return templates.TemplateResponse(request, "mobile_partials/sale_step_batch.html", context)
+
+
+@router.post("/m/sales/step/qty-price")
+def mobile_sale_step_qty_price(
+    request: Request,
+    code: str = Form(""),
+    batch_id: str = Form(""),
+    code_acc: list[str] = Form([], alias="code_acc[]"),
+    qty_acc: list[str] = Form([], alias="qty_acc[]"),
+    price_acc: list[str] = Form([], alias="price_acc[]"),
+    batch_acc: list[str] = Form([], alias="batch_acc[]"),
+    session: Session = Depends(get_session),
+):
+    acc = _acc_context(code_acc, qty_acc, price_acc, batch_acc)
+    code_clean = code.strip()
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+
+    # T-09-08/T-11-10 analog: re-validate ownership of the batch carried
+    # forward from the batch step before using it as a price source.
+    picked: Batch | None = None
+    if batch_id and product is not None:
+        candidate = session.get(Batch, batch_id)
+        if candidate is not None and candidate.product_id == product.id:
+            picked = candidate
+
+    # Mirrors sale_batch_pick's fill rule exactly (app/routes/sales.py):
+    # with a picked batch, the batch price is the SOLE source (Pitfall 4 —
+    # no card fill when a batch was required), falling back to the card
+    # sale_cents only when the batch itself has no price snapshot (D-14).
+    fill_price_cents: int | None = None
+    fill_price_hint = ""
+    if picked is not None:
+        if picked.price_cents is not None:
+            fill_price_cents = picked.price_cents
+            fill_price_hint = "Цена подставлена из партии — можно изменить."
+        else:
+            fill_price_cents = product.sale_cents if product is not None else None
+            fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+
+    context = {
+        "code": code_clean,
+        "batch_id": picked.id if picked else "",
+        "qty": "",
+        "price": "",
+        "fill_price_cents": fill_price_cents,
+        "fill_price_hint": fill_price_hint,
+        **acc,
+    }
+    return templates.TemplateResponse(request, "mobile_partials/sale_step_qty_price.html", context)
+
+
+def _basket_lines(
+    session: Session,
+    code_acc: list[str],
+    qty_acc: list[str],
+    price_acc: list[str],
+    batch_acc: list[str],
+) -> list[dict]:
+    """Display-only re-echo of the accumulated basket for the Корзина screen.
+
+    Purely presentational (product name + batch summary lookups) — never a
+    trust boundary. register_sale (called only from POST /m/sales) is the
+    single source of truth for validation (T-11-11).
+    """
+    lines = []
+    for code, qty, price, batch_id in zip(code_acc, qty_acc, price_acc, batch_acc, strict=False):
+        code_clean = code.strip()
+        product = session.scalars(
+            select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+        ).first()
+        batch = session.get(Batch, batch_id) if batch_id else None
+        if batch is not None and product is not None and batch.product_id != product.id:
+            batch = None
+        lines.append(
+            {
+                "code": code,
+                "qty": qty,
+                "price": price,
+                "batch_id": batch_id,
+                "product_name": product.name if product is not None else code_clean,
+                "batch": batch,
+            }
+        )
+    return lines
+
+
+@router.post("/m/sales/step/basket-add")
+def mobile_sale_step_basket_add(
+    request: Request,
+    code: str = Form(""),
+    qty: str = Form(""),
+    price: str = Form(""),
+    batch_id: str = Form(""),
+    code_acc: list[str] = Form([], alias="code_acc[]"),
+    qty_acc: list[str] = Form([], alias="qty_acc[]"),
+    price_acc: list[str] = Form([], alias="price_acc[]"),
+    batch_acc: list[str] = Form([], alias="batch_acc[]"),
+    session: Session = Depends(get_session),
+):
+    code_acc = [*code_acc, code]
+    qty_acc = [*qty_acc, qty]
+    price_acc = [*price_acc, price]
+    batch_acc = [*batch_acc, batch_id]
+    context = {"lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc)}
+    return templates.TemplateResponse(request, "mobile_partials/sale_basket.html", context)
+
+
+@router.post("/m/sales")
+def mobile_sale_create(
+    request: Request,
+    code_acc: list[str] = Form([], alias="code_acc[]"),
+    qty_acc: list[str] = Form([], alias="qty_acc[]"),
+    price_acc: list[str] = Form([], alias="price_acc[]"),
+    batch_acc: list[str] = Form([], alias="batch_acc[]"),
+    confirm: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    try:
+        result, errors = register_sale(
+            session,
+            customer_id="",  # D-04: no mobile customer picker this phase
+            codes=code_acc,
+            qtys=qty_acc,
+            prices=price_acc,
+            batch_ids=batch_acc,
+            confirm=confirm,
+        )
+    except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        logger.exception("register_sale failed")
+        context = {
+            "errors": {"form": SAVE_FAILED_ERROR},
+            "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/sale_basket.html", context, status_code=422
+        )
+
+    # PRICE-01/SAL-04/D-08/D-09/T-11-12: both keys are checked (not just
+    # "oversell") so a basket tripping ONLY below_minimum still warns —
+    # zero writes until the danger button re-POSTs with confirm=1.
+    if result and (result.get("oversell") or result.get("below_minimum")):
+        context = {
+            "oversell": result.get("oversell"),
+            "below_minimum": result.get("below_minimum"),
+            "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
+        }
+        return templates.TemplateResponse(request, "mobile_partials/sale_warning.html", context)
+
+    if errors:
+        context = {
+            "errors": errors,
+            "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/sale_basket.html", context, status_code=422
+        )
+
+    # D-05: success -> post-success confirmation screen (sale_step_product.html
+    # doubles as this screen when `saved` is set); "Добавить ещё" restarts the
+    # wizard at step 1 via a fresh GET /m/sales.
+    context = {"saved": result}
+    return templates.TemplateResponse(request, "mobile_partials/sale_step_product.html", context)
