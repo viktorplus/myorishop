@@ -13,12 +13,12 @@ everything else is service level. Selectors: count_vs_delta,
 zero_net_noop, ledger_equals_cache, ops_replaced.
 """
 
-from app.services.corrections import register_correction  # noqa: F401
 from sqlalchemy import select
 
 from app.core import new_id
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import open_batches
+from app.services.corrections import register_correction  # noqa: F401
 from app.services.ledger import compute_stock, record_operation
 
 
@@ -46,8 +46,12 @@ def _two_batch_product(session):
     batch_b = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
     session.add_all([batch_a, batch_b])
     session.commit()
-    record_operation(session, type_="receipt", product_id=product.id, qty_delta=3, batch_id=batch_a.id)
-    record_operation(session, type_="receipt", product_id=product.id, qty_delta=10, batch_id=batch_b.id)
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=3, batch_id=batch_a.id
+    )
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=10, batch_id=batch_b.id
+    )
     session.expire_all()
     return product, batch_a, batch_b
 

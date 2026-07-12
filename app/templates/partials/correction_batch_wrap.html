@@ -1,0 +1,24 @@
+{# Scalar-batch picker wrapper for the single-line correction form (LOT-05).
+   row_id "" -> the shared batch_picker.html targets #batch-wrap-first, so this
+   wrapper div carries that id. Rendered from ONE markup source three ways so
+   the states can never drift:
+     - inline in correction_form.html (oob_batch unset -> plain div),
+     - oob-swapped by /corrections/lookup (oob_batch True -> hx-swap-oob),
+     - main swap by /corrections/batch-pick (oob_batch unset -> plain div).
+   The picker uses the scalar hidden input name "batch_id" and posts radio
+   picks to /corrections/batch-pick, which also oob-refreshes the batch-scoped
+   current-qty hint (Pitfall 7). #}
+<div class="field" id="batch-wrap-first"{% if oob_batch | default(false) %} hx-swap-oob="outerHTML"{% endif %}>
+  {% with row_id = "",
+          code = code | default("") or "",
+          batch_id = batch_id_value | default("") or "",
+          batches = batches | default([]),
+          selected_batch_id = selected_batch_id | default(none),
+          batch_input_name = "batch_id",
+          pick_url = "/corrections/batch-pick",
+          show_empty = show_empty | default(false),
+          auto_note = false %}
+  {% include "partials/batch_picker.html" %}
+  {% endwith %}
+  {% if errors is defined and errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
+</div>

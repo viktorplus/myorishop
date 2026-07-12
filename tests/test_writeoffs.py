@@ -14,13 +14,13 @@ everything else is service level. Selectors: stock_and_reason,
 reason_allowlist, form, oversell.
 """
 
-from app.services.writeoffs import register_writeoff  # noqa: F401
 from sqlalchemy import select
 
 from app.core import new_id
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product, Warehouse
 from app.services.batches import open_batches
 from app.services.ledger import compute_stock, record_operation
+from app.services.writeoffs import register_writeoff  # noqa: F401
 
 
 def _writeoff_ops(session):
@@ -47,8 +47,12 @@ def _two_batch_product(session):
     batch_b = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
     session.add_all([batch_a, batch_b])
     session.commit()
-    record_operation(session, type_="receipt", product_id=product.id, qty_delta=2, batch_id=batch_a.id)
-    record_operation(session, type_="receipt", product_id=product.id, qty_delta=10, batch_id=batch_b.id)
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=2, batch_id=batch_a.id
+    )
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=10, batch_id=batch_b.id
+    )
     session.expire_all()
     return product, batch_a, batch_b
 

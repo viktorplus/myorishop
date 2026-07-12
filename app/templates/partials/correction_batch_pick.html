@@ -1,0 +1,8 @@
+{# /corrections/batch-pick response. MAIN swap: the #batch-wrap-first wrapper
+   (the radio's hx-target, outerHTML) re-rendered so the checked radio,
+   highlight and hidden scalar batch_id can never disagree. OOB: the
+   batch-scoped current-qty hint (#current-qty-hint) refreshes to the picked
+   batch's remaining «Остаток в партии: {qty}» (Pitfall 7); a cleared pick
+   resets it to «—». #}
+{% include "partials/correction_batch_wrap.html" %}
+<span id="current-qty-hint" class="muted" hx-swap-oob="true">Остаток в партии: {{ batch_qty if batch_qty is not none else "—" }}</span>

@@ -16,12 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Product
+from app.models import Batch, Product
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
 
 MODE_ERROR = "Неверный режим."
 CODE_ERROR = "Укажите код товара."
+BATCH_REQUIRED_ERROR = "Выберите партию."
 COUNT_QTY_ERROR = "Укажите фактический остаток — целое число не меньше нуля."
 DELTA_QTY_ERROR = "Укажите изменение — целое число, отличное от нуля."
 ZERO_NET_ERROR = "Остаток не изменился — нечего сохранять."
@@ -35,12 +36,20 @@ def register_correction(
     mode: str,
     value_raw: str,
     note: str,
+    batch_id: str = "",
+    confirm: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one stock correction atomically; returns (result, errors).
 
     Success: ({"product": ..., "operation": ..., "new_qty": ...}, {}).
     Failure: (None, errors) with RU messages — NOTHING is staged or written
     on any validation error, including the D-10 zero-net-delta rejection.
+
+    LOT-05: the correction targets a specific batch (batch_id). Count mode is
+    diffed against the PICKED batch's quantity, not the product total
+    (Pitfall 7). A per-batch over-removal warn-but-allow gate returns
+    ({"oversell": {...}}, {}) with ZERO writes when `confirm != "1"` and the
+    net removal exceeds the batch's remaining (criterion 4).
     """
     # T-05-12/V5: server-side allow-list — the mode radio is not trusted.
     if mode not in ("count", "delta"):
@@ -57,14 +66,23 @@ def register_correction(
     if product is None:
         return None, {"code": f"Товар с кодом „{code}“ не найден."}
 
+    # LOT-05/T-09-12: the correction MUST target a specific batch. The client
+    # id is untrusted — reject an empty/unknown id or one that belongs to
+    # another product BEFORE any parsing or write.
+    batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
+    if batch is None or batch.product_id != product.id:
+        return None, {"batch": BATCH_REQUIRED_ERROR}
+
     errors: dict[str, str] = {}
     s = value_raw.strip()
     qty_delta = 0
     if mode == "count":
-        # T-05-13: unsigned int >= 0 only.
+        # T-05-13: unsigned int >= 0 only. Pitfall 7/T-09-13: the counted
+        # quantity is diffed against the PICKED batch's remaining, never the
+        # product total — a recount of one batch cannot corrupt a sibling.
         if s.isascii() and s.isdigit():
             counted = int(s)
-            qty_delta = counted - product.quantity
+            qty_delta = counted - batch.quantity
         else:
             errors["quantity"] = COUNT_QTY_ERROR
     else:
@@ -82,6 +100,22 @@ def register_correction(
     if qty_delta == 0:
         return None, {"quantity": ZERO_NET_ERROR}
 
+    # D-09/criterion 4: warn-but-allow over-removal check BEFORE any write,
+    # scoped to the PICKED batch's remaining (T-09-14: recomputed server-side
+    # against the current Batch.quantity on every POST — confirm is never
+    # trusted alone).
+    if confirm != "1" and -qty_delta > batch.quantity:
+        return (
+            {
+                "oversell": {
+                    "product": product,
+                    "available": batch.quantity,
+                    "requested": -qty_delta,
+                }
+            },
+            {},
+        )
+
     try:
         op = record_operation(
             session,
@@ -89,6 +123,7 @@ def register_correction(
             product_id=product.id,
             qty_delta=qty_delta,
             payload={"note": note.strip() or None, "mode": mode},
+            batch_id=batch.id,
             commit=True,
         )
     except (IntegrityError, ValueError):

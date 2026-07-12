@@ -9,6 +9,10 @@
   {% if saved %}<p>Корректировка сохранена: {{ saved.name }}, остаток {{ saved.new_qty }}.</p>{% endif %}
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
 
+  {% if oversell %}
+  {% include "partials/correction_oversell.html" %}
+  {% endif %}
+
   {% set mode = mode or "count" %}
 
   {# Swap-time guard (RESEARCH Pitfall 7): the #name-wrap swap and the
@@ -40,6 +44,17 @@
     {% include "partials/name_input.html" %}
     {% endwith %}
 
+    {# LOT-05: batch picker (scalar batch_id). Empty until a code lookup swaps
+       the open batches in oob; on a 422/warn re-render the picked batch is
+       re-echoed via `selected_batch` so the operator's choice survives. #}
+    {% set _sb = selected_batch if selected_batch is defined else none %}
+    {% with code = form.code or "",
+            batches = [_sb] if _sb else [],
+            selected_batch_id = _sb.id if _sb else none,
+            batch_id_value = _sb.id if _sb else "" %}
+    {% include "partials/correction_batch_wrap.html" %}
+    {% endwith %}
+
     <div class="field">
       <label>
         <input type="radio" name="mode" value="count"{% if mode == "count" %} checked{% endif %}
@@ -65,7 +80,9 @@
       <input type="text" id="count-value" name="value" inputmode="numeric"
              value="{{ form.value or '' if mode == 'count' else '' }}"
              {% if mode != "count" %}disabled{% endif %}>
-      <span id="current-qty-hint" class="muted">Текущий остаток: {{ current_qty if current_qty is not none else '—' }}</span>
+      {# Pitfall 7: batch-scoped remaining — «—» until a batch is picked, then
+         oob-refreshed by /corrections/batch-pick to the picked batch's qty. #}
+      <span id="current-qty-hint" class="muted">Остаток в партии: {{ batch_qty if batch_qty is defined and batch_qty is not none else '—' }}</span>
     </div>
 
     <div class="field" id="delta-block"{% if mode != "delta" %} hidden{% endif %}>
