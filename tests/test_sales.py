@@ -15,6 +15,8 @@ Naming convention (used by -k filters): route/e2e tests are prefixed
 test_web_; everything else is service level.
 """
 
+import re
+
 from sqlalchemy import select
 
 from app.core import new_id
@@ -945,3 +947,64 @@ def test_web_sale_missing_batch_pick_returns_422(client, session, stocked_produc
     assert response.status_code == 422
     assert "Выберите партию." in response.text
     assert _sale_ops(session) == []
+
+
+def test_web_sale_lookup_oob_batch_row_is_template_wrapped(
+    client, session, product, warehouse
+):
+    """UAT tests 4/5 regression: the /sales/lookup fragment must carry exactly ONE
+    hidden batch_id[] input and enclose the OOB batch-wrap <tr> in a <template>.
+
+    The blocker's true manifestation is client-side (htmx folds an unwrapped OOB
+    <tr> into the open basket row, leaving a second stale batch_id[] input) and
+    was reproduced manually in the debug session; this structural assertion guards
+    the server fragment against regressing the <template> fix within the TestClient
+    suite.
+    """
+    _batch(session, product, warehouse, qty=3, expiry="2026-12-01", comment="Поздняя")
+    _batch(session, product, warehouse, qty=5, expiry="2026-01-15", comment="Ранняя")
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    # Exactly one hidden batch input — a second stale input is the blocker.
+    assert response.text.count('name="batch_id[]"') == 1
+    # The OOB batch-wrap <tr> is enclosed in a <template>.
+    assert (
+        re.search(
+            r'<template>\s*<tr id="batch-wrap-first" hx-swap-oob="outerHTML"',
+            response.text,
+        )
+        is not None
+    )
+
+
+def test_web_sale_three_line_basket_attributes_each_batch(client, session, warehouse):
+    """UAT test 5: a 3-line basket with a batch picked on every line commits and
+    attributes each line's op to its OWN picked batch (no «Выберите партию.»)."""
+    p1 = Product(id=new_id(), code="TRIO-1", name="Товар один", quantity=0)
+    p2 = Product(id=new_id(), code="TRIO-2", name="Товар два", quantity=0)
+    p3 = Product(id=new_id(), code="TRIO-3", name="Товар три", quantity=0)
+    session.add_all([p1, p2, p3])
+    session.commit()
+    b1 = _batch(session, p1, warehouse, qty=5, price=1000)
+    b2 = _batch(session, p2, warehouse, qty=5, price=2000)
+    b3 = _batch(session, p3, warehouse, qty=5, price=3000)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [p1.code, p2.code, p3.code],
+            "qty[]": ["1", "1", "1"],
+            "price[]": ["10,00", "20,00", "30,00"],
+            "batch_id[]": [b1.id, b2.id, b3.id],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    ops = {op.product_id: op for op in _sale_ops(session)}
+    assert ops[p1.id].batch_id == b1.id
+    assert ops[p2.id].batch_id == b2.id
+    assert ops[p3.id].batch_id == b3.id
