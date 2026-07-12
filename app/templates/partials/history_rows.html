@@ -1,4 +1,4 @@
-{# History rows (OPS-04/D-16): the /history table body — 8 columns over
+{# History rows (OPS-04/D-16): the /history table body — 10 columns over
    EVERY operation type, extending the recent_sales.html/purchase_history.html
    row shape rather than rewriting the single-product ledger_rows.html.
    Autoescape only — product names, payload notes, and created_by are
@@ -61,7 +61,7 @@
      /history). Non-sale rows show «—» to keep the 10-column grid aligned.
      Neutral text link (UI-SPEC). #}
   {% if r.op.type == "sale" %}
-  <td><a href="#" hx-get="/returns?sale_id={{ r.op.sale_id }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
+  <td><a href="#" hx-get="/returns?sale_id={{ r.op.sale_id or '' }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
          hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></td>
   {% else %}
   <td><span class="muted">—</span></td>

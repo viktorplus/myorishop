@@ -40,7 +40,9 @@ def upgrade() -> None:
     # rebuilds a table). Nullable so pre-0009 rows remain valid; no backfill.
     op.add_column(
         "batches",
-        sa.Column("name", sa.String(200), nullable=True),
+        # WR-02: 220 fits «{product.name String(200)} — dd.mm.yyyy» without
+        # overflow on PostgreSQL.
+        sa.Column("name", sa.String(220), nullable=True),
     )
 
 

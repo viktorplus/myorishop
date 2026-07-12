@@ -166,7 +166,9 @@ class Batch(Base):
     comment: Mapped[str | None] = mapped_column(String(200))  # LOT-04
     # UAT test 1 symptom 3: auto-generated «{product.name} — {creation date}»
     # label, snapshotted at batch creation; NULL for legacy/pre-0009 batches.
-    name: Mapped[str | None] = mapped_column(String(200))
+    # WR-02: 220 = product.name String(200) + " — dd.mm.yyyy" (13) suffix, so a
+    # max-length product name never overflows the column on PostgreSQL.
+    name: Mapped[str | None] = mapped_column(String(220))
     # D-11: cached projection of SUM(operations.qty_delta WHERE batch_id=...);
     # recomputable (mirror Product.quantity).
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

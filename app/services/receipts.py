@@ -14,13 +14,15 @@ written ONLY through app.services.ledger.record_operation — every call
 here stages with commit=False and ONE commit closes the transaction (WR-03).
 """
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import format_ru_date, new_id, utcnow_iso
+from app.config import settings
+from app.core import format_ru_date, new_id
 from app.models import Batch, Operation, Product
 from app.services.batches import active_warehouses
 from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
@@ -200,10 +202,13 @@ def register_receipt(
     # batch id before writing — a stale/crafted POST is untrusted.
     if batch_choice == "new":
         # UAT test 1 symptom 3: auto-generate a human-readable, snapshotted
-        # name «{product.name} — {dd.mm.yyyy}». UTC date (single local operator,
-        # label only — the test asserts the date PATTERN, not a fixed value).
-        # A top-up (else branch) leaves the chosen batch's stored name untouched.
-        batch_name = f"{product.name} — {format_ru_date(utcnow_iso()[:10])}"
+        # name «{product.name} — {dd.mm.yyyy}». WR-01: use the operator's LOCAL
+        # calendar date (settings.display_tz), matching how created_at renders
+        # everywhere else — a UTC date would show "yesterday" for batches born
+        # 00:00–03:00 local while their created_at reads today. A top-up (else
+        # branch) leaves the chosen batch's stored name untouched.
+        local_today = datetime.now(ZoneInfo(settings.display_tz)).date()
+        batch_name = f"{product.name} — {format_ru_date(local_today.isoformat())}"
         batch = Batch(
             id=new_id(),
             product_id=product.id,
