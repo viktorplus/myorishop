@@ -3,6 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // D-02: viewport-width redirect, root landing only (Pitfall 2 — do NOT
+    // extend this to every desktop path, or desktop-only pages with no
+    // mobile equivalent become unreachable from a phone-width browser).
+    if (window.location.pathname === "/" &&
+        window.matchMedia("(max-width: 599px)").matches) {
+      window.location.replace("/m/");
+    }
+  </script>
   {# CR-01: htmx 2 does NOT swap 4xx responses by default; the dictionary
      add/edit endpoints return their error partial with 422, so 422 must be
      opted into swapping or validation errors are silently discarded. #}

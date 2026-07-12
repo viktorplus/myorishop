@@ -1,0 +1,59 @@
+{# Shared D-07 mobile batch-selection card fragment: the always-rendered
+   hidden batch input (scalar, unlike desktop's array-shaped basket) PLUS a
+   stack of full-width tappable cards showing all four LOT-02 batch
+   attributes at once — price, expiry, remaining quantity, comment (no
+   truncation, per D-07). Mirrors app/templates/partials/batch_picker.html's
+   parameter contract, reused verbatim by every Phase 11 wizard step that
+   needs a batch pick (Sale/Write-off/Correction/Transfer, Plans 04-07).
+
+   Context (all optional except pick_url, which has no default):
+     row_id             optional row id, kept for the sale wizard's future
+                        multi-line compatibility; included in hx-vals only
+                        when passed
+     code               product code echoed into the pick round-trip
+     batch_id           current picked id -> hidden input value ("" when none)
+     batches            open batches to list as cards (full list, or a single
+                        [picked] for the 422/warn selected-only re-echo);
+                        empty -> no cards
+     selected_batch_id  id of the selected + highlighted batch (or None)
+     auto_note          True -> D-06 single-batch auto-select note
+     show_empty         True -> «Нет партий с остатком.» when batches is
+                        empty (a looked-up product with zero open batches);
+                        this partial never renders a forward control itself —
+                        every consuming wizard step must check show_empty in
+                        its OWN template and omit/disable its own forward
+                        button when true (Pitfall 6)
+     batch_input_name   hidden input name (default "batch_id" — scalar,
+                        every Phase 11 consumer picks one batch per screen)
+     pick_url           card tap endpoint (no default — every consumer must
+                        pass its own step endpoint)
+     batch_target       hx-target for the tapped card's swap (default
+                        "#batch-wrap"; callers may override)
+
+   Batch comment/location are untrusted stored text (T-09-11): Jinja
+   autoescape only, never |safe. #}
+{% set batch_input_name = batch_input_name | default("batch_id") %}
+{% set batch_target = batch_target | default("#batch-wrap") %}
+<input type="hidden" name="{{ batch_input_name }}" value="{{ batch_id | default('') or '' }}">
+{% if batches %}
+{% for b in batches %}
+<button type="button"
+        class="mobile-card{% if b.id == selected_batch_id %} selected{% endif %}"
+        hx-get="{{ pick_url }}"
+        hx-vals='{"batch_id": "{{ b.id }}", "code": "{{ code | default('') }}"{% if row_id %}, "row": "{{ row_id }}"{% endif %}}'
+        hx-target="{{ batch_target }}"
+        hx-swap="outerHTML">
+  <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
+  <p>{% if b.expiry %}Срок годности: {{ b.expiry | ru_date }}{% else %}Срок годности: без срока{% endif %}</p>
+  <p>Остаток: {{ b.quantity }} шт.</p>
+  {%- if b.location or b.comment %}
+  <p class="muted">{%- if b.location %}{{ b.location }}{% endif -%}
+    {%- if b.location and b.comment %} · {% endif -%}
+    {%- if b.comment %}{{ b.comment }}{% endif -%}</p>
+  {%- endif %}
+</button>
+{% endfor %}
+{% if auto_note %}<p class="muted">Партия выбрана автоматически — единственная</p>{% endif %}
+{% elif show_empty %}
+<p class="muted">Нет партий с остатком.</p>
+{% endif %}
