@@ -1,0 +1,63 @@
+{# Receipt batch chooser (D-01/D-02): resolve-or-create. Rendered INSIDE the
+   #batch-chooser div (the form includes it on load; /receipts/batches swaps it
+   in on warehouse change; /receipts/lookup oob-refreshes it for an existing
+   product). Inner content only — never the wrapping #batch-chooser div.
+
+   Zero active warehouses -> a blocking RU hint linking to /warehouses instead
+   of the chooser (D-02, Phase 8 D-07 carried forward). Existing open batches ->
+   NO radio pre-checked (explicit operator choice, D-01). No open batches
+   (unknown/new code) -> «Новая партия» auto-selected, top-up section absent.
+
+   Reuses existing classes only (.field, .error-block, .muted). Batch
+   comment/location are untrusted-at-rest -> Jinja autoescape only, never |safe. #}
+{% if zero_warehouses %}
+  <div class="error-block">
+    Нет активных складов. Чтобы оформить приход, сначала создайте склад.
+    <a href="/warehouses">Открыть раздел «Склады»</a>
+  </div>
+{% else %}
+  {% set new_selected = not batches %}
+  <div class="field">
+    <label>Партия</label>
+    {% for batch in batches %}
+    <label>
+      <input type="radio" name="batch_choice" value="{{ batch.id }}"
+             hx-on:change="document.getElementById('new-batch-fields').hidden = true;
+               document.getElementById('receipt-expiry').disabled = true;
+               document.getElementById('receipt-location').disabled = true;
+               document.getElementById('receipt-comment').disabled = true;">
+      Пополнить партию: {{ (batch.expiry | ru_date) if batch.expiry else "без срока" }} ·
+      {{ (batch.price_cents | cents) if batch.price_cents is not none else "—" }} ·
+      {{ batch.quantity }} шт.{% if batch.comment %} · {{ batch.comment }}{% endif %}{% if batch.location %} · <span class="muted">{{ batch.location }}</span>{% endif %}
+    </label>
+    {% endfor %}
+    <label>
+      <input type="radio" name="batch_choice" value="new"{% if new_selected %} checked{% endif %}
+             hx-on:change="document.getElementById('new-batch-fields').hidden = false;
+               document.getElementById('receipt-expiry').disabled = false;
+               document.getElementById('receipt-location').disabled = false;
+               document.getElementById('receipt-comment').disabled = false;">
+      Новая партия
+    </label>
+    {% if errors and errors.batch_choice %}<p class="error">{{ errors.batch_choice }}</p>{% endif %}
+  </div>
+
+  {# New-batch fields: hidden AND disabled unless «Новая партия» is chosen — a
+     disabled input never submits, so a top-up never posts stray batch fields. #}
+  <div id="new-batch-fields"{% if not new_selected %} hidden{% endif %}>
+    <div class="field">
+      <label for="receipt-expiry">Срок годности <span class="muted">(необязательно)</span></label>
+      <input type="date" id="receipt-expiry" name="expiry" value="{{ form.expiry or '' if new_selected else '' }}"{% if not new_selected %} disabled{% endif %}>
+      {% if errors and errors.expiry %}<p class="error">{{ errors.expiry }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="receipt-location">Место хранения <span class="muted">(необязательно)</span></label>
+      <input type="text" id="receipt-location" name="location" placeholder="например, стеллаж А3" value="{{ form.location or '' if new_selected else '' }}"{% if not new_selected %} disabled{% endif %}>
+    </div>
+    <div class="field">
+      <label for="receipt-comment">Комментарий к партии <span class="muted">(необязательно)</span></label>
+      <input type="text" id="receipt-comment" name="comment" value="{{ form.comment or '' if new_selected else '' }}"{% if not new_selected %} disabled{% endif %}>
+    </div>
+    <p class="muted">Цена партии будет взята из поля «Цена продажи».</p>
+  </div>
+{% endif %}

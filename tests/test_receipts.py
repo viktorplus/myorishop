@@ -22,20 +22,24 @@ test_web_, everything else is service level. "recent"/"nav" select the
 
 from sqlalchemy import select
 
-from app.models import Operation, Product
+from app.core import new_id
+from app.models import Batch, Operation, Product, Warehouse
 from app.services import catalog
 from app.services.catalog import create_product, soft_delete_product
 from app.services.dictionary import add_entry
 from app.services.ledger import compute_stock, record_operation
-from app.services.receipts import recent_receipts, register_receipt
+from app.services.receipts import parse_optional_expiry, recent_receipts, register_receipt
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+# Plan 09-02: the default new-batch path used by every previously batch-less
+# service-level receipt test (warehouse_id supplied per test via the fixture).
+NEW_BATCH = {"batch_choice": "new"}
 
 
 # --- Service level (D-01 / D-05 / D-06 / PD-8) ---
 
 
-def test_register_receipt_increases_stock_for_existing_product(session, product):
+def test_register_receipt_increases_stock_for_existing_product(session, product, warehouse):
     """D-01/D-06: one receipt op, qty_delta > 0, prices snapshotted on the op."""
     result, errors = register_receipt(
         session,
@@ -45,6 +49,8 @@ def test_register_receipt_increases_stock_for_existing_product(session, product)
         cost_raw="10",
         sale_raw="12,50",
         catalog_raw="15",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -64,7 +70,7 @@ def test_register_receipt_increases_stock_for_existing_product(session, product)
     # price sync is Plan 03-02 scope.
 
 
-def test_register_receipt_autocreates_product_for_unknown_code(session):
+def test_register_receipt_autocreates_product_for_unknown_code(session, warehouse):
     """D-05: unknown code -> new product card + product_created op, atomically."""
     result, errors = register_receipt(
         session,
@@ -74,6 +80,8 @@ def test_register_receipt_autocreates_product_for_unknown_code(session):
         cost_raw="5",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -93,7 +101,7 @@ def test_register_receipt_autocreates_product_for_unknown_code(session):
     assert by_type["receipt"].qty_delta == 3
 
 
-def test_register_receipt_requires_code_name_and_positive_int_qty(session, product):
+def test_register_receipt_requires_code_name_and_positive_int_qty(session, product, warehouse):
     """Blank code/name and non-positive-int quantity -> RU errors, zero writes."""
     cases = [
         ({"code": "  ", "name": "Крем", "qty_raw": "1"}, "code", "Укажите код товара."),
@@ -110,7 +118,9 @@ def test_register_receipt_requires_code_name_and_positive_int_qty(session, produ
 
     products_before = len(session.scalars(select(Product)).all())
     for kwargs, field, message in cases:
-        result, errors = register_receipt(session, **kwargs, **EMPTY_MONEY)
+        result, errors = register_receipt(
+            session, **kwargs, **EMPTY_MONEY, warehouse_id=warehouse.id, **NEW_BATCH
+        )
         assert result is None, kwargs
         assert errors[field] == message, kwargs
 
@@ -118,7 +128,7 @@ def test_register_receipt_requires_code_name_and_positive_int_qty(session, produ
     assert len(session.scalars(select(Product)).all()) == products_before
 
 
-def test_register_receipt_rejects_bad_money(session, product):
+def test_register_receipt_rejects_bad_money(session, product, warehouse):
     """Garbage money -> the shared catalog PRICE_ERROR text, nothing written."""
     result, errors = register_receipt(
         session,
@@ -128,13 +138,15 @@ def test_register_receipt_rejects_bad_money(session, product):
         cost_raw="abc",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert result is None
     assert errors["cost"] == catalog.PRICE_ERROR
     assert session.scalars(select(Operation)).all() == []
 
 
-def test_register_receipt_soft_deleted_code_creates_new_product(session):
+def test_register_receipt_soft_deleted_code_creates_new_product(session, warehouse):
     """Pitfall 5: a soft-deleted product's code auto-creates a NEW card."""
     old, errors = create_product(
         session, code="DEAD-01", name="Старый товар", category="", **EMPTY_MONEY
@@ -151,6 +163,8 @@ def test_register_receipt_soft_deleted_code_creates_new_product(session):
         cost_raw="",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -162,7 +176,7 @@ def test_register_receipt_soft_deleted_code_creates_new_product(session):
     assert fresh.quantity == 4
 
 
-def test_register_receipt_empty_prices_are_null(session, product):
+def test_register_receipt_empty_prices_are_null(session, product, warehouse):
     """PD-8 / A3: empty price strings -> NULL op columns and NULL payload price."""
     result, errors = register_receipt(
         session,
@@ -172,6 +186,8 @@ def test_register_receipt_empty_prices_are_null(session, product):
         cost_raw="",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -180,6 +196,185 @@ def test_register_receipt_empty_prices_are_null(session, product):
     assert op.unit_cost_cents is None
     assert op.unit_price_cents is None
     assert op.payload["catalog_cents"] is None
+
+
+# --- Plan 09-02: batch birth path (D-01/D-02, LOT-03, WH-02, LOT-04) ---
+
+EXPIRY_ERROR = "Укажите срок годности в формате ГГГГ-ММ-ДД."
+
+
+def test_parse_optional_expiry_empty_valid_and_malformed():
+    """LOT-03/V5: empty -> None; valid ISO normalizes; malformed -> RU error."""
+    errors: dict[str, str] = {}
+    assert parse_optional_expiry("", errors, "expiry") is None
+    assert errors == {}
+    assert parse_optional_expiry(" 2026-05-01 ", errors, "expiry") == "2026-05-01"
+    assert errors == {}
+    assert parse_optional_expiry("2026-13-40", errors, "expiry") is None
+    assert errors["expiry"] == EXPIRY_ERROR
+
+
+def test_register_receipt_new_batch_stores_location_expiry_and_price(
+    session, product, warehouse
+):
+    """WH-02/LOT-03/D-02: new batch keeps location+expiry+comment and snapshots the sale price."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="6",
+        cost_raw="",
+        sale_raw="12,50",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        expiry_raw="2026-05-01",
+        location_raw="стеллаж А3",
+        comment_raw="первая партия",
+    )
+    assert errors == {}
+    assert result
+    batch = result["batch"]
+    assert batch.location == "стеллаж А3"  # WH-02
+    assert batch.expiry == "2026-05-01"  # LOT-03
+    assert batch.comment == "первая партия"  # LOT-04
+    assert batch.warehouse_id == warehouse.id
+    # D-02: price snapshots the entered «Цена продажи» — no separate batch price input.
+    assert batch.price_cents == 1250
+    assert batch.quantity == 6
+    assert batch.is_legacy == 0
+
+    op = session.scalars(select(Operation).where(Operation.type == "receipt")).one()
+    assert op.batch_id == batch.id
+
+
+def test_register_receipt_topup_freezes_batch_price(session, product, warehouse):
+    """D-02: a top-up increases the chosen batch quantity but never rewrites its frozen price."""
+    first, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="4",
+        cost_raw="",
+        sale_raw="10,00",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    batch = first["batch"]
+    assert batch.price_cents == 1000
+    assert batch.quantity == 4
+
+    # Top up the SAME batch with a different typed sale price.
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="3",
+        cost_raw="",
+        sale_raw="99,00",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice=batch.id,
+    )
+    assert errors == {}
+    assert result
+    session.refresh(batch)
+    assert batch.quantity == 7  # 4 + 3 attributed to the chosen batch
+    assert batch.price_cents == 1000  # frozen — NOT rewritten to 9900
+
+
+def test_register_receipt_rejects_foreign_product_batch(session, product, warehouse):
+    """Pitfall 10 / T-09-04: another product's batch -> rejected, zero writes."""
+    other = Product(id=new_id(), code="OTHER-1", name="Другой", quantity=0)
+    session.add(other)
+    session.commit()
+    foreign = Batch(
+        id=new_id(), product_id=other.id, warehouse_id=warehouse.id, quantity=0
+    )
+    session.add(foreign)
+    session.commit()
+
+    ops_before = len(session.scalars(select(Operation)).all())
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="2",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice=foreign.id,
+    )
+    assert result is None
+    assert "batch_choice" in errors
+    assert len(session.scalars(select(Operation)).all()) == ops_before
+
+
+def test_register_receipt_rejects_foreign_warehouse_batch(session, product, warehouse):
+    """Pitfall 10: a batch of the same product but a different warehouse -> rejected."""
+    other_wh = Warehouse(id=new_id(), name="Другой склад")
+    session.add(other_wh)
+    session.commit()
+    other_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=other_wh.id, quantity=0
+    )
+    session.add(other_batch)
+    session.commit()
+
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="2",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice=other_batch.id,
+    )
+    assert result is None
+    assert "batch_choice" in errors
+    assert session.scalars(select(Operation)).all() == []
+
+
+def test_register_receipt_malformed_expiry_error(session, product, warehouse):
+    """LOT-03: a malformed expiry on the new-batch path -> RU error, zero writes."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="2",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        expiry_raw="2026-13-40",
+    )
+    assert result is None
+    assert errors["expiry"] == EXPIRY_ERROR
+    assert session.scalars(select(Operation)).all() == []
+
+
+def test_register_receipt_zero_warehouses_rejected_server_side(session, product):
+    """D-02 / T-09-05: no active warehouses -> blocking error even if a stale form posts a wh id."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="2",
+        cost_raw="",
+        sale_raw="",
+        catalog_raw="",
+        warehouse_id="00000000-0000-4000-8000-000000000010",
+        batch_choice="new",
+    )
+    assert result is None
+    assert "warehouse" in errors
+    assert session.scalars(select(Operation)).all() == []
 
 
 # --- Web slice (routes + templates) ---
@@ -204,11 +399,20 @@ def test_web_receipt_page_renders_form(client):
     assert notice in response.text
 
 
-def test_web_receipt_post_success_returns_fresh_form(client):
+def test_web_receipt_post_success_returns_fresh_form(client, warehouse):
     """D-02: success -> 200 fresh form partial + success line + focus hook."""
     response = client.post(
         "/receipts",
-        data={"code": "9999", "name": "Крем", "qty": "2", "cost": "", "sale": "", "catalog": ""},
+        data={
+            "code": "9999",
+            "name": "Крем",
+            "qty": "2",
+            "cost": "",
+            "sale": "",
+            "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+        },
     )
     assert response.status_code == 200
     assert "Приход сохранён: Крем — 2 шт." in response.text
@@ -218,7 +422,7 @@ def test_web_receipt_post_success_returns_fresh_form(client):
     assert 'value="9999"' not in response.text  # form cleared for the next item
 
 
-def test_web_receipt_post_validation_422_preserves_input(client, product):
+def test_web_receipt_post_validation_422_preserves_input(client, product, warehouse):
     """Validation failure -> 422 partial with RU error and echoed input."""
     response = client.post(
         "/receipts",
@@ -229,6 +433,8 @@ def test_web_receipt_post_validation_422_preserves_input(client, product):
             "cost": "",
             "sale": "",
             "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
         },
     )
     assert response.status_code == 422
@@ -285,7 +491,7 @@ def test_web_recent_receipts_empty_state(client):
     assert empty_state in response.text
 
 
-def test_web_recent_receipts_lists_saved_receipt(client):
+def test_web_recent_receipts_lists_saved_receipt(client, warehouse):
     """After a save the table shows RU headers plus the saved name/quantity."""
     response = client.post(
         "/receipts",
@@ -296,6 +502,8 @@ def test_web_recent_receipts_lists_saved_receipt(client):
             "cost": "",
             "sale": "",
             "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
         },
     )
     assert response.status_code == 200
@@ -308,7 +516,7 @@ def test_web_recent_receipts_lists_saved_receipt(client):
     assert ">7<" in page.text
 
 
-def test_web_recent_receipts_oob_row_in_post_response(client):
+def test_web_recent_receipts_oob_row_in_post_response(client, warehouse):
     """D-04: the POST success response refreshes the list out-of-band."""
     response = client.post(
         "/receipts",
@@ -319,6 +527,8 @@ def test_web_recent_receipts_oob_row_in_post_response(client):
             "cost": "",
             "sale": "",
             "catalog": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
         },
     )
     assert response.status_code == 200
@@ -341,7 +551,7 @@ CARD_HINT = "Данные подставлены из карточки това�
 DICT_HINT = "Название подставлено из справочника — можно изменить."
 
 
-def test_price_sync_updates_card_and_writes_ops(session, product):
+def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
     """D-07: one price_change op per CHANGED field, old snapshotted BEFORE mutation."""
     product.cost_cents = 100
     product.sale_cents = None
@@ -356,6 +566,8 @@ def test_price_sync_updates_card_and_writes_ops(session, product):
         cost_raw="2,00",
         sale_raw="5,00",
         catalog_raw="3,00",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -384,7 +596,7 @@ def test_price_sync_updates_card_and_writes_ops(session, product):
     assert len(ops) == 3
 
 
-def test_price_sync_empty_fields_leave_card_untouched(session, product):
+def test_price_sync_empty_fields_leave_card_untouched(session, product, warehouse):
     """PD-8: empty inputs never clear card prices; receipt op still written."""
     product.cost_cents = 100
     product.sale_cents = 250
@@ -399,6 +611,8 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product):
         cost_raw="",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -415,7 +629,7 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product):
     assert op.payload["catalog_cents"] is None
 
 
-def test_price_sync_ignores_name_for_existing_product(session, product):
+def test_price_sync_ignores_name_for_existing_product(session, product, warehouse):
     """PD-9: a typed name never renames an existing product, no product_edited op."""
     result, errors = register_receipt(
         session,
@@ -425,6 +639,8 @@ def test_price_sync_ignores_name_for_existing_product(session, product):
         cost_raw="",
         sale_raw="",
         catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
     )
     assert errors == {}
     assert result
@@ -508,5 +724,54 @@ def test_web_lookup_form_wiring(client):
     assert "delay:300ms" in response.text
     assert 'hx-target="#name-wrap"' in response.text
     assert 'hx-sync="this:replace"' in response.text
-    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog']"
+    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog'],[name='warehouse_id']"
     assert f'hx-include="{include}"' in response.text
+
+
+# --- Plan 09-02: warehouse select + /receipts/batches chooser (routes) ---
+
+
+def test_web_receipt_form_warehouse_select_and_chooser(client, session, warehouse):
+    """The receipt form gains a required «Склад» select and a #batch-chooser target."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert 'name="warehouse_id"' in response.text
+    assert 'id="batch-chooser"' in response.text
+    assert "[name='warehouse_id']" in response.text  # code input hx-include grew
+    assert warehouse.name in response.text  # active warehouse rendered as an option
+
+
+def test_web_receipt_batches_chooser_lists_open_batches(client, session, product, warehouse):
+    """GET /receipts/batches returns a «Пополнить партию» radio per open batch + «Новая партия»."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="5",
+        cost_raw="",
+        sale_raw="12,50",
+        catalog_raw="",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        location_raw="стеллаж А3",
+    )
+    assert errors == {}
+
+    response = client.get(
+        "/receipts/batches", params={"code": "TEST-001", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert "Пополнить партию" in response.text
+    assert "Новая партия" in response.text
+    assert "стеллаж А3" in response.text  # WH-02 location echoed in the radio
+
+
+def test_web_receipt_batches_zero_warehouses_blocks_with_link(client):
+    """No active warehouses -> blocking «Нет активных складов» hint + /warehouses link."""
+    response = client.get(
+        "/receipts/batches", params={"code": "TEST-001", "warehouse_id": "whatever"}
+    )
+    assert response.status_code == 200
+    assert "Нет активных складов" in response.text
+    assert 'href="/warehouses"' in response.text
+    assert "Пополнить партию" not in response.text
