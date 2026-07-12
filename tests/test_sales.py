@@ -597,9 +597,7 @@ def test_web_sale_oversell_shows_warning_and_confirm_writes(client, session, sto
         },
     )
     assert response.status_code == 200
-    # Task 3 re-words this heading to «Товара не хватает в партии»; Task 1
-    # keeps the existing copy so the suite stays green at this task boundary.
-    assert "Товара не хватает на складе" in response.text
+    assert "Товара не хватает в партии" in response.text
     assert "Продать всё равно" in response.text
 
     confirm_response = client.post(
@@ -673,8 +671,7 @@ def test_web_sale_both_warnings_stack_and_single_confirm_resolves_both(
         },
     )
     assert response.status_code == 200
-    # Task 3 re-words the oversell heading; Task 1 keeps the existing copy.
-    assert "Товара не хватает на складе" in response.text
+    assert "Товара не хватает в партии" in response.text
     assert "Цена ниже минимальной" in response.text
 
     confirm_response = client.post(
@@ -908,6 +905,28 @@ def test_web_sale_422_re_echoes_picked_batch(client, session, stocked_product):
     )
     assert response.status_code == 422
     assert bid in response.text  # the pick survives the re-render
+
+
+def test_web_sale_oversell_body_is_batch_scoped(client, session, product, warehouse):
+    """D-09: the oversell warning reads «в партии {available}» for the picked
+    batch — batch B's stock never widens batch A's available."""
+    a, _b = _two_batches(session, product, warehouse, qty_a=2, qty_b=10)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [product.code],
+            "qty[]": ["5"],
+            "price[]": ["10,00"],
+            "batch_id[]": [a.id],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Товара не хватает в партии" in response.text
+    assert f"{product.name}: в партии 2, продаёте 5." in response.text
+    assert _sale_ops(session) == []
 
 
 def test_web_sale_missing_batch_pick_returns_422(client, session, stocked_product):

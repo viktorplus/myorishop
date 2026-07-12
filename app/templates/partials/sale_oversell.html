@@ -1,12 +1,15 @@
-{# SAL-04/D-08/D-09: oversell warning — server already wrote ZERO ops for
-   this basket. Reuses the existing .error-block treatment and button.danger
-   (product_form.html delete-confirm precedent) — no new CSS/color role
-   (UI-SPEC "no new CSS for the oversell warning"). Product names are
-   untrusted stored input (T-4-01): autoescape only, never |safe. #}
+{# SAL-04/D-08/D-09: per-BATCH oversell warning — server already wrote ZERO
+   ops for this basket. Scoped to the picked batch's remaining quantity (not
+   the product total) per D-09/criterion 4; the entries carry the batch's
+   `available` from register_sale's batch re-key. Reuses the existing
+   .error-block treatment and button.danger (product_form.html delete-confirm
+   precedent) — no new CSS/color role (UI-SPEC: one destructive color, no new
+   "warning" style). Product names are untrusted stored input (T-4-01):
+   autoescape only, never |safe. #}
 <div class="error-block" id="sale-oversell-warning">
-  <p><strong>Товара не хватает на складе</strong></p>
+  <p><strong>Товара не хватает в партии</strong></p>
   {% for e in oversell %}
-  <p>{{ e.product.name }}: на складе {{ e.available }}, продаёте {{ e.requested }}.</p>
+  <p>{{ e.product.name }}: в партии {{ e.available }}, продаёте {{ e.requested }}.</p>
   {% endfor %}
   <div class="form-actions">
     {# Re-POSTs the SAME basket via form association (T-4-05): hx-vals
