@@ -24,7 +24,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 - [x] **LOT-03**: Optional expiry date field per batch
 - [x] **LOT-04**: Optional free-text comment per batch, shown in the sale-time batch picker
 - [x] **LOT-05**: Write-off, return, and stock correction also require selecting the specific batch, not just the product
-- [ ] **LOT-06**: Report of batches with an approaching or passed expiry date
+- [x] **LOT-06**: Report of batches with an approaching or passed expiry date
 
 ### Pricing Guardrails
 
@@ -81,7 +81,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOT-03 | Phase 9 | Complete |
 | LOT-04 | Phase 9 | Complete |
 | LOT-05 | Phase 9 | Complete |
-| LOT-06 | Phase 10 | Pending |
+| LOT-06 | Phase 10 | Complete |
 | PRICE-01 | Phase 7 | Complete |
 | UI-01 | Phase 11 | Pending |
 
