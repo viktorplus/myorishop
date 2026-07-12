@@ -108,7 +108,25 @@ Plans:
   4. Selling, writing off, or correcting more than a batch's remaining quantity shows an oversell/over-removal warning scoped to that batch, not the product's total across all its batches
   5. Existing v1.0 stock and sales history remain intact after migration — legacy operations show as belonging to a default legacy batch, with totals and reports still balancing
 
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+
+- [ ] 09-01-PLAN.md — LOT-01/LOT-03: Batch model, migration 0008 (batches table + operations.batch_id + legacy seed), batches.py read helpers, record_operation dual projection + rebuild invariant, ru_date filter
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 09-02-PLAN.md — WH-02/LOT-01/LOT-03/LOT-04: receipt warehouse select + resolve-or-create batch chooser (batch birth path)
+- [ ] 09-03-PLAN.md — LOT-02/LOT-04/WH-02: sale batch picker (shared batch_picker.html), server-driven selection, per-batch oversell
+
+**Wave 3** *(blocked on Wave 2 — reuses batch_picker.html)*
+
+- [ ] 09-04-PLAN.md — LOT-05: write-off + correction batch pickers, batch-scoped count diff, per-batch over-removal warnings
+
+**Wave 4** *(blocked on Wave 3 — D-12 guard flip needs all services batch-aware)*
+
+- [ ] 09-05-PLAN.md — LOT-05: return batch inheritance (+ legacy lazy-create), /history legacy display, D-12 mandatory batch guard flip
+
 **UI hint**: yes
 
 ### Phase 10: Warehouse Transfers & Expiry Reporting
@@ -156,6 +174,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Reports & Data Export | v1.0 | 6/6 | Complete | 2026-07-10 |
 | 7. Category Browsing & Minimum Price Guardrail | v1.1 | 4/4 | Complete    | 2026-07-10 |
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
-| 9. Batch Tracking & Ledger Integration | v1.1 | 0/TBD | Not started | - |
+| 9. Batch Tracking & Ledger Integration | v1.1 | 0/5 | Not started | - |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 0/TBD | Not started | - |
 | 11. Dedicated Mobile Flow | v1.1 | 0/TBD | Not started | - |
