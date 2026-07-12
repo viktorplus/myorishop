@@ -1,0 +1,35 @@
+{# Приход wizard, step 1 «Товар» (UI-01, Phase 11 Plan 03). Full-page load —
+   every subsequent step is a partial swapped into #wizard-step via htmx,
+   inside this SAME persistent <form> (RESEARCH Pattern 1: hidden-field
+   carry-forward, no server-side wizard session). #}
+{% extends "mobile_base.html" %}
+{% block content %}
+<h1>Приход</h1>
+{% if zero_warehouses %}
+<div class="error-block">
+  Нет активных складов. Чтобы оформить приход, сначала создайте склад.
+  <a href="/warehouses">Открыть раздел «Склады»</a>
+</div>
+{% else %}
+<form id="receipt-form" hx-target="#wizard-step" hx-swap="innerHTML">
+<div id="wizard-step">
+  <p class="mobile-step-indicator">Шаг 1 из 4</p>
+  <div class="field">
+    <label for="receipt-warehouse">Склад</label>
+    <select id="receipt-warehouse" name="warehouse_id">
+      {% for w in active_warehouses %}
+      <option value="{{ w.id }}"{% if w.id == selected_warehouse_id %} selected{% endif %}>{{ w.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="receipt-code">Код товара</label>
+    <input type="text" id="receipt-code" name="code" value="{{ code }}" required autofocus>
+  </div>
+  <div class="mobile-actions">
+    <button type="submit" hx-post="/m/receipts/step/batch" hx-include="closest form">Далее</button>
+  </div>
+</div>
+</form>
+{% endif %}
+{% endblock %}

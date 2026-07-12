@@ -1,0 +1,53 @@
+{# Приход wizard, step 2 «Партия» (UI-01, Phase 11 Plan 03) — resolve-or-create
+   chooser, functionally DIFFERENT from batch_card_picker.html (that one is a
+   plain batch-selection picker for Sale/Write-off/Correction/Transfer;
+   batch_choice here is a batch id OR the literal "new", mirroring desktop's
+   partials/receipt_batch_chooser.html).
+
+   Rendered INSIDE #wizard-step (inside the persistent <form> from
+   mobile_pages/receipts.html) — inner content only, never the wrapping div. #}
+<p class="mobile-step-indicator">Шаг 2 из 4</p>
+<input type="hidden" name="code" value="{{ code }}">
+<input type="hidden" name="warehouse_id" value="{{ warehouse_id }}">
+{% if zero_warehouses %}
+<div class="error-block">
+  Нет активных складов. Чтобы оформить приход, сначала создайте склад.
+  <a href="/warehouses">Открыть раздел «Склады»</a>
+</div>
+{% else %}
+{% if name_known %}
+<input type="hidden" name="name" value="{{ name }}">
+{% else %}
+<div class="field">
+  <label for="receipt-name">Название товара</label>
+  <input type="text" id="receipt-name" name="name" value="{{ name }}" required>
+  <p class="muted">Товар с этим кодом не найден — карточка будет создана автоматически.</p>
+</div>
+{% endif %}
+<fieldset class="field">
+  <legend>Партия</legend>
+  {% if not code_entered %}
+  <p class="muted">Введите код товара, чтобы увидеть его партии. Пока товар не выбран, приход создаст новую партию.</p>
+  {% elif not batches %}
+  <p class="muted">У этого товара нет открытых партий — приход создаст новую.</p>
+  {% else %}
+  <p class="muted">Выберите партию для пополнения или создайте новую.</p>
+  {% endif %}
+  {% for batch in batches %}
+  <label class="mobile-card">
+    <input type="radio" name="batch_choice" value="{{ batch.id }}">
+    Пополнить партию: {% if batch.name %}{{ batch.name }} · {% endif %}{{ (batch.expiry | ru_date) if batch.expiry else "без срока" }} ·
+    {{ (batch.price_cents | cents) if batch.price_cents is not none else "—" }} ·
+    {{ batch.quantity }} шт.{% if batch.comment %} · {{ batch.comment }}{% endif %}{% if batch.location %} · <span class="muted">{{ batch.location }}</span>{% endif %}
+  </label>
+  {% endfor %}
+  <label>
+    <input type="radio" name="batch_choice" value="new"{% if not batches %} checked{% endif %}>
+    Новая партия
+  </label>
+</fieldset>
+<div class="mobile-actions">
+  <a class="button secondary" href="/m/receipts">Назад</a>
+  <button type="submit" hx-post="/m/receipts/step/details" hx-include="closest form">Далее</button>
+</div>
+{% endif %}
