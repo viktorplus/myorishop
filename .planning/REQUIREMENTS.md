@@ -10,7 +10,7 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 ### Warehouses & Locations
 
 - [x] **WH-01**: User can create and manage multiple warehouses
-- [ ] **WH-02**: Stock item has an optional free-text storage location tag within its warehouse (e.g. "стеллаж А3")
+- [x] **WH-02**: Stock item has an optional free-text storage location tag within its warehouse (e.g. "стеллаж А3")
 - [ ] **WH-03**: User can transfer stock (a batch or part of it) from one warehouse to another without losing cost/price history
 
 ### Categories
@@ -19,11 +19,11 @@ Requirements for the "Multi-Warehouse & Batch Tracking" milestone. Each maps to 
 
 ### Batches & Lots
 
-- [ ] **LOT-01**: A product code can have multiple batches (lots), each with its own expiry date and price
-- [ ] **LOT-02**: At sale, operator sees a list of matching batches (price, expiry, remaining quantity, comment) and manually selects one
-- [ ] **LOT-03**: Optional expiry date field per batch
-- [ ] **LOT-04**: Optional free-text comment per batch, shown in the sale-time batch picker
-- [ ] **LOT-05**: Write-off, return, and stock correction also require selecting the specific batch, not just the product
+- [x] **LOT-01**: A product code can have multiple batches (lots), each with its own expiry date and price
+- [x] **LOT-02**: At sale, operator sees a list of matching batches (price, expiry, remaining quantity, comment) and manually selects one
+- [x] **LOT-03**: Optional expiry date field per batch
+- [x] **LOT-04**: Optional free-text comment per batch, shown in the sale-time batch picker
+- [x] **LOT-05**: Write-off, return, and stock correction also require selecting the specific batch, not just the product
 - [ ] **LOT-06**: Report of batches with an approaching or passed expiry date
 
 ### Pricing Guardrails
@@ -73,14 +73,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | WH-01 | Phase 8 | Complete |
-| WH-02 | Phase 9 | Pending |
+| WH-02 | Phase 9 | Complete |
 | WH-03 | Phase 10 | Pending |
 | CAT-01 | Phase 7 | Complete |
-| LOT-01 | Phase 9 | Pending |
-| LOT-02 | Phase 9 | Pending |
-| LOT-03 | Phase 9 | Pending |
-| LOT-04 | Phase 9 | Pending |
-| LOT-05 | Phase 9 | Pending |
+| LOT-01 | Phase 9 | Complete |
+| LOT-02 | Phase 9 | Complete |
+| LOT-03 | Phase 9 | Complete |
+| LOT-04 | Phase 9 | Complete |
+| LOT-05 | Phase 9 | Complete |
 | LOT-06 | Phase 10 | Pending |
 | PRICE-01 | Phase 7 | Complete |
 | UI-01 | Phase 11 | Pending |
