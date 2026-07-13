@@ -6,40 +6,16 @@
    roles inside the ONE file this plan owns instead of adding a new
    template just for the success state. #}
 {% block content %}
+{% if saved %}
 <div id="corrections-step-wrap">
-  {% if saved %}
   <h1>Корректировка</h1>
   <p>Корректировка сохранена: {{ saved.name }}, остаток {{ saved.new_qty }}.</p>
   <div class="mobile-actions">
     <a class="button" href="/m/corrections">Добавить ещё</a>
     <a class="button secondary" href="/m/">На главную</a>
   </div>
-  {% else %}
-  <p class="mobile-step-indicator">Шаг 1 из 4</p>
-  <h1>Корректировка</h1>
-  {% if not_found %}
-  <div class="error-block">Товар с кодом «{{ code }}» не найден.</div>
-  {% endif %}
-  <form class="stacked-form"
-        hx-post="/m/corrections/step/batch"
-        hx-target="#corrections-step-wrap"
-        hx-swap="outerHTML">
-    <div class="field">
-      <label for="code">Код</label>
-      {# Debounced code->name lookup, mirrors desktop's correction_lookup
-         (D-11): the server decides fill vs 204. #}
-      <input type="text" id="code" name="code" value="{{ code or '' }}" required autofocus
-             hx-get="/m/corrections/lookup"
-             hx-trigger="input changed delay:300ms"
-             hx-target="#name-wrap"
-             hx-swap="outerHTML"
-             hx-sync="this:replace">
-    </div>
-    {% include "mobile_partials/corrections_name_echo.html" %}
-    <div class="mobile-actions">
-      <button type="submit">Далее</button>
-    </div>
-  </form>
-  {% endif %}
 </div>
+{% else %}
+{% include "mobile_partials/corrections_step_product.html" %}
+{% endif %}
 {% endblock %}

@@ -6,12 +6,14 @@
    enabled/disabled state in sync with the current selection. #}
 <div id="corrections-step-wrap">
   <p class="mobile-step-indicator">Шаг 2 из 4</p>
+  {% include "mobile_partials/_wizard_header.html" %}
   <h1>Выберите партию</h1>
   <form class="stacked-form"
         hx-post="/m/corrections/step/mode"
         hx-target="#corrections-step-wrap"
         hx-swap="outerHTML">
     <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="name" value="{{ name }}">
     {# batch_qty carried forward as an opaque hint, computed once here and
        consumed by step "Значение" — never re-derived from the client. #}
     <input type="hidden" name="batch_qty" value="{{ batch_qty if batch_qty is not none else '' }}">
@@ -19,7 +21,8 @@
     {% include "mobile_partials/batch_card_picker.html" %}
     {% endwith %}
     <div class="mobile-actions">
-      <a class="mobile-back" href="/m/corrections">Назад</a>
+      <button type="button" class="secondary" hx-get="/m/corrections" hx-include="closest form"
+              hx-target="#corrections-step-wrap" hx-swap="outerHTML">Назад</button>
       {% if not show_empty %}
       <button type="submit"{% if not selected_batch_id %} disabled{% endif %}>Далее</button>
       {% endif %}

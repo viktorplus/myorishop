@@ -1,0 +1,6 @@
+{# Shared wizard header (Contract A, 13-UI-SPEC.md). Context contract: `code`
+   (required); `name`/`warehouse_name` (optional — must be `None`/absent, never
+   `""`, to correctly omit their line). Untrusted stored text — Jinja
+   autoescape only, never |safe (T-13-01). #}
+<p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
+{% if warehouse_name %}<p>Склад: {{ warehouse_name }}</p>{% endif %}
