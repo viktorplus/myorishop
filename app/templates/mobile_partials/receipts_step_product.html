@@ -1,0 +1,29 @@
+{# Приход wizard, step 1 «Товар» (UI-01, Phase 11 Plan 03; extracted 13-03).
+   Rendered INSIDE #wizard-step (inside the persistent <form> from
+   mobile_pages/receipts.html) — inner content only, never the wrapping div.
+   Also served bare (no page chrome) by GET /m/receipts when the request
+   carries an HX-Request header (D-08/UI-05: "Назад" from step 2, or a
+   future quick-action link from search). #}
+{% if zero_warehouses %}
+<div class="error-block">
+  Нет активных складов. Чтобы оформить приход, сначала создайте склад.
+  <a href="/warehouses">Открыть раздел «Склады»</a>
+</div>
+{% else %}
+<p class="mobile-step-indicator">Шаг 1 из 4</p>
+<div class="field">
+  <label for="receipt-warehouse">Склад</label>
+  <select id="receipt-warehouse" name="warehouse_id">
+    {% for w in active_warehouses %}
+    <option value="{{ w.id }}"{% if w.id == selected_warehouse_id %} selected{% endif %}>{{ w.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="field">
+  <label for="receipt-code">Код товара</label>
+  <input type="text" id="receipt-code" name="code" value="{{ code }}" required autofocus>
+</div>
+<div class="mobile-actions">
+  <button type="submit" hx-post="/m/receipts/step/batch" hx-include="closest form">Далее</button>
+</div>
+{% endif %}

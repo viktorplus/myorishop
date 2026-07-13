@@ -37,6 +37,12 @@ DEFAULT_WAREHOUSE_ID = "00000000-0000-4000-8000-000000000010"
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 
 
+def _warehouse_names(session: Session) -> dict[str, str]:
+    """id -> name map so the batch-step header can show its own «Склад:» line
+    (copied verbatim from app/routes/mobile_transfers.py::_warehouse_names)."""
+    return {w.id: w.name for w in active_warehouses(session)}
+
+
 def _preselect_warehouse_id(actives: list, submitted: str = "") -> str:
     """Echo a submitted warehouse, else preselect the seeded default when active,
     else the first active warehouse alphabetically (mirrors receipts.py)."""
@@ -71,14 +77,21 @@ def _chooser_context(session: Session, code: str, warehouse_id: str, actives: li
 
 
 @router.get("/m/receipts")
-def mobile_receipt_new(request: Request, session: Session = Depends(get_session)):
+def mobile_receipt_new(request: Request, code: str = "", session: Session = Depends(get_session)):
     actives = active_warehouses(session)
     context = {
         "zero_warehouses": not actives,
         "active_warehouses": actives,
         "selected_warehouse_id": _preselect_warehouse_id(actives),
-        "code": "",
+        "code": code,
     }
+    # D-08/UI-05: a "Назад" hx-get from step 2, or a future quick-action link
+    # from search, gets only the bare step-1 fragment; a plain/bookmarked GET
+    # still gets the full page (same HX-Request idiom as mobile_search.py).
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(
+            request, "mobile_partials/receipts_step_product.html", context
+        )
     return templates.TemplateResponse(request, "mobile_pages/receipts.html", context)
 
 
@@ -126,6 +139,7 @@ def mobile_receipt_step_batch(
         "warehouse_id": selected,
         "name": final_name,
         "name_known": bool(resolved_name),
+        "warehouse_name": _warehouse_names(session).get(selected),
         "cost": final_cost,
         "sale": final_sale,
         "catalog": final_catalog,
