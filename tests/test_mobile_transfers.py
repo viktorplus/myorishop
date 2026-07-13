@@ -49,6 +49,70 @@ def test_transfers_step_batch_shows_source_warehouse_line(
     assert 'class="mobile-card"' in response.text
 
 
+def test_transfers_step_batch_shows_resolved_name(mobile_client_factory, session, stocked_product):
+    """D-14: the batch step response shows the code and name between the step
+    indicator and "Выберите партию", sourced from lookup_prefill's captured
+    (no longer discarded) result."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post("/m/transfers/step/batch", data={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert f"<strong>{stocked_product.code}</strong> — {stocked_product.name}" in response.text
+
+
+def test_transfers_batch_pick_carries_name_into_dest_step(
+    mobile_client_factory, session, stocked_product
+):
+    """D-14: tapping a batch card carries the name forward via the card's own
+    hx-vals (step 2 has no enclosing form to auto-forward hidden fields)."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    batch_response = client.post(
+        "/m/transfers/step/batch", data={"code": stocked_product.code}
+    )
+    # hx-vals is JSON (tojson escapes non-ASCII), so assert on the key, not
+    # the literal Cyrillic name text.
+    assert '"name":' in batch_response.text
+
+    response = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"batch_id": source.id, "code": stocked_product.code, "name": stocked_product.name},
+    )
+
+    assert response.status_code == 200
+    assert f"<strong>{stocked_product.code}</strong> — {stocked_product.name}" in response.text
+    assert f'name="name" value="{stocked_product.name}"' in response.text
+
+
+def test_transfers_create_carries_name_through_oversell_retry(
+    mobile_client_factory, session, stocked_product
+):
+    """D-14: the final submit's error/oversell/success re-renders continue to
+    show the name, carried via the hidden name field transfers_create already
+    receives as a Form value."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "20",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Товара не хватает в партии" in response.text
+    assert f"<strong>{stocked_product.code}</strong> — {stocked_product.name}" in response.text
+    assert f'name="name" value="{stocked_product.name}"' in response.text
+
+
 def test_transfers_step_batch_empty_batches_blocks_forward(mobile_client_factory, session, product):
     # `product` fixture has zero stock/batches.
     client = mobile_client_factory(mobile_transfers.router)

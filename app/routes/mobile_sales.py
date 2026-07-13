@@ -87,6 +87,7 @@ def mobile_sale_step_product(
         # left empty (no product card to fill the price from).
         context = {
             "code": code_clean,
+            "name": result["name"],
             "batch_id": "",
             "fill_price_cents": None,
             "fill_price_hint": "",
@@ -117,6 +118,7 @@ def mobile_sale_step_product(
 
     context = {
         "code": code_clean,
+        "name": result["name"],
         "batches": batches,
         "selected_batch_id": selected_batch.id if selected_batch else None,
         "batch_id": selected_batch.id if selected_batch else "",
@@ -159,6 +161,7 @@ def mobile_sale_step_batch(
 
     context = {
         "code": code_clean,
+        "name": product.name if product is not None else "",
         "batches": batches,
         "selected_batch_id": picked.id if picked else None,
         "batch_id": picked.id if picked else "",
@@ -210,6 +213,7 @@ def mobile_sale_step_qty_price(
 
     context = {
         "code": code_clean,
+        "name": product.name if product is not None else "",
         "batch_id": picked.id if picked else "",
         "qty": "",
         "price": "",

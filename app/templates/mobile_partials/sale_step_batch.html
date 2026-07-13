@@ -9,6 +9,7 @@
   {% for p in price_acc %}<input type="hidden" name="price_acc[]" value="{{ p }}">{% endfor %}
   {% for b in batch_acc %}<input type="hidden" name="batch_acc[]" value="{{ b }}">{% endfor %}
   <input type="hidden" name="code" value="{{ code }}">
+  <p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
   <h2>Выберите партию</h2>
   {% set pick_url = "/m/sales/step/batch" %}
   {% set batch_input_name = "batch_id" %}

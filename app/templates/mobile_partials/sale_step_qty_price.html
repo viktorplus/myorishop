@@ -16,6 +16,7 @@
   {% for b in batch_acc %}<input type="hidden" name="batch_acc[]" value="{{ b }}">{% endfor %}
   <input type="hidden" name="code" value="{{ code }}">
   <input type="hidden" name="batch_id" value="{{ batch_id | default('') }}">
+  <p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
   <h2>Количество и цена</h2>
   <label>Количество
     <input type="text" name="qty" inputmode="numeric" value="{{ qty | default('') }}">

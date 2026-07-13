@@ -15,6 +15,7 @@
   </div>
 {% else %}
   <p class="mobile-step-indicator">{{ step_label }}</p>
+  <p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
   <h2>Куда и количество</h2>
 
   {% if errors is defined and errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
@@ -29,6 +30,7 @@
         hx-disabled-elt="find button">
     <input type="hidden" name="code" value="{{ code }}">
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
+    <input type="hidden" name="name" value="{{ name }}">
 
     <div class="field">
       <label>Склад назначения</label>
