@@ -46,7 +46,7 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
 
 **Milestone Goal:** Finish the ad-hoc catalog/pricing feature (extend autofill to goods receipt, add name autofill), close the mobile wizard context gaps found on audit, add code/name cross-autofill and pagination/filter/sort to sales and every list page, and add quick-delete to warehouse/product lists.
 
-- [ ] **Phase 12: Code & Name Autofill** - Typing a product code on the product-add, goods-receipt, or sales forms surfaces known catalog price/consultant price/name suggestions
+- [x] **Phase 12: Code & Name Autofill** - Typing a product code on the product-add, goods-receipt, or sales forms surfaces known catalog price/consultant price/name suggestions (completed 2026-07-13)
 - [ ] **Phase 13: Mobile Wizard Context & Navigation** - Mobile wizards keep the operator oriented (visible code/name/warehouse, consistent Назад, step indicator, quick actions)
 - [ ] **Phase 14: List Pagination, Filtering, Sorting & Quick Delete** - Every list page supports paging/filtering/sorting, with quick delete for warehouses and products
 
@@ -75,7 +75,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 12-02-PLAN.md — Mobile receipt price forwarding + visible code/name readout (PRICE-04)
+- [x] 12-02-PLAN.md — Mobile receipt price forwarding + visible code/name readout (PRICE-04)
 
 **UI hint**: yes
 
@@ -128,6 +128,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
-| 12. Code & Name Autofill | v1.2 | 3/4 | In Progress|  |
+| 12. Code & Name Autofill | v1.2 | 4/4 | Complete   | 2026-07-13 |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 0/TBD | Not started | - |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
