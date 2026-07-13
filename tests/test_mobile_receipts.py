@@ -172,6 +172,30 @@ def test_web_step_details_shows_new_batch_fields_when_new(mobile_client_factory,
     assert "стеллаж А3" in response.text  # placeholder, verbatim from desktop
 
 
+def test_web_step_details_shows_visible_code_and_name_readout(mobile_client_factory, session):
+    """D-12: step 3 always shows a bolded code, plus name when known."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "Крем", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "<strong>9999</strong> — Крем" in response.text
+
+
+def test_web_step_details_readout_omits_dash_when_name_empty(mobile_client_factory, session):
+    """D-12: an unknown code with no name yet renders the code alone, with no
+    trailing em-dash."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "<strong>9999</strong>" in response.text
+    assert "—" not in response.text
+
+
 def test_web_step_details_omits_new_batch_fields_for_topup(
     mobile_client_factory, session, product, warehouse
 ):

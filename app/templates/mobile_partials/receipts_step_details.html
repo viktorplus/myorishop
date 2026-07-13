@@ -8,6 +8,7 @@
 <input type="hidden" name="warehouse_id" value="{{ warehouse_id }}">
 <input type="hidden" name="name" value="{{ name }}">
 <input type="hidden" name="batch_choice" value="{{ batch_choice }}">
+<p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
 <div class="field">
   <label for="receipt-qty">Количество</label>
   <input type="text" id="receipt-qty" name="qty" inputmode="numeric" value="{{ qty }}" required>
