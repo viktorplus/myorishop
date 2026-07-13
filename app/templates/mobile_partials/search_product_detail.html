@@ -15,4 +15,8 @@
 {% for row in stock_rows %}
 <p>{{ row.warehouse_name }}: {{ row.total_qty }} шт.</p>
 {% endfor %}
+<div class="mobile-actions">
+  <a class="button" href="/m/sales?code={{ product.code }}">Продать</a>
+  <a class="button" href="/m/receipts?code={{ product.code }}">Принять</a>
+</div>
 {% endblock %}
