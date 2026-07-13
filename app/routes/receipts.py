@@ -131,7 +131,11 @@ def receipt_lookup(
         actives = active_warehouses(session)
         chooser = _chooser_context(session, code, warehouse_id.strip(), actives)
         include_chooser = True
-    elif result["source"] == "catalog":
+    else:
+        # WR-02: lookup_prefill only ever returns source == "product",
+        # source == "catalog", or None (handled above) — the old
+        # "dictionary" source was removed by this phase's diff, so this is
+        # the only remaining branch.
         # D-01/D-04 (Phase 12/PRICE-04): unknown-to-Product code matched by
         # Dictionary and/or CatalogPrice. Pitfall 1: reuse the exact same
         # "still empty after strip" computation as the product branch above.
@@ -141,11 +145,6 @@ def receipt_lookup(
         hint = CATALOG_FILL_HINT
         # D-05: the batch chooser is untouched by this branch — same empty
         # state as the dictionary-only fallback used previously.
-        chooser = {"zero_warehouses": False, "batches": [], "code_entered": False}
-        include_chooser = False
-    else:
-        fill_fields = []
-        hint = ""  # name_input.html falls back to the dictionary wording
         chooser = {"zero_warehouses": False, "batches": [], "code_entered": False}
         include_chooser = False
     context = {
