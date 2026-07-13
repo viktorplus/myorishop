@@ -1,0 +1,28 @@
+{# GET /sales/search-name response fragment (D-08/D-09/D-10/D-11).
+   Click-to-select dropdown of matching code+name rows for the sales name
+   field; reuses search_products()/split_match() verbatim (D-08) — segments
+   are autoescaped, <mark> is literal template HTML, never |safe (Pattern 5,
+   mirrors product_rows.html's row shape).
+   Each button's hx-on:click (D-11, T-12-08) fills BOTH the code and name
+   inputs directly from the clicked row's own data and clears the dropdown
+   — no /sales/lookup re-trigger. Values are tojson-embedded (WR-02-fixed
+   convention, matches mobile_partials/batch_card_picker.html) so a quote
+   inside a product code/name can never break out of the JS-attribute
+   context. #}
+{% if rows %}
+<ul class="name-search-list">
+  {% for row_item in rows %}
+  {% set product = row_item.product %}
+  <li>
+    <button type="button"
+            hx-on:click="document.getElementById({{ code_input_id | tojson }}).value = {{ product.code | tojson }}; document.getElementById({{ name_input_id | tojson }}).value = {{ product.name | tojson }}; document.getElementById({{ dropdown_id | tojson }}).innerHTML = '';">
+      {% set pre, match, post = row_item.code_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}
+      —
+      {% set pre, match, post = row_item.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">Совпадений не найдено.</p>
+{% endif %}

@@ -12,6 +12,7 @@ from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import open_batches
+from app.services.catalog import search_products, split_match
 from app.services.customers import create_customer, customer_search_view
 from app.services.sales import lookup_prefill, non_blank_lines, recent_sales, register_sale
 
@@ -162,6 +163,45 @@ def sale_lookup(
         "code": code_clean,
     }
     return templates.TemplateResponse(request, "partials/sale_lookup.html", context)
+
+
+@router.get("/sales/search-name")
+def sale_search_name(
+    request: Request,
+    q: str = "",
+    row: str = "",
+    session: Session = Depends(get_session),
+):
+    # T-12-07: mirrors sale_batch_pick's row guard — a malformed row value
+    # collapses to "" instead of being echoed into rendered ids/hx-on:click.
+    row = row.strip()
+    if row and not _ROW_ID_RE.fullmatch(row):
+        row = ""
+
+    q_stripped = q.strip()
+    # D-10/RESEARCH Pitfall 5: the 3-character guard lives HERE, not inside
+    # search_products() — that function's own empty-query "first 20 by name"
+    # fallback is correct for /products/search but is noise for live typing.
+    if len(q_stripped) < 3:
+        return Response(status_code=204)
+
+    q_lc = q_stripped.lower()
+    products = search_products(session, q_stripped)
+    rows = [
+        {
+            "product": product,
+            "code_seg": split_match(product.code or "", q_lc),
+            "name_seg": split_match(product.name, q_lc),
+        }
+        for product in products
+    ]
+    context = {
+        "rows": rows,
+        "code_input_id": "code" if not row else f"code-{row}",
+        "name_input_id": "name-input" if not row else f"name-input-{row}",
+        "dropdown_id": "name-dropdown" if not row else f"name-dropdown-{row}",
+    }
+    return templates.TemplateResponse(request, "partials/sale_name_search.html", context)
 
 
 @router.get("/sales/batch-pick")

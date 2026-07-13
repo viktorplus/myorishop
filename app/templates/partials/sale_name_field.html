@@ -1,0 +1,20 @@
+{# Shared name-input + dropdown-target fragment (PD-6 pattern, D-09/D-11):
+   ONE source rendered by BOTH the initial basket-row render (sale_row.html)
+   AND every subsequent code-triggered /sales/lookup OOB swap
+   (sale_lookup.html) — so the debounced name->code dropdown wiring can
+   never be silently dropped by a plain outerHTML replace (the exact
+   regression this shared file exists to prevent).
+   Parameters: row (row_id, "" for the first row), name, source (optional —
+   undefined/falsy in the initial-row-render context, which is fine). #}
+{% set name_input_id = "name-input" if not row else "name-input-" + row %}
+{% set dropdown_id = "name-dropdown" if not row else "name-dropdown-" + row %}
+<input type="text" id="{{ name_input_id }}" name="name[]" value="{{ name or '' }}"
+       autocomplete="off"
+       hx-get="/sales/search-name"
+       hx-trigger="input changed delay:300ms"
+       hx-vals='{"row": "{{ row }}"}'
+       hx-target="#{{ dropdown_id }}"
+       hx-swap="innerHTML"
+       hx-sync="this:replace">
+{% if source == "dictionary" %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
+<div id="{{ dropdown_id }}"></div>
