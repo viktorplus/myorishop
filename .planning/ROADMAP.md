@@ -47,7 +47,7 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
 **Milestone Goal:** Finish the ad-hoc catalog/pricing feature (extend autofill to goods receipt, add name autofill), close the mobile wizard context gaps found on audit, add code/name cross-autofill and pagination/filter/sort to sales and every list page, and add quick-delete to warehouse/product lists.
 
 - [x] **Phase 12: Code & Name Autofill** - Typing a product code on the product-add, goods-receipt, or sales forms surfaces known catalog price/consultant price/name suggestions (completed 2026-07-13)
-- [ ] **Phase 13: Mobile Wizard Context & Navigation** - Mobile wizards keep the operator oriented (visible code/name/warehouse, consistent Назад, step indicator, quick actions)
+- [x] **Phase 13: Mobile Wizard Context & Navigation** - Mobile wizards keep the operator oriented (visible code/name/warehouse, consistent Назад, step indicator, quick actions) (completed 2026-07-13)
 - [ ] **Phase 14: List Pagination, Filtering, Sorting & Quick Delete** - Every list page supports paging/filtering/sorting, with quick delete for warehouses and products
 
 ## Phase Details
@@ -97,13 +97,13 @@ Plans:
 **Wave 1**
 
 - [x] 13-01-PLAN.md — Corrections wizard visible context + Назад consistency + shared header partial
-- [ ] 13-03-PLAN.md — Receipts wizard step-2 Назад fix + /m/receipts code prefill
+- [x] 13-03-PLAN.md — Receipts wizard step-2 Назад fix + /m/receipts code prefill
 - [x] 13-04-PLAN.md — Transfers wizard step-2 Назад fix
 - [x] 13-05-PLAN.md — Sale basket step indicator + search quick actions + /m/sales code prefill
 
 **Wave 2** *(depends on 13-01 for the shared `_wizard_header.html` partial)*
 
-- [ ] 13-02-PLAN.md — Write-off wizard migration to persistent-shell architecture
+- [x] 13-02-PLAN.md — Write-off wizard migration to persistent-shell architecture
 
 **UI hint**: yes
 
@@ -142,5 +142,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
 | 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
-| 13. Mobile Wizard Context & Navigation | v1.2 | 3/5 | In Progress|  |
+| 13. Mobile Wizard Context & Navigation | v1.2 | 5/5 | Complete   | 2026-07-13 |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
