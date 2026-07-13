@@ -2,7 +2,7 @@
 phase: 13-mobile-wizard-context-navigation
 reviewed: 2026-07-14T00:00:00Z
 depth: standard
-files_reviewed: 30
+files_reviewed: 33
 files_reviewed_list:
   - app/routes/mobile_corrections.py
   - app/routes/mobile_receipts.py
@@ -14,6 +14,7 @@ files_reviewed_list:
   - app/templates/mobile_pages/transfers.html
   - app/templates/mobile_pages/writeoff.html
   - app/templates/mobile_partials/_wizard_header.html
+  - app/templates/mobile_partials/batch_card_picker.html
   - app/templates/mobile_partials/corrections_step_batch.html
   - app/templates/mobile_partials/corrections_step_mode.html
   - app/templates/mobile_partials/corrections_step_product.html
@@ -21,6 +22,7 @@ files_reviewed_list:
   - app/templates/mobile_partials/receipts_step_batch.html
   - app/templates/mobile_partials/receipts_step_product.html
   - app/templates/mobile_partials/sale_basket.html
+  - app/templates/mobile_partials/sale_step_qty_price.html
   - app/templates/mobile_partials/search_product_detail.html
   - app/templates/mobile_partials/transfers_step_batch.html
   - app/templates/mobile_partials/transfers_step_product.html
@@ -37,24 +39,26 @@ files_reviewed_list:
   - tests/test_mobile_writeoff.py
 findings:
   critical: 0
-  warning: 4
+  warning: 6
   info: 3
-  total: 7
-status: issues_found
+  total: 9
+status: issues
 ---
 
 # Phase 13: Code Review Report
 
 **Reviewed:** 2026-07-14
 **Depth:** standard
-**Files Reviewed:** 30
+**Files Reviewed:** 33
 **Status:** issues_found
 
 ## Summary
 
-Reviewed all five mobile wizard routers (corrections, receipts, sales, transfers, write-off), their step templates, the shared `_wizard_header.html` contract, and the corresponding test suites. No security vulnerabilities were found: every reviewed template relies on Jinja autoescape with no `|safe` usage, batch/product ownership is consistently re-validated server-side before any client-supplied id is trusted (`T-09-08`/`T-11-x` precedents are followed correctly), and every write path wraps the service call in `except Exception` with a defensive `session.rollback()` before re-rendering — no bare 500s, no unhandled `PendingRollbackError`.
+This review covers the FULL Phase 13 file set (all 6 plans, 13-01 through 13-06) — corrections, write-off, receipts, transfers, and sale mobile wizards — and supersedes the prior `13-REVIEW.md` (which predated 13-06's sale-wizard warehouse-visibility gap closure and did not include `batch_card_picker.html` or `sale_step_qty_price.html` in scope).
 
-The issues found are all in the "hidden-field carry-forward" contract this phase is explicitly built around (RESEARCH Pattern 1: "no server-side wizard session — state travels only via posted/echoed fields"). Several back-navigation and forward-navigation paths silently drop state that sibling wizards, and the same wizard's own hidden fields, imply should be preserved. None of these cause bad writes (server-side validation in the `app/services/*` layer still catches invalid states before any row is written), but they are real regressions against the pattern this phase's own code comments describe, and are untested (no test in the reviewed suites exercises "Назад" state preservation for warehouse_id / mode / write-off code).
+No security vulnerabilities were found. Batch/product-ownership re-validation (the recurring T-09-08/T-11-x precedent: never trust a client-supplied `batch_id`, always re-query and check `product_id` match before use) is applied consistently and correctly across all five wizards, including the newly-reviewed `mobile_sales.py` code paths. Untrusted stored text (batch comment/location/warehouse name/product name) is rendered with Jinja autoescape only — no `|safe` usage found anywhere in the reviewed templates. Every write path (`register_correction`/`register_receipt`/`register_sale`/`register_transfer`/`register_writeoff`) is called inside a `try/except` with an explicit `session.rollback()` before re-rendering — no bare 500s, no unhandled `PendingRollbackError`.
+
+All issues found are quality/UX regressions in the "hidden-field carry-forward" contract this phase is built around (RESEARCH Pattern 1: state travels only via posted/echoed fields, no server-side wizard session), or in the still-outstanding forward-navigation guard pattern corrections established but sale/write-off/receipts never adopted. None cause bad writes — the `app/services/*` layer still catches every invalid state before a row is written — but several produce confusing operator-facing dead ends, and one (WR-04) now also affects the sale wizard as of 13-06's warehouse-name additions to `batch_card_picker.html`.
 
 ## Warnings
 
@@ -113,18 +117,57 @@ def mobile_correction_step_mode(
     }
 ```
 
-### WR-04: Transfer batch card shows a blank "Склад:" line when the source warehouse has been deactivated
+### WR-04: Batch cards show a blank "Склад:" line when the batch's warehouse has been deactivated (transfers AND sale)
 
-**File:** `app/templates/mobile_partials/transfers_step_batch.html:37`, `app/routes/mobile_transfers.py:43-45`
-**Issue:** `_warehouse_names()` maps only `active_warehouses(session)` (`deleted_at IS NULL`) to their names. The batch card renders `<p>Склад: {{ warehouse_names.get(b.warehouse_id, "") }}</p>` with an empty-string fallback. If a batch's warehouse has since been soft-deleted/deactivated while the batch is still open (a realistic scenario — deactivating a location doesn't retroactively close its batches), the card silently shows "Склад: " with nothing after the colon instead of the real (deactivated) warehouse name. Contrast with `_wizard_header.html`'s explicit contract ("must be `None`/absent, never `''`, to correctly omit their line") which every other wizard's carried-warehouse display honors correctly via `dict.get(...)` returning `None`.
-**Fix:** Either include inactive warehouses in a name-lookup map used only for display (a separate all-warehouses id->name map, not gated on `active_warehouses`), or fall back to a non-empty placeholder, e.g. `warehouse_names.get(b.warehouse_id, "—")`.
+**Files:** `app/templates/mobile_partials/transfers_step_batch.html:37`, `app/templates/mobile_partials/batch_card_picker.html:63`, `app/routes/mobile_transfers.py:43-45`, `app/routes/mobile_sales.py:38-40`
+**Issue:** Both `mobile_transfers.py::_warehouse_names()` and `mobile_sales.py::_warehouse_names()` map only `active_warehouses(session)` (`deleted_at IS NULL`) to their names. Both the transfer batch card (`transfers_step_batch.html:37`) and the shared picker's per-card warehouse line — now also used by the sale wizard's `sale_step_batch.html` as of 13-06 — render `warehouse_names.get(b.warehouse_id, "")` with an empty-string fallback. If a batch's warehouse has since been soft-deleted/deactivated while the batch is still open (deactivating a location doesn't retroactively close its batches), the card silently shows "Склад: " with nothing after the colon instead of the real (deactivated) warehouse name. This contradicts `_wizard_header.html`'s own documented contract ("must be `None`/absent, never `''`, to correctly omit their line"), which every single-value carried-warehouse display (`_carried_warehouse_name` in corrections/write-off, `_wizard_header.html` itself) already honors correctly via a `None`-returning `.get(...)`.
+**Fix:** Either build a separate all-warehouses id->name map (not gated on `active_warehouses`) for card-list display purposes, or fall back to a non-empty placeholder, e.g. `warehouse_names.get(b.warehouse_id, "—")`, consistently in both `transfers_step_batch.html` and `batch_card_picker.html`.
+
+### WR-05: Sale wizard batch step lets the operator advance without picking a batch
+
+**File:** `app/templates/mobile_partials/sale_step_batch.html:21-25`
+**Issue:** When a product has more than one open batch (no D-06 auto-select), the "Далее" button is rendered unconditionally once `not show_empty`:
+```html
+{% if not show_empty %}
+<button type="button"
+        hx-post="/m/sales/step/qty-price"
+        hx-target="#wizard-step" hx-swap="innerHTML">Далее</button>
+{% endif %}
+```
+There is no guard on `selected_batch_id`/`batch_id`, unlike `corrections_step_batch.html:27` (`{% if not selected_batch_id %} disabled{% endif %}`). The operator can tap "Далее" with no card selected, proceed through "Количество и цена" and "Корзина", and only get rejected at final `POST /m/sales` with `BATCH_REQUIRED_ERROR` ("Выберите партию.") from `app/services/sales.py` — after already typing qty/price for that line. No data-integrity issue (server-side re-validation in `register_sale` catches it), but it is a preventable UX dead end that the corrections wizard already solved.
+**Fix:** Mirror the corrections pattern:
+```html
+{% if not show_empty %}
+<button type="button"{% if not selected_batch_id %} disabled{% endif %}
+        hx-post="/m/sales/step/qty-price"
+        hx-target="#wizard-step" hx-swap="innerHTML">Далее</button>
+{% endif %}
+```
+(htmx does not fire requests from `disabled` elements, so this closes the gap without any route change.)
+
+### WR-06: Write-off wizard batch step has the same missing forward-navigation guard
+
+**File:** `app/templates/mobile_partials/writeoff_step_batch.html:19-24`, `app/routes/mobile_writeoff.py:92-120`
+**Issue:** Same shape as WR-05 — `mobile_writeoff_step_batch` never auto-selects a batch (`"batch_id": None, "selected_batch_id": None` even for exactly one open batch), and the template's "Далее" is gated only on `not show_empty`, not on a picked batch:
+```html
+{% if not show_empty %}
+<button type="submit" hx-post="/m/writeoff/step/qty" hx-include="closest form">Далее</button>
+{% endif %}
+```
+An operator can skip picking a batch entirely (including the single-open-batch case) and only hit `BATCH_REQUIRED_ERROR` from `app/services/writeoffs.py` after also filling in "Количество" and "Причина".
+**Fix:** Same as WR-05 — gate the button on `selected_batch_id`:
+```html
+{% if not show_empty %}
+<button type="submit"{% if not selected_batch_id %} disabled{% endif %} hx-post="/m/writeoff/step/qty" hx-include="closest form">Далее</button>
+{% endif %}
+```
 
 ## Info
 
 ### IN-01: Receipt batch-choice radios have no client-side forward guard
 
 **File:** `app/templates/mobile_partials/receipts_step_batch.html:40-51`
-**Issue:** Unlike every sibling wizard's batch-selection step (e.g. corrections disables its "Далее" button until `selected_batch_id` is set), the receipt batch-choice radios have no `required` attribute, and — when open batches exist — none is pre-checked (only the zero-batches fallback auto-checks "Новая партия"). The operator can tap "Далее" through steps 3 and 4 with `batch_choice=""`, and only learns of the omission at final submit via the server-side `BATCH_CHOICE_ERROR` (`app/services/receipts.py`). Functionally safe (no bad write), but an avoidable round trip inconsistent with this phase's own established pattern.
+**Issue:** Unlike every sibling wizard's batch-selection step, the receipt batch-choice radios have no `required` attribute, and — when open batches exist — none is pre-checked (only the zero-batches fallback auto-checks "Новая партия"). The operator can tap "Далее" through steps 3 and 4 with `batch_choice=""`, and only learns of the omission at final submit via the server-side batch-choice error in `app/services/receipts.py`. Functionally safe (no bad write), but an avoidable round trip inconsistent with this phase's own established pattern (see also WR-05/WR-06).
 **Fix:** Add `required` to both radio groups, or disable the "Далее" button client-side until a `batch_choice` is picked, mirroring `corrections_step_batch.html`'s `{% if not selected_batch_id %} disabled{% endif %}`.
 
 ### IN-02: Quick-action links do not URL-encode `product.code`
@@ -135,9 +178,9 @@ def mobile_correction_step_mode(
 
 ### IN-03: Stale "Оформить продажу" button after client-side basket removal
 
-**File:** `app/templates/mobile_partials/sale_basket.html:28-43`
-**Issue:** "Удалить" removes a basket card purely client-side (`hx-on:click="this.closest('.mobile-card').remove()"`), but the "Оформить продажу" button's visibility is fixed at render time by `{% if lines %}` — it does not react to cards being removed afterward. If the operator deletes the only line, the checkout button remains visible and clickable, submitting an empty basket. Harmless (server-side `EMPTY_BASKET_ERROR` in `app/services/sales.py` blocks it), but a confusing dead UI state — the operator sees a "success-looking" checkout button pointing at nothing.
-**Fix:** Wrap both the cards and the checkout button in one client-observed container, or re-check basket emptiness via a small script/`hx-on` on the "Удалить" handler that also toggles the checkout button.
+**File:** `app/templates/mobile_partials/sale_basket.html:29-30, 40-44`
+**Issue:** Each basket line's "Удалить" button is a pure client-side `hx-on:click="this.closest('.mobile-card').remove()"` (no server round trip). The "Оформить продажу" button's visibility is fixed at render time by `{% if lines %}` — it does not react to cards being removed afterward. If the operator deletes the only/last line, the checkout button remains visible and clickable, submitting an empty basket. Harmless (server-side `EMPTY_BASKET_ERROR` in `app/services/sales.py` blocks it), but a confusing dead UI state — the operator sees a "ready to submit" checkout button pointing at nothing.
+**Fix:** Wrap cards and checkout button in one client-observed container, or re-check basket emptiness via a small script/`hx-on` on the "Удалить" handler that also toggles the checkout button.
 
 ---
 
