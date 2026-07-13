@@ -34,6 +34,7 @@ Wherever the operator types a product code — product-add form, goods receipt (
 ### Mobile receipt autofill approach
 - **D-06:** Do NOT add live/debounced autofill to the mobile receipt wizard's step-1 code field (that would be new interaction-model surface, and risks pre-empting Phase 13's mobile navigation rework). Instead extend the existing "resolve once per step-submit" pattern: `mobile_receipt_step_batch` (in `app/routes/mobile_receipts.py`) already calls `lookup_prefill()` and gets back a `prices` dict — forward `cost`/`sale`/`catalog` from that call into step 3 (`receipts_step_details.html`, where the actual price fields live) as pre-filled values.
 - **D-07:** This decision intentionally stays out of any back-button/step-indicator/navigation changes — those are Phase 13's scope (UI-02..05), not this phase's.
+- **D-12:** Narrow exception to D-07 — mobile receipt step 3 (`app/templates/mobile_partials/receipts_step_details.html`) currently renders `code` and `name` as hidden inputs only (confirmed: lines 7 and 9), no visible text. Since D-06 introduces autofilled price values on this exact step, add a minimal static line showing the code/name (already available in the step's context) above the price fields, so an autofilled number is visibly anchored to a product. Scope is deliberately narrow: **only receipt step 3**, **only code+name as plain text** (no styling system, no step-indicator, no back-button change). The full UI-02 sweep (all 5 wizards, every step, warehouse included) remains Phase 13's job — this is a targeted fix for the specific gap Phase 12's own autofill would otherwise expose, not a pull-forward of Phase 13's scope.
 
 ### Sales reverse search (name fragment → code)
 - **D-08:** Reuse `search_products()` / `search_view()` (`app/services/catalog.py:347-397`) as-is via a new route (e.g. `/sales/search-name`) — do not build a separate name-only matcher. `search_products` already does ranked (exact code=0, code-prefix=1, name-substring=2), Cyrillic-safe, 20-row-capped search over exactly the `Product` table that sale rows are constrained to.
@@ -63,6 +64,7 @@ Wherever the operator types a product code — product-add form, goods receipt (
 - `app/services/receipts.py:260-287` — `lookup_prefill()` (needs the new `source="catalog"` branch per D-01)
 - `app/routes/receipts.py:102-144` — `/receipts/lookup` (needs price OOB-swap extension per D-04)
 - `app/routes/mobile_receipts.py` — `mobile_receipt_step_batch` (needs price forwarding per D-06)
+- `app/templates/mobile_partials/receipts_step_details.html` — step 3 template; `code`/`name` currently hidden-only (lines 7, 9), needs the minimal visible line per D-12
 - `app/services/catalog.py:347-397` — `search_products()`/`search_view()` (to reuse per D-08)
 - `app/routes/sales.py` / `app/services/sales.py` — `/sales/lookup`, `lookup_prefill()` (existing code→name pattern on sales page)
 

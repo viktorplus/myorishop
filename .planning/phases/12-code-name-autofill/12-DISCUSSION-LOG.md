@@ -45,6 +45,10 @@
 **User's choice:** B (research-recommended)
 **Notes:** Keeps this phase's scope out of mobile wizard navigation/step-boundary work, which is reserved for Phase 13.
 
+**Follow-up:** User asked whether other mobile wizards (write-off/correction/transfer) have a similar gap — checked via Explore agent: no, all three only look up EXISTING active products (no code-not-in-catalog path, errors say "оприходуйте товар первым" instead of offering to create), so catalog/dictionary autofill is structurally not applicable there. Confirmed Phase 12 scope is correctly limited to receipts.
+
+**Follow-up 2:** User flagged that D-06 pushes autofilled prices onto mobile receipt step 3, but that step currently renders `code`/`name` as hidden inputs only (`receipts_step_details.html:7,9`) — no visible product identity on screen. This is the UI-02 gap, catalogued for Phase 13 across all 5 wizards. Two options presented: (a) leave as-is, let Phase 13 fix it; (b) add a narrow, receipt-step-3-only static code/name line in Phase 12 so the new autofilled numbers have a visible anchor, without pulling in the rest of UI-02 (styling, other wizards, other steps, navigation). **User chose (b)** — captured as D-12 in CONTEXT.md.
+
 ---
 
 ## Sales reverse search (name → code)
