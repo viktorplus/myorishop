@@ -41,6 +41,7 @@ def products_search(request: Request, q: str = "", session: Session = Depends(ge
     return templates.TemplateResponse(request, "partials/product_rows.html", context)
 
 
+# Formalized under Phase 12 (PRICE-02) — shipped ad-hoc on feat/catalogs-pricing, now a permanent feature.
 @router.get("/products/lookup-price")
 def product_price_lookup(
     request: Request,
