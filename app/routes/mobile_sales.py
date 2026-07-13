@@ -36,9 +36,9 @@ def _acc_context(
 
 
 @router.get("/m/sales")
-def mobile_sales_page(request: Request):
+def mobile_sales_page(request: Request, code: str = ""):
     context = {
-        "code": "",
+        "code": code,
         "error": None,
         "saved": None,
         **_acc_context([], [], [], []),

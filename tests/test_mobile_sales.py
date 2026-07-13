@@ -464,6 +464,35 @@ def test_price_below_minimum_warns_zero_writes_then_confirm_writes(
     assert len(_sale_ops(session)) == 1
 
 
+def test_basket_add_shows_korzina_step_indicator(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post(
+        "/m/sales/step/basket-add",
+        data={"code": product.code, "qty": "2", "price": "9,00", "batch_id": batch.id},
+    )
+    assert resp.status_code == 200
+    assert '<p class="mobile-step-indicator">Корзина</p>' in resp.text
+
+
+def test_sales_page_prefills_code_from_query_param(mobile_client_factory, session):
+    client = _client(mobile_client_factory)
+    resp = client.get("/m/sales", params={"code": "TEST-001"})
+    assert resp.status_code == 200
+    assert 'value="TEST-001"' in resp.text
+
+
 def test_oversell_warns_zero_writes_then_confirm_writes(
     mobile_client_factory, session, product, warehouse
 ):

@@ -49,3 +49,26 @@ def test_search_product_detail_unknown_id_returns_404(mobile_client_factory, ses
     response = client.get("/m/search/product/does-not-exist")
 
     assert response.status_code == 404
+
+
+def test_search_product_detail_shows_quick_action_links_for_stocked_product(
+    mobile_client_factory, stocked_product
+):
+    client = mobile_client_factory(mobile_search.router)
+    response = client.get(f"/m/search/product/{stocked_product.id}")
+
+    assert response.status_code == 200
+    assert f'href="/m/sales?code={stocked_product.code}"' in response.text
+    assert f'href="/m/receipts?code={stocked_product.code}"' in response.text
+
+
+def test_search_product_detail_shows_quick_action_links_for_zero_stock_product(
+    mobile_client_factory, product
+):
+    """D-09: the quick actions must render unconditionally, even with zero stock."""
+    client = mobile_client_factory(mobile_search.router)
+    response = client.get(f"/m/search/product/{product.id}")
+
+    assert response.status_code == 200
+    assert f'href="/m/sales?code={product.code}"' in response.text
+    assert f'href="/m/receipts?code={product.code}"' in response.text
