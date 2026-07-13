@@ -111,6 +111,7 @@ Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs
 - One Phase 1 human-verification item (offline `run.bat` launch + browser correction flow + restart persistence) remains unexecuted since v1.0 close — still deferred (see STATE.md Deferred Items). Recommend running it before relying on the app for real daily data entry.
 - Two advisory (non-blocking) code-review warnings remain in `transfers.py`/`writeoffs.py` from Phase 10 (batch-ownership leak, unstripped qty echo) — revisit if those files are touched again.
 - **Phase 12 shipped 2026-07-13**: catalog/name autofill extended to goods receipt (desktop + mobile) and sales-page name↔code cross-autofill. Code review caught a genuine data-loss bug (CR-01: mobile receipt wizard silently discarded operator-typed prices on a Назад→Далее round trip) — fixed and re-verified before phase completion, along with 3 other warnings (misleading autofill hint text, dead code branch, missing row-ID validation on a new HTMX partial).
+- **Phase 13 shipped 2026-07-14**: mobile wizard context/navigation gaps closed (UI-02..05) — all 5 wizards (sale/receipt/write-off/correction/transfer) now show code/name/warehouse as visible text, use a uniform hx-get/hx-post "Назад" pattern (write-off's `history.back()` retired), sale basket has a step indicator, and search product-detail links jump straight into sale/receipt. First-pass verification found the sale wizard alone missing the warehouse line; gap-closure plan 13-06 fixed it and re-verification passed 4/4. Code review: 0 critical, 6 advisory warnings carried/found (e.g. inconsistent "Далее" batch-pick guards across wizards) — non-blocking.
 - **v2.0 (next):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Was deferred from v1.1 because it first needed the local data model changes (multi-warehouse, batches) that sync must now account for — those changes are now shipped.
 
 ## Constraints
@@ -160,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-13 after v1.1 milestone (Multi-Warehouse & Batch Tracking)*
+*Last updated: 2026-07-14 after Phase 13 (Mobile Wizard Context & Navigation)*
