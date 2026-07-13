@@ -5,12 +5,14 @@
    allow-list in register_correction is unchanged (T-11-17). #}
 <div id="corrections-step-wrap">
   <p class="mobile-step-indicator">Шаг 3 из 4</p>
+  {% include "mobile_partials/_wizard_header.html" %}
   <h1>Режим</h1>
   <form class="stacked-form"
         hx-post="/m/corrections/step/value"
         hx-target="#corrections-step-wrap"
         hx-swap="outerHTML">
     <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="name" value="{{ name }}">
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
     <input type="hidden" name="batch_qty" value="{{ batch_qty if batch_qty is not none else '' }}">
     <div class="field">
@@ -28,7 +30,9 @@
       </label>
     </div>
     <div class="mobile-actions">
-      <a class="mobile-back" href="/m/corrections">Назад</a>
+      <button type="button" class="secondary" hx-post="/m/corrections/step/batch"
+              hx-include="closest form" hx-target="#corrections-step-wrap"
+              hx-swap="outerHTML">Назад</button>
       <button type="submit">Далее</button>
     </div>
   </form>

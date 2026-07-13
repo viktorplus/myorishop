@@ -219,6 +219,63 @@ def test_mobile_correction_over_removal_warns_then_confirms(
     assert ops[0].qty_delta == -10
 
 
+def test_mobile_correction_step_batch_has_no_mobile_back_link(
+    mobile_client_factory, session, product, warehouse
+):
+    _seed_batch(session, product, warehouse, 5)
+    client = mobile_client_factory(mobile_corrections.router)
+
+    response = client.post("/m/corrections/step/batch", data={"code": product.code})
+
+    assert response.status_code == 200
+    assert 'class="mobile-back"' not in response.text
+
+
+def test_mobile_correction_step_mode_and_value_show_header_and_own_back_target(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = _seed_batch(session, product, warehouse, 5)
+    client = mobile_client_factory(mobile_corrections.router)
+
+    mode_response = client.post(
+        "/m/corrections/step/mode",
+        data={"code": product.code, "name": product.name, "batch_id": batch.id},
+    )
+    assert mode_response.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in mode_response.text
+    assert f"Склад: {warehouse.name}" in mode_response.text
+    assert 'hx-post="/m/corrections/step/batch"' in mode_response.text
+    assert 'class="mobile-back"' not in mode_response.text
+
+    value_response = client.post(
+        "/m/corrections/step/value",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "batch_id": batch.id,
+            "mode": "count",
+            "batch_qty": "5",
+        },
+    )
+    assert value_response.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in value_response.text
+    assert f"Склад: {warehouse.name}" in value_response.text
+    assert 'hx-post="/m/corrections/step/mode"' in value_response.text
+    assert 'class="mobile-back"' not in value_response.text
+
+
+def test_mobile_correction_start_hx_request_returns_bare_fragment(mobile_client_factory):
+    client = mobile_client_factory(mobile_corrections.router)
+
+    hx_response = client.get("/m/corrections", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "<html" not in hx_response.text
+
+    full_response = client.get("/m/corrections")
+    assert full_response.status_code == 200
+    assert "<html" in full_response.text
+
+
 def test_mobile_correction_zero_net_delta_rejected(
     mobile_client_factory, session, product, warehouse
 ):
