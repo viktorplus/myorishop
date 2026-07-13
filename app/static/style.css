@@ -251,6 +251,13 @@ mark {
 .batch-picker { margin: 8px 0 0; }                         /* sm gap instead of the default table margin-top */
 .batch-picker tr.selected-batch td { background: #e8effd; } /* selection highlight — existing mark/search tint, NOT a new color */
 
+/* Sales name->code search dropdown (Phase 12, D-09): click-to-select list
+   rendered below the sales name input. Reuses the existing token scale and
+   the existing mark/search tint (#e8effd) — no new color role. */
+.name-search-list { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid #d9d9d9; background: #ffffff; }
+.name-search-list li button { display: block; width: 100%; padding: 8px; text-align: left; }
+.name-search-list li button:hover, .name-search-list li button:focus-visible { background: #e8effd; }
+
 /* Mobile flow (Phase 11): home tile grid, wizard shell, batch/basket cards.
    All values reuse the existing token scale; the only new number is the
    44px touch-target minimum (spacing exception, see UI-SPEC). */

@@ -11,8 +11,7 @@
 {% set price_wrap_id = "price-wrap" if not row else "price-" + row %}
 {% set batch_wrap_id = "batch-wrap-" + (row or "first") %}
 <td id="{{ name_wrap_id }}">
-  <input type="text" name="name[]" value="{{ name }}">
-  {% if source == "dictionary" %}<p class="muted">Название подставлено из справочника — можно изменить.</p>{% endif %}
+  {% with row = row %}{% include "partials/sale_name_field.html" %}{% endwith %}
 </td>
 {% if fill_price %}
 {# htmx table-OOB parse-context workaround (UAT tests 4/5): an oob <td> must be
