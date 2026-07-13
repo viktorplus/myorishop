@@ -4,7 +4,11 @@
    passes fill_fields = the price fields that arrived EMPTY in the request;
    each renders the SAME receipt_price_inputs.html the form uses, with
    oob = True so htmx routes it to its #{field}-wrap. #}
-{% with autofilled = True %}
+{# WR-01: only claim the name was autofilled when a name actually came back
+   (a catalog-source match can have a CatalogPrice with no Dictionary entry,
+   in which case `name` is blank and the "название подставлено" hint would
+   be misleading). #}
+{% with autofilled = (name != "") %}
 {% include "partials/name_input.html" %}
 {% endwith %}
 {% if source in ("product", "catalog") %}
