@@ -1,8 +1,8 @@
 ---
 phase: 11
 slug: dedicated-mobile-flow
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-12
 ---
@@ -85,4 +85,4 @@ created: 2026-07-12
 - [ ] Feedback latency < 20s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-12 (plan-checker confirmed every task has a real automated verify command, no MISSING placeholders)

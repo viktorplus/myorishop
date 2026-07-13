@@ -44,3 +44,24 @@
 - GET /reports/products with SQL-side top-selling ranking (func.sum/.group_by()/.order_by()/.limit()) and an always-current, LEFT-OUTER-JOIN-based stale/never-sold products list honoring per-product zero-day overrides — the phase's final plan.
 
 ---
+
+## v1.1 Multi-Warehouse & Batch Tracking (Shipped: 2026-07-13)
+
+**Delivered:** Multi-warehouse stock organization, batch/lot-level tracking with expiry dates and per-batch pricing (mandatory manual selection at every stock-affecting operation), category browsing, minimum-price guardrails, warehouse-to-warehouse transfers preserving cost history, an expiring-batches report, and a dedicated mobile flow — simplified single-purpose screens for every core operation, additive to the unchanged desktop UI.
+
+**Phases completed:** 5 phases (7-11), 28 plans
+**Timeline:** 2026-07-10 → 2026-07-13 (3 days)
+**Git range:** `95455f6` (docs(07): create phase plan) → `97b8c38` (docs(phase-11): add security threat verification) — 254 files changed, +28,067/-340 lines, 249 commits
+**Known deferred items at close:** 1 carried forward from v1.0 (Phase 1 offline run.bat human-verification, still not executed) + 2 advisory (non-blocking) code-review warnings in transfers.py/writeoffs.py (batch-ownership leak, unstripped qty echo)
+
+**Key accomplishments:**
+
+- "Товары на складе" category-grouped browsing page and an optional per-product minimum sale price that warns-but-allows underselling, same pattern as the existing oversell guardrail (Phase 7, CAT-01/PRICE-01)
+- Full warehouse CRUD with soft-delete/restore, migrated on top of a seeded default warehouse so every pre-existing v1.0 stock row attributes cleanly with zero data loss (Phase 8, WH-01)
+- Batch/lot tracking woven into the append-only ledger: every product code can carry multiple batches (warehouse, expiry, price, comment), and every stock-affecting operation — sale, write-off, return, correction — requires picking a specific batch with oversell/over-removal warnings scoped to that batch, not the product total (Phase 9, WH-02/LOT-01..05)
+- Warehouse-to-warehouse transfers that preserve the moved batch's original cost/price history instead of resetting it, recorded in operation history like any other op, plus a read-only expiring-batches report (Phase 10, WH-03/LOT-06)
+- A dedicated mobile flow — not a CSS reflow — with simplified single-purpose wizards for search, receipts, sales, write-offs/returns/corrections, transfers, and history, each reusing the same batch-picker and guardrail logic as desktop, fully additive with the unchanged desktop layout (Phase 11, UI-01)
+- Closed 4 UAT-found gaps in the batch-tracking phase (htmx OOB batch-picker duplication, missing /history return-entry link, receipt batch-chooser UX, missing batch name field) and 1 blocker + 1 major UAT gap in the mobile phase (invisible batch-card text, sale wizard's Назад skipping the batch step)
+- Security threat verification completed for the mobile flow (11-SECURITY.md, 2026-07-13); 6/6 UAT scenarios passed on re-test
+
+---

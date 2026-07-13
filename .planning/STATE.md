@@ -2,35 +2,34 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Warehouse & Batch Tracking
-status: executing
-stopped_at: Phase 11 UI-SPEC approved
-last_updated: "2026-07-12T23:52:34.863Z"
-last_activity: 2026-07-12 -- Phase 11 execution started
+status: shipped
+stopped_at: v1.1 milestone archived
+last_updated: "2026-07-13T00:00:00.000Z"
+last_activity: 2026-07-13 -- v1.1 milestone complete (Phase 11 UAT + security verification done, archived)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 28
-  completed_plans: 27
-  percent: 80
+  completed_plans: 28
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-10)
+See: .planning/PROJECT.md (updated 2026-07-13)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 11 — dedicated-mobile-flow
+**Current focus:** Planning next milestone (v2.0) — run /gsd-new-milestone
 
 ## Current Position
 
-Phase: 11 (dedicated-mobile-flow) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 11
-Last activity: 2026-07-12 -- Phase 11 execution started
+Phase: 11 (dedicated-mobile-flow) — COMPLETE
+Status: v1.1 milestone shipped 2026-07-13
+Last activity: 2026-07-13 -- v1.1 milestone archived
 
-Progress: [████████████████████] 15/15 plans (100%)
+Progress: [████████████████████] 28/28 plans (100%)
 
 ## Performance Metrics
 
@@ -109,10 +108,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T19:33:07.601Z
-Stopped at: Phase 11 UI-SPEC approved
-Resume file: .planning/phases/11-dedicated-mobile-flow/11-UI-SPEC.md
+Last session: 2026-07-13T00:00:00.000Z
+Stopped at: v1.1 milestone archived
+Resume file: none — start next milestone
 
 ## Operator Next Steps
 
-- Plan Phase 10 with `/gsd-plan-phase 10`
+- Run `/gsd-new-milestone` to scope v2.0 (sync, multi-currency, roles, customer intelligence)
