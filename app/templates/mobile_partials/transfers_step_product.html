@@ -1,0 +1,32 @@
+{# Mobile Перемещение wizard, step 1 «Товар» (WH-03/UI-01). Extracted from
+   mobile_pages/transfers.html (13-04) so the bare fragment can be re-served
+   on its own via GET /m/transfers with an HX-Request header (the step-2
+   "Назад" button's target) — same context, no full-page chrome. Own
+   #wizard-step wrapper (this wizard's swap convention is outerHTML, matching
+   transfers_step_batch.html/transfers_step_dest.html's existing shape). The
+   code input debounces a hx-post to /m/transfers/step/batch which returns
+   the step-2 partial; the same endpoint is also hit by the «Далее» submit
+   button. #}
+<div id="wizard-step">
+  <p class="mobile-step-indicator">{{ step_label }}</p>
+  <form class="stacked-form" id="transfer-product-form"
+        hx-post="/m/transfers/step/batch"
+        hx-target="#wizard-step"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <div class="field">
+      <label for="code">Код товара</label>
+      <input type="text" id="code" name="code" value="{{ code }}" required autofocus
+             autocomplete="off"
+             hx-post="/m/transfers/step/batch"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#wizard-step"
+             hx-swap="outerHTML"
+             hx-sync="closest form:replace">
+      {% if errors is defined and errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+    </div>
+    <div class="mobile-actions">
+      <button type="submit">Далее</button>
+    </div>
+  </form>
+</div>
