@@ -356,17 +356,19 @@ Not applicable — this is a purely internal, already-established pattern within
 
 **If this table is empty:** N/A — one low-risk item logged above; everything else in this research was verified by direct file reads of the current codebase state.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact new-file/fragment names for `/sales/search-name`'s response partial**
+1. **Exact new-file/fragment names for `/sales/search-name`'s response partial** — RESOLVED
    - What we know: CONTEXT.md explicitly leaves this to the planner/executor (see "Claude's Discretion"), as long as it follows D-08 through D-11 (reuse `search_products`, click-to-select dropdown with `<mark>` highlighting, 3-char threshold, fill both code+name on click).
    - What's unclear: Whether the dropdown should be a new `partials/sale_name_search.html` or reuse/extend an existing fragment; whether it needs `<template>` wrapping (Pattern 2 above) depends on whether the trigger field sits inside `sale_row.html`'s `<table>` structure (it does — `sale_row.html` is a `<tr>`).
    - Recommendation: Given the trigger field (`name[]`) lives inside a `<table>` row (`sale_row.html`), the new dropdown fragment likely needs the same `<template>`-wrapping precedent as `sale_lookup.html`'s OOB `<td>`/`<tr>` fragments if it swaps table-context elements — the planner should confirm during task breakdown whether the dropdown target is inside or outside the table (e.g. a `<td>`-scoped list vs. a page-level floating overlay) before locking the exact markup.
+   - **RESOLVED (by planner, Plan 12-03):** New partial `app/templates/partials/sale_name_search.html` renders the dropdown, swapped into a plain, always-present `<div>` (`sale_name_field.html`, addressed via `dropdown_id`) that already exists inside `sale_row.html`'s `<td>` on initial row render. Because the swap target is a normal (non-OOB) `<div>` element that already exists in the DOM — not a `<td>`/`<tr>` being OOB-swapped — no `<template>`-wrapping is needed; the Pattern 2 precedent does not apply here.
 
-2. **Where exactly the `source == "catalog"` branch's price mapping lives** (service factoring)
+2. **Where exactly the `source == "catalog"` branch's price mapping lives** (service factoring) — RESOLVED
    - What we know: CONTEXT.md leaves this to the planner ("whether `lookup_prefill()`'s new `source="catalog"` branch lives in `app/services/receipts.py` or is factored differently is left to the planner").
    - What's unclear: Nothing blocking — `app/services/receipts.py::lookup_prefill()` is the natural home (it already has the two-branch shape to extend), and no dependency prevents adding the branch there directly.
    - Recommendation: Add it directly inside `lookup_prefill()` in `app/services/receipts.py`, calling `latest_price_for_code()` (already imported nowhere in that file — will need a new import from `app.services.pricing`) — no new service module needed for a single new branch.
+   - **RESOLVED (by planner, Plan 12-01):** Implemented exactly as recommended — the new `source == "catalog"` branch lives directly inside `lookup_prefill()` in `app/services/receipts.py`, importing and calling `latest_price_for_code()` from `app.services.pricing`. No new service module was introduced.
 
 ## Environment Availability
 

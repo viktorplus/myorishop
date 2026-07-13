@@ -53,45 +53,60 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
 ## Phase Details
 
 ### Phase 12: Code & Name Autofill
+
 **Goal**: Wherever the operator types a product code — on the product-add form, goods receipt, or the sales page — the system surfaces known price/name data instead of requiring a manual lookup
 **Depends on**: Phase 11 (extends the shipped ad-hoc `feat/catalogs-pricing` pricing-lookup service — `app/services/pricing.py`, `app/services/catalogs.py` — onto the product-add form and goods receipt, and formalizes it as a permanent feature; no new schema)
 **Requirements**: PRICE-02, PRICE-03, PRICE-04, SAL-06
 **Success Criteria** (what must be TRUE):
+
   1. On the product-add form, typing a code suggests catalog price and consultant (cost) price from imported catalog data, and the operator can accept the suggestion or override it
   2. On the product-add form, typing a code suggests the product name from the dictionary, and the operator can accept or override it
   3. On goods receipt (desktop and mobile), typing a code not yet in the product catalog suggests catalog price, consultant price, and name from imported catalog/dictionary data, all overridable by the operator
   4. On the sales page, typing a product code shows its name inline, and typing part of a product name shows a dropdown of matching codes to pick from
+
 **Plans**: 4 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 12-01-PLAN.md — Desktop receipt catalog-source autofill (PRICE-04) + PRICE-02/PRICE-03 formalization
-- [ ] 12-02-PLAN.md — Mobile receipt price forwarding + visible code/name readout (PRICE-04)
 - [ ] 12-03-PLAN.md — Sales name-fragment to code dropdown (SAL-06)
 - [ ] 12-04-PLAN.md — Mobile sales & mobile transfers visible-name fixes (SAL-06 / D-13, D-14)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 12-02-PLAN.md — Mobile receipt price forwarding + visible code/name readout (PRICE-04)
+
 **UI hint**: yes
 
 ### Phase 13: Mobile Wizard Context & Navigation
+
 **Goal**: Operators using the mobile sale/receipt/write-off/correction/transfer wizards always know what they're working on, can navigate back reliably, and can jump straight into a wizard from search results
 **Depends on**: Phase 11 (fixes context/navigation gaps found on audit of the mobile wizards shipped there — `app/templates/mobile_partials/*.html`, `app/routes/mobile_*.py`)
 **Requirements**: UI-02, UI-03, UI-04, UI-05
 **Success Criteria** (what must be TRUE):
+
   1. Every intermediate step of the sale, receipt, write-off, correction, and transfer mobile wizards displays the product code, name, and warehouse as visible on-screen text, not only as hidden form fields
   2. Every mobile wizard's "Назад" button uses the same explicit `hx-get`/`hx-post` step navigation pattern; the write-off wizard no longer relies on `history.back()`
   3. The mobile sale basket/review screen shows a step indicator consistent with the rest of the sale wizard
   4. From the mobile search product-detail screen, the operator can tap "Продать" or "Принять" to jump directly into the sale or receipt wizard for that product
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 14: List Pagination, Filtering, Sorting & Quick Delete
+
 **Goal**: Every list page in the app lets the operator page through, filter, and sort results instead of scrolling one unbounded table, and warehouses/products can be removed straight from their list
 **Depends on**: Phase 11 (applies uniformly across every list page shipped through v1.0/v1.1 — products, warehouses, customers, dictionary, history — plus the ad-hoc catalogs list; cross-cutting infrastructure, sequenced last)
 **Requirements**: LIST-01, LIST-02, LIST-03, LIST-04, LIST-05
 **Success Criteria** (what must be TRUE):
+
   1. Every list page (products, warehouses, customers, dictionary, catalogs, history) shows results a page at a time instead of one long unbounded list
   2. Every list page lets the operator filter rows by its relevant columns
   3. Every list page lets the operator sort rows by its relevant columns
   4. Operator can delete a warehouse directly from the warehouse list without opening its detail/edit page
   5. Operator can delete a product directly from the product list without opening its detail/edit page
+
 **Plans**: TBD
 **UI hint**: yes
 
