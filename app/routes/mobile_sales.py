@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
-from app.services.batches import open_batches
+from app.services.batches import active_warehouses, open_batches
 from app.services.sales import PRODUCT_NOT_FOUND_TMPL, lookup_prefill, register_sale
 
 router = APIRouter()
@@ -33,6 +33,11 @@ def _acc_context(
         "price_acc": price_acc,
         "batch_acc": batch_acc,
     }
+
+
+def _warehouse_names(session: Session) -> dict[str, str]:
+    """id -> name map so a wizard step can show its own «Склад:» line."""
+    return {w.id: w.name for w in active_warehouses(session)}
 
 
 @router.get("/m/sales")
@@ -96,6 +101,9 @@ def mobile_sale_step_product(
             # straight to the product step, not to a batch step that never
             # existed.
             "from_batch_step": False,
+            # No batch exists at this branch, so warehouse is never knowable
+            # (explicit None, never "" — mirrors corrections' convention).
+            "warehouse_name": None,
             **acc,
         }
         return templates.TemplateResponse(
@@ -126,6 +134,7 @@ def mobile_sale_step_product(
         # Pitfall 6/D-12: zero open batches blocks forward wizard progress —
         # sale_step_batch.html omits its "Далее" control when this is True.
         "show_empty": not batches,
+        "warehouse_names": _warehouse_names(session),
         **acc,
     }
     return templates.TemplateResponse(request, "mobile_partials/sale_step_batch.html", context)
@@ -167,6 +176,7 @@ def mobile_sale_step_batch(
         "batch_id": picked.id if picked else "",
         "auto_note": False,
         "show_empty": not batches,
+        "warehouse_names": _warehouse_names(session),
         **acc,
     }
     return templates.TemplateResponse(request, "mobile_partials/sale_step_batch.html", context)
@@ -197,6 +207,10 @@ def mobile_sale_step_qty_price(
         if candidate is not None and candidate.product_id == product.id:
             picked = candidate
 
+    # T-13-11: warehouse_name resolved ONLY from the already ownership-
+    # validated `picked` batch above, never from a raw client-supplied field.
+    warehouse_name = _warehouse_names(session).get(picked.warehouse_id) if picked is not None else None
+
     # Mirrors sale_batch_pick's fill rule exactly (app/routes/sales.py):
     # with a picked batch, the batch price is the SOLE source (Pitfall 4 —
     # no card fill when a batch was required), falling back to the card
@@ -224,6 +238,7 @@ def mobile_sale_step_qty_price(
         # this line — this step's own "Назад" must return to it (fresh
         # cards via GET /m/sales/step/batch), not skip past it.
         "from_batch_step": True,
+        "warehouse_name": warehouse_name,
         **acc,
     }
     return templates.TemplateResponse(request, "mobile_partials/sale_step_qty_price.html", context)
@@ -242,6 +257,7 @@ def _basket_lines(
     trust boundary. register_sale (called only from POST /m/sales) is the
     single source of truth for validation (T-11-11).
     """
+    warehouse_names = _warehouse_names(session)
     lines = []
     for code, qty, price, batch_id in zip(code_acc, qty_acc, price_acc, batch_acc, strict=False):
         code_clean = code.strip()
@@ -259,6 +275,7 @@ def _basket_lines(
                 "batch_id": batch_id,
                 "product_name": product.name if product is not None else code_clean,
                 "batch": batch,
+                "warehouse_name": warehouse_names.get(batch.warehouse_id) if batch is not None else None,
             }
         )
     return lines

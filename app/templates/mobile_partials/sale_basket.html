@@ -17,6 +17,7 @@
     <input type="hidden" name="batch_acc[]" value="{{ line.batch_id }}">
     <p>{{ line.product_name }} ({{ line.code }})</p>
     <p>Кол-во: {{ line.qty }} · Цена: {{ line.price }}</p>
+    {% if line.warehouse_name %}<p>Склад: {{ line.warehouse_name }}</p>{% endif %}
     <p class="muted">
       {%- if line.batch -%}
         Партия: {% if line.batch.expiry %}срок годности {{ line.batch.expiry | ru_date }}{% else %}без срока{% endif -%}
