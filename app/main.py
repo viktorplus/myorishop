@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.routes import (
     backup,
+    catalogs,
     categories,
     corrections,
     customers,
@@ -52,6 +53,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(categories.router)
+app.include_router(catalogs.router)
 app.include_router(warehouses.router)
 app.include_router(dictionary.router)
 app.include_router(receipts.router)

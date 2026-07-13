@@ -38,6 +38,32 @@ The app binds to loopback only and works without internet.
 
 Re-running the seed script without a reset in between refuses to run (pass `--force` to seed on top of existing data anyway).
 
+## Catalogs & price lists
+
+The **Каталоги** section (`/catalogs`) publishes the Oriflame catalog PDFs and,
+for each catalog, lists its products with prices. Source data lives in the
+`catalogs/` folder and is loaded into the database by two import scripts.
+
+Place the source files in `catalogs/`:
+
+- **PDF catalogs** — one file per issue (e.g. `2026-01.pdf`); mixed filename
+  formats are tolerated.
+- **`products.json`** — `code → { name, catalogs[] }`; fills the reference
+  dictionary (name + catalog membership).
+- **xlsx price lists** — one file per catalog issue (e.g. `01-2026.xlsx`); the
+  `КОД`/`ПЦ`/`ОП`/`ББ` columns fill the per-catalog price history.
+
+Load the data (both scripts are idempotent — safe to re-run after adding files):
+
+```bat
+uv run python scripts/import_catalogs.py   :: dictionary: names + catalog membership
+uv run python scripts/import_prices.py      :: per-catalog prices (catalog_prices)
+```
+
+After import, adding a product auto-fills the name (from the dictionary) and the
+catalog / purchase price (from the latest catalog) once its code is entered; the
+operator can still override any suggested value.
+
 ## Test
 
 ```bat

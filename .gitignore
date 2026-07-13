@@ -15,6 +15,11 @@ backups/
 # Local environment config (never commit real values)
 .env
 
+# Catalog PDFs are large local binaries (tens/hundreds of MB each), served
+# from disk by the /catalogs section. Keep them out of git; the small xlsx
+# price lists and products.json stay tracked for reproducible imports.
+catalogs/*.pdf
+
 # Git Bash crash artifacts (Windows)
 *.stackdump
 

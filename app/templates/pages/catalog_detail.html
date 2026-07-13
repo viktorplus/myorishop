@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/catalogs">← Все каталоги</a></p>
+<h1>{{ catalog.label }}</h1>
+
+<div class="form-actions">
+  <a class="button" href="/catalogs/{{ catalog.url_code }}/file" target="_blank" rel="noopener">Открыть PDF</a>
+</div>
+
+<h2>Товары в каталоге <span class="muted">({{ products | length }})</span></h2>
+
+{% if not products %}
+<p class="muted">Для этого каталога нет товаров в справочнике.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Код</th>
+      <th>Название</th>
+      <th class="num">Цена по каталогу</th>
+      <th class="num">Цена консультанта</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for entry in products %}
+    {% set price = prices.get(entry.code) %}
+    <tr>
+      <td>{{ entry.code }}</td>
+      <td>{{ entry.name }}</td>
+      <td class="num">{% if price and price.consumer_cents is not none %}{{ price.consumer_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{% if price and price.consultant_cents is not none %}{{ price.consultant_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

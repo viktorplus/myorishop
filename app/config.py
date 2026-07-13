@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # RPT-02/RPT-04 (D-05): global fallback when a product's own threshold is NULL.
     low_stock_threshold: int = 5
     stale_days: int = 90
+    # CAT-04: folder holding the published catalog PDFs (relative to CWD =
+    # repo root when launched via run.bat). Served read-only by /catalogs.
+    catalogs_dir: str = "catalogs"
 
 
 settings = Settings()

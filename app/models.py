@@ -193,6 +193,43 @@ class Dictionary(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # CAT-04: catalog membership imported from catalogs/products.json — the
+    # list of catalog codes (e.g. ["01_26", "03_26"]) this product appears in.
+    # NULL/[] = not present in any imported catalog. Helper data only (D-24).
+    catalogs: Mapped[list | None] = mapped_column(JSON)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
+class CatalogPrice(Base):
+    """Per-catalog price row (CAT-05), imported from the xlsx price lists.
+
+    One row per (catalog year, catalog number, product code): the full price
+    history across every catalog issue. Helper data only (like Dictionary,
+    D-24) — never feeds stock or the ledger. Prices are integer cents; the
+    source xlsx lists whole-ruble prices, converted on import.
+
+    Columns mirror the Oriflame price-list columns:
+      * consumer_cents   — ПЦ, the catalog / retail price a customer pays
+      * consultant_cents — ОП, the consultant (purchase) price
+      * points           — ББ, catalog bonus points
+    """
+
+    __tablename__ = "catalog_prices"
+    __table_args__ = (
+        UniqueConstraint(
+            "year", "number", "code", name="uq_catalog_prices_year_number_code"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    consumer_cents: Mapped[int | None] = mapped_column(Integer)
+    consultant_cents: Mapped[int | None] = mapped_column(Integer)
+    points: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 

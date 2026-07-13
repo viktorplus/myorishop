@@ -281,9 +281,12 @@ def test_migration_0002_fresh_db_and_backfill(tmp_path, monkeypatch):
         ).fetchone()
         assert name_lc == "демо-помада"
 
-        # (c) dictionary table with expected columns + unique index on code (PD-1)
+        # (c) dictionary table with expected columns + unique index on code (PD-1).
+        # Subset check (like the products columns above): later migrations add
+        # columns to this table (0010 adds `catalogs`), so pin the 0002 columns
+        # without forbidding newer ones.
         dict_cols = {row[1] for row in conn.execute("PRAGMA table_info(dictionary)")}
-        assert dict_cols == {"id", "code", "name", "created_at", "updated_at"}
+        assert {"id", "code", "name", "created_at", "updated_at"} <= dict_cols
         unique_on_code = False
         for _seq, index_name, unique, *_rest in conn.execute("PRAGMA index_list(dictionary)"):
             columns = [r[2] for r in conn.execute(f'PRAGMA index_info("{index_name}")')]

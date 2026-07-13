@@ -38,6 +38,15 @@
   {% include "partials/name_input.html" %}
   {% endwith %}
 
+  {# CAT-05: empty trigger that mirrors the code field's debounce and asks the
+     server for the latest catalog price, filling #catalog/#cost via OOB swaps
+     when they are still empty. Independent of the name autofill above. #}
+  <div id="price-autofill"
+       hx-get="/products/lookup-price"
+       hx-trigger="input changed delay:300ms from:#code"
+       hx-include="#code, #cost, #catalog"
+       hx-swap="none"></div>
+
   <div class="field">
     <label for="category">Категория <span class="muted">(необязательно)</span></label>
     <input type="text" id="category" name="category" list="cat-options" value="{% if form %}{{ form.category or '' }}{% elif product %}{{ product.category or '' }}{% endif %}">
@@ -92,6 +101,30 @@
 </form>
 
 {% if product %}
+{# CAT-05: latest known catalog price for this code (from the price lists). #}
+{% if latest_price is defined and latest_price %}
+<div class="field">
+  <label>Последняя цена по каталогу</label>
+  <p>
+    {% if latest_price.consumer_cents is not none %}{{ latest_price.consumer_cents | cents }}{% endif %}
+    {% if latest_price.consultant_cents is not none %}<span class="muted">· консультант {{ latest_price.consultant_cents | cents }}</span>{% endif %}
+    <span class="muted">(каталог {{ latest_price.number }} · {{ latest_price.year }})</span>
+  </p>
+</div>
+{% endif %}
+
+{# CAT-04: catalogs this product's code appears in (imported from products.json). #}
+{% if product_catalogs is defined and product_catalogs %}
+<div class="field">
+  <label>Каталоги</label>
+  <p>
+    {% for c in product_catalogs %}
+    <a href="/catalogs/{{ c.url_code }}">{{ c.label }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+</div>
+{% endif %}
+
 {% include "partials/price_history.html" %}
 
 {# Destructive zone, visually separated (24px, UI-SPEC lg). #}

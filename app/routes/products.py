@@ -17,6 +17,8 @@ from app.services.catalog import (
     soft_delete_product,
     update_product,
 )
+from app.services.catalogs import catalogs_for_code
+from app.services.pricing import latest_price_for_code
 
 router = APIRouter()
 
@@ -37,6 +39,35 @@ def products_search(request: Request, q: str = "", session: Session = Depends(ge
     # D-25: HTMX active search — returns ONLY the rows partial (Phase 1 rule).
     context = search_view(session, q)
     return templates.TemplateResponse(request, "partials/product_rows.html", context)
+
+
+@router.get("/products/lookup-price")
+def product_price_lookup(
+    request: Request,
+    code: str = "",
+    cost: str = "",
+    catalog: str = "",
+    session: Session = Depends(get_session),
+):
+    """CAT-05 autofill: fill the catalog/purchase price from the latest catalog.
+
+    Triggered by the code field on the product form. Fills a price ONLY when
+    it is currently empty (the operator's own value is never overwritten) and
+    the code has a known price; empty response (204) when there is nothing to
+    fill. The two inputs are returned as out-of-band swaps (hx-swap-oob).
+    """
+    latest = latest_price_for_code(session, code)
+    fill_catalog = latest is not None and latest.consumer_cents is not None and not catalog.strip()
+    fill_cost = latest is not None and latest.consultant_cents is not None and not cost.strip()
+    if not fill_catalog and not fill_cost:
+        return Response(status_code=204)
+    context = {
+        "fill_catalog": fill_catalog,
+        "catalog_cents": latest.consumer_cents if latest else None,
+        "fill_cost": fill_cost,
+        "cost_cents": latest.consultant_cents if latest else None,
+    }
+    return templates.TemplateResponse(request, "partials/product_price_autofill.html", context)
 
 
 @router.get("/products/new")
@@ -118,6 +149,8 @@ def product_edit(request: Request, product_id: str, session: Session = Depends(g
         "form": None,
         "low_stock_default": settings.low_stock_threshold,
         "stale_days_default": settings.stale_days,
+        "product_catalogs": catalogs_for_code(session, product.code or ""),
+        "latest_price": latest_price_for_code(session, product.code or ""),
     }
     return templates.TemplateResponse(request, "pages/product_form.html", context)
 
