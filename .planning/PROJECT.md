@@ -76,6 +76,8 @@ v2.0 is deferred behind v1.2 (see Active requirements and Context below): multi-
 - ✓ Write-off, return, and stock correction also require selecting the specific batch, not just the product — Phase 9 (LOT-05)
 - ✓ Report of batches with an approaching/passed expiry date — Phase 10 (LOT-06)
 - ✓ Dedicated mobile flow — simpler single-purpose screens/steps for core operations, not a CSS-only adaptation of the desktop pages — Phase 11 (UI-01)
+- ✓ Catalog/consultant price + name autofill by product code on the product-add form and goods receipt (desktop + mobile), for codes not yet in the product catalog — Phase 12 (PRICE-02, PRICE-03, PRICE-04)
+- ✓ Sales page name-on-code and code-dropdown-on-name-fragment autocomplete — Phase 12 (SAL-06)
 
 ### Active
 
@@ -108,6 +110,7 @@ Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs
 - **v1.1 shipped 2026-07-13** (started 2026-07-10, 3 days): 5 phases (7-11), 28 plans, 254 files changed, +28,067/-340 lines, 249 commits. Stack held unchanged: FastAPI + SQLAlchemy 2.0 + SQLite (WAL) + HTMX 2.0.10 (vendored) + Jinja2, uv, Alembic. UAT (6/6 passed) and a security threat-verification pass both completed 2026-07-13.
 - One Phase 1 human-verification item (offline `run.bat` launch + browser correction flow + restart persistence) remains unexecuted since v1.0 close — still deferred (see STATE.md Deferred Items). Recommend running it before relying on the app for real daily data entry.
 - Two advisory (non-blocking) code-review warnings remain in `transfers.py`/`writeoffs.py` from Phase 10 (batch-ownership leak, unstripped qty echo) — revisit if those files are touched again.
+- **Phase 12 shipped 2026-07-13**: catalog/name autofill extended to goods receipt (desktop + mobile) and sales-page name↔code cross-autofill. Code review caught a genuine data-loss bug (CR-01: mobile receipt wizard silently discarded operator-typed prices on a Назад→Далее round trip) — fixed and re-verified before phase completion, along with 3 other warnings (misleading autofill hint text, dead code branch, missing row-ID validation on a new HTMX partial).
 - **v2.0 (next):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Was deferred from v1.1 because it first needed the local data model changes (multi-warehouse, batches) that sync must now account for — those changes are now shipped.
 
 ## Constraints
@@ -137,6 +140,7 @@ Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs
 | UI-01 re-scoped mid-milestone as a dedicated mobile flow (separate screens), not a CSS-only adaptation, and moved from Phase 8 to Phase 11 | User clarified the requirement; building it last avoids extending it piecemeal every time a later phase adds an operation | ✓ Good — Shipped Phase 11 in one self-contained pass covering the full final operation set |
 | Batch selection made mandatory (not optional) on every stock-affecting operation via a D-12 guard flip once all services were batch-aware | Partial batch adoption would have left oversell/expiry guarantees inconsistent across operation types | ✓ Good — Shipped Phase 9 |
 | Mobile flow reuses existing services (register_sale, register_receipt, etc.) unchanged — new templates/routes only, no service-layer duplication | Keeps a single source of truth for business rules (guardrails, ledger writes) across desktop and mobile | ✓ Good — Shipped Phase 11, zero desktop regressions |
+| Shared `sale_name_field.html` partial included by both the initial basket-row render and every code-triggered OOB lookup swap | A debounced name-search dropdown wired only into the initial render would silently stop working after any code-based `/sales/lookup` swap replaced the row | ✓ Good — Shipped Phase 12 |
 
 ## Evolution
 
