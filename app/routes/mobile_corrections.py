@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
-from app.services.batches import open_batches
+from app.services.batches import active_warehouses, open_batches
 from app.services.corrections import lookup_prefill, register_correction
 
 router = APIRouter()
@@ -29,9 +29,18 @@ logger = logging.getLogger(__name__)
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
 
 
+def _warehouse_names(session: Session) -> dict[str, str]:
+    """id -> name map so a wizard step can show its own «Склад:» line."""
+    return {w.id: w.name for w in active_warehouses(session)}
+
+
 @router.get("/m/corrections")
-def mobile_correction_start(request: Request):
-    context = {"code": "", "not_found": False}
+def mobile_correction_start(request: Request, code: str = ""):
+    context = {"code": code.strip(), "not_found": False}
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(
+            request, "mobile_partials/corrections_step_product.html", context
+        )
     return templates.TemplateResponse(request, "mobile_pages/corrections.html", context)
 
 
@@ -74,6 +83,8 @@ def mobile_correction_step_batch(
     batches = open_batches(session, product.id)
     context = {
         "code": code_clean,
+        "name": product.name,
+        "warehouse_name": None,
         "batches": batches,
         "batch_id": "",
         "selected_batch_id": None,
@@ -106,6 +117,8 @@ def mobile_correction_batch_pick(
             picked = candidate
     context = {
         "code": code_clean,
+        "name": product.name if product is not None else "",
+        "warehouse_name": _warehouse_names(session).get(picked.warehouse_id) if picked else None,
         "batches": batches,
         "batch_id": picked.id if picked else "",
         "selected_batch_id": picked.id if picked else None,
@@ -117,16 +130,38 @@ def mobile_correction_batch_pick(
     )
 
 
+def _carried_warehouse_name(session: Session, code_clean: str, batch_id_clean: str) -> str | None:
+    """T-13-02: re-validate the carried batch_id's ownership before trusting
+    its warehouse_id for display — never trust batch_id blindly."""
+    if not batch_id_clean:
+        return None
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    if product is None:
+        return None
+    candidate = session.get(Batch, batch_id_clean)
+    if candidate is not None and candidate.product_id == product.id:
+        return _warehouse_names(session).get(candidate.warehouse_id)
+    return None
+
+
 @router.post("/m/corrections/step/mode")
 def mobile_correction_step_mode(
     request: Request,
     code: str = Form(""),
+    name: str = Form(""),
     batch_id: str = Form(""),
     batch_qty: str = Form(""),
+    session: Session = Depends(get_session),
 ):
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
     context = {
-        "code": code.strip(),
-        "batch_id": batch_id.strip(),
+        "code": code_clean,
+        "name": name.strip(),
+        "warehouse_name": _carried_warehouse_name(session, code_clean, batch_id_clean),
+        "batch_id": batch_id_clean,
         "batch_qty": batch_qty,
         "mode": "",
     }
@@ -139,13 +174,19 @@ def mobile_correction_step_mode(
 def mobile_correction_step_value(
     request: Request,
     code: str = Form(""),
+    name: str = Form(""),
     batch_id: str = Form(""),
     batch_qty: str = Form(""),
     mode: str = Form(""),
+    session: Session = Depends(get_session),
 ):
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
     context = {
-        "code": code.strip(),
-        "batch_id": batch_id.strip(),
+        "code": code_clean,
+        "name": name.strip(),
+        "warehouse_name": _carried_warehouse_name(session, code_clean, batch_id_clean),
+        "batch_id": batch_id_clean,
         "batch_qty": batch_qty,
         "mode": mode,
     }
@@ -158,6 +199,7 @@ def mobile_correction_step_value(
 def mobile_correction_create(
     request: Request,
     code: str = Form(""),
+    name: str = Form(""),
     mode: str = Form(""),
     value: str = Form(""),
     note: str = Form(""),
@@ -169,6 +211,10 @@ def mobile_correction_create(
     # Mode/qty fields arrive as strings on purpose: parsing/validation
     # happens in the service, which returns RU errors.
     form_echo = {"value": value, "note": note}
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
+    name_clean = name.strip()
+    warehouse_name = _carried_warehouse_name(session, code_clean, batch_id_clean)
     try:
         result, errors = register_correction(
             session,
@@ -186,8 +232,10 @@ def mobile_correction_create(
         context = {
             "errors": {"form": SAVE_FAILED_ERROR},
             "form": form_echo,
-            "code": code.strip(),
-            "batch_id": batch_id.strip(),
+            "code": code_clean,
+            "name": name_clean,
+            "warehouse_name": warehouse_name,
+            "batch_id": batch_id_clean,
             "mode": mode or "count",
             "batch_qty": batch_qty,
         }
@@ -205,8 +253,10 @@ def mobile_correction_create(
         context = {
             "oversell": result["oversell"],
             "form": form_echo,
-            "code": code.strip(),
-            "batch_id": batch_id.strip(),
+            "code": code_clean,
+            "name": name_clean,
+            "warehouse_name": warehouse_name,
+            "batch_id": batch_id_clean,
             "mode": mode or "count",
             "batch_qty": batch_qty,
         }
@@ -218,8 +268,10 @@ def mobile_correction_create(
         context = {
             "errors": errors,
             "form": form_echo,
-            "code": code.strip(),
-            "batch_id": batch_id.strip(),
+            "code": code_clean,
+            "name": name_clean,
+            "warehouse_name": warehouse_name,
+            "batch_id": batch_id_clean,
             "mode": mode or "count",
             "batch_qty": batch_qty,
         }
