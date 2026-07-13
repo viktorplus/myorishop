@@ -69,9 +69,9 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
 Plans:
 **Wave 1**
 
-- [ ] 12-01-PLAN.md — Desktop receipt catalog-source autofill (PRICE-04) + PRICE-02/PRICE-03 formalization
-- [ ] 12-03-PLAN.md — Sales name-fragment to code dropdown (SAL-06)
-- [ ] 12-04-PLAN.md — Mobile sales & mobile transfers visible-name fixes (SAL-06 / D-13, D-14)
+- [x] 12-01-PLAN.md — Desktop receipt catalog-source autofill (PRICE-04) + PRICE-02/PRICE-03 formalization
+- [x] 12-03-PLAN.md — Sales name-fragment to code dropdown (SAL-06)
+- [x] 12-04-PLAN.md — Mobile sales & mobile transfers visible-name fixes (SAL-06 / D-13, D-14)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -128,6 +128,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
-| 12. Code & Name Autofill | v1.2 | 0/4 | Not started | - |
+| 12. Code & Name Autofill | v1.2 | 3/4 | In Progress|  |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 0/TBD | Not started | - |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |

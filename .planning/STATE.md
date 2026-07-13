@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: Catalog Pricing UX & List Ergonomics
 status: executing
 stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-07-13T19:22:38.312Z"
-last_activity: 2026-07-13 -- Phase 12 planning complete
+last_updated: "2026-07-13T19:31:35.832Z"
+last_activity: 2026-07-13 -- Phase 12 execution started
 progress:
   total_phases: 3
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-13)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 12: Code & Name Autofill — ready to plan
+**Current focus:** Phase 12 — code-name-autofill
 
 ## Current Position
 
-Phase: 12 of 14 (Code & Name Autofill)
-Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-07-13 -- Phase 12 planning complete
+Phase: 12 (code-name-autofill) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 12
+Last activity: 2026-07-13 -- Phase 12 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
