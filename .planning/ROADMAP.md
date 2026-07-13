@@ -61,7 +61,13 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
   2. On the product-add form, typing a code suggests the product name from the dictionary, and the operator can accept or override it
   3. On goods receipt (desktop and mobile), typing a code not yet in the product catalog suggests catalog price, consultant price, and name from imported catalog/dictionary data, all overridable by the operator
   4. On the sales page, typing a product code shows its name inline, and typing part of a product name shows a dropdown of matching codes to pick from
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Desktop receipt catalog-source autofill (PRICE-04) + PRICE-02/PRICE-03 formalization
+- [ ] 12-02-PLAN.md — Mobile receipt price forwarding + visible code/name readout (PRICE-04)
+- [ ] 12-03-PLAN.md — Sales name-fragment to code dropdown (SAL-06)
+- [ ] 12-04-PLAN.md — Mobile sales & mobile transfers visible-name fixes (SAL-06 / D-13, D-14)
 **UI hint**: yes
 
 ### Phase 13: Mobile Wizard Context & Navigation
@@ -107,6 +113,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
-| 12. Code & Name Autofill | v1.2 | 0/TBD | Not started | - |
+| 12. Code & Name Autofill | v1.2 | 0/4 | Not started | - |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 0/TBD | Not started | - |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
