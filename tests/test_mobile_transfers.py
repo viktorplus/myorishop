@@ -290,3 +290,72 @@ def test_transfers_step_product_page_renders(mobile_client_factory):
     assert response.status_code == 200
     assert 'id="code"' in response.text
     assert "Шаг 1 из 3" in response.text
+
+
+# --- 13-04: transfers step 2 "Назад" hx-get + UI-02 regression guard ------
+
+
+def test_transfers_step_batch_back_is_hx_get_not_plain_link(
+    mobile_client_factory, session, stocked_product
+):
+    """D-01/D-02 uniformity: step 2's Назад must be an explicit hx-get, never
+    a plain full-page <a> link (13-04 closes the gap 13-CONTEXT.md's D-06
+    missed for transfers)."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post("/m/transfers/step/batch", data={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert '<a class="mobile-back" href="/m/transfers"' not in response.text
+    assert 'hx-get="/m/transfers"' in response.text
+
+
+def test_transfers_step_product_hx_request_returns_bare_fragment_with_code(
+    mobile_client_factory,
+):
+    """GET /m/transfers with an HX-Request header (the step-2 Назад button's
+    target) returns only the bare fragment, echoing ?code= back into the
+    input's value, and preserving typed code across the round trip."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers",
+        params={"code": "TEST-001"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert "<html" not in response.text
+    assert 'value="TEST-001"' in response.text
+
+
+def test_transfers_step_product_plain_get_still_full_page_with_code(
+    mobile_client_factory,
+):
+    """A plain GET /m/transfers?code=... (no HX-Request header) still renders
+    the full page — the ?code= pre-fill works on both response shapes."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get("/m/transfers", params={"code": "TEST-001"})
+
+    assert response.status_code == 200
+    assert "<html" in response.text
+    assert 'value="TEST-001"' in response.text
+
+
+def test_transfers_step_batch_header_survives_back_button_refactor(
+    mobile_client_factory, session, stocked_product
+):
+    """UI-02 regression guard: this plan's Назад-button refactor of
+    transfers_step_batch.html must not disturb the pre-existing Phase 12
+    visible code/name header (also covered by
+    test_transfers_step_batch_shows_resolved_name above)."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post("/m/transfers/step/batch", data={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert (
+        f"<strong>{stocked_product.code}</strong> — {stocked_product.name}"
+        in response.text
+    )

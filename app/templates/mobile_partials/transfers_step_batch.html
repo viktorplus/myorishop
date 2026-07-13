@@ -42,6 +42,14 @@
   {% endif %}
 
   <div class="mobile-actions">
-    <a class="mobile-back" href="/m/transfers">Назад</a>
+    {# WR-02: tojson correctly escapes a double quote inside code for both
+       JSON and this HTML attribute. hx-vals (not hx-include) since this
+       partial has no wrapping <form> of its own — matches this same file's
+       batch-pick cards' own technique for carrying code forward (13-04). #}
+    <button type="button" class="secondary"
+            hx-get="/m/transfers"
+            hx-vals="{{ {'code': code} | tojson }}"
+            hx-target="#wizard-step"
+            hx-swap="outerHTML">Назад</button>
   </div>
 </div>
