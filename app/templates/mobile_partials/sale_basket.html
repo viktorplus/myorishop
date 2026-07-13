@@ -3,6 +3,7 @@
    only, mirrors sale_row.html's Pitfall 2 precedent) removes that line's
    values from the form with no server round trip and no index bookkeeping. #}
 <div id="wizard-basket">
+  <p class="mobile-step-indicator">Корзина</p>
   <h2>Корзина</h2>
   {% set errors = errors | default({}) %}
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
