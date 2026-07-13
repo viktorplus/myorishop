@@ -12,7 +12,7 @@
        autocomplete="off"
        hx-get="/sales/search-name"
        hx-trigger="input changed delay:300ms"
-       hx-vals='{"row": "{{ row }}"}'
+       hx-vals="{{ {'row': row} | tojson }}"
        hx-target="#{{ dropdown_id }}"
        hx-swap="innerHTML"
        hx-sync="this:replace">

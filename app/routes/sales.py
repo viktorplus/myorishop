@@ -108,6 +108,13 @@ def sale_lookup(
     if result is None:
         return Response(status_code=204)
 
+    # WR-03: mirrors sale_search_name's/sale_batch_pick's row guard — a
+    # malformed row value collapses to "" instead of being echoed into the
+    # rendered hx-vals JSON (sale_name_field.html).
+    row = row.strip()
+    if row and not _ROW_ID_RE.fullmatch(row):
+        row = ""
+
     code_clean = code.strip()
     batches: list[Batch] = []
     selected_batch: Batch | None = None
