@@ -24,6 +24,7 @@ def dictionary_page(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(request, "pages/dictionary.html", context)
 
 
+# Formalized under Phase 12 (PRICE-03) — shipped ad-hoc on feat/catalogs-pricing, now a permanent feature.
 @router.get("/dictionary/lookup")
 def dictionary_lookup(
     request: Request,

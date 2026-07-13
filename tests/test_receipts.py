@@ -23,12 +23,17 @@ test_web_, everything else is service level. "recent"/"nav" select the
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation, Product, Warehouse
+from app.models import Batch, CatalogPrice, Operation, Product, Warehouse
 from app.services import catalog
 from app.services.catalog import create_product, soft_delete_product
 from app.services.dictionary import add_entry
 from app.services.ledger import compute_stock, record_operation
-from app.services.receipts import parse_optional_expiry, recent_receipts, register_receipt
+from app.services.receipts import (
+    lookup_prefill,
+    parse_optional_expiry,
+    recent_receipts,
+    register_receipt,
+)
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
 # Plan 09-02: the default new-batch path used by every previously batch-less
@@ -598,6 +603,7 @@ def test_web_nav_has_receipts_link(client):
 
 CARD_HINT = "Данные подставлены из карточки товара — новые цены обновят карточку."
 DICT_HINT = "Название подставлено из справочника — можно изменить."
+CATALOG_FILL_HINT = "Цена и название подставлены из каталога — можно изменить."
 
 
 def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
@@ -702,6 +708,92 @@ def test_price_sync_ignores_name_for_existing_product(session, product, warehous
     assert edited == []
 
 
+# --- Plan 12-01: lookup_prefill() source=="catalog" branch (D-01/D-02/D-03) ---
+
+
+def _catalog_price(code, consumer=None, consultant=None):
+    return CatalogPrice(
+        id=new_id(),
+        code=code,
+        year=2026,
+        number=1,
+        consumer_cents=consumer,
+        consultant_cents=consultant,
+    )
+
+
+def test_lookup_prefill_catalog_source_dictionary_name_only(session):
+    """D-01: unknown code, Dictionary match only -> catalog source, prices all None."""
+    add_entry(session, code="4321", name="Тушь")
+
+    result = lookup_prefill(session, "4321")
+
+    assert result == {
+        "source": "catalog",
+        "name": "Тушь",
+        "prices": {"cost": None, "catalog": None, "sale": None},
+    }
+
+
+def test_lookup_prefill_catalog_source_price_only(session):
+    """D-01: unknown code, CatalogPrice match only -> name None, cost/catalog filled."""
+    session.add(_catalog_price("5555", consumer=1500, consultant=900))
+    session.commit()
+
+    result = lookup_prefill(session, "5555")
+
+    assert result == {
+        "source": "catalog",
+        "name": None,
+        "prices": {"cost": 900, "catalog": 1500, "sale": None},
+    }
+
+
+def test_lookup_prefill_catalog_source_combines_dictionary_and_price(session):
+    """D-01: both a Dictionary entry AND a CatalogPrice row -> combined dict."""
+    add_entry(session, code="6666", name="Помада")
+    session.add(_catalog_price("6666", consumer=2000, consultant=1200))
+    session.commit()
+
+    result = lookup_prefill(session, "6666")
+
+    assert result == {
+        "source": "catalog",
+        "name": "Помада",
+        "prices": {"cost": 1200, "catalog": 2000, "sale": None},
+    }
+
+
+def test_lookup_prefill_unknown_code_returns_none(session):
+    """No Product, no Dictionary, no CatalogPrice -> None, unchanged contract."""
+    assert lookup_prefill(session, "0000") is None
+
+
+def test_lookup_prefill_product_source_unaffected_by_catalog_branch(session, product):
+    """D-03: an active Product code still returns source=="product", unaffected."""
+    product.cost_cents = 1250
+    session.commit()
+
+    result = lookup_prefill(session, "TEST-001")
+
+    assert result["source"] == "product"
+    assert result["name"] == "Тестовый товар"
+    assert result["prices"]["cost"] == 1250
+
+
+def test_lookup_prefill_sale_never_filled_from_catalog_price(session):
+    """D-02 regression guard: sale is always None on the catalog-source branch,
+    even when CatalogPrice carries both consumer_cents and consultant_cents."""
+    add_entry(session, code="7777", name="Тональный крем")
+    session.add(_catalog_price("7777", consumer=3000, consultant=1800))
+    session.commit()
+
+    result = lookup_prefill(session, "7777")
+
+    assert result["source"] == "catalog"
+    assert result["prices"]["sale"] is None
+
+
 # --- Plan 03-02: GET /receipts/lookup pre-fill (D-03 / PD-10 / RCP-02) ---
 
 
@@ -740,13 +832,94 @@ def test_web_lookup_product_skips_typed_price_fields(client, session, product):
 
 
 def test_web_lookup_dictionary_fallback_name_only(client, session):
-    """D-03 fallback: dictionary-only code fills the name, no oob fragments."""
+    """D-01 catalog source: dictionary-only code fills the name via the combined
+    catalog branch (no removed "dictionary" source anymore). Blank cost/catalog
+    OOB fragments DO render — fill_fields is computed from typed-emptiness only
+    (Pitfall 1), independent of whether a real CatalogPrice value exists."""
     add_entry(session, code="4321", name="Тушь")
     response = client.get("/receipts/lookup", params={"code": "4321", "name": ""})
     assert response.status_code == 200
     assert "Тушь" in response.text
-    assert DICT_HINT in response.text
-    assert "hx-swap-oob" not in response.text
+    assert CATALOG_FILL_HINT in response.text
+
+
+def test_web_lookup_catalog_source_price_only_fills_cost_and_catalog(client, session):
+    """Unknown-to-Product code with a CatalogPrice match only: cost/catalog OOB
+    fragments carry the real consultant/consumer cents display values, and
+    sale is never touched (D-02)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "5555", "name": "", "cost": "", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="cost-wrap"' in response.text
+    assert 'value="9,00"' in response.text
+    assert 'id="catalog-wrap"' in response.text
+    assert 'value="15,00"' in response.text
+    assert 'id="sale-wrap"' not in response.text
+
+
+def test_web_lookup_catalog_source_combines_dictionary_and_price(client, session):
+    """Unknown-to-Product code matched by BOTH a Dictionary name and a
+    CatalogPrice row: name text and both price OOB fragments appear together."""
+    add_entry(session, code="6666", name="Помада")
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="6666",
+            year=2026,
+            number=1,
+            consumer_cents=2000,
+            consultant_cents=1200,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "6666", "name": "", "cost": "", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert "Помада" in response.text
+    assert 'id="cost-wrap"' in response.text
+    assert 'id="catalog-wrap"' in response.text
+
+
+def test_web_lookup_catalog_source_skips_typed_cost(client, session):
+    """Typed-cost-preserved regression for the catalog branch, mirroring
+    test_web_lookup_product_skips_typed_price_fields: a price already typed
+    by the operator is excluded from the fill."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "5555", "name": "", "cost": "9", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="cost-wrap"' not in response.text
+    assert 'id="catalog-wrap"' in response.text
 
 
 def test_web_lookup_204_for_unknown_code(client):
