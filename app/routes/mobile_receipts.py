@@ -88,6 +88,9 @@ def mobile_receipt_step_batch(
     code: str = Form(""),
     warehouse_id: str = Form(""),
     name: str = Form(""),
+    cost: str = Form(""),
+    sale: str = Form(""),
+    catalog: str = Form(""),
     session: Session = Depends(get_session),
 ):
     actives = active_warehouses(session)
@@ -106,16 +109,26 @@ def mobile_receipt_step_batch(
     # name for a code that still resolves to nothing).
     final_name = resolved_name or name.strip()
     prices = result["prices"] if result and result["prices"] else {}
+    resolved_cost = format_cents(prices["cost"]) if prices.get("cost") is not None else ""
+    resolved_sale = format_cents(prices["sale"]) if prices.get("sale") is not None else ""
+    resolved_catalog = (
+        format_cents(prices["catalog"]) if prices.get("catalog") is not None else ""
+    )
+    # CR-01: a fresh lookup wins over stale typed prices (code changed to a
+    # now-known product/catalog match); otherwise preserve whatever the
+    # operator already typed on step 3, so tapping "Назад" and then "Далее"
+    # again does not silently discard a manual price edit.
+    final_cost = resolved_cost or cost.strip()
+    final_sale = resolved_sale or sale.strip()
+    final_catalog = resolved_catalog or catalog.strip()
     context = {
         "code": code_clean,
         "warehouse_id": selected,
         "name": final_name,
         "name_known": bool(resolved_name),
-        "cost": format_cents(prices["cost"]) if prices.get("cost") is not None else "",
-        "sale": format_cents(prices["sale"]) if prices.get("sale") is not None else "",
-        "catalog": (
-            format_cents(prices["catalog"]) if prices.get("catalog") is not None else ""
-        ),
+        "cost": final_cost,
+        "sale": final_sale,
+        "catalog": final_catalog,
         **chooser,
     }
     return templates.TemplateResponse(
