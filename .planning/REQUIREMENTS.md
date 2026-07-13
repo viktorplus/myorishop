@@ -68,25 +68,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PRICE-02 | TBD | Pending |
-| PRICE-03 | TBD | Pending |
-| PRICE-04 | TBD | Pending |
-| UI-02 | TBD | Pending |
-| UI-03 | TBD | Pending |
-| UI-04 | TBD | Pending |
-| UI-05 | TBD | Pending |
-| SAL-06 | TBD | Pending |
-| LIST-01 | TBD | Pending |
-| LIST-02 | TBD | Pending |
-| LIST-03 | TBD | Pending |
-| LIST-04 | TBD | Pending |
-| LIST-05 | TBD | Pending |
+| PRICE-02 | Phase 12 | Pending |
+| PRICE-03 | Phase 12 | Pending |
+| PRICE-04 | Phase 12 | Pending |
+| UI-02 | Phase 13 | Pending |
+| UI-03 | Phase 13 | Pending |
+| UI-04 | Phase 13 | Pending |
+| UI-05 | Phase 13 | Pending |
+| SAL-06 | Phase 12 | Pending |
+| LIST-01 | Phase 14 | Pending |
+| LIST-02 | Phase 14 | Pending |
+| LIST-03 | Phase 14 | Pending |
+| LIST-04 | Phase 14 | Pending |
+| LIST-05 | Phase 14 | Pending |
 
 **Coverage:**
 - v1 requirements: 13 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 13 ⚠️ (resolved by roadmapper)
+- Mapped to phases: 13/13 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-13*
-*Last updated: 2026-07-13 after milestone v1.2 definition*
+*Last updated: 2026-07-13 after v1.2 roadmap creation (Phases 12-14)*

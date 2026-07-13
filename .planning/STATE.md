@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Catalog Pricing UX & List Ergonomics
 status: planning
-last_updated: "2026-07-13T17:39:32.086Z"
+last_updated: "2026-07-13T18:30:00.000Z"
 last_activity: 2026-07-13
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-13)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Planning next milestone (v2.0) — run /gsd-new-milestone
+**Current focus:** Phase 12: Code & Name Autofill — ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-13 — Milestone v1.2 started
+Phase: 12 of 14 (Code & Name Autofill)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-13 — v1.2 roadmap created (Phases 12-14), 13/13 requirements mapped
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -76,12 +78,11 @@ Last activity: 2026-07-13 — Milestone v1.2 started
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table (v1.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
 
-- Phase ordering (v1.1 roadmap, revised): quick wins (category + min price) first, then Warehouses (structural prerequisite), then the larger Batch Tracking & Ledger Integration phase, then Warehouse Transfers & Expiry Reporting (depends on both Warehouses and Batches), then a dedicated Mobile Flow phase last — isolates the riskiest ledger-schema work (Phase 9) after the lower-risk work has shipped, and builds the mobile flow once against the finished feature set.
-- WH-02 (per-batch storage location) mapped to Phase 9 (Batch Tracking), not Phase 8 (Warehouses), because the location tag is a field on `Batch` (the stock-holding unit), not on `Warehouse` itself — it can't be observably delivered until batches exist.
-- WH-03 (warehouse transfer) and LOT-06 (expiring-batches report) grouped into their own Phase 10 rather than folded into Phase 9, to keep the ledger-schema-touching phase (9) focused and separately verifiable from the additive transfer/report work built on top of it.
-- **Revision (2026-07-10):** UI-01 was re-clarified by the user as a dedicated mobile flow — separate, simplified single-purpose screens/steps for core operations — rather than a CSS-only responsive adaptation of the existing desktop pages. This changed the phase's nature from a one-time CSS pass (safely sequenced early) into a parallel screen set that must cover the operations that exist by the end of the milestone. Decision: pull it out as its own standalone phase (not folded as extra success criteria into Batches or Transfers/Expiry) and sequence it last (Phase 11), after Warehouses, Batches, and Transfers/Expiry Reporting all exist on desktop — so the mobile flow is built once, in one self-contained pass, covering the complete final v1.1 operation set (including batch picking, transfers, and expiry checks) instead of being built early and extended piecemeal every time a later phase adds an operation. This moved UI-01's phase mapping from Phase 8 to Phase 11 and shifted Warehouses/Batches/Transfers-Expiry from 9/10/11 to 8/9/10. The existing desktop layout is explicitly required to stay unchanged (Phase 11 success criterion 4).
+- **v1.2 roadmap (2026-07-13):** 13 requirements grouped into 3 phases — Phase 12 (Code & Name Autofill: PRICE-02/03/04 + SAL-06), Phase 13 (Mobile Wizard Context & Navigation: UI-02..05), Phase 14 (List Pagination/Filtering/Sorting & Quick Delete: LIST-01..05).
+- SAL-06 (sales-page code/name autocomplete) folded into Phase 12 alongside PRICE-02/03/04 rather than given its own phase — same "type a code/name, get a suggestion" UX pattern across product-add, receipt, and sales forms; avoids a thin single-requirement phase per granularity guidance.
+- v1.2 phase order: Code & Name Autofill (extends the already-shipped ad-hoc `feat/catalogs-pricing` branch) → Mobile Wizard Context & Navigation (fixes v1.1 Phase 11 audit gaps) → List Pagination/Filtering/Sorting & Quick Delete (broadest, cross-cutting infrastructure touching every list page, sequenced last).
 
 ### Pending Todos
 
@@ -93,7 +94,7 @@ None yet.
 
 ### Blockers/Concerns
 
-None open — v1.0 blockers resolved and closed at milestone archive.
+None open.
 
 ## Deferred Items
 
@@ -103,13 +104,14 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
+| code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) |
 
 ## Session Continuity
 
-Last session: 2026-07-13T00:00:00.000Z
-Stopped at: v1.1 milestone archived
-Resume file: none — start next milestone
+Last session: 2026-07-13T18:30:00.000Z
+Stopped at: v1.2 roadmap created (Phases 12-14), REQUIREMENTS.md traceability updated (13/13 mapped)
+Resume file: none
 
 ## Operator Next Steps
 
-- Run `/gsd-new-milestone` to scope v2.0 (sync, multi-currency, roles, customer intelligence)
+- Run `/gsd-plan-phase 12` to plan Phase 12: Code & Name Autofill
