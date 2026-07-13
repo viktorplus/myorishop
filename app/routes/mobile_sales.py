@@ -90,6 +90,11 @@ def mobile_sale_step_product(
             "batch_id": "",
             "fill_price_cents": None,
             "fill_price_hint": "",
+            # 11-UAT.md Test 4 (Bug B): no batch step was ever shown for a
+            # dictionary-only match, so this step's own "Назад" must return
+            # straight to the product step, not to a batch step that never
+            # existed.
+            "from_batch_step": False,
             **acc,
         }
         return templates.TemplateResponse(
@@ -210,6 +215,11 @@ def mobile_sale_step_qty_price(
         "price": "",
         "fill_price_cents": fill_price_cents,
         "fill_price_hint": fill_price_hint,
+        # 11-UAT.md Test 4 (Bug B): this route's only caller is the batch
+        # step's own "Далее" button, so a batch step was always shown for
+        # this line — this step's own "Назад" must return to it (fresh
+        # cards via GET /m/sales/step/batch), not skip past it.
+        "from_batch_step": True,
         **acc,
     }
     return templates.TemplateResponse(request, "mobile_partials/sale_step_qty_price.html", context)

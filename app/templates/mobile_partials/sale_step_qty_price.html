@@ -1,7 +1,13 @@
 {# Step "Количество и цена" (3 of 3). Reached either from the batch step's
    "Далее" (a batch was picked/auto-selected) or directly from the product
    step for a dictionary-only match (no batch to pick — fill_price_cents is
-   None, price pre-fill left empty). #}
+   None, price pre-fill left empty).
+
+   11-UAT.md Test 4 (Bug B): "Назад" is gated on `from_batch_step` so it
+   returns to whichever step was actually shown for this line — the batch
+   step (fresh cards via GET /m/sales/step/batch, when one was shown) or the
+   product step (POST .../step/product back=1, dictionary-only match, no
+   batch step ever shown). #}
 <div id="qty-price-wrap">
   <p class="mobile-step-indicator">Шаг 3 из 3</p>
   {% for c in code_acc %}<input type="hidden" name="code_acc[]" value="{{ c }}">{% endfor %}
@@ -20,9 +26,15 @@
   </label>
   {% if fill_price_hint %}<p class="muted">{{ fill_price_hint }}</p>{% endif %}
   <div class="mobile-actions">
+    {% if from_batch_step %}
+    <button type="button" class="secondary"
+            hx-get="/m/sales/step/batch"
+            hx-target="#wizard-step" hx-swap="innerHTML">Назад</button>
+    {% else %}
     <button type="button" class="secondary"
             hx-post="/m/sales/step/product" hx-vals='{"back": "1"}'
             hx-target="#wizard-step" hx-swap="innerHTML">Назад</button>
+    {% endif %}
     <button type="button"
             hx-post="/m/sales/step/basket-add"
             hx-target="#wizard-step" hx-swap="innerHTML">Добавить в корзину</button>
