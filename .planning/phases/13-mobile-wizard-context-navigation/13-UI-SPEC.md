@@ -2,10 +2,11 @@
 gsd_state_version: 1.0
 phase: 13
 slug: mobile-wizard-context-navigation
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-13
+reviewed_at: 2026-07-13
 ---
 
 # Phase 13 — UI Design Contract
