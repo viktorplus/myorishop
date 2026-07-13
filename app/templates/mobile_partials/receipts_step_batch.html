@@ -50,7 +50,7 @@
   </label>
 </fieldset>
 <div class="mobile-actions">
-  <a class="button secondary" href="/m/receipts">Назад</a>
+  <button type="button" class="secondary" hx-get="/m/receipts" hx-include="closest form" hx-target="#wizard-step" hx-swap="innerHTML">Назад</button>
   <button type="submit" hx-post="/m/receipts/step/details" hx-include="closest form">Далее</button>
 </div>
 {% endif %}

@@ -305,6 +305,49 @@ def test_web_receipt_create_topup_happy_path(
     assert batch.price_cents == 1000  # frozen — never rewritten by a top-up
 
 
+# --- Task 2 (13-03): ?code= pre-fill + step 2's own hx-get "Назад" ---
+
+
+def test_step_batch_back_no_longer_a_plain_link(mobile_client_factory, session, warehouse):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": "9999", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert '<a class="button secondary" href="/m/receipts"' not in response.text
+
+
+def test_step_batch_back_is_hx_get_to_receipts(mobile_client_factory, session, warehouse):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": "9999", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert 'hx-get="/m/receipts"' in response.text
+
+
+def test_get_receipts_hx_request_returns_bare_fragment_with_code(
+    mobile_client_factory, session, warehouse
+):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.get(
+        "/m/receipts", params={"code": "TEST-001"}, headers={"HX-Request": "true"}
+    )
+    assert response.status_code == 200
+    assert "<html" not in response.text
+    assert 'value="TEST-001"' in response.text
+
+
+def test_get_receipts_plain_still_renders_full_page_with_code(
+    mobile_client_factory, session, warehouse
+):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.get("/m/receipts", params={"code": "TEST-001"})
+    assert response.status_code == 200
+    assert "<html" in response.text
+    assert 'value="TEST-001"' in response.text
+
+
 def test_web_receipt_create_validation_error_writes_zero_rows(
     mobile_client_factory, session, product, warehouse
 ):
