@@ -358,7 +358,7 @@ ROUTE differs per step and must be looked up per-file, matching each step's actu
 expects to land on step 3 (mode) with the picked mode still selected — if it lands on step 1
 instead, this pitfall was not fixed.
 
-## Open Question: Does corrections step 2's "Назад" (→ step 1) also need the `hx-post`+fragment fix, or is the plain-link pattern acceptable there (matching receipts' own step-2 precedent)?
+## Open Question: Does corrections step 2's "Назад" (→ step 1) also need the `hx-post`+fragment fix, or is the plain-link pattern acceptable there (matching receipts' own step-2 precedent)? (RESOLVED — see 13-01-PLAN.md objective)
 
 **What we know:**
 - `13-CONTEXT.md` D-05 literally reads: "each step's 'Назад' should `hx-post` back to the previous
@@ -390,6 +390,14 @@ locked-decision scope, the fallback (leaving step 2's plain link as-is, matching
 precedent) is also defensible — but should be an explicit, logged choice, not an oversight.
 **This should be confirmed with the user or explicitly decided by the planner before execution**,
 since it changes whether `mobile_correction_start` needs a route change at all.
+
+**Resolution (logged during planning):** the orchestrator resolved this in favor of full uniformity
+— Success Criterion #2 applies to every step of every wizard, no carve-outs for steps that happen
+to already be a plain link. Plan 13-01 converts corrections' step 2 "Назад" to `hx-get` + fragment;
+the same audit, applied literally, also surfaced that receipts' and transfers' own step-2 "Назад"
+links were themselves still plain links (not yet fixed by any prior phase), so Plans 13-03 and
+13-04 apply the identical fix to those two wizards for full consistency. See 13-01-PLAN.md's
+objective for the full resolution text.
 
 ## Code Examples
 
