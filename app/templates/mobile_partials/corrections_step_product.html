@@ -1,0 +1,34 @@
+{# Mobile Корректировка wizard, step 1 "Товар" (UI-01/OPS-03). Extracted from
+   mobile_pages/corrections.html so the same fragment can be served either
+   wrapped in the full page (cold GET) or bare (HX-Request GET, e.g. from
+   step 2's own "Назад" button — 13-01-PLAN.md Task 1/2). Mirrors
+   corrections_not_found.html's own #corrections-step-wrap shape exactly, so
+   both response paths produce DOM-compatible output for an outerHTML swap
+   target. #}
+<div id="corrections-step-wrap">
+  <p class="mobile-step-indicator">Шаг 1 из 4</p>
+  <h1>Корректировка</h1>
+  {% if not_found %}
+  <div class="error-block">Товар с кодом «{{ code }}» не найден.</div>
+  {% endif %}
+  <form class="stacked-form"
+        hx-post="/m/corrections/step/batch"
+        hx-target="#corrections-step-wrap"
+        hx-swap="outerHTML">
+    <div class="field">
+      <label for="code">Код</label>
+      {# Debounced code->name lookup, mirrors desktop's correction_lookup
+         (D-11): the server decides fill vs 204. #}
+      <input type="text" id="code" name="code" value="{{ code or '' }}" required autofocus
+             hx-get="/m/corrections/lookup"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#name-wrap"
+             hx-swap="outerHTML"
+             hx-sync="this:replace">
+    </div>
+    {% include "mobile_partials/corrections_name_echo.html" %}
+    <div class="mobile-actions">
+      <button type="submit">Далее</button>
+    </div>
+  </form>
+</div>

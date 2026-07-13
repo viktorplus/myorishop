@@ -8,6 +8,7 @@
    that replaced the form with hidden inputs. #}
 <div id="corrections-step-wrap">
   <p class="mobile-step-indicator">Шаг 4 из 4</p>
+  {% include "mobile_partials/_wizard_header.html" %}
   <h1>Значение</h1>
   {% if errors %}
   <div class="error-block">
@@ -23,6 +24,7 @@
         hx-swap="outerHTML"
         hx-disabled-elt="find button">
     <input type="hidden" name="code" value="{{ code }}">
+    <input type="hidden" name="name" value="{{ name }}">
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
     <input type="hidden" name="mode" value="{{ mode }}">
     <div class="field">
@@ -36,7 +38,9 @@
       <input type="text" id="note" name="note" value="{{ form.note if form is defined and form.note else '' }}">
     </div>
     <div class="mobile-actions">
-      <a class="mobile-back" href="/m/corrections">Назад</a>
+      <button type="button" class="secondary" hx-post="/m/corrections/step/mode"
+              hx-include="closest form" hx-target="#corrections-step-wrap"
+              hx-swap="outerHTML">Назад</button>
       <button type="submit">Сохранить корректировку</button>
     </div>
   </form>

@@ -15,8 +15,8 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 
 ### Mobile Wizard UX
 
-- [ ] **UI-02**: Every intermediate step of the sale, receipt, write-off, correction, and transfer mobile wizards displays the product code, name, and warehouse in visible text (not just hidden inputs)
-- [ ] **UI-03**: All mobile wizards use the same explicit `hx-get`/`hx-post` "Назад" navigation pattern; the write-off wizard's `history.back()` steps are fixed to match
+- [x] **UI-02**: Every intermediate step of the sale, receipt, write-off, correction, and transfer mobile wizards displays the product code, name, and warehouse in visible text (not just hidden inputs)
+- [x] **UI-03**: All mobile wizards use the same explicit `hx-get`/`hx-post` "Назад" navigation pattern; the write-off wizard's `history.back()` steps are fixed to match
 - [ ] **UI-04**: The mobile sale basket/review screen shows a step indicator consistent with the rest of the sale wizard
 - [ ] **UI-05**: Mobile search product-detail screen offers quick "Продать" / "Принять" actions that jump directly into the sale/receipt wizard for that product
 
@@ -71,8 +71,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PRICE-02 | Phase 12 | Complete |
 | PRICE-03 | Phase 12 | Complete |
 | PRICE-04 | Phase 12 | Complete |
-| UI-02 | Phase 13 | Pending |
-| UI-03 | Phase 13 | Pending |
+| UI-02 | Phase 13 | Complete |
+| UI-03 | Phase 13 | Complete |
 | UI-04 | Phase 13 | Pending |
 | UI-05 | Phase 13 | Pending |
 | SAL-06 | Phase 12 | Complete |
@@ -83,6 +83,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIST-05 | Phase 14 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 13 total
 - Mapped to phases: 13/13 ✓
 - Unmapped: 0
