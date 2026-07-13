@@ -11,8 +11,9 @@ Naming: "step_batch" selects the Task 1 slice (steps 1-2 — route skeleton +
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation
+from app.models import Batch, CatalogPrice, Operation
 from app.routes import mobile_receipts
+from app.services.dictionary import add_entry
 
 # --- Task 1: steps 1-2 (Товар, Партия chooser) ---
 
@@ -94,6 +95,66 @@ def test_web_step_batch_zero_warehouses_defensive_block(mobile_client_factory, s
     assert "Далее" not in response.text
 
 
+def test_web_step_batch_existing_product_forwards_cost_price(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-06: an existing Product's cost pre-fills as a hidden field; unset
+    sale/catalog render empty (PD-8 shape, not literal "None")."""
+    product.cost_cents = 1250
+    session.commit()
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": product.code, "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert '<input type="hidden" name="cost" value="12,50">' in response.text
+    assert '<input type="hidden" name="sale" value="">' in response.text
+    assert '<input type="hidden" name="catalog" value="">' in response.text
+
+
+def test_web_step_batch_catalog_source_forwards_cost_and_catalog_never_sale(
+    mobile_client_factory, session, warehouse
+):
+    """D-01/D-02: a code unknown to Product but present in CatalogPrice
+    forwards cost/catalog from the catalog source; sale is NEVER filled from
+    CatalogPrice data (D-02 boundary, mobile layer)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": "5555", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert '<input type="hidden" name="cost" value="9,00">' in response.text
+    assert '<input type="hidden" name="catalog" value="15,00">' in response.text
+    assert '<input type="hidden" name="sale" value="">' in response.text
+
+
+def test_web_step_batch_unknown_code_forwards_empty_prices(
+    mobile_client_factory, session, warehouse
+):
+    """Code unknown everywhere -> all three hidden price inputs render empty."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": "no-such-code", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert '<input type="hidden" name="cost" value="">' in response.text
+    assert '<input type="hidden" name="sale" value="">' in response.text
+    assert '<input type="hidden" name="catalog" value="">' in response.text
+
+
 # --- Task 2: steps 3-4 (Количество/Цены, Подтверждение) + final write ---
 
 
@@ -109,6 +170,30 @@ def test_web_step_details_shows_new_batch_fields_when_new(mobile_client_factory,
     assert 'name="expiry"' in response.text
     assert 'name="location"' in response.text
     assert "стеллаж А3" in response.text  # placeholder, verbatim from desktop
+
+
+def test_web_step_details_shows_visible_code_and_name_readout(mobile_client_factory, session):
+    """D-12: step 3 always shows a bolded code, plus name when known."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "Крем", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "<strong>9999</strong> — Крем" in response.text
+
+
+def test_web_step_details_readout_omits_dash_when_name_empty(mobile_client_factory, session):
+    """D-12: an unknown code with no name yet renders the code alone, with no
+    trailing em-dash."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "<strong>9999</strong>" in response.text
+    assert "—" not in response.text
 
 
 def test_web_step_details_omits_new_batch_fields_for_topup(

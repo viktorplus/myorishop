@@ -11,7 +11,7 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 
 - [ ] **PRICE-02**: On the product-add form, typing a code suggests catalog price and consultant (cost) price from imported catalog data; operator can accept or override (formalize existing ad-hoc `feat/catalogs-pricing` behavior)
 - [ ] **PRICE-03**: On the product-add form, typing a code suggests the product name from the dictionary; operator can accept or override
-- [ ] **PRICE-04**: On goods receipt (desktop and mobile), typing a code not yet in the product catalog suggests catalog price, consultant price, and name from imported catalog/dictionary data; operator can accept or override
+- [x] **PRICE-04**: On goods receipt (desktop and mobile), typing a code not yet in the product catalog suggests catalog price, consultant price, and name from imported catalog/dictionary data; operator can accept or override
 
 ### Mobile Wizard UX
 
@@ -70,7 +70,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | PRICE-02 | Phase 12 | Pending |
 | PRICE-03 | Phase 12 | Pending |
-| PRICE-04 | Phase 12 | Pending |
+| PRICE-04 | Phase 12 | Complete |
 | UI-02 | Phase 13 | Pending |
 | UI-03 | Phase 13 | Pending |
 | UI-04 | Phase 13 | Pending |

@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import format_cents
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
@@ -69,18 +70,6 @@ def _chooser_context(session: Session, code: str, warehouse_id: str, actives: li
     return {"zero_warehouses": False, "batches": batches, "code_entered": bool(code)}
 
 
-def _lookup_name(session: Session, code: str) -> str:
-    """Resolve the product/dictionary name for a code (mirrors desktop's
-    /receipts/lookup, RCP-02), or "" when the code is unknown everywhere —
-    the operator must then type a name to create a brand-new product
-    (register_receipt's D-05 auto-create path requires a non-empty name)."""
-    code = code.strip()
-    if not code:
-        return ""
-    result = lookup_prefill(session, code)
-    return result["name"] if result else ""
-
-
 @router.get("/m/receipts")
 def mobile_receipt_new(request: Request, session: Session = Depends(get_session)):
     actives = active_warehouses(session)
@@ -104,17 +93,29 @@ def mobile_receipt_step_batch(
     actives = active_warehouses(session)
     selected = _preselect_warehouse_id(actives, warehouse_id)
     chooser = _chooser_context(session, code, selected, actives)
-    resolved_name = _lookup_name(session, code)
+    code_clean = code.strip()
+    # D-06/PRICE-04: a single lookup_prefill call resolves both name and
+    # cost/sale/catalog for either a "product" or "catalog" source match —
+    # result["name"] can be None for a catalog-source match with a
+    # CatalogPrice but no Dictionary entry (None-guard below).
+    result = lookup_prefill(session, code_clean) if code_clean else None
+    resolved_name = (result["name"] or "") if result else ""
     # A fresh lookup wins over a stale typed name (code changed to a now-known
     # product); otherwise preserve whatever the operator already typed (e.g.
     # tapping "Назад" from step 3 must not lose a manually-typed new-product
     # name for a code that still resolves to nothing).
     final_name = resolved_name or name.strip()
+    prices = result["prices"] if result and result["prices"] else {}
     context = {
-        "code": code.strip(),
+        "code": code_clean,
         "warehouse_id": selected,
         "name": final_name,
         "name_known": bool(resolved_name),
+        "cost": format_cents(prices["cost"]) if prices.get("cost") is not None else "",
+        "sale": format_cents(prices["sale"]) if prices.get("sale") is not None else "",
+        "catalog": (
+            format_cents(prices["catalog"]) if prices.get("catalog") is not None else ""
+        ),
         **chooser,
     }
     return templates.TemplateResponse(
