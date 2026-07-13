@@ -194,6 +194,84 @@ def test_batch_step_card_tap_still_shows_product_name(
     assert f"<strong>{product.code}</strong> — {product.name}" in resp.text
 
 
+def test_batch_step_shows_per_card_warehouse_when_batches_span_two_warehouses(
+    mobile_client_factory, session, product, warehouse
+):
+    from app.core import new_id
+    from app.models import Warehouse
+
+    warehouse2 = Warehouse(id=new_id(), name="Второй склад")
+    session.add(warehouse2)
+    session.commit()
+
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    b2 = _seed_batch(session, product, warehouse2, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b2.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": product.code})
+    assert resp.status_code == 200
+    assert f"Склад: {warehouse.name}" in resp.text
+    assert "Склад: Второй склад" in resp.text
+
+
+def test_qty_price_step_shows_warehouse_once_batch_picked(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post(
+        "/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id}
+    )
+    assert resp.status_code == 200
+    assert f"Склад: {warehouse.name}" in resp.text
+
+
+def test_basket_line_shows_warehouse(mobile_client_factory, session, product, warehouse):
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post(
+        "/m/sales/step/basket-add",
+        data={"code": product.code, "qty": "2", "price": "9,00", "batch_id": batch.id},
+    )
+    assert resp.status_code == 200
+    assert f"Склад: {warehouse.name}" in resp.text
+
+
 def test_batch_step_foreign_batch_id_rejected(mobile_client_factory, session, product, warehouse):
     other_product_batch = _seed_batch(session, product, warehouse, quantity=0)
     record_operation(
