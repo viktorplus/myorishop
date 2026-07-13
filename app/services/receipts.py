@@ -28,6 +28,7 @@ from app.services.batches import active_warehouses
 from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
+from app.services.pricing import latest_price_for_code
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 # D-02 (Phase 8 D-07 carried forward): zero active warehouses blocks the receipt.
@@ -258,11 +259,14 @@ def register_receipt(
 
 
 def lookup_prefill(session: Session, code: str) -> dict | None:
-    """Pre-fill data for the receipt-form lookup (D-03 / RCP-02). Read-only.
+    """Pre-fill data for the receipt-form lookup (D-03/D-01 / RCP-02/PRICE-04). Read-only.
 
     Active product first: its name plus current card prices (the route
-    decides which price fields actually fill — PD-10). Dictionary fallback:
-    name only. Unknown code -> None (the route answers 204).
+    decides which price fields actually fill — PD-10). Otherwise (D-01):
+    combine the Dictionary name and the latest CatalogPrice cost/catalog into
+    one "catalog" source — `sale` is ALWAYS None on this branch (D-02: this
+    shop's own sale price is never derived from Oriflame's CatalogPrice data).
+    Unknown everywhere -> None (the route answers 204).
     """
     code = code.strip()
     if not code:
@@ -282,8 +286,17 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
             },
         }
     entry = dictionary_lookup(session, code)
-    if entry is not None:
-        return {"source": "dictionary", "name": entry.name, "prices": None}
+    latest = latest_price_for_code(session, code)
+    if entry is not None or latest is not None:
+        return {
+            "source": "catalog",
+            "name": entry.name if entry is not None else None,
+            "prices": {
+                "cost": latest.consultant_cents if latest is not None else None,
+                "catalog": latest.consumer_cents if latest is not None else None,
+                "sale": None,
+            },
+        }
     return None
 
 

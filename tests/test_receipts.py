@@ -23,12 +23,17 @@ test_web_, everything else is service level. "recent"/"nav" select the
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation, Product, Warehouse
+from app.models import Batch, CatalogPrice, Operation, Product, Warehouse
 from app.services import catalog
 from app.services.catalog import create_product, soft_delete_product
 from app.services.dictionary import add_entry
 from app.services.ledger import compute_stock, record_operation
-from app.services.receipts import parse_optional_expiry, recent_receipts, register_receipt
+from app.services.receipts import (
+    lookup_prefill,
+    parse_optional_expiry,
+    recent_receipts,
+    register_receipt,
+)
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
 # Plan 09-02: the default new-batch path used by every previously batch-less
@@ -700,6 +705,92 @@ def test_price_sync_ignores_name_for_existing_product(session, product, warehous
         select(Operation).where(Operation.type == "product_edited")
     ).all()
     assert edited == []
+
+
+# --- Plan 12-01: lookup_prefill() source=="catalog" branch (D-01/D-02/D-03) ---
+
+
+def _catalog_price(code, consumer=None, consultant=None):
+    return CatalogPrice(
+        id=new_id(),
+        code=code,
+        year=2026,
+        number=1,
+        consumer_cents=consumer,
+        consultant_cents=consultant,
+    )
+
+
+def test_lookup_prefill_catalog_source_dictionary_name_only(session):
+    """D-01: unknown code, Dictionary match only -> catalog source, prices all None."""
+    add_entry(session, code="4321", name="Тушь")
+
+    result = lookup_prefill(session, "4321")
+
+    assert result == {
+        "source": "catalog",
+        "name": "Тушь",
+        "prices": {"cost": None, "catalog": None, "sale": None},
+    }
+
+
+def test_lookup_prefill_catalog_source_price_only(session):
+    """D-01: unknown code, CatalogPrice match only -> name None, cost/catalog filled."""
+    session.add(_catalog_price("5555", consumer=1500, consultant=900))
+    session.commit()
+
+    result = lookup_prefill(session, "5555")
+
+    assert result == {
+        "source": "catalog",
+        "name": None,
+        "prices": {"cost": 900, "catalog": 1500, "sale": None},
+    }
+
+
+def test_lookup_prefill_catalog_source_combines_dictionary_and_price(session):
+    """D-01: both a Dictionary entry AND a CatalogPrice row -> combined dict."""
+    add_entry(session, code="6666", name="Помада")
+    session.add(_catalog_price("6666", consumer=2000, consultant=1200))
+    session.commit()
+
+    result = lookup_prefill(session, "6666")
+
+    assert result == {
+        "source": "catalog",
+        "name": "Помада",
+        "prices": {"cost": 1200, "catalog": 2000, "sale": None},
+    }
+
+
+def test_lookup_prefill_unknown_code_returns_none(session):
+    """No Product, no Dictionary, no CatalogPrice -> None, unchanged contract."""
+    assert lookup_prefill(session, "0000") is None
+
+
+def test_lookup_prefill_product_source_unaffected_by_catalog_branch(session, product):
+    """D-03: an active Product code still returns source=="product", unaffected."""
+    product.cost_cents = 1250
+    session.commit()
+
+    result = lookup_prefill(session, "TEST-001")
+
+    assert result["source"] == "product"
+    assert result["name"] == "Тестовый товар"
+    assert result["prices"]["cost"] == 1250
+
+
+def test_lookup_prefill_sale_never_filled_from_catalog_price(session):
+    """D-02 regression guard: sale is always None on the catalog-source branch,
+    even when CatalogPrice carries both consumer_cents and consultant_cents."""
+    add_entry(session, code="7777", name="Тональный крем")
+    session.add(_catalog_price("7777", consumer=3000, consultant=1800))
+    session.commit()
+
+    result = lookup_prefill(session, "7777")
+
+    assert result["source"] == "catalog"
+    assert result["prices"]["sale"] is None
 
 
 # --- Plan 03-02: GET /receipts/lookup pre-fill (D-03 / PD-10 / RCP-02) ---
