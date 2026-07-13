@@ -17,8 +17,8 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 
 - [x] **UI-02**: Every intermediate step of the sale, receipt, write-off, correction, and transfer mobile wizards displays the product code, name, and warehouse in visible text (not just hidden inputs)
 - [x] **UI-03**: All mobile wizards use the same explicit `hx-get`/`hx-post` "Назад" navigation pattern; the write-off wizard's `history.back()` steps are fixed to match
-- [ ] **UI-04**: The mobile sale basket/review screen shows a step indicator consistent with the rest of the sale wizard
-- [ ] **UI-05**: Mobile search product-detail screen offers quick "Продать" / "Принять" actions that jump directly into the sale/receipt wizard for that product
+- [x] **UI-04**: The mobile sale basket/review screen shows a step indicator consistent with the rest of the sale wizard
+- [x] **UI-05**: Mobile search product-detail screen offers quick "Продать" / "Принять" actions that jump directly into the sale/receipt wizard for that product
 
 ### Sales Autocomplete
 
@@ -73,8 +73,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PRICE-04 | Phase 12 | Complete |
 | UI-02 | Phase 13 | Complete |
 | UI-03 | Phase 13 | Complete |
-| UI-04 | Phase 13 | Pending |
-| UI-05 | Phase 13 | Pending |
+| UI-04 | Phase 13 | Complete |
+| UI-05 | Phase 13 | Complete |
 | SAL-06 | Phase 12 | Complete |
 | LIST-01 | Phase 14 | Pending |
 | LIST-02 | Phase 14 | Pending |
