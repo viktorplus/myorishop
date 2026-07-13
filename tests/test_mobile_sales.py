@@ -69,6 +69,48 @@ def test_product_step_single_batch_auto_selects_and_shows_batch_step(
     assert "Далее" in resp.text
 
 
+def test_product_step_multi_batch_shows_product_name(mobile_client_factory, session, product, warehouse):
+    """D-13: the batch step response must show the product name, not just the code."""
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    b2 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b2.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": product.code})
+    assert resp.status_code == 200
+    assert "Выберите партию" in resp.text
+    assert f"<strong>{product.code}</strong> — {product.name}" in resp.text
+
+
+def test_product_step_dictionary_source_shows_dictionary_name(mobile_client_factory, session):
+    """D-13: the dictionary-only path shows the dictionary name on qty-price step."""
+    from app.services.dictionary import add_entry
+
+    add_entry(session, code="DICT-03", name="Словарный товар 3")
+
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": "DICT-03"})
+    assert resp.status_code == 200
+    assert "Количество и цена" in resp.text
+    assert "<strong>DICT-03</strong> — Словарный товар 3" in resp.text
+
+
 def _seed_batch(session, product, warehouse, quantity=0):
     b = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=quantity)
     session.add(b)
@@ -117,6 +159,37 @@ def test_batch_step_tap_reselects_with_ownership_check(
     assert resp.status_code == 200
     assert 'class="mobile-card selected"' in resp.text
     assert "Далее" in resp.text
+
+
+def test_batch_step_card_tap_still_shows_product_name(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-13: a batch-card tap re-render (GET) must still show the product name,
+    sourced from the `product` row this handler already queries — no new lookup."""
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    b2 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b2.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.get("/m/sales/step/batch", params={"batch_id": b2.id, "code": product.code})
+    assert resp.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in resp.text
 
 
 def test_batch_step_foreign_batch_id_rejected(mobile_client_factory, session, product, warehouse):
@@ -233,6 +306,8 @@ def test_qty_price_step_prefills_price_from_batch(
     assert resp.status_code == 200
     assert "12,34" in resp.text
     assert "Цена подставлена из партии" in resp.text
+    # D-13: sourced from the `product` row this handler already queries.
+    assert f"<strong>{product.code}</strong> — {product.name}" in resp.text
 
 
 # ---------------------------------------------------------------------------
