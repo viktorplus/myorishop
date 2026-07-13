@@ -4,12 +4,12 @@ milestone: v1.2
 milestone_name: Catalog Pricing UX & List Ergonomics
 status: executing
 stopped_at: Phase 13 UI-SPEC approved
-last_updated: "2026-07-13T22:15:19.383Z"
-last_activity: 2026-07-13 -- Phase 13 planning complete
+last_updated: "2026-07-13T22:20:52.904Z"
+last_activity: 2026-07-13 -- Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
+  total_plans: 9
   completed_plans: 4
   percent: 33
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-13)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 13 — mobile wizard context & navigation
+**Current focus:** Phase 13 — mobile-wizard-context-navigation
 
 ## Current Position
 
-Phase: 13
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-13 -- Phase 13 planning complete
+Phase: 13 (mobile-wizard-context-navigation) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 13
+Last activity: 2026-07-13 -- Phase 13 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
