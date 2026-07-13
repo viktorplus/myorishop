@@ -10,6 +10,7 @@
    untrusted stored text: Jinja autoescape only, never | safe. #}
 <div id="wizard-step">
   <p class="mobile-step-indicator">{{ step_label }}</p>
+  <p><strong>{{ code }}</strong>{% if name %} — {{ name }}{% endif %}</p>
   <h2>Выберите партию</h2>
   <input type="hidden" name="code" value="{{ code }}">
 
@@ -22,7 +23,7 @@
           hx-get="/m/transfers/step/batch-pick"
           {# WR-02: tojson correctly escapes a double quote inside code for
              both JSON and this HTML attribute. #}
-          hx-vals="{{ {'batch_id': b.id, 'code': code} | tojson }}"
+          hx-vals="{{ {'batch_id': b.id, 'code': code, 'name': name} | tojson }}"
           hx-target="#wizard-step"
           hx-swap="outerHTML">
     <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>

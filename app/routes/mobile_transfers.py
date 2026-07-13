@@ -55,13 +55,14 @@ def _find_product(session: Session, code: str) -> Product | None:
     ).first()
 
 
-def _render_batch_step(request: Request, session: Session, code: str):
+def _render_batch_step(request: Request, session: Session, code: str, name: str = ""):
     code_clean = code.strip()
     product = _find_product(session, code_clean)
     batches = open_batches(session, product.id) if product is not None else []
     context = {
         "step_label": "Шаг 2 из 3",
         "code": code_clean,
+        "name": name,
         "batches": batches,
         "warehouse_names": _warehouse_names(session),
         "show_empty": product is not None and not batches,
@@ -88,6 +89,7 @@ def _render_dest_step(
     *,
     code: str,
     picked: Batch | None,
+    name: str = "",
     qty: str = "",
     errors: dict | None = None,
     oversell: dict | None = None,
@@ -97,6 +99,7 @@ def _render_dest_step(
     context = {
         "step_label": "Шаг 3 из 3",
         "code": code,
+        "name": name,
         "batch_id": picked.id if picked else "",
         "warehouses": _dest_warehouses(session, picked),
         "qty": qty,
@@ -124,12 +127,14 @@ def transfers_step_batch(
     code: str = Form(""),
     session: Session = Depends(get_session),
 ):
-    # D-04: reuses the receipt lookup (transfer has no price fields of its
-    # own to fill) — result is unused beyond confirming a name is resolvable;
-    # the batch list itself is what actually drives the step's content.
-    if code.strip():
-        lookup_prefill(session, code)
-    return _render_batch_step(request, session, code)
+    # D-04/D-14: reuses the receipt lookup (transfer has no price fields of
+    # its own to fill) — the result is now captured and threaded through as
+    # the visible readout name, instead of being discarded.
+    code_clean = code.strip()
+    result = lookup_prefill(session, code_clean) if code_clean else None
+    return _render_batch_step(
+        request, session, code, name=(result["name"] or "") if result else ""
+    )
 
 
 @router.get("/m/transfers/step/batch-pick")
@@ -137,6 +142,7 @@ def transfers_step_batch_pick(
     request: Request,
     batch_id: str = "",
     code: str = "",
+    name: str = "",
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -145,10 +151,10 @@ def transfers_step_batch_pick(
     if picked is None:
         # Invalid/foreign/unknown id -> safe fallback: re-render step
         # "Партия" instead of advancing with no source batch.
-        return _render_batch_step(request, session, code_clean)
+        return _render_batch_step(request, session, code_clean, name=name)
     # D-07: tapping a batch card advances the wizard straight to "Куда и
     # количество" — no separate confirm sub-step.
-    return _render_dest_step(request, session, code=code_clean, picked=picked)
+    return _render_dest_step(request, session, code=code_clean, picked=picked, name=name)
 
 
 @router.post("/m/transfers/step/dest")
@@ -156,14 +162,15 @@ def transfers_step_dest(
     request: Request,
     code: str = Form(""),
     batch_id: str = Form(""),
+    name: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
     product = _find_product(session, code_clean)
     picked = _pick_batch(session, product, batch_id)
     if picked is None:
-        return _render_batch_step(request, session, code_clean)
-    return _render_dest_step(request, session, code=code_clean, picked=picked)
+        return _render_batch_step(request, session, code_clean, name=name)
+    return _render_dest_step(request, session, code=code_clean, picked=picked, name=name)
 
 
 @router.post("/m/transfers")
@@ -199,6 +206,7 @@ def transfers_create(
             session,
             code=code_clean,
             picked=picked,
+            name=name,
             qty=qty,
             errors={"form": SAVE_FAILED_ERROR},
             status_code=422,
@@ -212,6 +220,7 @@ def transfers_create(
             session,
             code=code_clean,
             picked=picked,
+            name=name,
             qty=qty,
             oversell=result["oversell"],
         )
@@ -222,6 +231,7 @@ def transfers_create(
             session,
             code=code_clean,
             picked=picked,
+            name=name,
             qty=qty,
             errors=errors,
             status_code=422,
@@ -234,6 +244,7 @@ def transfers_create(
         session,
         code=code_clean,
         picked=picked,
+        name=name,
         qty=qty,
         saved={"name": result["product"].name, "qty": qty},
     )

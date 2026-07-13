@@ -69,7 +69,9 @@ def test_product_step_single_batch_auto_selects_and_shows_batch_step(
     assert "Далее" in resp.text
 
 
-def test_product_step_multi_batch_shows_product_name(mobile_client_factory, session, product, warehouse):
+def test_product_step_multi_batch_shows_product_name(
+    mobile_client_factory, session, product, warehouse
+):
     """D-13: the batch step response must show the product name, not just the code."""
     b1 = _seed_batch(session, product, warehouse, quantity=0)
     record_operation(
