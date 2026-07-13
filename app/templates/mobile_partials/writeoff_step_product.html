@@ -1,0 +1,24 @@
+{# Mobile write-off wizard, step 1 «Товар» inner content (UI-01/LOT-05).
+   Extracted from mobile_pages/writeoff.html's {% else %} branch so it can be
+   shared by the cold full-page GET and the HX-Request bare-fragment branch
+   on GET /m/writeoff (mirrors corrections_step_product.html's shape). No
+   wrapping <form> here — it relies on the ambient #writeoff-form in
+   mobile_pages/writeoff.html. The code field's debounced lookup is
+   display-only feedback (D-04) — a write-off never creates/edits a product
+   from this field, unlike receipts. #}
+<p class="mobile-step-indicator">Шаг 1 из 4</p>
+{% if errors is defined and errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+<div class="field">
+  <label for="code">Код</label>
+  <input type="text" id="code" name="code" value="{{ code or '' }}" required autofocus
+         hx-get="/m/writeoff/lookup"
+         hx-trigger="input changed delay:300ms"
+         hx-target="#name-fill"
+         hx-swap="outerHTML">
+</div>
+<div id="name-fill">
+  {% if name %}<p class="muted">Название: {{ name }}</p>{% endif %}
+</div>
+<div class="mobile-actions">
+  <button type="submit" hx-post="/m/writeoff/step/batch" hx-include="closest form">Далее</button>
+</div>

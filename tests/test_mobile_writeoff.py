@@ -192,3 +192,47 @@ def test_reason_step_renders_one_row_per_writeoff_reason(
         assert label in resp.text
     assert 'type="radio" name="reason_code"' in resp.text
     assert 'class="visually-hidden"' in resp.text
+
+
+def test_qty_and_reason_steps_show_header_and_own_back_target(
+    mobile_client_factory, session, product, warehouse
+):
+    batch = _make_batch(session, product, warehouse, quantity=5)
+    client = mobile_client_factory(mobile_writeoff.router)
+
+    qty_resp = client.post(
+        "/m/writeoff/step/qty",
+        data={"code": product.code, "batch_id": batch.id, "name": product.name},
+    )
+    assert qty_resp.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in qty_resp.text
+    assert f"Склад: {warehouse.name}" in qty_resp.text
+    assert 'hx-post="/m/writeoff/step/batch"' in qty_resp.text
+    assert "onclick=\"history.back()\"" not in qty_resp.text
+
+    reason_resp = client.post(
+        "/m/writeoff/step/reason",
+        data={
+            "code": product.code,
+            "batch_id": batch.id,
+            "qty": "1",
+            "name": product.name,
+        },
+    )
+    assert reason_resp.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in reason_resp.text
+    assert f"Склад: {warehouse.name}" in reason_resp.text
+    assert 'hx-post="/m/writeoff/step/qty"' in reason_resp.text
+    assert "onclick=\"history.back()\"" not in reason_resp.text
+
+
+def test_writeoff_start_hx_request_returns_bare_fragment(mobile_client_factory):
+    client = mobile_client_factory(mobile_writeoff.router)
+
+    hx_response = client.get("/m/writeoff", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "<html" not in hx_response.text
+
+    full_response = client.get("/m/writeoff")
+    assert full_response.status_code == 200
+    assert "<html" in full_response.text

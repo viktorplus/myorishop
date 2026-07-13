@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
-from app.services.batches import open_batches
+from app.services.batches import active_warehouses, open_batches
 from app.services.receipts import lookup_prefill
 from app.services.writeoffs import register_writeoff
 
@@ -44,9 +44,33 @@ def _find_product(session: Session, code: str) -> Product | None:
     ).first()
 
 
+def _warehouse_names(session: Session) -> dict[str, str]:
+    """id -> name map so a wizard step can show its own «Склад:» line."""
+    return {w.id: w.name for w in active_warehouses(session)}
+
+
+def _carried_warehouse_name(session: Session, code_clean: str, batch_id_clean: str) -> str | None:
+    """T-13-05: re-validate the carried batch_id's ownership against the
+    resolved product before trusting its warehouse_id for display — never
+    trust batch_id blindly."""
+    if not batch_id_clean:
+        return None
+    product = _find_product(session, code_clean)
+    if product is None:
+        return None
+    candidate = session.get(Batch, batch_id_clean)
+    if candidate is not None and candidate.product_id == product.id:
+        return _warehouse_names(session).get(candidate.warehouse_id)
+    return None
+
+
 @router.get("/m/writeoff")
 def mobile_writeoff_start(request: Request):
     context = {"errors": {}, "code": "", "name": "", "saved": None}
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(
+            request, "mobile_partials/writeoff_step_product.html", context
+        )
     return templates.TemplateResponse(request, "mobile_pages/writeoff.html", context)
 
 
@@ -79,12 +103,14 @@ def mobile_writeoff_step_batch(
             "saved": None,
         }
         return templates.TemplateResponse(
-            request, "mobile_pages/writeoff.html", context, status_code=422
+            request, "mobile_partials/writeoff_step_product.html", context, status_code=422
         )
     batches = open_batches(session, product.id)
     context = {
         "errors": {},
         "code": code_clean,
+        "name": product.name,
+        "warehouse_name": None,
         "batches": batches,
         "batch_id": None,
         "selected_batch_id": None,
@@ -124,11 +150,21 @@ def mobile_writeoff_step_batch_pick(
 
 
 @router.post("/m/writeoff/step/qty")
-def mobile_writeoff_step_qty(request: Request, code: str = Form(""), batch_id: str = Form("")):
+def mobile_writeoff_step_qty(
+    request: Request,
+    code: str = Form(""),
+    batch_id: str = Form(""),
+    name: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
     context = {
         "errors": {},
-        "code": code.strip(),
-        "batch_id": batch_id.strip(),
+        "code": code_clean,
+        "batch_id": batch_id_clean,
+        "name": name.strip(),
+        "warehouse_name": _carried_warehouse_name(session, code_clean, batch_id_clean),
         "qty": "",
     }
     return templates.TemplateResponse(request, "mobile_partials/writeoff_step_qty.html", context)
@@ -140,11 +176,17 @@ def mobile_writeoff_step_reason(
     code: str = Form(""),
     batch_id: str = Form(""),
     qty: str = Form(""),
+    name: str = Form(""),
+    session: Session = Depends(get_session),
 ):
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
     context = {
         "errors": {},
-        "code": code.strip(),
-        "batch_id": batch_id.strip(),
+        "code": code_clean,
+        "batch_id": batch_id_clean,
+        "name": name.strip(),
+        "warehouse_name": _carried_warehouse_name(session, code_clean, batch_id_clean),
         "qty": qty.strip(),
         "form_reason_code": "",
         "note": "",
@@ -161,9 +203,13 @@ def mobile_writeoff_submit(
     qty: str = Form(""),
     reason_code: str = Form(""),
     note: str = Form(""),
+    name: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    code_clean = code.strip()
+    batch_id_clean = batch_id.strip()
+    warehouse_name = _carried_warehouse_name(session, code_clean, batch_id_clean)
     # Money/qty/reason fields arrive as strings on purpose — the service
     # returns RU errors rather than a Pydantic parse failure (mirrors
     # app/routes/writeoffs.py::writeoff_create verbatim).
@@ -171,7 +217,7 @@ def mobile_writeoff_submit(
         result, errors = register_writeoff(
             session,
             code=code,
-            name="",
+            name=name,
             qty_raw=qty,
             reason_code=reason_code,
             note=note,
@@ -188,6 +234,8 @@ def mobile_writeoff_submit(
             "qty": qty,
             "form_reason_code": reason_code,
             "note": note,
+            "name": name,
+            "warehouse_name": warehouse_name,
             "oversell": None,
         }
         return templates.TemplateResponse(
@@ -195,8 +243,8 @@ def mobile_writeoff_submit(
         )
 
     # D-04/D-09/T-11-15: over-removal — zero writes, warn above the still-intact
-    # reason form (the danger button re-posts the same form via native
-    # form="writeoff-reason-form" association + its own confirm=1 name/value).
+    # reason form (the danger button re-posts the same ambient #writeoff-form
+    # via htmx, adding confirm=1 through hx-vals).
     if result and result.get("oversell"):
         context = {
             "errors": {},
@@ -205,6 +253,8 @@ def mobile_writeoff_submit(
             "qty": qty,
             "form_reason_code": reason_code,
             "note": note,
+            "name": name,
+            "warehouse_name": warehouse_name,
             "oversell": result["oversell"],
         }
         return templates.TemplateResponse(
@@ -219,6 +269,8 @@ def mobile_writeoff_submit(
             "qty": qty,
             "form_reason_code": reason_code,
             "note": note,
+            "name": name,
+            "warehouse_name": warehouse_name,
             "oversell": None,
         }
         return templates.TemplateResponse(
