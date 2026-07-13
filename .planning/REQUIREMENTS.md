@@ -9,8 +9,8 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 
 ### Pricing Autofill
 
-- [ ] **PRICE-02**: On the product-add form, typing a code suggests catalog price and consultant (cost) price from imported catalog data; operator can accept or override (formalize existing ad-hoc `feat/catalogs-pricing` behavior)
-- [ ] **PRICE-03**: On the product-add form, typing a code suggests the product name from the dictionary; operator can accept or override
+- [x] **PRICE-02**: On the product-add form, typing a code suggests catalog price and consultant (cost) price from imported catalog data; operator can accept or override (formalize existing ad-hoc `feat/catalogs-pricing` behavior)
+- [x] **PRICE-03**: On the product-add form, typing a code suggests the product name from the dictionary; operator can accept or override
 - [x] **PRICE-04**: On goods receipt (desktop and mobile), typing a code not yet in the product catalog suggests catalog price, consultant price, and name from imported catalog/dictionary data; operator can accept or override
 
 ### Mobile Wizard UX
@@ -22,7 +22,7 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 
 ### Sales Autocomplete
 
-- [ ] **SAL-06**: On the sales page, typing a product code shows its name inline; typing part of a product name shows a dropdown of matching codes to pick from
+- [x] **SAL-06**: On the sales page, typing a product code shows its name inline; typing part of a product name shows a dropdown of matching codes to pick from
 
 ### List Ergonomics
 
@@ -68,14 +68,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PRICE-02 | Phase 12 | Pending |
-| PRICE-03 | Phase 12 | Pending |
+| PRICE-02 | Phase 12 | Complete |
+| PRICE-03 | Phase 12 | Complete |
 | PRICE-04 | Phase 12 | Complete |
 | UI-02 | Phase 13 | Pending |
 | UI-03 | Phase 13 | Pending |
 | UI-04 | Phase 13 | Pending |
 | UI-05 | Phase 13 | Pending |
-| SAL-06 | Phase 12 | Pending |
+| SAL-06 | Phase 12 | Complete |
 | LIST-01 | Phase 14 | Pending |
 | LIST-02 | Phase 14 | Pending |
 | LIST-03 | Phase 14 | Pending |

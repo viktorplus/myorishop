@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Catalog Pricing UX & List Ergonomics
-status: executing
-stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-07-13T19:31:35.832Z"
+status: ready_to_plan
+stopped_at: Phase 12 complete (4/4) — ready to discuss Phase 13
+last_updated: 2026-07-13T20:32:23.408Z
 last_activity: 2026-07-13 -- Phase 12 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 4
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-13)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 12 — code-name-autofill
+**Current focus:** Phase 13 — mobile wizard context & navigation
 
 ## Current Position
 
-Phase: 12 (code-name-autofill) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 12
-Last activity: 2026-07-13 -- Phase 12 execution started
+Phase: 13
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-13
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -36,7 +36,7 @@ Progress: [░░░░░░░░░░] 0%
 
 **Velocity:**
 
-- Total plans completed: 38
+- Total plans completed: 42
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 | 07 | 4 | - | - |
 | 09 | 9 | - | - |
 | 10 | 3 | - | - |
+| 12 | 4 | - | - |
 
 **Recent Trend:**
 

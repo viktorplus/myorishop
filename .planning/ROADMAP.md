@@ -128,6 +128,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
-| 12. Code & Name Autofill | v1.2 | 4/4 | Complete   | 2026-07-13 |
+| 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 0/TBD | Not started | - |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
