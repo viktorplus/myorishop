@@ -14,9 +14,21 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 Delivered multi-warehouse stock organization, batch/lot-level tracking with expiry dates and per-batch pricing (mandatory manual selection at every stock-affecting operation), category browsing, minimum-price guardrails, warehouse-to-warehouse transfers preserving cost history, an expiring-batches report, and a dedicated mobile flow. See `.planning/milestones/v1.1-ROADMAP.md` and `.planning/MILESTONES.md` for full details.
 
+## Current Milestone: v1.2 Catalog Pricing UX & List Ergonomics
+
+**Goal:** Finish the ad-hoc catalog/pricing feature (extend autofill to goods receipt, add name autofill), close the mobile wizard context gaps found on audit, add code/name cross-autofill and pagination/filter/sort to sales and every list page, and add quick-delete to warehouse/product lists.
+
+**Target features:**
+- Catalog/consultant price + name autofill by product code on both the product-add form and goods receipt (desktop + mobile), for codes not yet in the product catalog
+- Mobile wizards (sale/receipt/writeoff/correction/transfer) show product code/name/warehouse at every step, consistent "Назад" navigation, sale basket gets a step indicator, quick actions from search detail
+- Sales page: name-on-code and code-dropdown-on-name-fragment autocomplete
+- Pagination on every list page
+- Filtering and sorting on every list page
+- Quick delete for warehouses and products directly from their list pages
+
 ## Next Milestone Goals
 
-v2.0 is next (see Active requirements and Context below): multi-operator sync across countries, multi-currency, user roles, and customer intelligence features. Run `/gsd-new-milestone` to scope it formally.
+v2.0 is deferred behind v1.2 (see Active requirements and Context below): multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally once v1.2 ships.
 
 <details>
 <summary>Archived: v1.1 Multi-Warehouse & Batch Tracking (SHIPPED 2026-07-13)</summary>
@@ -67,7 +79,9 @@ v2.0 is next (see Active requirements and Context below): multi-operator sync ac
 
 ### Active
 
-Next milestone (v2.0) requirements — to be scoped formally via `/gsd-new-milestone`:
+Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs and roadmap traceability.
+
+### Future (v2.0, deferred)
 
 - [ ] Multi-operator sync across countries via a central server, server-based (online) + USB flash-drive (offline) (SYNC-V2-01)
 - [ ] Multi-currency support (CUR-V2-01)
@@ -75,6 +89,7 @@ Next milestone (v2.0) requirements — to be scoped formally via `/gsd-new-miles
 - [ ] Customer purchase-frequency analysis and "running low" reminders (CST-V2-01)
 - [ ] On goods receipt, show customers likely interested in the product based on purchase history (CST-V2-02)
 - [ ] CSV export includes warehouse/batch columns (EXP-V2-01)
+- [ ] Mobile CRUD parity: warehouses, products/catalog, customers, dictionary, full reports (deferred from v1.2 mobile audit)
 
 ### Out of Scope
 

@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Multi-Warehouse & Batch Tracking
-status: shipped
-stopped_at: v1.1 milestone archived
-last_updated: "2026-07-13T00:00:00.000Z"
-last_activity: 2026-07-13 -- v1.1 milestone complete (Phase 11 UAT + security verification done, archived)
+milestone: v1.2
+milestone_name: Catalog Pricing UX & List Ergonomics
+status: planning
+last_updated: "2026-07-13T17:39:32.086Z"
+last_activity: 2026-07-13
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 28
-  completed_plans: 28
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,11 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-13)
 
 ## Current Position
 
-Phase: 11 (dedicated-mobile-flow) — COMPLETE
-Status: v1.1 milestone shipped 2026-07-13
-Last activity: 2026-07-13 -- v1.1 milestone archived
-
-Progress: [████████████████████] 28/28 plans (100%)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-13 — Milestone v1.2 started
 
 ## Performance Metrics
 
