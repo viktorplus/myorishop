@@ -29,9 +29,15 @@
                         pass its own step endpoint)
      batch_target       hx-target for the tapped card's swap (default
                         "#batch-wrap"; callers may override)
+     warehouse_names    optional dict[str, str] (warehouse id -> name); when
+                        passed (sale wizard only — its open_batches() call
+                        spans ALL warehouses), each card additionally renders
+                        its own «Склад:» line; when absent (corrections'/
+                        write-off's existing calls, unchanged), no new line
+                        renders — zero behavior change there
 
-   Batch comment/location are untrusted stored text (T-09-11): Jinja
-   autoescape only, never |safe. #}
+   Batch comment/location/warehouse name are untrusted stored text
+   (T-09-11/T-13-12): Jinja autoescape only, never |safe. #}
 {% set batch_input_name = batch_input_name | default("batch_id") %}
 {% set batch_target = batch_target | default("#batch-wrap") %}
 <input type="hidden" name="{{ batch_input_name }}" value="{{ batch_id | default('') or '' }}">
@@ -54,6 +60,7 @@
     {%- if b.location and b.comment %} · {% endif -%}
     {%- if b.comment %}{{ b.comment }}{% endif -%}</p>
   {%- endif %}
+  {% if warehouse_names is defined and warehouse_names %}<p>Склад: {{ warehouse_names.get(b.warehouse_id, "") }}</p>{% endif %}
 </button>
 {% endfor %}
 {% if auto_note %}<p class="muted">Партия выбрана автоматически — единственная</p>{% endif %}
