@@ -7,7 +7,7 @@
 {% with autofilled = True %}
 {% include "partials/name_input.html" %}
 {% endwith %}
-{% if source == "product" %}
+{% if source in ("product", "catalog") %}
 {% set labels = {"cost": "Закупочная цена", "sale": "Цена продажи", "catalog": "Цена по каталогу"} %}
 {% for f in fill_fields %}
 {% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True %}

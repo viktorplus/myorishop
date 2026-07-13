@@ -21,6 +21,10 @@ router = APIRouter()
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 CARD_FILL_HINT = "Данные подставлены из карточки товара — новые цены обновят карточку."
+# D-01/D-04 (Phase 12): unknown-to-Product code matched by Dictionary and/or
+# CatalogPrice. Must stay non-empty — name_input.html's `hint | default(...)`
+# filter falls back to the dictionary wording for an empty hint string.
+CATALOG_FILL_HINT = "Цена и название подставлены из каталога — можно изменить."
 # D-02 (RESEARCH Open Q2): the receipt form preselects the Phase 8 seeded
 # default warehouse when it is still active. Re-declared, never imported from
 # the migration (frozen 0007 D-03 contract).
@@ -127,13 +131,28 @@ def receipt_lookup(
         actives = active_warehouses(session)
         chooser = _chooser_context(session, code, warehouse_id.strip(), actives)
         include_chooser = True
+    elif result["source"] == "catalog":
+        # D-01/D-04 (Phase 12/PRICE-04): unknown-to-Product code matched by
+        # Dictionary and/or CatalogPrice. Pitfall 1: reuse the exact same
+        # "still empty after strip" computation as the product branch above.
+        # D-02: "sale" is hard-excluded — never filled from CatalogPrice.
+        typed = {"cost": cost, "sale": sale, "catalog": catalog}
+        fill_fields = [f for f in ("cost", "catalog") if not typed[f].strip()]
+        hint = CATALOG_FILL_HINT
+        # D-05: the batch chooser is untouched by this branch — same empty
+        # state as the dictionary-only fallback used previously.
+        chooser = {"zero_warehouses": False, "batches": [], "code_entered": False}
+        include_chooser = False
     else:
         fill_fields = []
         hint = ""  # name_input.html falls back to the dictionary wording
         chooser = {"zero_warehouses": False, "batches": [], "code_entered": False}
         include_chooser = False
     context = {
-        "name": result["name"],
+        # None-guard: result["name"] can be None when only a CatalogPrice
+        # match exists (no Dictionary entry) — name_input.html's
+        # value="{{ name }}" has no `or ''` guard of its own.
+        "name": result["name"] or "",
         "hint": hint,
         "source": result["source"],
         "fill_fields": fill_fields,

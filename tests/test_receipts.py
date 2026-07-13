@@ -603,6 +603,7 @@ def test_web_nav_has_receipts_link(client):
 
 CARD_HINT = "Данные подставлены из карточки товара — новые цены обновят карточку."
 DICT_HINT = "Название подставлено из справочника — можно изменить."
+CATALOG_FILL_HINT = "Цена и название подставлены из каталога — можно изменить."
 
 
 def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
@@ -831,13 +832,94 @@ def test_web_lookup_product_skips_typed_price_fields(client, session, product):
 
 
 def test_web_lookup_dictionary_fallback_name_only(client, session):
-    """D-03 fallback: dictionary-only code fills the name, no oob fragments."""
+    """D-01 catalog source: dictionary-only code fills the name via the combined
+    catalog branch (no removed "dictionary" source anymore). Blank cost/catalog
+    OOB fragments DO render — fill_fields is computed from typed-emptiness only
+    (Pitfall 1), independent of whether a real CatalogPrice value exists."""
     add_entry(session, code="4321", name="Тушь")
     response = client.get("/receipts/lookup", params={"code": "4321", "name": ""})
     assert response.status_code == 200
     assert "Тушь" in response.text
-    assert DICT_HINT in response.text
-    assert "hx-swap-oob" not in response.text
+    assert CATALOG_FILL_HINT in response.text
+
+
+def test_web_lookup_catalog_source_price_only_fills_cost_and_catalog(client, session):
+    """Unknown-to-Product code with a CatalogPrice match only: cost/catalog OOB
+    fragments carry the real consultant/consumer cents display values, and
+    sale is never touched (D-02)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "5555", "name": "", "cost": "", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="cost-wrap"' in response.text
+    assert 'value="9,00"' in response.text
+    assert 'id="catalog-wrap"' in response.text
+    assert 'value="15,00"' in response.text
+    assert 'id="sale-wrap"' not in response.text
+
+
+def test_web_lookup_catalog_source_combines_dictionary_and_price(client, session):
+    """Unknown-to-Product code matched by BOTH a Dictionary name and a
+    CatalogPrice row: name text and both price OOB fragments appear together."""
+    add_entry(session, code="6666", name="Помада")
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="6666",
+            year=2026,
+            number=1,
+            consumer_cents=2000,
+            consultant_cents=1200,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "6666", "name": "", "cost": "", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert "Помада" in response.text
+    assert 'id="cost-wrap"' in response.text
+    assert 'id="catalog-wrap"' in response.text
+
+
+def test_web_lookup_catalog_source_skips_typed_cost(client, session):
+    """Typed-cost-preserved regression for the catalog branch, mirroring
+    test_web_lookup_product_skips_typed_price_fields: a price already typed
+    by the operator is excluded from the fill."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "5555", "name": "", "cost": "9", "sale": "", "catalog": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="cost-wrap"' not in response.text
+    assert 'id="catalog-wrap"' in response.text
 
 
 def test_web_lookup_204_for_unknown_code(client):
