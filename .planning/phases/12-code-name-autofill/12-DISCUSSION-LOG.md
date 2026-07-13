@@ -64,6 +64,22 @@
 
 ---
 
+## Full 8-menu mobile audit (user-requested)
+
+User asked for a full audit of all 8 mobile home-menu items (Продажа, Приход, Поиск, Списание, Корректировка, Перемещение, История, Сроки годности) against two issues: (1) combined price/name/code autofill, (2) visibility of product identity on every step. Dispatched an Explore agent; findings:
+
+- **Clean, no action needed:** Поиск, История, Сроки годности (read-only, already show code+name as visible text), Возврат (bonus check — single-slot form, product identity already visible text).
+- **Приход step-3 hidden fields:** already covered by D-12 (added in the prior turn).
+- **Списание/Корректировка:** name shown on step 1 only, missing on all later steps — confirmed as exactly Phase 13's UI-02 scope, no new decision needed, just confirms severity for Phase 13 planning.
+- **Продажа (new bug):** `lookup_prefill()` returns name+price together, but name is silently dropped before reaching step 2/3 templates — only price displays. Not previously known.
+- **Перемещение (new bug, worst case):** `lookup_prefill()` is called but its entire result is discarded — product name is never shown anywhere in the wizard, not even step 1.
+
+**Question:** where should the Продажа/Перемещение "fetched but discarded name" bugs be fixed — Phase 12 now, Phase 13, or a separate backlog item?
+**User's choice:** Phase 12 now.
+**Captured as:** D-13 (mobile sales) and D-14 (mobile transfers) in CONTEXT.md — narrowly scoped to displaying data the existing `lookup_prefill()` calls already fetch, not a full UI-02 pass on those wizards.
+
+---
+
 ## Claude's Discretion
 
 - Exact response fragment/template names and the internal shape of the new `/sales/search-name` route.

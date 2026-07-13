@@ -42,6 +42,11 @@ Wherever the operator types a product code — product-add form, goods receipt (
 - **D-10:** Trigger threshold: the dropdown fires only once the name field has **3 or more characters** typed (guard added in the new route/template — `search_products`'s own empty-query "first 20 by name" fallback is skipped for this live-typing use case).
 - **D-11:** On selecting a dropdown result, fill BOTH the code and name fields directly from the clicked row (do not just fill code and let the existing `/sales/lookup` re-fire) — the result already carries both, avoiding a redundant round trip.
 
+### Mobile sales & mobile transfers — discarded-name bugs (found by full 8-menu audit)
+- **D-13 (mobile sales):** `lookup_prefill()` in `app/services/sales.py` already returns `name` alongside `sale` price, fetched by `mobile_sales.py`'s debounced code lookup — but today only the price reaches step 2/3 templates (`sale_step_batch.html`, `sale_step_qty_price.html`); the fetched name is computed and then discarded, so the operator sees no product name until the final basket review. Fix: carry the already-fetched `name` forward through the same context dicts that already carry `code`/price into steps 2-3, and render it as visible text (not just a hidden input) on those steps. Narrow scope: display data the service call already returns today — no new lookups, no change to the step-1 debounce trigger, no styling system, no warehouse visibility, no navigation/back-button change (those stay Phase 13's UI-02 job for the rest of the wizard).
+- **D-14 (mobile transfers):** `transfers_step_batch` (`app/routes/mobile_transfers.py:130-132`) already calls `lookup_prefill(session, code)` — today purely to confirm the code resolves, then discards the result entirely; no template in the transfer wizard (not even step 1) ever displays the product name, only the code the operator typed and, later, batch cards showing warehouse/price/qty but not product name. Fix: use the already-fetched `name` from that existing call and render it as visible text starting from the step where it's resolved, carried through to the destination step (`transfers_step_dest.html`), instead of leaving product identity invisible until the final success message. Narrow scope: same as D-13 — display already-fetched data only, no new lookups, no touch to batch-card layout/navigation (Phase 13's job).
+- **Boundary with Phase 13:** D-13/D-14 fix the specific "we fetched the name and threw it away" bug found in these two wizards. They do NOT constitute a full UI-02 pass — write-off and correction's identical "name only on step 1, nothing after" gap, and the general code/name/warehouse visibility work across all 5 wizards, remain entirely Phase 13's scope, unchanged by this audit.
+
 ### Claude's Discretion
 - Exact response fragment/template names and the shape of the new `/sales/search-name` route are left to the planner/executor, as long as they follow D-08 through D-11.
 - Whether `lookup_prefill()`'s new `source="catalog"` branch lives in `app/services/receipts.py` or is factored differently is left to the planner, as long as the resulting behavior matches D-01/D-02.
@@ -67,6 +72,8 @@ Wherever the operator types a product code — product-add form, goods receipt (
 - `app/templates/mobile_partials/receipts_step_details.html` — step 3 template; `code`/`name` currently hidden-only (lines 7, 9), needs the minimal visible line per D-12
 - `app/services/catalog.py:347-397` — `search_products()`/`search_view()` (to reuse per D-08)
 - `app/routes/sales.py` / `app/services/sales.py` — `/sales/lookup`, `lookup_prefill()` (existing code→name pattern on sales page)
+- `app/routes/mobile_sales.py`, `app/templates/mobile_partials/sale_step_batch.html`, `sale_step_qty_price.html` — name propagation needed per D-13
+- `app/routes/mobile_transfers.py:130-132` (`transfers_step_batch`), `app/templates/mobile_pages/transfers.html`, `mobile_partials/transfers_step_dest.html` — name propagation needed per D-14
 
 ### Project-level context
 - `.planning/PROJECT.md` — Key Decisions table; v1.1 decision "mobile flow reuses existing services unchanged"
