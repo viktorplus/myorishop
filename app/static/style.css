@@ -274,6 +274,18 @@ mark {
 }
 .mobile-card.selected { background: #e8effd; }
 
+/* 11-UAT.md Test 4 (Bug A): batch-selection cards render as
+   <button class="mobile-card"> — the generic `button { color: #ffffff }`
+   rule otherwise wins over `.mobile-card`'s white background, making card
+   text (price/expiry/quantity/comment) invisible until hovered. Scoped to
+   `button.mobile-card` ONLY — every other `.mobile-card` usage (div/label/a:
+   history cards, receipts batch chooser, corrections mode picker, write-off
+   reason rows, search results) already renders with its own correct color
+   and must not be touched. */
+button.mobile-card { color: #222; }
+button.mobile-card:hover { background: #ffffff; border-color: #d9d9d9; }
+button.mobile-card.selected:hover { background: #e8effd; }
+
 .mobile-actions { display: flex; gap: 16px; margin-top: 24px; }
 .mobile-actions button, .mobile-actions a.button { flex: 1; min-height: 44px; }
 

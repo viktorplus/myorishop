@@ -152,6 +152,64 @@ def test_batch_step_foreign_batch_id_rejected(mobile_client_factory, session, pr
 # ---------------------------------------------------------------------------
 
 
+def test_qty_price_step_back_returns_to_batch_step_when_batch_step_was_shown(
+    mobile_client_factory, session, product, warehouse
+):
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    b2 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b2.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": product.code})
+    assert resp.status_code == 200
+    assert "Выберите партию" in resp.text
+
+    # "Далее" without picking a card (batch_id="").
+    resp = client.post(
+        "/m/sales/step/qty-price", data={"code": product.code, "batch_id": ""}
+    )
+    assert resp.status_code == 200
+    assert 'hx-get="/m/sales/step/batch"' in resp.text
+    assert 'hx-vals=\'{"back": "1"}\'' not in resp.text
+
+    # Simulate what the "Назад" click would send (htmx closest-form GET).
+    resp = client.get("/m/sales/step/batch", params={"code": product.code})
+    assert resp.status_code == 200
+    assert "Выберите партию" in resp.text
+
+
+def test_qty_price_step_back_returns_to_product_step_for_dictionary_match(
+    mobile_client_factory, session
+):
+    from app.services.dictionary import add_entry
+
+    add_entry(session, code="DICT-02", name="Словарный товар 2")
+
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": "DICT-02"})
+    assert resp.status_code == 200
+    assert "Количество и цена" in resp.text
+    assert 'hx-post="/m/sales/step/product"' in resp.text
+    assert 'hx-vals=\'{"back": "1"}\'' in resp.text
+    assert 'hx-get="/m/sales/step/batch"' not in resp.text
+
+
 def test_qty_price_step_prefills_price_from_batch(
     mobile_client_factory, session, product, warehouse
 ):
