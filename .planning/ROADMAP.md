@@ -201,7 +201,7 @@ Plans:
 
 **Gap closure (wave 1, from 11-UAT.md Test 4 — Bug A blocker + Bug B major)**
 
-- [ ] 11-10-PLAN.md — UI-01: fix invisible batch-card text (button.mobile-card color, scoped to the actual broken element) + fix Sale wizard's Назад skipping the batch step (from_batch_step context flag + conditional hx-get wiring)
+- [x] 11-10-PLAN.md — UI-01: fix invisible batch-card text (button.mobile-card color, scoped to the actual broken element) + fix Sale wizard's Назад skipping the batch step (from_batch_step context flag + conditional hx-get wiring)
 
 **UI hint**: yes
 
@@ -222,4 +222,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Warehouses | v1.1 | 2/2 | Complete   | 2026-07-11 |
 | 9. Batch Tracking & Ledger Integration | v1.1 | 9/9 | Complete    | 2026-07-12 |
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
-| 11. Dedicated Mobile Flow | v1.1 | 9/10 | Gap closure planned   | 2026-07-13 |
+| 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
