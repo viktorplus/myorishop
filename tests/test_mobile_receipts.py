@@ -348,6 +348,34 @@ def test_get_receipts_plain_still_renders_full_page_with_code(
     assert 'value="TEST-001"' in response.text
 
 
+# --- Task 3 (13-03): visible code/name/warehouse header on step 2 (UI-02) ---
+
+
+def test_step_batch_shows_code_name_and_warehouse_header(
+    mobile_client_factory, session, product, warehouse
+):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": product.code, "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert f"<strong>{product.code}</strong> — {product.name}" in response.text
+    assert f"Склад: {warehouse.name}" in response.text
+
+
+def test_step_batch_unknown_code_still_shows_warehouse_header(
+    mobile_client_factory, session, warehouse
+):
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": "9999", "warehouse_id": warehouse.id}
+    )
+    assert response.status_code == 200
+    assert f"Склад: {warehouse.name}" in response.text
+    assert "<strong>9999</strong>" in response.text
+    assert "<strong>9999</strong> —" not in response.text
+
+
 def test_web_receipt_create_validation_error_writes_zero_rows(
     mobile_client_factory, session, product, warehouse
 ):

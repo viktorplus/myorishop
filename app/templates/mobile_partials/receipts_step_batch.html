@@ -7,6 +7,7 @@
    Rendered INSIDE #wizard-step (inside the persistent <form> from
    mobile_pages/receipts.html) — inner content only, never the wrapping div. #}
 <p class="mobile-step-indicator">Шаг 2 из 4</p>
+{% include "mobile_partials/_wizard_header.html" %}
 <input type="hidden" name="code" value="{{ code }}">
 <input type="hidden" name="warehouse_id" value="{{ warehouse_id }}">
 <input type="hidden" name="cost" value="{{ cost }}">

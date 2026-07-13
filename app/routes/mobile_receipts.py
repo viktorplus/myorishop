@@ -37,6 +37,12 @@ DEFAULT_WAREHOUSE_ID = "00000000-0000-4000-8000-000000000010"
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 
 
+def _warehouse_names(session: Session) -> dict[str, str]:
+    """id -> name map so the batch-step header can show its own «Склад:» line
+    (copied verbatim from app/routes/mobile_transfers.py::_warehouse_names)."""
+    return {w.id: w.name for w in active_warehouses(session)}
+
+
 def _preselect_warehouse_id(actives: list, submitted: str = "") -> str:
     """Echo a submitted warehouse, else preselect the seeded default when active,
     else the first active warehouse alphabetically (mirrors receipts.py)."""
@@ -133,6 +139,7 @@ def mobile_receipt_step_batch(
         "warehouse_id": selected,
         "name": final_name,
         "name_known": bool(resolved_name),
+        "warehouse_name": _warehouse_names(session).get(selected),
         "cost": final_cost,
         "sale": final_sale,
         "catalog": final_catalog,
