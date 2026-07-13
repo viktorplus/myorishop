@@ -91,7 +91,20 @@ Plans:
   3. The mobile sale basket/review screen shows a step indicator consistent with the rest of the sale wizard
   4. From the mobile search product-detail screen, the operator can tap "Продать" or "Принять" to jump directly into the sale or receipt wizard for that product
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 13-01-PLAN.md — Corrections wizard visible context + Назад consistency + shared header partial
+- [ ] 13-03-PLAN.md — Receipts wizard step-2 Назад fix + /m/receipts code prefill
+- [ ] 13-04-PLAN.md — Transfers wizard step-2 Назад fix
+- [ ] 13-05-PLAN.md — Sale basket step indicator + search quick actions + /m/sales code prefill
+
+**Wave 2** *(depends on 13-01 for the shared `_wizard_header.html` partial)*
+
+- [ ] 13-02-PLAN.md — Write-off wizard migration to persistent-shell architecture
+
 **UI hint**: yes
 
 ### Phase 14: List Pagination, Filtering, Sorting & Quick Delete
@@ -129,5 +142,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Warehouse Transfers & Expiry Reporting | v1.1 | 3/3 | Complete    | 2026-07-12 |
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
 | 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
-| 13. Mobile Wizard Context & Navigation | v1.2 | 0/TBD | Not started | - |
+| 13. Mobile Wizard Context & Navigation | v1.2 | 0/5 | Not started | - |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
