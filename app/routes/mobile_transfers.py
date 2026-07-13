@@ -116,8 +116,16 @@ def _render_dest_step(
 
 
 @router.get("/m/transfers")
-def transfers_step_product(request: Request):
-    context = {"step_label": "Шаг 1 из 3", "code": "", "errors": {}}
+def transfers_step_product(request: Request, code: str = ""):
+    context = {"step_label": "Шаг 1 из 3", "code": code, "errors": {}}
+    # D-01/D-02 uniformity (13-04): a "Назад" hx-get from step 2 re-fetches
+    # this route with the typed code carried in ?code= — an HX-Request gets
+    # only the bare fragment (this wizard's swap convention is outerHTML, so
+    # the fragment carries its own #wizard-step wrapper), never the full page.
+    if bool(request.headers.get("HX-Request")):
+        return templates.TemplateResponse(
+            request, "mobile_partials/transfers_step_product.html", context
+        )
     return templates.TemplateResponse(request, "mobile_pages/transfers.html", context)
 
 
