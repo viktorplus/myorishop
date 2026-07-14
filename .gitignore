@@ -16,9 +16,24 @@ backups/
 .env
 
 # Catalog PDFs are large local binaries (tens/hundreds of MB each), served
-# from disk by the /catalogs section. Keep them out of git; the small xlsx
-# price lists and products.json stay tracked for reproducible imports.
+# from disk by the /catalogs section. Keep them out of git; the master
+# price list xlsx (catalogs/oriflame_prices_with_calculations_fixed.xlsx)
+# stays tracked for reproducible imports via scripts/import_master_pricelist.py.
 catalogs/*.pdf
+
+# Raw historical price-list archive downloaded from Yandex Disk (source
+# material for building the master price list, not used by the app itself).
+catalogs/price_lists/
+catalogs/all_progress.json
+catalogs/all_yandex_links.txt
+catalogs/download_progress.json
+catalogs/download_all_excel.py
+catalogs/download_prices.py
+catalogs/restore_excel.py
+catalogs/restore_progress.json
+catalogs/restore_links.txt
+catalogs/yandex_links.txt
+catalogs/*.url
 
 # Git Bash crash artifacts (Windows)
 *.stackdump
