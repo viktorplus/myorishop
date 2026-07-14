@@ -29,8 +29,8 @@ Requirements for milestone v1.2. Each maps to roadmap phases.
 - [x] **LIST-01**: Every list page (products, warehouses, customers, dictionary, catalogs, history, and any others) supports pagination
 - [x] **LIST-02**: Every list page supports filtering on its relevant columns
 - [x] **LIST-03**: Every list page supports sorting on its relevant columns
-- [ ] **LIST-04**: Operator can delete a warehouse directly from the warehouse list without opening its detail/edit page
-- [ ] **LIST-05**: Operator can delete a product directly from the product list without opening its detail/edit page
+- [x] **LIST-04**: Operator can delete a warehouse directly from the warehouse list without opening its detail/edit page
+- [x] **LIST-05**: Operator can delete a product directly from the product list without opening its detail/edit page
 
 ## v2 Requirements
 
@@ -79,8 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIST-01 | Phase 14 | Complete |
 | LIST-02 | Phase 14 | Complete |
 | LIST-03 | Phase 14 | Complete |
-| LIST-04 | Phase 14 | Pending |
-| LIST-05 | Phase 14 | Pending |
+| LIST-04 | Phase 14 | Complete |
+| LIST-05 | Phase 14 | Complete |
 
 **Coverage:**
 
