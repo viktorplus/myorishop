@@ -1,5 +1,7 @@
 """Product catalog pages (D-18): thin routes, all writes in app/services/catalog.py."""
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -11,33 +13,100 @@ from app.services.catalog import (
     category_options,
     create_product,
     get_product,
+    list_products_view,
     price_history,
+    quick_delete_product,
     restore_product,
-    search_view,
     soft_delete_product,
     update_product,
 )
 from app.services.catalogs import catalogs_for_code
+from app.services.pagination import page_window
 from app.services.pricing import latest_price_for_code
 
 router = APIRouter()
 
-# Route order: literal paths (/products/new, later /products/search) MUST stay
+# Route order: literal paths (/products/new, /products/lookup-price) MUST stay
 # declared before the parameterized /products/{product_id} routes below.
 
 
+def _products_context(
+    session: Session,
+    *,
+    code: str = "",
+    name: str = "",
+    category: str = "",
+    sort: str = "",
+    page: int = 0,
+    blocked_id: str | None = None,
+    blocked_qty: int | None = None,
+) -> dict:
+    """Shared context for the full list page AND the rows partial (D-18 pattern,
+    reused from search_view for the new filter/sort/page shape)."""
+    result = list_products_view(
+        session, code=code, name=name, category=category, sort=sort, page=page
+    )
+    pw = page_window(result["page"], result["total_pages"])
+    qs_parts = {
+        k: v
+        for k, v in {
+            "code": result["code"],
+            "name": result["name"],
+            "category": result["category"],
+            "sort": result["sort"],
+        }.items()
+        if v
+    }
+    extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
+    return {
+        "rows": result["rows"],
+        "page": result["page"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page_window": pw,
+        "code": result["code"],
+        "name": result["name"],
+        "category": result["category"],
+        "sort": result["sort"],
+        "list_url": "/products",
+        "rows_target_id": "product-rows",
+        "extra_qs": extra_qs,
+        "blocked_id": blocked_id,
+        "blocked_qty": blocked_qty,
+    }
+
+
 @router.get("/products")
-def products_list(request: Request, session: Session = Depends(get_session)):
-    # D-18: list page and search partial share the same search_view context
-    # (empty query = first 20 active products by name).
-    context = search_view(session, "")
+def products_list(
+    request: Request,
+    code: str = "",
+    name: str = "",
+    category: str = "",
+    sort: str = "",
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    context = _products_context(
+        session, code=code, name=name, category=category, sort=sort, page=page
+    )
+    is_hx = bool(request.headers.get("HX-Request"))
+    if is_hx:
+        return templates.TemplateResponse(request, "partials/product_rows.html", context)
     return templates.TemplateResponse(request, "pages/products_list.html", context)
 
 
-@router.get("/products/search")
-def products_search(request: Request, q: str = "", session: Session = Depends(get_session)):
-    # D-25: HTMX active search — returns ONLY the rows partial (Phase 1 rule).
-    context = search_view(session, q)
+@router.post("/products/{product_id}/quick-delete")
+def product_quick_delete(
+    request: Request, product_id: str, session: Session = Depends(get_session)
+):
+    # LIST-05/D-08: no filter/sort/page state is carried across the write —
+    # matches the existing add/edit reset precedent (product_create/product_update).
+    deleted, blocked = quick_delete_product(session, product_id)
+    context = _products_context(
+        session,
+        blocked_id=product_id if not deleted and blocked else None,
+        blocked_qty=blocked.get("blocked_qty"),
+    )
     return templates.TemplateResponse(request, "partials/product_rows.html", context)
 
 

@@ -24,8 +24,10 @@ from app.services.catalog import (
     category_options,
     create_product,
     list_products,
+    list_products_view,
     price_history,
     products_by_category,
+    quick_delete_product,
     restore_product,
     soft_delete_product,
     update_product,
@@ -1063,3 +1065,147 @@ def test_web_create_product_invalid_min_sale_rerenders_422(client, session):
     assert response.status_code == 422
     assert "Неверный формат цены" in response.text
     assert session.scalar(text("SELECT COUNT(*) FROM products WHERE code = 'MIN-3'")) == 0
+
+
+# --- Plan 14-04: list_products_view() + quick_delete_product() (LIST-01..05) ---
+
+
+def test_list_products_view_filters_by_code(session):
+    """Substring, case-insensitive match on code."""
+    match = _create(session, "AB123", "Товар 1")
+    other = _create(session, "ZZ999", "Товар 2")
+
+    result = list_products_view(session, code="b12")
+    codes = [p.code for p in result["rows"]]
+    assert match.code in codes
+    assert other.code not in codes
+
+
+def test_list_products_view_filters_by_name_cyrillic(session):
+    """D-27: Cyrillic-fold-safe substring match on name via name_lc."""
+    match = _create(session, "L1", "Губная Помада")
+    other = _create(session, "L2", "Тушь")
+
+    result = list_products_view(session, name="помада")
+    names = [p.name for p in result["rows"]]
+    assert match.name in names
+    assert other.name not in names
+
+
+def test_list_products_view_filters_by_category(session):
+    """Substring, case-insensitive match on category."""
+    match = _create(session, "C1", "Товар 1", category="Макияж")
+    other = _create(session, "C2", "Товар 2", category="Уход")
+
+    result = list_products_view(session, category="макияж")
+    categories = [p.category for p in result["rows"]]
+    assert match.category in categories
+    assert other.category not in categories
+
+
+def test_list_products_view_sort_name_desc_and_code(session):
+    """D-06/D-07: name_desc reverse-alpha; code sorts ascending by code."""
+    _create(session, "B2", "Аромат")
+    _create(session, "A1", "Крем")
+
+    by_name_desc = list_products_view(session, sort="name_desc")["rows"]
+    assert [p.name for p in by_name_desc] == ["Крем", "Аромат"]
+
+    by_code = list_products_view(session, sort="code")["rows"]
+    assert [p.code for p in by_code] == ["A1", "B2"]
+
+    default_sort = list_products_view(session)["rows"]
+    assert [p.name for p in default_sort] == ["Аромат", "Крем"]
+
+
+def test_list_products_view_paginates(session):
+    """25 active products -> page 0 has 20 rows, total=25, total_pages=2; deleted never appear."""
+    for i in range(25):
+        _create(session, f"P{i:03d}", f"Товар {i:03d}")
+    deleted = _create(session, "DEL", "Удалённый Товар")
+    soft_delete_product(session, deleted.id)
+
+    result = list_products_view(session, page=0)
+    assert len(result["rows"]) == 20
+    assert result["total"] == 25
+    assert result["total_pages"] == 2
+    assert result["page"] == 0
+    assert all(p.id != deleted.id for p in result["rows"])
+
+
+def test_quick_delete_product_blocked_when_stock_positive(session, stocked_product):
+    """quantity=8 (from the stocked_product fixture) -> blocked, zero writes."""
+    deleted, info = quick_delete_product(session, stocked_product.id)
+    assert deleted is False
+    assert info == {"blocked_qty": 8}
+    session.expire_all()
+    assert stocked_product.deleted_at is None
+
+
+def test_quick_delete_product_succeeds_when_zero_stock(session, product):
+    """quantity=0 -> deleted, deleted_at set."""
+    deleted, info = quick_delete_product(session, product.id)
+    assert deleted is True
+    assert info == {}
+    session.expire_all()
+    assert product.deleted_at is not None
+
+
+def test_quick_delete_product_idempotent_on_unknown_or_deleted(session, product):
+    """Unknown id and already-deleted product both no-op (False, {})."""
+    deleted, info = quick_delete_product(session, "does-not-exist")
+    assert (deleted, info) == (False, {})
+
+    soft_delete_product(session, product.id)
+    deleted, info = quick_delete_product(session, product.id)
+    assert (deleted, info) == (False, {})
+
+
+def _create(session, code, name, category=""):
+    """Local helper: create_product + assert success, for list_products_view tests."""
+    product, errors = create_product(session, code=code, name=name, category=category, **EMPTY_MONEY)
+    assert errors == {}
+    return product
+
+
+def test_web_quick_delete_blocked_when_stock_positive(client, stocked_product):
+    """D-08: quantity > 0 -> 200, RU blocked-error text, product still listed."""
+    response = client.post(f"/products/{stocked_product.id}/quick-delete")
+    assert response.status_code == 200
+    assert "Нельзя удалить: на остатке" in response.text
+    assert stocked_product.name in response.text
+
+
+def test_web_quick_delete_succeeds_and_removes_row(client, product):
+    """D-10: quantity == 0 -> 200, the product's name no longer appears."""
+    response = client.post(f"/products/{product.id}/quick-delete")
+    assert response.status_code == 200
+    assert product.name not in response.text
+
+
+def test_web_products_filter_row_narrows_results(client, session):
+    """LIST-02: filtering by category narrows the rendered rows to matches only."""
+    _create(session, "F1", "Тушь Для Ресниц", category="Макияж")
+    _create(session, "F2", "Крем Для Рук", category="Уход")
+
+    page = client.get("/products", params={"category": "макияж"})
+    assert page.status_code == 200
+    assert "Тушь Для Ресниц" in page.text
+    assert "Крем Для Рук" not in page.text
+
+
+def test_web_products_pagination_bar_shows_correct_total(client, session):
+    """LIST-01: 25 active products -> two pages, page-of-total text rendered."""
+    for i in range(25):
+        _create(session, f"PG{i:03d}", f"Товар Страница {i:03d}")
+
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Страница 1 из 2" in page.text
+
+
+def test_web_products_page_has_no_standalone_search_input(client):
+    """Pitfall 6: the standalone /products/search input is retired."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert 'hx-get="/products/search"' not in page.text

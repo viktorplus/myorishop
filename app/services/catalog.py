@@ -13,10 +13,19 @@ from sqlalchemy.orm import Session
 from app.core import new_id, to_cents, utcnow_iso
 from app.models import Operation, Product
 from app.services.ledger import record_operation
+from app.services.pagination import paginate
 
 PRICE_ERROR = "Неверный формат цены — введите число, например 12,50."
 DUPLICATE_CODE_ERROR = "Код уже используется другим товаром — введите другой код."
 THRESHOLD_ERROR = "Введите целое число 0 или больше."
+
+# Phase 14 (LIST-03, D-06/D-07): allow-list of sort keys for list_products_view.
+# Python-side `key=` callables (small cardinality per RESEARCH.md A1), never
+# string-interpolated into a SQL ORDER BY (T-14-09).
+_SORT_MAP = {
+    "name_desc": lambda p: p.name_lc or "",
+    "code": lambda p: (p.code or "").lower(),
+}
 
 
 def parse_optional_cents(raw: str, errors: dict, field: str) -> int | None:
@@ -301,6 +310,27 @@ def soft_delete_product(session: Session, product_id: str) -> None:
     session.commit()
 
 
+def quick_delete_product(session: Session, product_id: str) -> tuple[bool, dict]:
+    """List-row quick delete (LIST-05, D-08): hard-blocked while stock > 0.
+
+    Mirrors soft_delete_warehouse's (deleted, info) shape:
+      (True, {})              -> deleted (quantity == 0)
+      (False, {})              -> unknown id or already deleted (no-op)
+      (False, {"blocked_qty"}) -> blocked, ZERO writes staged (no override, T-14-11)
+
+    D-09: Product.quantity is already a cached projection of
+    SUM(operations.qty_delta) — no extra query is needed for the guard.
+    """
+    product = session.get(Product, product_id)
+    if product is None or product.deleted_at is not None:
+        return False, {}
+    if product.quantity > 0:
+        return False, {"blocked_qty": product.quantity}
+    product.deleted_at = utcnow_iso()
+    session.commit()
+    return True, {}
+
+
 def restore_product(session: Session, product_id: str) -> None:
     """Clear deleted_at; the product reappears in lists and search (D-20)."""
     product = session.get(Product, product_id)
@@ -334,6 +364,51 @@ def list_products(session: Session) -> list[Product]:
             .limit(20)
         )
     )
+
+
+def list_products_view(
+    session: Session,
+    *,
+    code: str = "",
+    name: str = "",
+    category: str = "",
+    sort: str = "",
+    page: int = 0,
+) -> dict:
+    """Filter/sort/page the `/products` list (LIST-01/02/03, D-04..D-07).
+
+    Small cardinality (RESEARCH.md A1) -> Python-side filter/sort after one
+    fetch, then the shared pagination.paginate slicer. Deleted products never
+    appear, regardless of filter/sort/page.
+    """
+    rows = list(session.scalars(select(Product).where(Product.deleted_at.is_(None))))
+
+    code_q = code.strip().lower()
+    if code_q:
+        rows = [p for p in rows if code_q in (p.code or "").lower()]
+    name_q = name.strip().lower()
+    if name_q:
+        rows = [p for p in rows if name_q in (p.name_lc or "")]
+    category_q = category.strip().lower()
+    if category_q:
+        rows = [p for p in rows if category_q in (p.category or "").lower()]
+
+    if sort in _SORT_MAP:
+        rows.sort(key=_SORT_MAP[sort], reverse=(sort == "name_desc"))
+    else:
+        rows.sort(key=lambda p: p.name_lc or "")  # D-07: unchanged default order
+
+    page_rows, total, total_pages = paginate(rows, page)
+    return {
+        "rows": page_rows,
+        "total": total,
+        "total_pages": total_pages,
+        "page": page,
+        "code": code,
+        "name": name,
+        "category": category,
+        "sort": sort,
+    }
 
 
 # --- Instant search (CAT-03, D-25/D-26/D-27) ---
