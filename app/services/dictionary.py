@@ -105,7 +105,7 @@ def list_entries(
     code = code.strip()
     name = name.strip()
     if code:
-        filters.append(func.lower(Dictionary.code).contains(code.lower()))
+        filters.append(func.lower(Dictionary.code).contains(code.lower(), autoescape=True))
     if name:
         filters.append(Dictionary.name_lc.contains(name.lower(), autoescape=True))
 
