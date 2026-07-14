@@ -109,3 +109,7 @@ Each task was committed atomically:
 ## Next Phase Readiness
 - `CashMovement`/`CASH_CATEGORIES` are importable and the append-only guarantee is proven — Plan 02 (auto-credit on sale / auto-debit on return, per FIN-01/FIN-02) can now build `app/services/finance.py` against this table.
 - No blockers. One stray `git stash` entry remains in this worktree (see above) — harmless but worth a `git stash list` / cleanup glance before the next agent runs here.
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; all 4 commit hashes (`fb60988`, `ef5b57a`, `b79929b`, `391d055`) verified present in `git log --oneline --all`.
