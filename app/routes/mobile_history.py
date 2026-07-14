@@ -27,9 +27,14 @@ def mobile_history_page(
     session: Session = Depends(get_session),
 ):
     result = history_view(session, type_filter=type or None, product_id=None, page=page)
+    # Phase 14 (D-02): history_view() now returns total/total_pages instead
+    # of a has_next sentinel (desktop's page-number pagination migration).
+    # The mobile load-more control is out of this phase's scope (desktop-
+    # only, see 14-CONTEXT.md) — derive the equivalent has_next locally so
+    # this route's existing behavior/tests are unaffected by that shape change.
     context = {
         "rows": result["rows"],
-        "has_next": result["has_next"],
+        "has_next": result["page"] < result["total_pages"] - 1,
         "page": result["page"],
         "type_filter": result["type_filter"],
     }
