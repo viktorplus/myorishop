@@ -1,5 +1,7 @@
 """Customer pages (CST-01/02): thin routes, all writes in app/services/customers.py."""
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -8,28 +10,89 @@ from app.db import get_session
 from app.routes import templates
 from app.services.customers import (
     create_customer,
-    customer_search_view,
     get_customer,
+    list_customers_view,
     purchase_history,
     update_customer,
 )
+from app.services.pagination import page_window
 
 router = APIRouter()
 
-# Route order: literal paths (/customers/new, /customers/search) MUST stay
-# declared before the parameterized /customers/{customer_id} routes below.
+# Route order: literal paths (/customers/new) MUST stay declared before the
+# parameterized /customers/{customer_id} routes below. /customers/search was
+# retired (LIST-02/D-04, Pitfall 6) — its filtering folded into /customers'
+# header-row filters; the sale-picker's own /sales/customer-search is separate.
+
+
+def _customers_context(
+    session: Session,
+    *,
+    name: str = "",
+    surname: str = "",
+    consultant_number: str = "",
+    sort: str = "",
+    page: int = 0,
+) -> dict:
+    """Shared context for the /customers full page AND its #customer-rows partial."""
+    result = list_customers_view(
+        session,
+        name=name,
+        surname=surname,
+        consultant_number=consultant_number,
+        sort=sort,
+        page=page,
+    )
+    pw = page_window(result["page"], result["total_pages"])
+    qs_parts = {
+        key: value
+        for key, value in {
+            "name": result["name"],
+            "surname": result["surname"],
+            "consultant_number": result["consultant_number"],
+            "sort": result["sort"],
+        }.items()
+        if value
+    }
+    extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
+    return {
+        "rows": result["rows"],
+        "page": result["page"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page_window": pw,
+        "name": result["name"],
+        "surname": result["surname"],
+        "consultant_number": result["consultant_number"],
+        "sort": result["sort"],
+        "list_url": "/customers",
+        "rows_target_id": "customer-rows",
+        "extra_qs": extra_qs,
+    }
 
 
 @router.get("/customers")
-def customers_list(request: Request, session: Session = Depends(get_session)):
-    context = customer_search_view(session, "")
+def customers_list(
+    request: Request,
+    name: str = "",
+    surname: str = "",
+    consultant_number: str = "",
+    sort: str = "",
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    context = _customers_context(
+        session,
+        name=name,
+        surname=surname,
+        consultant_number=consultant_number,
+        sort=sort,
+        page=page,
+    )
+    is_hx = bool(request.headers.get("HX-Request"))
+    if is_hx:
+        return templates.TemplateResponse(request, "partials/customer_rows.html", context)
     return templates.TemplateResponse(request, "pages/customers_list.html", context)
-
-
-@router.get("/customers/search")
-def customers_search(request: Request, q: str = "", session: Session = Depends(get_session)):
-    context = customer_search_view(session, q)
-    return templates.TemplateResponse(request, "partials/customer_rows.html", context)
 
 
 @router.get("/customers/new")
