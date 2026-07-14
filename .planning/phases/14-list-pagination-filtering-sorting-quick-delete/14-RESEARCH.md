@@ -308,17 +308,19 @@ if product.quantity > 0:
 
 **If this table is empty:** N/A — see rows above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Is there a restore path for quick-deleted warehouses after this phase, or is `restore_warehouse` intentionally orphaned?**
    - What we know: `restore_warehouse` and `POST /warehouses/{id}/restore` already exist and work; D-14 removes the ONLY current UI path to them (the grayed-out restore button in the list).
    - What's unclear: Whether the planner should add a lightweight "Показать удалённые" toggle/select-filter (natural fit with D-04's per-column filter row — a `status` select with `"Все склады"/"Активные"/"Удалённые"` options, where selecting "Удалённые" shows the existing restore button again) or leave restore unreachable in v1.2, deferring a proper UI to a later milestone.
    - Recommendation: Surface this explicitly to the user during planning/discuss rather than deciding silently either way — CONTEXT.md marks it "not to be silently dropped." A `status` filter select is the lowest-effort option that reuses 100% existing restore machinery, and fits D-04's "warehouses (name, address, active/deleted — new select)" filter candidate list already noted in the UI-SPEC's Contract B.
+   - RESOLVED: Plan 14-05 implements the `status` filter select (`"Все склады"/"Активные"/"Удалённые"`), keeping `restore_warehouse` reachable via the existing restore button when "Удалённые" is selected.
 
 2. **Should the product-list "Название" sort actually differ from the default, given the list is also filterable by category?**
    - What we know: D-07 locks the DEFAULT (name A→Я); D-06/CONTEXT leaves the non-default OPTIONS to planning.
    - What's unclear: Whether operators would find a category-grouped or price-sorted view more useful than a simple Я→А reverse-alpha option.
    - Recommendation: Keep the non-default sort set minimal for v1.2 (reverse-alpha + code) per the UI-SPEC's illustrative example (`"Название (Я→А)"`), and treat richer sort options as a possible small follow-up rather than scope-creeping this phase.
+   - RESOLVED: Plan 14-04 implements the minimal non-default sort set (reverse-alpha + code) as recommended.
 
 ## Filterable Columns per List (Claude's Discretion, recommended)
 
