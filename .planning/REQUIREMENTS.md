@@ -51,24 +51,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FIN-01 | TBD | Pending |
-| FIN-02 | TBD | Pending |
-| FIN-03 | TBD | Pending |
-| FIN-04 | TBD | Pending |
-| FIN-05 | TBD | Pending |
-| FIN-06 | TBD | Pending |
-| FIN-07 | TBD | Pending |
-| FIN-08 | TBD | Pending |
-| FIN-09 | TBD | Pending |
-| FIN-10 | TBD | Pending |
-| FIN-11 | TBD | Pending |
-| FIN-12 | TBD | Pending |
+| FIN-01 | Phase 15 | Pending |
+| FIN-02 | Phase 15 | Pending |
+| FIN-03 | Phase 16 | Pending |
+| FIN-04 | Phase 16 | Pending |
+| FIN-05 | Phase 16 | Pending |
+| FIN-06 | Phase 15 | Pending |
+| FIN-07 | Phase 16 | Pending |
+| FIN-08 | Phase 17 | Pending |
+| FIN-09 | Phase 17 | Pending |
+| FIN-10 | Phase 17 | Pending |
+| FIN-11 | Phase 17 | Pending |
+| FIN-12 | Phase 17 | Pending |
 
 **Coverage:**
 - v1 requirements: 12 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 12 ⚠️ (expected — roadmapper fills this in next)
+- Mapped to phases: 12 (Phase 15: 3, Phase 16: 4, Phase 17: 5)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-14*
-*Last updated: 2026-07-14 after initial definition (research-informed: return auto-debit, bidirectional manual entry, and profit/stock-valuation dashboard additions came from research + user follow-up)*
+*Last updated: 2026-07-14 — roadmap created (3 phases: 15 Cash Ledger Foundation, 16 Manual Cash Movements & History, 17 Financial Reports/Export & Dashboard Analytics). FIN-10/11/12 (profit + stock valuation) grouped into Phase 17 alongside FIN-08/09 rather than Phase 16, since both are read-only period/point-in-time aggregation queries reusing existing report infrastructure, distinct in nature from Phase 16's write-path/manual-entry UI work.*

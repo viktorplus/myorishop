@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
 status: planning
-last_updated: "2026-07-14T16:21:26.499Z"
+last_updated: "2026-07-14T18:00:00.000Z"
 last_activity: 2026-07-14
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-13)
+See: .planning/PROJECT.md (updated 2026-07-14)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Milestone complete
+**Current focus:** Phase 15: Cash Ledger Foundation — ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-14 — Milestone v1.3 started
+Phase: 15 of 17 (Cash Ledger Foundation)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-14 — v1.3 roadmap created (Phases 15-17), 12/12 requirements mapped
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -82,9 +84,11 @@ Last activity: 2026-07-14 — Milestone v1.3 started
 
 Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
 
-- **v1.2 roadmap (2026-07-13):** 13 requirements grouped into 3 phases — Phase 12 (Code & Name Autofill: PRICE-02/03/04 + SAL-06), Phase 13 (Mobile Wizard Context & Navigation: UI-02..05), Phase 14 (List Pagination/Filtering/Sorting & Quick Delete: LIST-01..05).
-- SAL-06 (sales-page code/name autocomplete) folded into Phase 12 alongside PRICE-02/03/04 rather than given its own phase — same "type a code/name, get a suggestion" UX pattern across product-add, receipt, and sales forms; avoids a thin single-requirement phase per granularity guidance.
-- v1.2 phase order: Code & Name Autofill (extends the already-shipped ad-hoc `feat/catalogs-pricing` branch) → Mobile Wizard Context & Navigation (fixes v1.1 Phase 11 audit gaps) → List Pagination/Filtering/Sorting & Quick Delete (broadest, cross-cutting infrastructure touching every list page, sequenced last).
+- **v1.3 roadmap (2026-07-14):** 12 requirements grouped into 3 phases — Phase 15 (Cash Ledger Foundation: FIN-01/02/06 — new sibling `cash_movements` ledger, auto-credit on sale, auto-debit on return, balance visible in a new «Финансы» section), Phase 16 (Manual Cash Movements & History: FIN-03/04/05/07 — bidirectional manual entry with mandatory category on withdrawal, warn-but-allow negative balance, paginated/filterable history), Phase 17 (Financial Reports, Export & Dashboard Analytics: FIN-08/09/10/11/12 — period cash-flow report, CSV export, gross/net profit and stock valuation on the dashboard).
+- Sale-credit (FIN-01) and return-debit (FIN-02) kept in the same phase (15), not split across phases, per research Pitfall 2 — a return without its symmetric debit silently corrupts the balance the first time a customer returns something.
+- FIN-06 (balance display) folded into Phase 15 rather than deferred to Phase 16 — makes the foundation phase's success criteria observable through the UI (mirrors the v1.0 Phase 1 "walking skeleton" pattern) instead of requiring a debug-only verification path.
+- FIN-10/11/12 (gross profit, net profit, stock valuation — added after research via user follow-up) grouped into Phase 17 alongside FIN-08 (cash-flow report) and FIN-09 (CSV export) rather than into Phase 16's manual-movement UI — all five are read-only period/point-in-time aggregation queries reusing existing report infrastructure (`sales_profit_report`, the stock report shape, the export.py CSV convention), distinct in nature from Phase 16's write-path/form work. Net profit (FIN-11) also has a hard dependency on Phase 16's manual expense movements existing to subtract.
+- 3 phases (not the 4-6 "standard" granularity default) mirrors the v1.2 precedent — 13 requirements also compressed to 3 phases under the same granularity setting — and follows the "don't pad small projects" rule for a contained, single-ledger integration milestone.
 
 ### Pending Todos
 
@@ -117,10 +121,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T02:52:47.209Z
-Stopped at: Phase 14 UI-SPEC approved
+Last session: 2026-07-14T18:00:00.000Z
+Stopped at: v1.3 roadmap created (Phases 15-17), REQUIREMENTS.md traceability updated (12/12 mapped)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run `/gsd-plan-phase 15` to plan Phase 15: Cash Ledger Foundation
