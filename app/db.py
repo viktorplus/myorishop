@@ -19,7 +19,7 @@ from app.config import settings
 # v2 sync milestone relaxes the UPDATE trigger with a WHEN clause in a NEW
 # migration — never edit this constant's DDL semantics in place without
 # also adding that migration.
-APPEND_ONLY_TRIGGERS: tuple[str, str] = (
+APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
     """
     CREATE TRIGGER operations_no_update
     BEFORE UPDATE ON operations
@@ -29,6 +29,16 @@ APPEND_ONLY_TRIGGERS: tuple[str, str] = (
     CREATE TRIGGER operations_no_delete
     BEFORE DELETE ON operations
     BEGIN SELECT RAISE(ABORT, 'operations ledger is append-only'); END
+    """,
+    """
+    CREATE TRIGGER cash_movements_no_update
+    BEFORE UPDATE ON cash_movements
+    BEGIN SELECT RAISE(ABORT, 'cash ledger is append-only'); END
+    """,
+    """
+    CREATE TRIGGER cash_movements_no_delete
+    BEFORE DELETE ON cash_movements
+    BEGIN SELECT RAISE(ABORT, 'cash ledger is append-only'); END
     """,
 )
 
