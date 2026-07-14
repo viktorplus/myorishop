@@ -5,12 +5,15 @@ PD-5: the autofill lookup lives HERE at GET /dictionary/lookup (not under
 wave-3 file ownership conflict-free.
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
+from app.services.pagination import page_window
 
 router = APIRouter()
 
@@ -18,9 +21,52 @@ router = APIRouter()
 # parameterized /dictionary/{entry_id} route below.
 
 
+def _dictionary_context(
+    session: Session, *, code: str = "", name: str = "", sort: str = "", page: int = 0
+) -> dict:
+    """Shared filter/sort/page context for GET and the two POST handlers."""
+    result = list_entries(session, code=code, name=name, sort=sort, page=page)
+    pw = page_window(result["page"], result["total_pages"])
+    qs_parts = {
+        k: v
+        for k, v in {
+            "code": result["code"],
+            "name": result["name"],
+            "sort": result["sort"],
+        }.items()
+        if v
+    }
+    extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
+    return {
+        "entries": result["entries"],
+        "page": result["page"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page_window": pw,
+        "code": result["code"],
+        "name": result["name"],
+        "sort": result["sort"],
+        "list_url": "/dictionary",
+        "rows_target_id": "dictionary-rows",
+        "extra_qs": extra_qs,
+        "errors": {},
+        "form": {},
+    }
+
+
 @router.get("/dictionary")
-def dictionary_page(request: Request, session: Session = Depends(get_session)):
-    context = {"entries": list_entries(session), "errors": {}, "form": {}}
+def dictionary_page(
+    request: Request,
+    code: str = "",
+    name: str = "",
+    sort: str = "",
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    context = _dictionary_context(session, code=code, name=name, sort=sort, page=page)
+    is_hx = bool(request.headers.get("HX-Request"))
+    if is_hx:
+        return templates.TemplateResponse(request, "partials/dictionary_rows.html", context)
     return templates.TemplateResponse(request, "pages/dictionary.html", context)
 
 
@@ -50,7 +96,7 @@ def dictionary_add(
 ):
     entry, errors = add_entry(session, code=code, name=name)
     context = {
-        "entries": list_entries(session),
+        **_dictionary_context(session),
         "errors": errors,
         "form": {"code": code, "name": name} if errors else {},
     }
@@ -74,7 +120,7 @@ def dictionary_update(
     if "entry" in errors:
         raise HTTPException(status_code=404, detail="unknown dictionary entry")
     context = {
-        "entries": list_entries(session),
+        **_dictionary_context(session),
         "errors": errors,
         "form": {},
         "error_entry_id": entry_id if errors else None,
