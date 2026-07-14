@@ -13,9 +13,11 @@ from app.routes import (
     customers,
     dictionary,
     export,
+    finance,
     history,
     home,
     mobile_corrections,
+    mobile_finance,
     mobile_history,
     mobile_home,
     mobile_receipts,
@@ -67,6 +69,7 @@ app.include_router(corrections.router)
 app.include_router(history.router)
 app.include_router(reports.router)
 app.include_router(export.router)
+app.include_router(finance.router)
 app.include_router(mobile_home.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)
@@ -77,3 +80,4 @@ app.include_router(mobile_transfers.router)
 app.include_router(mobile_returns.router)
 app.include_router(mobile_history.router)
 app.include_router(mobile_reports.router)
+app.include_router(mobile_finance.router)
