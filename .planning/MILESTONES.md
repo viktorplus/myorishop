@@ -1,5 +1,36 @@
 # Milestones
 
+## v1.2 Catalog Pricing UX & List Ergonomics (Shipped: 2026-07-14)
+
+**Delivered:** Formalized catalog/consultant-price and name autofill by product code across the product-add form, goods receipt (desktop + mobile), and sales page (name↔code cross-autofill); closed mobile wizard context/navigation gaps (visible code/name/warehouse, uniform Назад, basket step indicator, search quick actions); added pagination, filtering, and sorting to every list page plus stock-guarded quick-delete for warehouses and products.
+
+**Phases completed:** 3 phases (12-14), 17 plans, 41 tasks
+**Timeline:** 2026-07-13 → 2026-07-14 (2 days)
+**Git range:** `a058bac` (feat(12-01)) → `537316c` (chore(catalogs)) — 186 files changed, +12,808/-882 lines, 142 commits
+**Known deferred items at close:** 1 carried forward from v1.0 (Phase 1 offline run.bat human-verification, still not executed) + 2 advisory (non-blocking) code-review warnings in transfers.py/writeoffs.py from v1.1 (batch-ownership leak, unstripped qty echo) — unrelated to v1.2 scope
+
+**Key accomplishments:**
+
+- Extended receipt lookup to combine Dictionary name and CatalogPrice cost/catalog for codes unknown to Product, wired into the desktop OOB-fill route/template, and formalized the already-shipped product-add autofill (PRICE-02/PRICE-03) with traceability comments.
+- Mobile goods-receipt step 2 now resolves cost/sale/catalog via a single `lookup_prefill()` call and forwards them as hidden fields that pre-fill step 3, plus step 3 always shows a visible bolded product code (and name when known).
+- Debounced name-fragment search on the sales page rendering a click-to-select, mark-highlighted dropdown of matching code+name rows, wired as a shared partial so it survives both the initial basket-row render and every subsequent code-triggered /sales/lookup OOB swap.
+- Mobile sale and transfer wizards now show the product name alongside its code on every step from the batch step onward, using only data each handler already fetches — zero new SQL lookups.
+- Corrections wizard's Партия/Режим/Значение steps now show visible code/name/warehouse context via a new shared `_wizard_header.html` partial, and all 4 steps' "Назад" buttons target their own immediate predecessor via hx-get/hx-post + fragment swap instead of a plain link that reset to step 1.
+- Write-off wizard migrated from its old full-page-per-step architecture (per-step `{% extends %}` templates, `history.back()` for "Назад") to the persistent-shell + htmx-fragment-swap architecture every other mobile wizard uses, gaining visible code/name/warehouse context on all 3 intermediate steps along the way.
+- Receipts wizard's step 2 "Назад" converted from a plain full-page link to the same hx-get + fragment pattern used everywhere else in the phase, GET /m/receipts now accepts a ?code= pre-fill and serves both a full page and a bare fragment, and step 2 now shows the same visible code/name/warehouse header as every other fixed wizard's Партия step.
+- Converted transfers wizard step 2's plain `<a>` "Назад" link to an explicit `hx-get="/m/transfers"` + `hx-vals` request, and extended `GET /m/transfers` to accept an optional `?code=` query param served as both a full page and a bare HX-Request fragment.
+- Adds a "Корзина" step-indicator to the mobile sale wizard's basket screen and unconditional Продать/Принять quick-action links (with `?code=` pre-fill) from the mobile search product-detail screen
+- Sale wizard now shows a `Склад:` (warehouse) line at every step -- per-card on the multi-warehouse batch-pick step, and a single line on qty-price/basket -- closing the last remaining Phase 13 Success Criterion #1 gap (UI-02).
+- Shared `app/services/pagination.py` (LIST_PAGE_SIZE=20, ellipsis-aware `page_window()`, clamping `paginate()`), a copy-paste-ready `partials/pagination.html` bar with 4 new structural CSS rules, and `Dictionary.name_lc` (migration 0012, Python-backfilled Cyrillic-safe) for Wave 2's six list pages to build on.
+- Migrated `/history`'s offset+has_next "Показать ещё" pagination onto the shared total-count page-number pagination bar, moved its type/product filters from a standalone `.filter-bar` into a header-row filter shape, and added a "Сортировать по" newest/oldest sort dropdown — all inside one swappable `#history-rows` block.
+- `list_entries()` rewritten as an SQL LIMIT/OFFSET + COUNT query with Cyrillic-safe name filtering and allow-listed sort, plus header-row code/name filters and a sort dropdown wired into `/dictionary` via the shared `pagination.html` partial.
+- New `list_products_view()`/`quick_delete_product()` catalog service functions power a filterable, sortable, paginated `/products` list with a one-click stock-guarded quick-delete, while the existing search/mobile/sales code paths stay byte-for-byte unchanged.
+- `/warehouses` gains header-row name/address/status filters, a sort dropdown, numbered pagination, and a per-warehouse stock quick-delete guard that runs before the existing last-active-warehouse guard — quick-deleted warehouses now disappear from the default view and are reachable only via `status=Удалённые`.
+- New `list_customers_view()` gives `/customers` independent per-column filters (name/surname/consultant number), an allow-listed sort dropdown, and page-number pagination — while `search_customers`/`customer_search_view` stay byte-for-byte unchanged for the sale-form customer picker, and the now-redundant `/customers/search` route is retired.
+- `/catalogs` gained year filtering, newest/oldest sorting, and page-number pagination by pre-slicing the flat catalog list inside `list_catalogs()` before the existing per-year `<table>` grouping loop (now extracted into `partials/catalog_rows.html`) ever sees it — so a 20-row page boundary falling mid-year never leaves an unclosed `</table>`.
+
+---
+
 ## v1.0 MVP (Shipped: 2026-07-10)
 
 **Delivered:** A local-first warehouse inventory app — catalog, goods receipts, sales with customer linking, write-offs/returns/corrections, full operation history, period reports, and CSV export — all backed by an append-only, sync-ready ledger.

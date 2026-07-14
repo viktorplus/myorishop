@@ -10,25 +10,13 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ## Current State
 
-**Shipped: v1.1 Multi-Warehouse & Batch Tracking (2026-07-13)**
+**Shipped: v1.2 Catalog Pricing UX & List Ergonomics (2026-07-14)**
 
-Delivered multi-warehouse stock organization, batch/lot-level tracking with expiry dates and per-batch pricing (mandatory manual selection at every stock-affecting operation), category browsing, minimum-price guardrails, warehouse-to-warehouse transfers preserving cost history, an expiring-batches report, and a dedicated mobile flow. See `.planning/milestones/v1.1-ROADMAP.md` and `.planning/MILESTONES.md` for full details.
-
-## Current Milestone: v1.2 Catalog Pricing UX & List Ergonomics
-
-**Goal:** Finish the ad-hoc catalog/pricing feature (extend autofill to goods receipt, add name autofill), close the mobile wizard context gaps found on audit, add code/name cross-autofill and pagination/filter/sort to sales and every list page, and add quick-delete to warehouse/product lists.
-
-**Target features:**
-- Catalog/consultant price + name autofill by product code on both the product-add form and goods receipt (desktop + mobile), for codes not yet in the product catalog
-- Mobile wizards (sale/receipt/writeoff/correction/transfer) show product code/name/warehouse at every step, consistent "Назад" navigation, sale basket gets a step indicator, quick actions from search detail
-- Sales page: name-on-code and code-dropdown-on-name-fragment autocomplete
-- Pagination on every list page
-- Filtering and sorting on every list page
-- Quick delete for warehouses and products directly from their list pages
+Delivered catalog/consultant-price + name autofill by product code on the product-add form and goods receipt (desktop + mobile), sales-page name↔code cross-autofill, mobile wizard context/navigation fixes (visible code/name/warehouse, uniform "Назад", basket step indicator, search quick actions), and pagination/filtering/sorting plus stock-guarded quick-delete on every list page. Milestone audit passed 13/13 requirements with no cross-phase integration gaps. See `.planning/milestones/v1.2-ROADMAP.md` and `.planning/MILESTONES.md` for full details.
 
 ## Next Milestone Goals
 
-v2.0 is deferred behind v1.2 (see Active requirements and Context below): multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally once v1.2 ships.
+v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally.
 
 <details>
 <summary>Archived: v1.1 Multi-Warehouse & Batch Tracking (SHIPPED 2026-07-13)</summary>
@@ -45,6 +33,21 @@ v2.0 is deferred behind v1.2 (see Active requirements and Context below): multi-
 - Optional per-product minimum sale price — selling below it shows a warning but allows override (same pattern as oversell)
 - Optional free-text comment per batch, shown in the sale-time batch picker
 - A dedicated mobile flow: simpler single-purpose screens/steps for core operations, instead of squeezing the same dense desktop pages into a phone screen via CSS alone
+
+</details>
+
+<details>
+<summary>Archived: v1.2 Catalog Pricing UX & List Ergonomics (SHIPPED 2026-07-14)</summary>
+
+**Goal:** Finish the ad-hoc catalog/pricing feature (extend autofill to goods receipt, add name autofill), close the mobile wizard context gaps found on audit, add code/name cross-autofill and pagination/filter/sort to sales and every list page, and add quick-delete to warehouse/product lists.
+
+**Target features (all delivered):**
+- Catalog/consultant price + name autofill by product code on both the product-add form and goods receipt (desktop + mobile), for codes not yet in the product catalog
+- Mobile wizards (sale/receipt/writeoff/correction/transfer) show product code/name/warehouse at every step, consistent "Назад" navigation, sale basket gets a step indicator, quick actions from search detail
+- Sales page: name-on-code and code-dropdown-on-name-fragment autocomplete
+- Pagination on every list page
+- Filtering and sorting on every list page
+- Quick delete for warehouses and products directly from their list pages
 
 </details>
 
@@ -84,7 +87,7 @@ v2.0 is deferred behind v1.2 (see Active requirements and Context below): multi-
 
 ### Active
 
-Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs and roadmap traceability.
+None yet — v2.0 not scoped. Run `/gsd-new-milestone` to define the next set of requirements.
 
 ### Future (v2.0, deferred)
 
@@ -116,6 +119,7 @@ Milestone v1.2 requirements — see `.planning/REQUIREMENTS.md` for full REQ-IDs
 - **Phase 12 shipped 2026-07-13**: catalog/name autofill extended to goods receipt (desktop + mobile) and sales-page name↔code cross-autofill. Code review caught a genuine data-loss bug (CR-01: mobile receipt wizard silently discarded operator-typed prices on a Назад→Далее round trip) — fixed and re-verified before phase completion, along with 3 other warnings (misleading autofill hint text, dead code branch, missing row-ID validation on a new HTMX partial).
 - **Phase 13 shipped 2026-07-14**: mobile wizard context/navigation gaps closed (UI-02..05) — all 5 wizards (sale/receipt/write-off/correction/transfer) now show code/name/warehouse as visible text, use a uniform hx-get/hx-post "Назад" pattern (write-off's `history.back()` retired), sale basket has a step indicator, and search product-detail links jump straight into sale/receipt. First-pass verification found the sale wizard alone missing the warehouse line; gap-closure plan 13-06 fixed it and re-verification passed 4/4. Code review: 0 critical, 6 advisory warnings carried/found (e.g. inconsistent "Далее" batch-pick guards across wizards) — non-blocking.
 - **Phase 14 shipped 2026-07-14 (final phase of v1.2)**: pagination/filter/sort added uniformly to all six list pages (products, warehouses, customers, dictionary, catalogs, history) via a shared `app/services/pagination.py` helper — SQL LIMIT/OFFSET for the two large lists (dictionary's 6,856 rows, history), Python-side slicing for the four small ones. Quick-delete added to warehouse and product lists (LIST-04/LIST-05), each with a new non-overridable stock guard checked ahead of any existing soft-block guard. Code review found 1 genuine blocker (filter/sort/page state was dropped on write-response re-render, silently hiding row-specific error/blocked messages off the reset default page) — fixed and behaviorally re-verified end-to-end before phase completion, along with 3 advisory warnings (missing `autoescape` on a filter, a template gate ordering issue, a line-length lint fix).
+- **v1.2 shipped 2026-07-14** (started 2026-07-13, 2 days): 3 phases (12-14), 17 plans, 41 tasks, 186 files changed, +12,808/-882 lines, 142 commits. Stack held unchanged. Milestone audit (`/gsd-audit-milestone`) passed clean: 13/13 requirements satisfied across three independent sources (REQUIREMENTS.md traceability, VERIFICATION.md, SUMMARY.md frontmatter), cross-phase integration checker found no wiring gaps or broken flows across Phase 12→13→14 (autofill → wizard context → list management). Phases 12/13 carry a discovery-only Nyquist gap (draft VALIDATION.md, `nyquist_compliant: false`) — both independently verified passed regardless; Phase 14 is fully Nyquist-compliant. No new tech debt introduced; the two advisory transfers.py/writeoffs.py warnings from v1.1 remain the only carried-forward debt.
 - **v2.0 (next):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Was deferred from v1.1 because it first needed the local data model changes (multi-warehouse, batches) that sync must now account for — those changes are now shipped.
 
 ## Constraints
@@ -165,4 +169,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 after Phase 14 (List Pagination, Filtering, Sorting & Quick Delete) — final phase of v1.2, milestone ready for `/gsd-complete-milestone`*
+*Last updated: 2026-07-14 after v1.2 milestone completion (Catalog Pricing UX & List Ergonomics) — v2.0 not yet scoped, run `/gsd-new-milestone` to start it*
