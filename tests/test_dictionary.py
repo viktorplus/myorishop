@@ -10,8 +10,14 @@ Naming convention (used by later -k filters): route/e2e tests are
 prefixed test_web_, everything else is service level.
 """
 
+import sqlite3
+from contextlib import closing
+
+from alembic.config import Config
 from sqlalchemy import select
 
+from alembic import command
+from app.config import settings
 from app.models import Dictionary, Operation
 from app.services.catalog import create_product
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
@@ -31,6 +37,8 @@ def test_add_entry_creates_row_with_uuid_pk(session):
     assert entry.name == "Губная Помада"
     assert len(entry.id) == 36
     assert [e.id for e in list_entries(session)] == [entry.id]
+    # Phase 14 (LIST-02): name_lc kept in sync on create.
+    assert entry.name_lc == "губная помада"
 
 
 def test_add_entry_rejects_duplicate_code(session):
@@ -91,6 +99,8 @@ def test_update_entry_edits_code_and_name(session):
     assert errors == {}
     assert updated.code == "1234"
     assert updated.name == "Помада Матовая"
+    # Phase 14 (LIST-02): name_lc refreshed on update.
+    assert updated.name_lc == "помада матовая"
 
     # Taking another row's code IS a duplicate.
     updated, errors = update_entry(session, entry.id, code="5678", name="Помада Матовая")
@@ -109,6 +119,43 @@ def test_lookup_exact_code_after_strip(session):
     assert lookup(session, "1234").id == entry.id
     assert lookup(session, " 1234 ").id == entry.id
     assert lookup(session, "9999") is None
+
+
+def test_migration_0012_adds_name_lc_and_backfills_cyrillic(tmp_path, monkeypatch):
+    """Migration 0012 (LIST-02): adds dictionary.name_lc, backfills existing
+    rows in PYTHON (SQLite lower() is ASCII-only and cannot fold Cyrillic —
+    mirrors migration 0002's frozen products.name_lc precedent)."""
+    db_file = tmp_path / "fresh.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    cfg = Config("alembic.ini")
+
+    command.upgrade(cfg, "0011")
+
+    now = "2026-07-14T00:00:00+00:00"
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO dictionary (id, code, name, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("00000000-0000-4000-8000-000000000012", "1234", "Губная Помада", now, now),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(dictionary)")}
+        assert "name_lc" in cols
+
+        (name_lc,) = conn.execute(
+            "SELECT name_lc FROM dictionary WHERE code = ?", ("1234",)
+        ).fetchone()
+        assert name_lc == "губная помада"
+
+        indexes = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+        }
+        assert "ix_dictionary_name_lc" in indexes
 
 
 def test_dictionary_edit_does_not_touch_products(session):
