@@ -246,3 +246,34 @@ def test_return_is_atomic(session, stocked_product):
         select(func.count()).select_from(CashMovement).where(CashMovement.category == "return")
     )
     assert return_op_count == return_cash_count == 1
+
+
+# --- Plan 04: balance page render (FIN-06) ---
+
+
+def test_page_empty_shows_zero(client):
+    """FIN-06: GET /finance renders «Баланс кассы» with 0,00 on an empty ledger."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "Баланс кассы" in response.text
+    assert "0,00" in response.text
+
+
+def test_page_shows_balance(client, session):
+    """FIN-06: GET /finance renders the live balance via the cents filter."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "125,00" in response.text
+
+
+def test_mobile_page_shows_balance(mobile_client_factory, session):
+    """FIN-06: GET /m/finance mirrors the desktop page on its own router."""
+    from app.routes import mobile_finance
+
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    mobile_client = mobile_client_factory(mobile_finance.router)
+    response = mobile_client.get("/m/finance")
+    assert response.status_code == 200
+    assert "Баланс кассы" in response.text
+    assert "125,00" in response.text
