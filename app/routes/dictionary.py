@@ -114,13 +114,24 @@ def dictionary_update(
     entry_id: str,
     code: str = Form(""),
     name: str = Form(""),
+    # CR-01 fix: echo back the list state the operator was viewing (query
+    # params, populated from the current row's edit form action — see
+    # dictionary_rows.html) so a validation error stays visible even when
+    # the edited row is off the default page-0/no-filter view. Prefixed
+    # with list_ to avoid colliding with the code/name Form fields above.
+    list_code: str = "",
+    list_name: str = "",
+    list_sort: str = "",
+    list_page: int = 0,
     session: Session = Depends(get_session),
 ):
     entry, errors = update_entry(session, entry_id, code=code, name=name)
     if "entry" in errors:
         raise HTTPException(status_code=404, detail="unknown dictionary entry")
     context = {
-        **_dictionary_context(session),
+        **_dictionary_context(
+            session, code=list_code, name=list_name, sort=list_sort, page=list_page
+        ),
         "errors": errors,
         "form": {},
         "error_entry_id": entry_id if errors else None,

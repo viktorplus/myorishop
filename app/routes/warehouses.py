@@ -135,6 +135,16 @@ def warehouse_update(
     warehouse_id: str,
     name: str = Form(""),
     address: str = Form(""),
+    # CR-01 fix: echo back the list state the operator was viewing (query
+    # params, populated from the current row's edit form action — see
+    # warehouse_rows.html) so a validation error stays visible even when the
+    # edited row is off the default page-0/no-filter view. Prefixed with
+    # list_ to avoid colliding with the name/address Form fields above.
+    list_name: str = "",
+    list_address: str = "",
+    list_status: str = "",
+    list_sort: str = "",
+    list_page: int = 0,
     session: Session = Depends(get_session),
 ):
     _, errors = update_warehouse(session, warehouse_id, name=name, address=address)
@@ -142,6 +152,11 @@ def warehouse_update(
         raise HTTPException(status_code=404, detail="unknown warehouse")
     context = _warehouses_context(
         session,
+        name=list_name,
+        address=list_address,
+        status=list_status,
+        sort=list_sort,
+        page=list_page,
         errors=errors,
         error_entry_id=warehouse_id if errors else None,
         error_form={"name": name, "address": address} if errors else None,
@@ -159,6 +174,14 @@ def warehouse_delete(
     request: Request,
     warehouse_id: str,
     confirm: str = Form(""),
+    # CR-01 fix: same list-state echo as warehouse_update (see comment
+    # there); this route has no Form fields named name/address/status/sort
+    # but the list_ prefix is kept for consistency with the edit form.
+    list_name: str = "",
+    list_address: str = "",
+    list_status: str = "",
+    list_sort: str = "",
+    list_page: int = 0,
     session: Session = Depends(get_session),
 ):
     # D-11 stock guard runs first inside soft_delete_warehouse and is
@@ -168,6 +191,11 @@ def warehouse_delete(
     _, warning = soft_delete_warehouse(session, warehouse_id, confirm=confirm == "1")
     context = _warehouses_context(
         session,
+        name=list_name,
+        address=list_address,
+        status=list_status,
+        sort=list_sort,
+        page=list_page,
         warning_id=warehouse_id if warning.get("warehouse") else None,
         stock_blocked_id=warehouse_id if warning.get("stock") else None,
         stock_blocked_qty=warning.get("stock"),

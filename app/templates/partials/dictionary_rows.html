@@ -57,7 +57,7 @@
         <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ e.id }}"></td>
         <td>
           <form id="edit-{{ e.id }}"
-                hx-post="/dictionary/{{ e.id }}"
+                hx-post="/dictionary/{{ e.id }}?list_code={{ code|urlencode }}&list_name={{ name|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
                 hx-target="#dictionary-rows"
                 hx-swap="outerHTML"
                 hx-disabled-elt="find button">

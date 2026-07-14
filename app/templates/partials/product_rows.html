@@ -61,7 +61,7 @@
         <td>
           <a href="/products/{{ product.id }}/edit">Изменить</a>
           <button type="button" class="danger"
-                  hx-post="/products/{{ product.id }}/quick-delete"
+                  hx-post="/products/{{ product.id }}/quick-delete?page={{ page }}{{ extra_qs }}"
                   hx-confirm="Удалить товар „{{ product.name }}“? Он будет скрыт из каталога и поиска, история операций сохранится."
                   hx-target="#product-rows" hx-swap="outerHTML">Удалить</button>
         </td>

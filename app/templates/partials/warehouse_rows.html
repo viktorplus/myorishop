@@ -74,7 +74,7 @@
         <td><input type="text" name="address" value="{{ row.address or '' }}" form="edit-{{ w.id }}"></td>
         <td>
           <form id="edit-{{ w.id }}"
-                hx-post="/warehouses/{{ w.id }}"
+                hx-post="/warehouses/{{ w.id }}?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
                 hx-target="#warehouse-rows"
                 hx-swap="outerHTML"
                 hx-disabled-elt="find button">
@@ -82,7 +82,7 @@
           </form>
           {% if not w.deleted_at %}
           <button type="button" class="danger"
-                  hx-post="/warehouses/{{ w.id }}/delete"
+                  hx-post="/warehouses/{{ w.id }}/delete?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
                   hx-confirm="Удалить склад «{{ w.name }}»? Он будет скрыт из списка выбора, история операций сохранится."
                   hx-target="#warehouse-rows"
                   hx-swap="outerHTML">Удалить</button>
@@ -114,7 +114,7 @@
               {# No native hx-confirm stacked on top of this custom warning
                  (UI-SPEC Interaction Contract) — confirm=1 re-POSTs directly. #}
               <button type="button" class="danger"
-                      hx-post="/warehouses/{{ w.id }}/delete"
+                      hx-post="/warehouses/{{ w.id }}/delete?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
                       hx-vals='{"confirm": "1"}'
                       hx-target="#warehouse-rows"
                       hx-swap="outerHTML">Удалить всё равно</button>

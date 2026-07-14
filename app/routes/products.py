@@ -97,13 +97,27 @@ def products_list(
 
 @router.post("/products/{product_id}/quick-delete")
 def product_quick_delete(
-    request: Request, product_id: str, session: Session = Depends(get_session)
+    request: Request,
+    product_id: str,
+    code: str = "",
+    name: str = "",
+    category: str = "",
+    sort: str = "",
+    page: int = 0,
+    session: Session = Depends(get_session),
 ):
-    # LIST-05/D-08: no filter/sort/page state is carried across the write —
-    # matches the existing add/edit reset precedent (product_create/product_update).
+    # CR-01 fix: the list state the operator was viewing is echoed back via
+    # query params on the quick-delete POST (see product_rows.html), so the
+    # blocked-delete row error stays visible even when the affected product
+    # is off the default page-0/no-filter view.
     deleted, blocked = quick_delete_product(session, product_id)
     context = _products_context(
         session,
+        code=code,
+        name=name,
+        category=category,
+        sort=sort,
+        page=page,
         blocked_id=product_id if not deleted and blocked else None,
         blocked_qty=blocked.get("blocked_qty"),
     )
