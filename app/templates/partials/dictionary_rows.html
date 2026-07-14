@@ -1,4 +1,7 @@
-{# Swap target for add/edit posts — stable id, partial-only responses. #}
+{# Swap target for add/edit posts and filter/sort/page htmx requests — stable
+   id, partial-only responses. Context: entries, code, name, sort, page,
+   total, total_pages, page_window, list_url, rows_target_id, extra_qs
+   (Phase 14 LIST-01/02/03, Contracts A/B/C). #}
 <div id="dictionary-rows">
   {% if errors and not error_entry_id %}
   <div class="error-block">
@@ -9,12 +12,36 @@
   </div>
   {% endif %}
 
+  <div class="filter-bar">
+    <div class="field">
+      <label for="sort">Сортировать по</label>
+      <select id="sort" name="sort"
+              hx-get="/dictionary" hx-trigger="change"
+              hx-include="#dictionary-rows input, #dictionary-rows select"
+              hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value="" {% if not sort %}selected{% endif %}>Код (по возрастанию) (по умолчанию)</option>
+        <option value="name" {% if sort == "name" %}selected{% endif %}>Название (А→Я)</option>
+      </select>
+    </div>
+  </div>
+
   {% if entries %}
   <table>
     <thead>
       <tr>
         <th>Код</th>
         <th>Название</th>
+        <th></th>
+      </tr>
+      <tr class="filter-row">
+        <th><input type="text" name="code" value="{{ code }}" placeholder="Фильтр…"
+                   hx-get="/dictionary" hx-trigger="input changed delay:300ms"
+                   hx-include="#dictionary-rows input, #dictionary-rows select"
+                   hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><input type="text" name="name" value="{{ name }}" placeholder="Фильтр…"
+                   hx-get="/dictionary" hx-trigger="input changed delay:300ms"
+                   hx-include="#dictionary-rows input, #dictionary-rows select"
+                   hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true"></th>
         <th></th>
       </tr>
     </thead>
@@ -44,6 +71,9 @@
       {% endfor %}
     </tbody>
   </table>
+  {% include "partials/pagination.html" %}
+  {% elif code or name %}
+  <p class="empty-state muted">Ничего не найдено по заданным фильтрам.</p>
   {% else %}
   <p class="empty-state">Справочник пуст. Добавьте пары код → название — при вводе кода название будет подставляться автоматически.</p>
   {% endif %}

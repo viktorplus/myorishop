@@ -5,14 +5,19 @@ truth. Dictionary writes never touch Product rows and never go through
 the operations ledger; plain session.commit() is the whole write path.
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import new_id
 from app.models import Dictionary
+from app.services.pagination import LIST_PAGE_SIZE
 
 DUPLICATE_ERROR = "Код уже есть в справочнике — отредактируйте существующую строку."
+
+# T-14-06: sort resolved through this fixed allow-list, never string-
+# interpolated into order_by().
+_SORT_MAP = {"name": Dictionary.name_lc.asc()}
 
 
 def _validate(
@@ -77,9 +82,56 @@ def update_entry(
     return entry, {}
 
 
-def list_entries(session: Session) -> list[Dictionary]:
-    """All pairs ordered by code (the /dictionary table order)."""
-    return list(session.scalars(select(Dictionary).order_by(Dictionary.code)))
+def list_entries(
+    session: Session,
+    *,
+    code: str = "",
+    name: str = "",
+    sort: str = "",
+    page: int = 0,
+) -> dict:
+    """Filtered/sorted/paginated read over the dictionary (LIST-01/02/03).
+
+    6,856 rows live today (RESEARCH.md) — the largest list in the app, so
+    filtering/sorting/paging happen in SQL (LIMIT/OFFSET + a matching COUNT
+    query), mirroring app/services/operations.py's history_view shape.
+
+    T-14-07: code is ASCII digits (A1) so func.lower() is safe; name is
+    Cyrillic and matched against the name_lc shadow column instead (SQLite
+    lower()/LIKE cannot fold Cyrillic) — mirrors catalog.search_products.
+    T-14-08: page is clamped into [0, total_pages - 1] before use in offset().
+    """
+    filters = []
+    code = code.strip()
+    name = name.strip()
+    if code:
+        filters.append(func.lower(Dictionary.code).contains(code.lower()))
+    if name:
+        filters.append(Dictionary.name_lc.contains(name.lower(), autoescape=True))
+
+    total = session.scalar(
+        select(func.count()).select_from(Dictionary).where(*filters)
+    )
+    total_pages = max(1, -(-total // LIST_PAGE_SIZE))
+    page = max(0, min(page, total_pages - 1))
+
+    stmt = (
+        select(Dictionary)
+        .where(*filters)
+        .order_by(_SORT_MAP.get(sort, Dictionary.code))
+        .limit(LIST_PAGE_SIZE)
+        .offset(page * LIST_PAGE_SIZE)
+    )
+    entries = list(session.scalars(stmt))
+    return {
+        "entries": entries,
+        "total": total,
+        "total_pages": total_pages,
+        "page": page,
+        "code": code,
+        "name": name,
+        "sort": sort,
+    }
 
 
 def lookup(session: Session, code: str) -> Dictionary | None:
