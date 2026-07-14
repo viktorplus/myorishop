@@ -5,7 +5,7 @@ milestone_name: Catalog Pricing UX & List Ergonomics
 status: ready_to_plan
 stopped_at: Phase 13 complete (6/6) — ready to discuss Phase 14
 last_updated: 2026-07-13T23:54:27.317Z
-last_activity: 2026-07-13 -- Phase 13 execution started
+last_activity: 2026-07-14 - Completed quick task 260714-2w6: replace Dictionary/CatalogPrice with single-catalog master pricelist import
 progress:
   total_phases: 3
   completed_phases: 1
@@ -98,6 +98,12 @@ None yet.
 ### Blockers/Concerns
 
 None open.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260714-2w6 | Replace Dictionary + CatalogPrice with a single-catalog-per-code import from oriflame_prices_with_calculations_fixed.xlsx (ДЦ->consultant_cents, ПЦ->consumer_cents) | 2026-07-14 | 3f0a7e3 | [260714-2w6-update-dictionary-pricelist](./quick/260714-2w6-update-dictionary-pricelist/) |
 
 ## Deferred Items
 
