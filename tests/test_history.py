@@ -65,8 +65,9 @@ def _insert_legacy_op(session, product, *, type_, qty_delta):
 
 
 def test_history_pagination(session, stocked_product):
-    """OPS-04/D-15: history_view returns <= page_size rows plus a has_next
-    flag — a bounded page, never the whole ledger."""
+    """OPS-04/D-02: history_view returns <= page_size rows plus a real
+    total/total_pages count — a bounded page, never the whole ledger, and
+    never a `has_next` sentinel."""
     batch_id = _batch_id(session, stocked_product)
     for _ in range(5):
         record_operation(
@@ -80,11 +81,38 @@ def test_history_pagination(session, stocked_product):
 
     first_page = history_view(session, page=0, page_size=3)
     assert len(first_page["rows"]) == 3
-    assert first_page["has_next"] is True
+    assert first_page["total"] == 6
+    assert first_page["total_pages"] == 2
+    assert "has_next" not in first_page
 
     last_page = history_view(session, page=1, page_size=3)
-    assert len(last_page["rows"]) <= 3
-    assert last_page["has_next"] is False
+    assert len(last_page["rows"]) == 3
+    assert last_page["total"] == 6
+    assert last_page["total_pages"] == 2
+    assert "has_next" not in last_page
+
+
+def test_history_view_sort_oldest_first(session, stocked_product):
+    """D-06/D-07: sort="oldest" orders created_at asc, seq asc; the default
+    (sort="") stays created_at desc, seq desc (unchanged)."""
+    batch_id = _batch_id(session, stocked_product)
+    for _ in range(3):
+        record_operation(
+            session,
+            type_="correction",
+            product_id=stocked_product.id,
+            qty_delta=1,
+            batch_id=batch_id,
+        )
+
+    default_result = history_view(session)
+    oldest_result = history_view(session, sort="oldest")
+
+    default_seqs = [r["op"].seq for r in default_result["rows"]]
+    oldest_seqs = [r["op"].seq for r in oldest_result["rows"]]
+    assert default_seqs == sorted(default_seqs, reverse=True)
+    assert oldest_seqs == sorted(oldest_seqs)
+    assert default_seqs == list(reversed(oldest_seqs))
 
 
 # --- Web slice (routes + templates) ---
