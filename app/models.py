@@ -197,6 +197,9 @@ class Dictionary(Base):
     # list of catalog codes (e.g. ["01_26", "03_26"]) this product appears in.
     # NULL/[] = not present in any imported catalog. Helper data only (D-24).
     catalogs: Mapped[list | None] = mapped_column(JSON)
+    # Phase 14 (LIST-02): lowercase shadow of name — SQLite lower()/LIKE
+    # cannot fold Cyrillic.
+    name_lc: Mapped[str | None] = mapped_column(String(200), index=True)
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 

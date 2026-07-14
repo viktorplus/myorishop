@@ -42,7 +42,7 @@ def add_entry(
     code, name, errors = _validate(session, code, name)
     if errors:
         return None, errors
-    entry = Dictionary(id=new_id(), code=code, name=name)
+    entry = Dictionary(id=new_id(), code=code, name=name, name_lc=name.lower())
     session.add(entry)
     # WR-02: the SELECT above is check-then-act — a duplicate landing between
     # check and commit (second tab, retried request) raises IntegrityError
@@ -67,6 +67,7 @@ def update_entry(
         return None, errors
     entry.code = code
     entry.name = name
+    entry.name_lc = name.lower()
     # WR-02: same race guard as add_entry — see comment there.
     try:
         session.commit()
