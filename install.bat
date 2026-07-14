@@ -33,6 +33,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Importing product dictionary and catalog prices...
+uv run python scripts/import_master_pricelist.py
+if errorlevel 1 (
+  echo Dictionary import failed.
+  pause
+  exit /b 1
+)
+
 echo.
 echo === Setup complete ===
 echo Run the app with run.bat
