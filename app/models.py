@@ -55,6 +55,15 @@ WRITEOFF_REASONS = {
     "other": "Прочее",
 }
 
+# Phase 15 (D-00a/D-03): system cash categories used by the auto sale-credit /
+# return-debit write paths. "return" is kept distinct from Phase 16's
+# manual-withdrawal categories so the Phase 16/17 history/report views can
+# separate system-generated movements from operator-entered ones.
+CASH_CATEGORIES = {
+    "sale": "Продажа",
+    "return": "Возврат",
+}
+
 # Phase 5 (D-16): latin operation type -> RU label for the /history "Тип" column.
 # Covers every OPERATION_TYPES member.
 OPERATION_TYPE_LABELS = {
@@ -313,3 +322,37 @@ class Sale(Base):
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
     device_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class CashMovement(Base):
+    """Append-only cash ledger row (D-00a): sibling to Operation, cash-only.
+
+    Mirrors Operation's sync-ready shape (UUID PK, device_id/seq, created_at/
+    created_by, nullable sale_id FK) but drops every stock-specific column
+    (product_id, qty_delta, unit_cost_cents, unit_price_cents, payload,
+    batch_id) — cash has no cached balance (D-00b: balance is always a live
+    SUM(amount_cents), never a projection column). Immutability enforced by
+    DB-level triggers (see app.db.APPEND_ONLY_TRIGGERS and migration 0013).
+    """
+
+    __tablename__ = "cash_movements"
+    __table_args__ = (UniqueConstraint("device_id", "seq"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # A CASH_CATEGORIES key ("sale", "return", plus Phase 16's manual ones).
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    # SIGNED integer cents: positive = приход, negative = расход. Integer
+    # cents ONLY, never Float/Numeric (D-00a, CLAUDE.md money rule).
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(300))
+    # Nullable link to the sale this auto-credit/auto-debit movement
+    # originated from. Set at INSERT time only — the cash_movements_no_update
+    # trigger ABORTs any later UPDATE. Manual movements (Phase 16) leave NULL.
+    sale_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sales.id", name="fk_cash_movements_sale_id_sales"), index=True
+    )
+    device_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
