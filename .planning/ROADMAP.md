@@ -72,7 +72,11 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
   1. Operator sees a new «Финансы» nav section showing the current cash balance
   2. Registering a sale immediately increases the displayed cash balance by the sale's total amount
   3. Registering a return against that sale immediately decreases the balance by the same amount, restoring it to the pre-sale value
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 15-01-PLAN.md — Cash ledger schema: CashMovement model + append-only triggers (db.py + migration 0013)
+- [ ] 15-02-PLAN.md — finance.py single write path + live-SUM compute_balance
+- [ ] 15-03-PLAN.md — Auto-credit on sale + atomic auto-debit on return
+- [ ] 15-04-PLAN.md — «Финансы» section: routes, «Баланс кассы» pages, desktop nav + mobile tile
 **UI hint**: yes
 
 ### Phase 16: Manual Cash Movements & History
@@ -121,6 +125,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete    | 2026-07-14 |
-| 15. Cash Ledger Foundation | v1.3 | 0/TBD | Not started | - |
+| 15. Cash Ledger Foundation | v1.3 | 0/4 | Not started | - |
 | 16. Manual Cash Movements & History | v1.3 | 0/TBD | Not started | - |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 0/TBD | Not started | - |
