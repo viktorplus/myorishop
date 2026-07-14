@@ -1166,3 +1166,18 @@ def _create(session, code, name, category=""):
     product, errors = create_product(session, code=code, name=name, category=category, **EMPTY_MONEY)
     assert errors == {}
     return product
+
+
+def test_web_quick_delete_blocked_when_stock_positive(client, stocked_product):
+    """D-08: quantity > 0 -> 200, RU blocked-error text, product still listed."""
+    response = client.post(f"/products/{stocked_product.id}/quick-delete")
+    assert response.status_code == 200
+    assert "Нельзя удалить: на остатке" in response.text
+    assert stocked_product.name in response.text
+
+
+def test_web_quick_delete_succeeds_and_removes_row(client, product):
+    """D-10: quantity == 0 -> 200, the product's name no longer appears."""
+    response = client.post(f"/products/{product.id}/quick-delete")
+    assert response.status_code == 200
+    assert product.name not in response.text

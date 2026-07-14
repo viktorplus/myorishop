@@ -107,43 +107,13 @@ def test_search_view_shape(session):
     assert row["code_seg"] == ("1234", "", "")
 
 
-def test_web_search_returns_partial_with_mark(client):
-    """D-25: /products/search returns ONLY the rows partial with <mark> highlight."""
-    response = client.post(
-        "/products",
-        data={
-            "code": "4321",
-            "name": "Губная Помада",
-            "category": "",
-            "cost": "",
-            "sale": "",
-            "catalog": "",
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
+def test_web_products_search_route_retired(client):
+    """Phase 14 (Pitfall 6): /products/search is retired — folded into GET /products.
 
-    result = client.get("/products/search", params={"q": "губная"})
-    assert result.status_code == 200
-    assert "<mark>" in result.text
-    assert "Помада" in result.text
-    assert "<html" not in result.text  # partial only — Phase 1 rule
-
-
-def test_web_search_no_results_message(client):
-    """UI-SPEC: zero results render the RU empty-search message with the query."""
-    result = client.get("/products/search", params={"q": "zzzzz"})
-    assert result.status_code == 200
-    assert "Ничего не найдено по запросу" in result.text
-    assert "zzzzz" in result.text
-
-
-def test_web_products_page_has_active_search_input(client):
-    """Pattern 1: list page carries the debounced active-search input."""
-    page = client.get("/products")
-    assert page.status_code == 200
-    assert 'hx-get="/products/search"' in page.text
-    assert "delay:300ms" in page.text
-    assert 'hx-sync="this:replace"' in page.text
-    assert 'hx-target="#product-rows"' in page.text
-    assert "Код или название товара…" in page.text
+    The bare path "/products/search" still path-matches the parameterized
+    POST /products/{product_id} route (product_id="search"), so Starlette's
+    router reports 405 Method Not Allowed for a GET rather than a bare 404 —
+    correct routing behavior, not a leftover endpoint.
+    """
+    result = client.get("/products/search")
+    assert result.status_code == 405
