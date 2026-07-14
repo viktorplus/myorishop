@@ -48,7 +48,7 @@ Full phase details archived in `.planning/milestones/v1.1-ROADMAP.md`.
 
 - [x] **Phase 12: Code & Name Autofill** - Typing a product code on the product-add, goods-receipt, or sales forms surfaces known catalog price/consultant price/name suggestions (completed 2026-07-13)
 - [x] **Phase 13: Mobile Wizard Context & Navigation** - Mobile wizards keep the operator oriented (visible code/name/warehouse, consistent Назад, step indicator, quick actions) (completed 2026-07-13)
-- [ ] **Phase 14: List Pagination, Filtering, Sorting & Quick Delete** - Every list page supports paging/filtering/sorting, with quick delete for warehouses and products
+- [x] **Phase 14: List Pagination, Filtering, Sorting & Quick Delete** - Every list page supports paging/filtering/sorting, with quick delete for warehouses and products (completed 2026-07-14)
 
 ## Phase Details
 
@@ -129,12 +129,12 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-02-PLAN.md — History: page-number pagination replacing "Показать ещё", header-row filters, sort dropdown
-- [ ] 14-03-PLAN.md — Dictionary: SQL LIMIT/OFFSET+COUNT pagination, code/name filters, sort dropdown
-- [ ] 14-04-PLAN.md — Products: filter/sort/pagination + quick delete (LIST-05), retires /products/search
-- [ ] 14-05-PLAN.md — Warehouses: filter/sort/pagination + quick delete (LIST-04) with new stock guard, restore-path status filter
-- [ ] 14-06-PLAN.md — Customers: filter/sort/pagination, retires /customers/search
-- [ ] 14-07-PLAN.md — Catalogs: year filter/sort/pagination with pre-grouping slice (Pitfall 5 safe)
+- [x] 14-02-PLAN.md — History: page-number pagination replacing "Показать ещё", header-row filters, sort dropdown
+- [x] 14-03-PLAN.md — Dictionary: SQL LIMIT/OFFSET+COUNT pagination, code/name filters, sort dropdown
+- [x] 14-04-PLAN.md — Products: filter/sort/pagination + quick delete (LIST-05), retires /products/search
+- [x] 14-05-PLAN.md — Warehouses: filter/sort/pagination + quick delete (LIST-04) with new stock guard, restore-path status filter
+- [x] 14-06-PLAN.md — Customers: filter/sort/pagination, retires /customers/search
+- [x] 14-07-PLAN.md — Catalogs: year filter/sort/pagination with pre-grouping slice (Pitfall 5 safe)
 
 **UI hint**: yes
 
@@ -158,4 +158,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
 | 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
-| 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 1/7 | In Progress|  |
+| 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete   | 2026-07-14 |
