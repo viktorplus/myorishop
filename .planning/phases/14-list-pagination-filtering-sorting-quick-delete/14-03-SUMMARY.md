@@ -96,3 +96,7 @@ None - no external service configuration required.
 ---
 *Phase: 14-list-pagination-filtering-sorting-quick-delete*
 *Completed: 2026-07-14*
+
+## Self-Check: PASSED
+
+All created/modified files and all 4 commit hashes (07759a2, 4790bc8, 960c5b2, 3bd0dc5) verified present.
