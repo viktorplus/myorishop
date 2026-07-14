@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
-status: executing
-stopped_at: Phase 15 context gathered
-last_updated: "2026-07-14T20:12:12.628Z"
-last_activity: 2026-07-14 — v1.3 roadmap created (Phases 15-17), 12/12 requirements mapped
+status: planning
+stopped_at: Phase 15 complete
+last_updated: "2026-07-14T22:10:08.467Z"
+last_activity: "2026-07-14 — Phase 15 (Cash Ledger Foundation) complete: all 4 plans executed, merged, verified (577/577 tests passing)"
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 4
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-14)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 15: Cash Ledger Foundation — ready to plan
+**Current focus:** Phase 16: Manual Cash Movements & History — ready to plan
 
 ## Current Position
 
-Phase: 15 of 17 (Cash Ledger Foundation)
+Phase: 16 of 17 (Manual Cash Movements & History) — not yet planned
 Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-07-14 — v1.3 roadmap created (Phases 15-17), 12/12 requirements mapped
+Status: Ready to plan
+Last activity: 2026-07-14 — Phase 15 (Cash Ledger Foundation) complete: all 4 plans executed, merged, verified (577/577 tests passing)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -120,13 +120,15 @@ Items acknowledged and carried forward from previous milestone close:
 | uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
 | code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) |
+| verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | human_needed | 2026-07-14 (phase 15 execution) |
 
 ## Session Continuity
 
-Last session: 2026-07-14T19:33:35.078Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-cash-ledger-foundation/15-CONTEXT.md
+Last session: 2026-07-14T22:07:56.914Z
+Stopped at: Phase 15 complete
+Resume file: .planning/phases/15-cash-ledger-foundation/15-VERIFICATION.md
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 15` to plan Phase 15: Cash Ledger Foundation
+- Manually check `/finance` and `/m/finance` in the browser (human_needed item from 15-VERIFICATION.md) — confirm balance updates through real sale/return forms
+- Run `/gsd-plan-phase 16` to plan Phase 16: Manual Cash Movements & History
