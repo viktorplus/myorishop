@@ -302,6 +302,30 @@ def test_web_delete_last_active_warehouse_warns_then_confirm_deletes(client, ses
     assert "Восстановить" in confirm_response.text
 
 
+def test_web_quick_delete_blocked_when_stock_positive(client, session, batch):
+    batch.quantity = 5
+    session.commit()
+
+    response = client.post(f"/warehouses/{batch.warehouse_id}/delete")
+
+    assert response.status_code == 200
+    assert "Нельзя удалить: на складе есть остаток" in response.text
+    warehouse = session.get(Warehouse, batch.warehouse_id)
+    assert warehouse.name in response.text
+    assert warehouse.deleted_at is None
+
+
+def test_web_warehouses_filter_by_name(client, session):
+    add_warehouse(session, name="Главный склад", address="")
+    add_warehouse(session, name="Запасной склад", address="")
+
+    response = client.get("/warehouses", params={"name": "главн"})
+
+    assert response.status_code == 200
+    assert "Главный склад" in response.text
+    assert "Запасной склад" not in response.text
+
+
 def test_web_nav_has_warehouses_link(client):
     response = client.get("/")
     assert response.status_code == 200
