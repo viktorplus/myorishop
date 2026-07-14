@@ -20,6 +20,7 @@ from app.services.batches import open_batches
 from app.services.customers import (
     create_customer,
     get_customer,
+    list_customers_view,
     purchase_history,
     search_customers,
     update_customer,
@@ -83,6 +84,57 @@ def test_search_customers_capped_at_20(session):
         create_customer(session, name=f"Покупатель{i}", surname="", consultant_number="")
     matches = search_customers(session, "")
     assert len(matches) <= 20
+
+
+def test_list_customers_view_filters_independently(session):
+    """LIST-02/D-04: name/surname/consultant_number filter independently — NOT the
+    combined search_lc used by search_customers/customer_search_view."""
+    create_customer(session, name="Анна", surname="Иванова", consultant_number="111")
+    create_customer(session, name="Анна", surname="Петрова", consultant_number="222")
+    create_customer(session, name="Ольга", surname="Иванова", consultant_number="333")
+
+    by_name = list_customers_view(session, name="анна")
+    assert {c.surname for c in by_name["rows"]} == {"Иванова", "Петрова"}
+
+    by_surname = list_customers_view(session, surname="иванова")
+    assert {c.name for c in by_surname["rows"]} == {"Анна", "Ольга"}
+
+    by_consultant = list_customers_view(session, consultant_number="222")
+    assert len(by_consultant["rows"]) == 1
+    assert by_consultant["rows"][0].consultant_number == "222"
+
+
+def test_list_customers_view_sort_surname_and_consultant(session):
+    """LIST-03/D-06/D-07: sort is an allow-list; default (no sort) is name ascending."""
+    create_customer(session, name="Вера", surname="Яковлева", consultant_number="003")
+    create_customer(session, name="Анна", surname="Борисова", consultant_number="001")
+    create_customer(session, name="Борис", surname="Антонов", consultant_number="002")
+
+    default_names = [c.name for c in list_customers_view(session)["rows"]]
+    assert default_names == sorted(default_names)
+
+    by_surname = [c.surname for c in list_customers_view(session, sort="surname")["rows"]]
+    assert by_surname == sorted(by_surname)
+
+    by_consultant = [
+        c.consultant_number
+        for c in list_customers_view(session, sort="consultant_number")["rows"]
+    ]
+    assert by_consultant == sorted(by_consultant)
+
+
+def test_list_customers_view_paginates(session):
+    """LIST-01/D-01/D-03: 25 rows -> 20 on page 0; out-of-range page clamps, never raises."""
+    for i in range(25):
+        create_customer(session, name=f"Покупатель{i:02d}", surname="", consultant_number="")
+
+    result = list_customers_view(session, page=0)
+    assert len(result["rows"]) == 20
+    assert result["total"] == 25
+    assert result["total_pages"] == 2
+
+    clamped = list_customers_view(session, page=99)
+    assert len(clamped["rows"]) == 5
 
 
 def test_purchase_history_returns_rows_for_customer(session, stocked_product, customer):
@@ -167,3 +219,11 @@ def test_web_nav_has_customers_link(client):
     assert response.status_code == 200
     assert 'href="/customers"' in response.text
     assert "Покупатели" in response.text
+
+
+def test_web_customers_search_route_retired(client):
+    """LIST-02/D-04: /customers/search is retired (Pitfall 6) — header-row filters on
+    the main /customers list route replace it; the sale-picker's own
+    /sales/customer-search route is untouched."""
+    response = client.get("/customers/search")
+    assert response.status_code == 404
