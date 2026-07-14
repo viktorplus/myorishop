@@ -324,3 +324,48 @@ def test_web_nav_has_dictionary_link(client):
     assert response.status_code == 200
     assert 'href="/dictionary"' in response.text
     assert "Справочник" in response.text
+
+
+# --- Phase 14 (LIST-01/02/03): header-row filters, sort, pagination ---
+
+
+def test_web_dictionary_filters_by_code(client, session):
+    """Header-row code filter narrows the rendered rows (D-04/D-05)."""
+    add_entry(session, code="1234", name="Помада")
+    add_entry(session, code="5678", name="Тушь")
+
+    response = client.get("/dictionary", params={"code": "1234"})
+    assert response.status_code == 200
+    assert "Помада" in response.text
+    assert "Тушь" not in response.text
+
+
+def test_web_dictionary_sort_by_name(client, session):
+    """sort=name selects the Название option and reorders rows (D-06/D-07)."""
+    add_entry(session, code="2", name="Яблоко")
+    add_entry(session, code="1", name="Апельсин")
+
+    response = client.get("/dictionary", params={"sort": "name"})
+    assert response.status_code == 200
+    assert response.text.index("Апельсин") < response.text.index("Яблоко")
+    assert 'value="name" selected' in response.text
+
+
+def test_web_dictionary_pagination_shows_page_bar(client, session):
+    """25+ rows renders the shared pagination partial (D-01/D-02/D-03)."""
+    for i in range(25):
+        add_entry(session, code=f"{i:02d}", name=f"Товар {i:02d}")
+
+    response = client.get("/dictionary")
+    assert response.status_code == 200
+    assert 'class="pagination"' in response.text
+    assert "Страница 1 из" in response.text
+
+
+def test_web_dictionary_filtered_to_zero_shows_empty_filter_message(client, session):
+    """A filter matching nothing shows the shared filtered-empty copy."""
+    add_entry(session, code="1234", name="Помада")
+
+    response = client.get("/dictionary", params={"code": "0000"})
+    assert response.status_code == 200
+    assert "Ничего не найдено по заданным фильтрам." in response.text
