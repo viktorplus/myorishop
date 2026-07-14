@@ -120,7 +120,22 @@ Plans:
   4. Operator can delete a warehouse directly from the warehouse list without opening its detail/edit page
   5. Operator can delete a product directly from the product list without opening its detail/edit page
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 14-01-PLAN.md — Shared pagination infra (pagination.py + pagination.html + CSS) + Dictionary.name_lc migration
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 14-02-PLAN.md — History: page-number pagination replacing "Показать ещё", header-row filters, sort dropdown
+- [ ] 14-03-PLAN.md — Dictionary: SQL LIMIT/OFFSET+COUNT pagination, code/name filters, sort dropdown
+- [ ] 14-04-PLAN.md — Products: filter/sort/pagination + quick delete (LIST-05), retires /products/search
+- [ ] 14-05-PLAN.md — Warehouses: filter/sort/pagination + quick delete (LIST-04) with new stock guard, restore-path status filter
+- [ ] 14-06-PLAN.md — Customers: filter/sort/pagination, retires /customers/search
+- [ ] 14-07-PLAN.md — Catalogs: year filter/sort/pagination with pre-grouping slice (Pitfall 5 safe)
+
 **UI hint**: yes
 
 ## Progress
@@ -143,4 +158,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 11. Dedicated Mobile Flow | v1.1 | 10/10 | Complete   | 2026-07-13 |
 | 12. Code & Name Autofill | v1.2 | 4/4 | Complete    | 2026-07-13 |
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
-| 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/TBD | Not started | - |
+| 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 0/7 | Not started | - |
