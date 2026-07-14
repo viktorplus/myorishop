@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core import new_id
 from app.models import Customer, Operation, Product, Sale
 from app.services.catalog import split_match
+from app.services.pagination import paginate
 
 NAME_REQUIRED_ERROR = "Укажите имя покупателя."
 NAME_TOO_LONG_ERROR = "Слишком длинное имя."
@@ -142,6 +143,60 @@ def customer_search_view(session: Session, q: str) -> dict:
         for customer in search_customers(session, q)
     ]
     return {"q": q, "rows": rows}
+
+
+# LIST-01..03: allow-list of sort keys for list_customers_view — never
+# string-interpolated into a sort expression (T-14-18 mitigation).
+_SORT_MAP = {
+    "surname": lambda c: (c.surname or "").lower(),
+    "consultant_number": lambda c: (c.consultant_number or "").lower(),
+}
+
+
+def list_customers_view(
+    session: Session,
+    *,
+    name: str = "",
+    surname: str = "",
+    consultant_number: str = "",
+    sort: str = "",
+    page: int = 0,
+) -> dict:
+    """Filter/sort/page context for the /customers list (LIST-01..03).
+
+    Independent per-column Python-side filters — a DIFFERENT query shape
+    from search_customers/customer_search_view's combined search_lc match,
+    which stay untouched for the sale-form customer picker.
+    """
+    name = name.strip()
+    surname = surname.strip()
+    consultant_number = consultant_number.strip()
+
+    rows = list(session.scalars(select(Customer)))
+
+    if name:
+        name_lc = name.lower()
+        rows = [c for c in rows if name_lc in c.name.lower()]
+    if surname:
+        surname_lc = surname.lower()
+        rows = [c for c in rows if surname_lc in (c.surname or "").lower()]
+    if consultant_number:
+        consultant_lc = consultant_number.lower()
+        rows = [c for c in rows if consultant_lc in (c.consultant_number or "").lower()]
+
+    rows.sort(key=_SORT_MAP.get(sort, lambda c: c.name.lower()))
+
+    page_rows, total, total_pages = paginate(rows, page)
+    return {
+        "rows": page_rows,
+        "total": total,
+        "total_pages": total_pages,
+        "page": page,
+        "name": name,
+        "surname": surname,
+        "consultant_number": consultant_number,
+        "sort": sort,
+    }
 
 
 def purchase_history(session: Session, customer_id: str) -> list[dict]:

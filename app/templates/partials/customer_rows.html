@@ -1,7 +1,23 @@
-{# Stable HTMX swap target: the /customers search input swaps #customer-rows (outerHTML).
-   Context comes from customers.customer_search_view: q + rows of {customer, name_seg, consultant_seg}.
-   Pattern 5: segments are autoescaped; <mark> is literal template HTML — never |safe. #}
+{# Stable HTMX swap target: sort/filter/pagination controls all swap #customer-rows
+   (outerHTML). Context comes from routes.customers._customers_context (built on
+   customers.list_customers_view): rows of plain Customer + name/surname/
+   consultant_number/sort/page/total_pages/page_window/list_url/rows_target_id/extra_qs.
+   LIST-01..03 (D-01..D-07): page-number pagination, per-column header-row filters,
+   sort dropdown — replaces the old q-based search+<mark> highlight shape. #}
 <div id="customer-rows">
+  <div class="filter-bar">
+    <div class="field">
+      <label for="sort">Сортировать по</label>
+      <select id="sort" name="sort"
+              hx-get="/customers" hx-trigger="change"
+              hx-include="#customer-rows input, #customer-rows select"
+              hx-target="#customer-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value=""{% if not sort %} selected{% endif %}>Имя (А→Я) (по умолчанию)</option>
+        <option value="surname"{% if sort == "surname" %} selected{% endif %}>Фамилия (А→Я)</option>
+        <option value="consultant_number"{% if sort == "consultant_number" %} selected{% endif %}>Номер консультанта</option>
+      </select>
+    </div>
+  </div>
   {% if rows %}
   <table>
     <thead>
@@ -11,14 +27,28 @@
         <th>Номер консультанта</th>
         <th>Действия</th>
       </tr>
+      <tr class="filter-row">
+        <th><input type="text" name="name" value="{{ name }}" placeholder="Фильтр…"
+                   hx-get="/customers" hx-trigger="input changed delay:300ms"
+                   hx-include="#customer-rows input, #customer-rows select"
+                   hx-target="#customer-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><input type="text" name="surname" value="{{ surname }}" placeholder="Фильтр…"
+                   hx-get="/customers" hx-trigger="input changed delay:300ms"
+                   hx-include="#customer-rows input, #customer-rows select"
+                   hx-target="#customer-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><input type="text" name="consultant_number" value="{{ consultant_number }}" placeholder="Фильтр…"
+                   hx-get="/customers" hx-trigger="input changed delay:300ms"
+                   hx-include="#customer-rows input, #customer-rows select"
+                   hx-target="#customer-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th></th>
+      </tr>
     </thead>
     <tbody>
-      {% for row in rows %}
-      {% set customer = row.customer %}
+      {% for customer in rows %}
       <tr>
-        <td>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
+        <td>{{ customer.name }}</td>
         <td>{% if customer.surname %}{{ customer.surname }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>{% if customer.consultant_number %}{% set pre, match, post = row.consultant_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if customer.consultant_number %}{{ customer.consultant_number }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           <a href="/customers/{{ customer.id }}">Открыть</a>
           <a href="/customers/{{ customer.id }}/edit">Изменить</a>
@@ -27,9 +57,10 @@
       {% endfor %}
     </tbody>
   </table>
-  {% elif q and q.strip() %}
+  {% include "partials/pagination.html" %}
+  {% elif name or surname or consultant_number %}
   <div class="empty-state">
-    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте имя или номер консультанта.</p>
+    <p class="muted">Ничего не найдено по заданным фильтрам.</p>
   </div>
   {% else %}
   <div class="empty-state">
