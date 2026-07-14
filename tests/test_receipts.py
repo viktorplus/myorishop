@@ -745,7 +745,7 @@ def test_lookup_prefill_catalog_source_price_only(session):
     assert result == {
         "source": "catalog",
         "name": None,
-        "prices": {"cost": 900, "catalog": 1500, "sale": None},
+        "prices": {"cost": 900, "catalog": 1500, "sale": 1500},
     }
 
 
@@ -760,7 +760,7 @@ def test_lookup_prefill_catalog_source_combines_dictionary_and_price(session):
     assert result == {
         "source": "catalog",
         "name": "Помада",
-        "prices": {"cost": 1200, "catalog": 2000, "sale": None},
+        "prices": {"cost": 1200, "catalog": 2000, "sale": 2000},
     }
 
 
@@ -781,9 +781,9 @@ def test_lookup_prefill_product_source_unaffected_by_catalog_branch(session, pro
     assert result["prices"]["cost"] == 1250
 
 
-def test_lookup_prefill_sale_never_filled_from_catalog_price(session):
-    """D-02 regression guard: sale is always None on the catalog-source branch,
-    even when CatalogPrice carries both consumer_cents and consultant_cents."""
+def test_lookup_prefill_sale_filled_from_catalog_consumer_price(session):
+    """D-02 superseded: sale is filled from the catalog's consumer price (ПЦ)
+    on the catalog-source branch, same value as catalog."""
     add_entry(session, code="7777", name="Тональный крем")
     session.add(_catalog_price("7777", consumer=3000, consultant=1800))
     session.commit()
@@ -791,7 +791,7 @@ def test_lookup_prefill_sale_never_filled_from_catalog_price(session):
     result = lookup_prefill(session, "7777")
 
     assert result["source"] == "catalog"
-    assert result["prices"]["sale"] is None
+    assert result["prices"]["sale"] == 3000
 
 
 # --- Plan 03-02: GET /receipts/lookup pre-fill (D-03 / PD-10 / RCP-02) ---
@@ -843,10 +843,10 @@ def test_web_lookup_dictionary_fallback_name_only(client, session):
     assert CATALOG_FILL_HINT in response.text
 
 
-def test_web_lookup_catalog_source_price_only_fills_cost_and_catalog(client, session):
-    """Unknown-to-Product code with a CatalogPrice match only: cost/catalog OOB
-    fragments carry the real consultant/consumer cents display values, and
-    sale is never touched (D-02)."""
+def test_web_lookup_catalog_source_price_only_fills_cost_catalog_and_sale(client, session):
+    """Unknown-to-Product code with a CatalogPrice match only: cost/catalog/sale
+    OOB fragments carry the real consultant/consumer cents display values —
+    sale is filled from the consumer price (ПЦ), same as catalog (D-02 superseded)."""
     session.add(
         CatalogPrice(
             id=new_id(),
@@ -868,7 +868,7 @@ def test_web_lookup_catalog_source_price_only_fills_cost_and_catalog(client, ses
     assert 'value="9,00"' in response.text
     assert 'id="catalog-wrap"' in response.text
     assert 'value="15,00"' in response.text
-    assert 'id="sale-wrap"' not in response.text
+    assert 'id="sale-wrap"' in response.text
 
 
 def test_web_lookup_catalog_source_combines_dictionary_and_price(client, session):

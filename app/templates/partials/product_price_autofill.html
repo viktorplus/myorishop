@@ -10,3 +10,7 @@
 <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
        value="{{ cost_cents | cents }}" hx-swap-oob="true">
 {% endif %}
+{% if fill_sale %}
+<input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00"
+       value="{{ sale_cents | cents }}" hx-swap-oob="true">
+{% endif %}

@@ -263,10 +263,10 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
 
     Active product first: its name plus current card prices (the route
     decides which price fields actually fill — PD-10). Otherwise (D-01):
-    combine the Dictionary name and the latest CatalogPrice cost/catalog into
-    one "catalog" source — `sale` is ALWAYS None on this branch (D-02: this
-    shop's own sale price is never derived from Oriflame's CatalogPrice data).
-    Unknown everywhere -> None (the route answers 204).
+    combine the Dictionary name and the latest CatalogPrice cost/catalog/sale
+    into one "catalog" source — the catalog's consumer price (ПЦ) doubles as
+    this shop's default sale price (D-02 superseded), same as on the product
+    form's autofill. Unknown everywhere -> None (the route answers 204).
     """
     code = code.strip()
     if not code:
@@ -294,7 +294,7 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
             "prices": {
                 "cost": latest.consultant_cents if latest is not None else None,
                 "catalog": latest.consumer_cents if latest is not None else None,
-                "sale": None,
+                "sale": latest.consumer_cents if latest is not None else None,
             },
         }
     return None

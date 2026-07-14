@@ -139,9 +139,10 @@ def receipt_lookup(
         # D-01/D-04 (Phase 12/PRICE-04): unknown-to-Product code matched by
         # Dictionary and/or CatalogPrice. Pitfall 1: reuse the exact same
         # "still empty after strip" computation as the product branch above.
-        # D-02: "sale" is hard-excluded — never filled from CatalogPrice.
+        # D-02 superseded: the catalog consumer price (ПЦ) is this shop's
+        # default sale price, so "sale" now fills the same as cost/catalog.
         typed = {"cost": cost, "sale": sale, "catalog": catalog}
-        fill_fields = [f for f in ("cost", "catalog") if not typed[f].strip()]
+        fill_fields = [f for f in ("cost", "sale", "catalog") if not typed[f].strip()]
         hint = CATALOG_FILL_HINT
         # D-05: the batch chooser is untouched by this branch — same empty
         # state as the dictionary-only fallback used previously.

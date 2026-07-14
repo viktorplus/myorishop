@@ -113,12 +113,12 @@ def test_web_step_batch_existing_product_forwards_cost_price(
     assert '<input type="hidden" name="catalog" value="">' in response.text
 
 
-def test_web_step_batch_catalog_source_forwards_cost_and_catalog_never_sale(
+def test_web_step_batch_catalog_source_forwards_cost_catalog_and_sale(
     mobile_client_factory, session, warehouse
 ):
-    """D-01/D-02: a code unknown to Product but present in CatalogPrice
-    forwards cost/catalog from the catalog source; sale is NEVER filled from
-    CatalogPrice data (D-02 boundary, mobile layer)."""
+    """D-01: a code unknown to Product but present in CatalogPrice forwards
+    cost/catalog/sale from the catalog source — sale is filled from the
+    consumer price (ПЦ), same as catalog (D-02 superseded, mobile layer)."""
     session.add(
         CatalogPrice(
             id=new_id(),
@@ -138,7 +138,7 @@ def test_web_step_batch_catalog_source_forwards_cost_and_catalog_never_sale(
     assert response.status_code == 200
     assert '<input type="hidden" name="cost" value="9,00">' in response.text
     assert '<input type="hidden" name="catalog" value="15,00">' in response.text
-    assert '<input type="hidden" name="sale" value="">' in response.text
+    assert '<input type="hidden" name="sale" value="15,00">' in response.text
 
 
 def test_web_step_batch_unknown_code_forwards_empty_prices(

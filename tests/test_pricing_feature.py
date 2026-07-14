@@ -68,16 +68,24 @@ def test_prices_for_catalog_maps_by_code(priced):
 
 
 def test_price_autofill_fills_empty_fields(priced, client):
-    r = client.get("/products/lookup-price", params={"code": "100", "cost": "", "catalog": ""})
+    r = client.get(
+        "/products/lookup-price",
+        params={"code": "100", "cost": "", "catalog": "", "sale": ""},
+    )
     assert r.status_code == 200
     # catalog price 1200 cents -> "12,00"; consultant 700 -> "7,00"
     assert 'id="catalog"' in r.text and "12,00" in r.text
     assert 'id="cost"' in r.text and "7,00" in r.text
+    # sale defaults to the catalog's consumer price (ПЦ), same as catalog
+    assert 'id="sale"' in r.text and r.text.count("12,00") == 2
     assert 'hx-swap-oob="true"' in r.text
 
 
 def test_price_autofill_never_overwrites_filled_fields(priced, client):
-    r = client.get("/products/lookup-price", params={"code": "100", "cost": "5", "catalog": "9"})
+    r = client.get(
+        "/products/lookup-price",
+        params={"code": "100", "cost": "5", "catalog": "9", "sale": "9"},
+    )
     assert r.status_code == 204
 
 
