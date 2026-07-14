@@ -1,39 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Каталоги</h1>
-
-{% if not catalogs %}
-<div class="empty-state">
-  <h2>Каталогов пока нет</h2>
-  <p class="muted">Положите PDF-файлы каталогов в папку и запустите импорт справочника.</p>
-</div>
-{% else %}
-{# catalogs come pre-sorted newest-first and contiguous by year, so a
-   namespace tracker inserts a year heading whenever the year changes. #}
-{% set ns = namespace(year=None) %}
-{% for c in catalogs %}
-  {% if c.year != ns.year %}
-    {% if not loop.first %}</tbody></table>{% endif %}
-    <h2>{{ c.year }}</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Каталог</th>
-          <th class="num">Товаров</th>
-          <th>Действия</th>
-        </tr>
-      </thead>
-      <tbody>
-    {% set ns.year = c.year %}
-  {% endif %}
-      <tr>
-        <td><a href="/catalogs/{{ c.url_code }}">{{ c.label }}</a></td>
-        <td class="num">{{ c.product_count }}</td>
-        <td>
-          <a href="/catalogs/{{ c.url_code }}/file" target="_blank" rel="noopener">Открыть PDF</a>
-        </td>
-      </tr>
-  {% if loop.last %}</tbody></table>{% endif %}
-{% endfor %}
-{% endif %}
+{% include "partials/catalog_rows.html" %}
 {% endblock %}

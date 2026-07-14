@@ -1,0 +1,82 @@
+{# Swap target for /catalogs (year filter, sort, pagination). See UI-SPEC
+   Contract B: the year+sort controls live in a synthetic single-row
+   <thead><tr class="filter-row"> header bar — NOT a .filter-bar div — to
+   stay D-04 compliant even though catalogs has no single shared <thead>
+   across the whole page (each year gets its own <table>). This synthetic
+   table is self-balanced (one <table> open, one close) so it never
+   perturbs the per-page <table>/</table> tag-count check (Pitfall 5). #}
+<div id="catalog-rows">
+  <table class="catalog-filter-row">
+    <thead>
+      <tr class="filter-row">
+        <th>
+          <label for="year">Год</label>
+          <select id="year" name="year"
+                  hx-get="/catalogs" hx-trigger="change"
+                  hx-include="#catalog-rows select"
+                  hx-target="#catalog-rows" hx-swap="outerHTML" hx-push-url="true">
+            <option value=""{% if not year %} selected{% endif %}>Все годы</option>
+            {% for y in year_options %}
+            <option value="{{ y }}"{% if y|string == year %} selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </th>
+        <th>
+          <label for="sort">Сортировать по</label>
+          <select id="sort" name="sort"
+                  hx-get="/catalogs" hx-trigger="change"
+                  hx-include="#catalog-rows select"
+                  hx-target="#catalog-rows" hx-swap="outerHTML" hx-push-url="true">
+            <option value=""{% if not sort %} selected{% endif %}>Сначала новые (по умолчанию)</option>
+            <option value="oldest"{% if sort == "oldest" %} selected{% endif %}>Сначала старые</option>
+          </select>
+        </th>
+      </tr>
+    </thead>
+  </table>
+
+  {% if not catalogs %}
+  {% if year %}
+  <div class="empty-state">
+    <p class="muted">Ничего не найдено по заданным фильтрам.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h2>Каталогов пока нет</h2>
+    <p class="muted">Положите PDF-файлы каталогов в папку и запустите импорт справочника.</p>
+  </div>
+  {% endif %}
+  {% else %}
+  {# catalogs come pre-sorted and contiguous by year within THIS page's
+     slice (already paginated by list_catalogs before this loop runs, per
+     Pitfall 5), so a namespace tracker inserts a year heading whenever the
+     year changes — now correctly opening/closing per PAGE, not per full list. #}
+  {% set ns = namespace(year=None) %}
+  {% for c in catalogs %}
+    {% if c.year != ns.year %}
+      {% if not loop.first %}</tbody></table>{% endif %}
+      <h2>{{ c.year }}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Каталог</th>
+            <th class="num">Товаров</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+      {% set ns.year = c.year %}
+    {% endif %}
+        <tr>
+          <td><a href="/catalogs/{{ c.url_code }}">{{ c.label }}</a></td>
+          <td class="num">{{ c.product_count }}</td>
+          <td>
+            <a href="/catalogs/{{ c.url_code }}/file" target="_blank" rel="noopener">Открыть PDF</a>
+          </td>
+        </tr>
+    {% if loop.last %}</tbody></table>{% endif %}
+  {% endfor %}
+  {% endif %}
+
+  {% include "partials/pagination.html" %}
+</div>

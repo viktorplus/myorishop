@@ -185,3 +185,50 @@ def test_catalogs_routes_end_to_end(tmp_path, monkeypatch, session, client):
     # unknown catalog -> 404 on both surfaces
     assert client.get("/catalogs/1999-01").status_code == 404
     assert client.get("/catalogs/1999-01/file").status_code == 404
+
+
+def test_web_catalogs_pagination_bar_shows_correct_total(tmp_path, monkeypatch, session, client):
+    names = [f"2025-{n:02d}.pdf" for n in range(1, 16)] + [
+        f"2026-{n:02d}.pdf" for n in range(1, 11)
+    ]
+    folder = _make_catalog_dir(tmp_path, names)
+    monkeypatch.setattr(settings, "catalogs_dir", str(folder))
+
+    r = client.get("/catalogs")
+    assert r.status_code == 200
+    assert "Страница 1 из 2" in r.text
+
+
+def test_web_catalogs_filter_by_year(tmp_path, monkeypatch, session, client):
+    folder = _make_catalog_dir(tmp_path, ["2025-01.pdf", "2026-03.pdf"])
+    monkeypatch.setattr(settings, "catalogs_dir", str(folder))
+
+    r = client.get("/catalogs?year=2026")
+    assert r.status_code == 200
+    assert "Каталог 3 · 2026" in r.text
+    assert "Каталог 1 · 2025" not in r.text
+
+
+def test_web_catalogs_year_filter_lives_in_header_row(tmp_path, monkeypatch, session, client):
+    folder = _make_catalog_dir(tmp_path, ["2026-03.pdf"])
+    monkeypatch.setattr(settings, "catalogs_dir", str(folder))
+
+    r = client.get("/catalogs")
+    assert r.status_code == 200
+    assert 'class="filter-row"' in r.text
+    assert 'class="filter-bar"' not in r.text
+
+
+def test_web_catalogs_table_tags_balanced_on_paginated_page(tmp_path, monkeypatch, session, client):
+    # Seed enough catalogs across 2 years that a page boundary (20 rows)
+    # falls mid-year, so the year-grouping loop would leave an unclosed
+    # </table> if pagination happened after grouping instead of before it.
+    names = [f"2025-{n:02d}.pdf" for n in range(1, 16)] + [
+        f"2026-{n:02d}.pdf" for n in range(1, 11)
+    ]
+    folder = _make_catalog_dir(tmp_path, names)
+    monkeypatch.setattr(settings, "catalogs_dir", str(folder))
+
+    r = client.get("/catalogs")
+    assert r.status_code == 200
+    assert r.text.count("<table") == r.text.count("</table>")
