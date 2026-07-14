@@ -1,248 +1,259 @@
 # Architecture Research
 
-**Domain:** Multi-warehouse + batch/lot stock tracking, integrated into MyOriShop's existing single-choke-point ledger architecture (FastAPI + SQLAlchemy 2.0 + SQLite/WAL + HTMX + Jinja2)
-**Researched:** 2026-07-10
-**Confidence:** HIGH — grounded in direct reading of the current codebase (`app/models.py`, `app/services/ledger.py`, `stock.py`, `sales.py`, `receipts.py`, `writeoffs.py`, `reports.py`, `alembic/versions/0001_initial_schema.py`, `0005_product_thresholds.py`), not external research. This is project-specific integration analysis for the v1.1 milestone; it supersedes the v1.0-era architecture research previously in this file.
+**Domain:** Касса / Финансы module integration into an existing append-only Operation-ledger app (MyOriShop, v1.3)
+**Researched:** 2026-07-14
+**Confidence:** HIGH — based on direct inspection of the current codebase (`app/models.py`, `app/services/ledger.py`, `app/services/sales.py`, `app/services/writeoffs.py`, `app/services/operations.py`, `app/routes/sales.py`, `alembic/versions/0001_initial_schema.py`, `app/db.py`, `app/config.py`, `app/core.py`, `app/main.py`, `app/templates/base.html`), not external ecosystem research. This is a project-specific integration design, not a generic domain survey; it supersedes the v1.0/v1.1-era architecture research previously in this file.
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Routes (app/routes/*.py) — thin, return HTMX partials                     │
-│ sales.py  receipts.py  writeoffs.py  returns.py  corrections.py           │
-│ products.py  reports.py  history.py                                       │
-│ + NEW: warehouses.py (CRUD)   + NEW: batch-picker partial endpoints       │
-│   (likely added to sales.py/receipts.py routes, not a standalone router)  │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Services (app/services/*.py) — "fat services", routes stay thin           │
-│ sales.py  receipts.py  writeoffs.py  returns.py  corrections.py  stock.py │
-│ reports.py  catalog.py  dictionary.py                                     │
-│ + NEW: warehouses.py (CRUD, soft-delete)                                   │
-│ + NEW: batches.py (resolve-or-create, list-for-picker, rebuild helpers)   │
-├─────────────────────────────────────────────────────────────────────────┤
-│ LEDGER CHOKE POINT — app/services/ledger.py::record_operation()            │
-│ record_operation(type_, product_id, qty_delta, batch_id=None, ...)        │
-│ — the ONLY writer of `operations` rows AND of BOTH stock cache columns    │
-│   (Product.quantity rollup  +  NEW Batch.quantity detail)                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Models (app/models.py)                                                     │
-│  Product  (quantity = cross-batch rollup cache, UNCHANGED semantics)      │
-│  Operation (append-only; product_id UNCHANGED; + nullable batch_id)       │
-│  NEW Warehouse (mutable, soft-delete, mirrors Product's WR-04 pattern)    │
-│  NEW Batch (mutable, FK product_id + warehouse_id, its own quantity cache)│
-├─────────────────────────────────────────────────────────────────────────┤
-│ SQLite (WAL) — DB-level triggers enforce operations append-only           │
-│ (operations_no_update / operations_no_delete — unconditional, no WHEN)    │
-└───────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  ROUTES (thin) — app/routes/*.py                                     │
+│  ┌───────────┐  ┌────────────┐  ┌───────────┐  ┌──────────────┐     │
+│  │ sales.py  │  │writeoffs.py│  │  ...       │  │  finance.py  │ NEW │
+│  └─────┬─────┘  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘     │
+│        │              │               │                │             │
+├────────┴──────────────┴───────────────┴────────────────┴─────────────┤
+│  SERVICES (fat, all writes here) — app/services/*.py                 │
+│  ┌───────────┐  ┌────────────┐         ┌──────────────────────┐     │
+│  │ sales.py  │──┼──calls────▶│         │   finance.py    NEW  │     │
+│  │register_  │  │            │         │ record_cash_movement │     │
+│  │  sale()   │  │            │         │ register_manual_debit│     │
+│  └─────┬─────┘  └────────────┘         │ compute_balance()     │     │
+│        │ calls                          └──────────┬────────────┘    │
+│        ▼                                            │                 │
+│  ┌─────────────────────┐                            │                 │
+│  │  ledger.py           │                           │                 │
+│  │ record_operation()   │◀── single write path      │                 │
+│  │  (stock/Operation)   │    for STOCK only          │                 │
+│  └──────────┬────────────┘                           │                 │
+├─────────────┴───────────────────────────────────────┴─────────────────┤
+│  MODELS / TABLES — app/models.py                                      │
+│  ┌───────────┐  ┌──────────┐  ┌─────────┐  ┌────────────────────┐    │
+│  │ operations │  │  sales   │  │ products│  │ cash_movements NEW │    │
+│  │(append-only│  │ (header) │  │ batches │  │  (append-only,     │    │
+│  │ trigger-   │  │          │  │         │  │   trigger-guarded, │    │
+│  │ guarded)   │  │          │  │         │  │   sale_id FK)      │    │
+│  └────────────┘  └──────────┘  └─────────┘  └────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+**Core decision:** Cash movements are a **new, parallel append-only ledger table** (`cash_movements` / `CashMovement`), not new `type` values inside the existing `operations` table. See "Anti-Pattern 1" below for why reuse was rejected.
 
 ### Component Responsibilities
 
 | Component | Responsibility | Status |
-|-----------|----------------|--------|
-| `Warehouse` model | Physical location entity (name, soft-delete). No stock lives here directly. | NEW |
-| `Batch` model | The actual stock-holding unit: one product × one warehouse × one expiry/price/location/comment combination, with its own cached `quantity`. | NEW |
-| `Product.quantity` | Cross-warehouse, cross-batch rollup cache (`SUM(operations.qty_delta)` for that product). Drives catalog list, low-stock report, stale report. | UNCHANGED semantics |
-| `Batch.quantity` | Per-lot cache (`SUM(operations.qty_delta)` for that batch). Drives the sale-time batch picker and per-batch oversell. | NEW |
-| `record_operation()` | Single ledger write path. Gains an optional `batch_id` param; when present, atomically increments `Batch.quantity` in the SAME transaction it already uses to increment `Product.quantity`. | MODIFIED (additive) |
-| `app/services/stock.py` | Low-stock report. Stays product-level (reads `Product.quantity`, unaffected by batches existing underneath it). | UNCHANGED |
-| `app/services/reports.py` | Sales/profit/write-off/top-selling/stale reports. All currently join `Operation.product_id → Product`; keep working unmodified. Batch adds an *optional* future drill-down, not a required rewrite. | UNCHANGED (this milestone) |
-| `app/services/sales.py` | Oversell check moves from "requested vs `Product.quantity`" to "requested vs `Batch.quantity` for the batch actually picked". | MODIFIED |
-| `app/services/receipts.py` | Must resolve-or-create a `Batch` (mirrors today's resolve-or-create `Product` for unknown codes) before calling `record_operation`. | MODIFIED |
-| `app/services/writeoffs.py` / `returns.py` / `corrections.py` | Must also target a specific `batch_id` once stock lives at batch granularity. | MODIFIED |
-| `app/services/catalog.py` + new category page | Reads the existing `Product.category` field (already in the v1.0 schema) — a pure new read-only route/template, no model change. | NEW route, model unchanged |
+|-----------|-----------------|--------|
+| `CashMovement` model (`app/models.py`) | One append-only row per cash event: auto-credit from a sale, or manual debit with mandatory category/note. Mirrors `Operation`'s sync-ready shape (UUID PK, `device_id`+`seq`, `created_at`/`created_by`). | **New** |
+| `app/services/finance.py` | Single write path for `cash_movements` (mirrors `ledger.record_operation`): `record_cash_movement()`, `register_manual_debit()` (validation + category allow-list, mirrors `writeoffs.register_writeoff`), `compute_balance()` (live SUM, mirrors `ledger.compute_stock`), `recent_cash_movements()` / a history view (mirrors `operations.history_view`). | **New** |
+| `app/services/sales.py` (`register_sale`) | Unchanged responsibility (basket write), **plus one new call**: after the per-line `record_operation` loop and before the final `session.commit()`, call `finance.record_cash_movement(session, ..., commit=False)` with the already-computed `total_cents`. | **Modified** |
+| `app/routes/finance.py` | Thin routes: `GET /finance` (balance + history), `GET/POST /finance/debit` (manual debit form), mirrors `app/routes/writeoffs.py` shape. | **New** |
+| `app/templates/pages/finance.html`, `partials/finance_*.html` | Финансы dashboard (balance, history list) + debit form partial, following the existing `pages/` + `partials/` split. | **New** |
+| `app/templates/base.html` | Add one `<nav>` link: `Финансы`. | **Modified** |
+| `app/main.py` | `app.include_router(finance.router)`. | **Modified** |
+| `alembic/versions/00XX_cash_movements.py` | New table + append-only triggers (`cash_movements_no_update`/`_no_delete`), mirroring migration 0001's `operations` triggers. | **New** |
+| `app/routes/mobile_sales.py` etc. | **No change.** Mobile already calls `sales.register_sale()` unchanged (Phase 11 pattern) — the cash credit fires automatically for every mobile sale with zero mobile-side wiring. | **Untouched** |
 
-## Does stock move from "per product" to "per product+warehouse+batch"?
+## Recommended Project Structure
 
-**Yes, for the operational/detail layer — but keep `Product.quantity` as an honest rollup, do not repurpose or remove it.**
+```
+app/
+├── models.py                    # + CashMovement class, + CASH_CATEGORIES dict
+├── services/
+│   ├── ledger.py                # UNCHANGED — stays product/stock-only
+│   ├── sales.py                 # register_sale(): + one call into finance.py
+│   ├── writeoffs.py             # UNCHANGED (pattern reference only)
+│   └── finance.py               # NEW — record_cash_movement, register_manual_debit,
+│                                 #        compute_balance, recent_cash_movements/history_view
+├── routes/
+│   └── finance.py               # NEW — GET /finance, GET/POST /finance/debit
+├── templates/
+│   ├── base.html                # + nav link
+│   ├── pages/
+│   │   └── finance.html         # NEW — balance + debit form + history table
+│   └── partials/
+│       └── finance_history.html # NEW — history rows (HTMX swap target after a debit)
+alembic/versions/
+└── 00XX_cash_movements.py       # NEW — table + append-only triggers
+tests/
+└── test_finance.py              # NEW — mirrors test_ledger.py / writeoff tests
+```
 
-This is a two-tier cache, and both tiers are maintained by the exact same mechanism the app already uses (atomic SQL-side increment inside `record_operation`, always re-derivable from the ledger via `compute_stock`/`rebuild_stock`):
+### Structure Rationale
 
-- **`Product.quantity`** (existing column) = total stock of that product across *every* warehouse and batch. Formula unchanged: `SUM(operations.qty_delta) WHERE product_id = X`. Adding batches doesn't change this — a batch-tagged `sale`/`receipt`/`writeoff` operation still carries `product_id` directly (see "Operation.product_id stays" below), so the existing rollup query needs zero changes.
-- **`Batch.quantity`** (new column) = stock of one specific lot. Formula: `SUM(operations.qty_delta) WHERE batch_id = Y`. This is what the sale-time picker (LOT-02) and the per-batch oversell check need.
-
-`rebuild_stock()` in `app/services/ledger.py` should be extended to also recompute every `Batch.quantity` alongside every `Product.quantity` — same repair philosophy, no new concept.
-
-### What happens to `Operation`
-
-Add **one** new nullable column: `batch_id: Mapped[str | None] = mapped_column(ForeignKey("batches.id"), index=True)`.
-
-Do **not** also add `warehouse_id` to `Operation`. `Batch` already owns `warehouse_id`; a second FK on `Operation` would be redundant denormalization with no read pattern that needs it (any "stock by warehouse" report groups `Batch.warehouse_id` and joins `Operation.batch_id`, one hop).
-
-`Operation.product_id` **stays exactly as-is** — it is not derived from `batch_id` and is not deprecated. Every existing report (`sales_profit_report`, `writeoff_report`, `top_selling_products`, `stale_products`) already joins on `Operation.product_id → Product` directly; keeping this column means **zero changes to any existing report query**. This mirrors how the ledger already denormalizes `unit_cost_cents`/`unit_price_cents` onto the operation row instead of forcing every read to chase a foreign key — same design principle, applied consistently.
-
-`batch_id` is only meaningful for stock-affecting operation types (`receipt`, `sale`, `writeoff`, `return`, `correction`); it stays `NULL` for the audit-only, `qty_delta=0` types (`product_created`, `product_edited`, `price_change`), which have no batch concept.
-
-### What happens to oversell checks
-
-Today (`app/services/sales.py::register_sale`): aggregate requested qty **per `product_id`** across all basket lines, compare to `Product.quantity`.
-
-After batches: since LOT-02 requires the operator to manually pick a batch per line, the natural (and *more* accurate) check becomes: aggregate requested qty **per `batch_id`** across all basket lines (same double-counting guard as today — Pitfall 6 in the existing code — just re-keyed), compare to `Batch.quantity`. This is a straightforward re-key of existing logic, not a new pattern. The same re-keying applies to the write-off oversell check in `app/services/writeoffs.py`.
-
-### What happens to low-stock and stale-product reports
-
-**Recommendation: leave both at product granularity, unchanged.** `low_stock_products()` (`app/services/stock.py`) keeps reading `Product.quantity` and `Product.low_stock_threshold` exactly as today — "is this product running low across all warehouses/batches combined" is still the useful operator question, and the per-product threshold field already exists. `stale_products()` (`app/services/reports.py`) keeps its `Operation.product_id` join — "has this product sold recently" doesn't care which batch fulfilled the sale.
-
-A **separate, later** "batches nearing expiry" or "stock by warehouse" report is a natural follow-on once `Batch` exists, but it is not one of this milestone's requirements (PROJECT.md lists only WH-01/02, CAT-01, LOT-01..04, PRICE-01, UI-01) — flag it as a gap/future differentiator rather than building it now.
-
-## New vs Modified Components
-
-| Component | New / Modified | Notes |
-|-----------|-----------------|-------|
-| `Warehouse` model + `warehouses` table | NEW | Mutable entity, soft-delete (mirror `Product`'s `deleted_at` + partial-unique-active pattern on `name`, same as `uq_products_code_active`). |
-| `Batch` model + `batches` table | NEW | `id` (UUID PK), `product_id` FK, `warehouse_id` FK, `expiry_date` (nullable), `price_cents` (nullable — the lot's own sale-price pre-fill, see below), `location` (nullable free text, WH-02), `comment` (nullable free text, LOT-04), `quantity` (cached, default 0), `created_at`/`updated_at`. No soft-delete needed (see Anti-Patterns). |
-| `Operation.batch_id` | NEW column | Nullable FK to `batches.id`, indexed. Pre-migration rows stay `NULL` (see Anti-Pattern 3). |
-| `Product.min_sale_cents` | NEW column | Nullable Integer, for PRICE-01. Fully independent of warehouses/batches. |
-| `record_operation()` | MODIFIED (additive) | New optional `batch_id` param; when given, also does `batch.quantity = Batch.quantity + qty_delta` in the same transaction, and validates `batch.product_id == product_id` (mirrors the existing IN-01 deleted-product guard). |
-| `rebuild_stock()` | MODIFIED | Also recomputes every `Batch.quantity`. |
-| `app/services/sales.py`, `writeoffs.py`, `returns.py`, `corrections.py` | MODIFIED | Oversell/removal checks re-keyed to `batch_id`; each now requires resolving a batch before writing. |
-| `app/services/receipts.py` | MODIFIED | Resolve-or-create a `Batch` (new expiry/price/location/comment or top up an existing batch), same transaction as today's resolve-or-create `Product`. |
-| Category browsing page (`CAT-01`) | NEW route + template | Reads existing `Product.category`; zero model/ledger changes. |
-| Mobile-responsive CSS (`UI-01`) | MODIFIED (styling only) | Touches templates/CSS across the whole app; zero backend/model coupling. |
-| Reports (`app/services/reports.py`, `stock.py`) | UNCHANGED (this milestone) | Stay product-level as designed today. |
+- **`app/services/finance.py` is a sibling of `ledger.py`, not a submodule of it.** `ledger.py`'s docstring is explicit: it is "the SINGLE write path for **stock changes**" and every function in it (`record_operation`, `compute_stock`, `rebuild_stock`) is keyed on `Product`/`Batch` quantity projections. Cash has no stock dimension, so it gets its own single-write-path function rather than a special case bolted onto `record_operation`.
+- **`sales.py` calls `finance.py` directly (a plain Python function call in the same module-level transaction), not the other way around.** Sales is the only current cash-generating event; finance must never need to know how a sale was built.
 
 ## Architectural Patterns
 
-### Pattern 1: Two-tier denormalized stock cache
+### Pattern 1: Parallel append-only ledger table, sized to its own domain
 
-**What:** `Product.quantity` (rollup) and `Batch.quantity` (detail) are both maintained inside the same `record_operation()` transaction via atomic SQL-side increments (`col = col + delta`, no read-modify-write race), and both are fully re-derivable from the ledger (`compute_stock`/`rebuild_stock`).
-**When to use:** Any time a new aggregation grain is added on top of an existing single-grain cache that must stay correct.
-**Trade-offs:** One extra `UPDATE` per stock-affecting operation (cheap, single row by PK). Keeps the "cache is always a `SUM(ledger)` projection" invariant (`FND-01`) intact at both grains — no drift risk, no reconciliation job needed.
+**What:** `CashMovement` copies `Operation`'s proven sync-ready shape (UUID PK, `device_id` + `seq` with `UniqueConstraint(device_id, seq)`, `created_at`/`created_by` stamped from `settings`, DB-level `BEFORE UPDATE`/`BEFORE DELETE` triggers that `RAISE(ABORT, ...)`) but drops everything that is stock-specific (`product_id NOT NULL`, `batch_id`, `qty_delta`, the `STOCK_AFFECTING_TYPES` guard).
 
-### Pattern 2: Batch as the stock-holding unit; Operation keeps its direct product_id
+**When to use:** Any new "kind of event" that needs the same append-only/audit/future-sync guarantees as `operations` but has a genuinely different shape (no product, no quantity). This is the same reasoning that already produced two separate header/detail pairs in this codebase (`Sale` + `sale`-type `Operation` rows) rather than cramming sale headers into `operations`.
 
-**What:** `Batch` becomes the true unit that holds quantity/expiry/price/location; `Operation` gets `batch_id` *in addition to* (not instead of) `product_id`.
-**When to use:** When a new finer-grained entity is introduced under an existing ledger that many reports already query directly by the coarser key.
-**Trade-offs:** One column of "redundant" data (`product_id` is technically derivable via `batch_id → Batch.product_id`), but it avoids rewriting every existing report join and avoids ever leaving `Operation.product_id` unset for historical rows. Consistent with the ledger's existing willingness to denormalize (`unit_cost_cents`, `unit_price_cents` are already snapshots, not FKs to look up elsewhere).
+**Trade-offs:**
+- Correct: no `product_id` schema compromise, no sentinel/dummy product, no special-casing in `record_operation`'s `STOCK_AFFECTING_TYPES`/batch-mandatory logic.
+- Correct: `/history` (the existing operations view) stays exactly what it is today — a stock/product ledger — and Финансы gets its own history view. No risk of a cash row confusing a stock report that does `SUM(qty_delta)` or joins `Product`.
+- Cost: two append-only tables to keep append-only (two migrations with triggers, two "single write path" functions) instead of one. Judged worth it: the alternative (nullable `product_id`) would weaken an invariant every existing stock service currently relies on (`session.get(Product, product_id)` + `product.deleted_at` guard runs unconditionally in `record_operation`).
 
-### Pattern 3: Mutable reference entity with soft-delete, reused from `Product`
+**Example (model, mirrors `Operation`):**
+```python
+CASH_CATEGORIES = {
+    "sale": "Продажа",              # system-generated only, never operator-chosen
+    "supplier": "Оплата поставщику",
+    "salary": "Зарплата",
+    "other": "Прочее",
+}
 
-**What:** `Warehouse` gets `deleted_at` + a partial unique index on `name` (`WHERE deleted_at IS NULL`), exactly mirroring `uq_products_code_active`.
-**When to use:** Any reference entity that can be renamed/retired but is permanently FK-referenced by historical ledger rows (via `Batch.warehouse_id`) and must never be hard-deleted.
-**Trade-offs:** `Batch` does **not** need this pattern — it has no natural-key uniqueness concern like `Product.code`/`Warehouse.name` do, so a batch simply stops appearing in the picker once `quantity` reaches 0 (a `WHERE quantity > 0` filter), with no soft-delete flag required. Keep it simpler than `Product`/`Warehouse` on purpose.
+class CashMovement(Base):
+    """Append-only cash ledger row: auto-credit from a sale, or manual debit.
 
-### Pattern 4: Warn-but-allow guardrail, reused verbatim for the minimum-price check
+    Mirrors Operation's sync-ready shape. amount_cents is SIGNED (positive =
+    приход, negative = расход) — same convention as Operation.qty_delta.
+    Immutability enforced by DB triggers (mirrors operations_no_update/_no_delete).
+    """
 
-**What:** PRICE-01's "selling below minimum warns but allows override" is the *exact* existing `confirm != "1"` / `confirm == "1"` pattern already used for sale oversell (`SAL-04`) and write-off oversell.
-**When to use:** Any new "soft block" business rule in this codebase — do not invent a second confirmation mechanism.
-**Trade-offs:** Needs a product decision (flag for the roadmap, not answered here): should a below-minimum-price line and an oversold-batch line on the *same* basket surface as one combined warning screen, or two sequential ones? Reusing one `confirm` flag for both is simplest for the operator (one "yes, I'm sure" covers everything) and is the recommended default, but should be confirmed during phase planning.
+    __tablename__ = "cash_movements"
+    __table_args__ = (UniqueConstraint("device_id", "seq"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)  # CASH_CATEGORIES key
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)  # signed
+    note: Mapped[str | None] = mapped_column(String(300))
+    # Set at INSERT time only (mirrors Operation.sale_id); NULL for manual debits.
+    sale_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sales.id", name="fk_cash_movements_sale_id_sales"), index=True
+    )
+    device_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    synced_at: Mapped[str | None] = mapped_column(String(32))
+```
+
+### Pattern 2: Same-transaction hook — sales.py calls finance.py, not the route
+
+**What:** `register_sale()` already builds the whole basket as one atomic transaction: every `record_operation(..., commit=False)` call is staged, and a single `session.commit()` at the end closes it (WR-03 in the existing docstring). The cash credit is added to the SAME transaction: one more `commit=False`-staged write, placed right after the line loop, right before that existing `session.commit()`.
+
+**When to use:** Any time a new side effect must be guaranteed to happen if-and-only-if the triggering write succeeds (no cash credit for a rolled-back sale; no sale considered final if the credit fails). This is the correct level — the route (`app/routes/sales.py::sale_create`) must **not** be the one calling `finance.py`, or a future second entry point into `register_sale()` (there already are two: desktop `sale_create` and every mobile sale route) would silently skip the credit.
+
+**Trade-offs:**
+- Correct: atomicity for free — the existing `try/except (IntegrityError, ValueError): session.rollback()` around the write loop already wraps the new call.
+- Correct: zero mobile-side changes — mobile already calls `register_sale()` unchanged (Phase 11 pattern), so mobile sales credit the till automatically.
+- Cost: creates a same-package dependency `sales.py → finance.py` (an import). Acceptable: it is a plain intra-service call, same shape as `sales.py`'s existing dependency on `ledger.py` and `dictionary.py`.
+
+**Example (the one-line integration point, inside `register_sale`'s existing try block):**
+```python
+    try:
+        for line in resolved:
+            ...
+            record_operation(session, type_="sale", ..., commit=False)
+            total_cents += qty * price_cents
+
+        # NEW — same transaction, same total_cents already being accumulated above.
+        finance.record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=total_cents,   # positive = credit
+            sale_id=header.id,
+            commit=False,
+        )
+
+        session.commit()   # unchanged — closes BOTH the sale and the cash credit
+    except (IntegrityError, ValueError):
+        session.rollback()
+        return None, {"basket": SAVE_ROLLBACK}
+```
+A zero-total basket cannot reach this point (`register_sale` already rejects an empty basket and requires `price_cents` on every line), so `record_cash_movement` never needs to special-case `amount_cents == 0`; if it ever did, skip the insert (an audit-log row that credits nothing has no value) rather than writing a no-op row.
+
+### Pattern 3: Live-summed balance, no cached field
+
+**What:** `compute_balance()` is `SELECT COALESCE(SUM(amount_cents), 0) FROM cash_movements` — no cached balance column anywhere, not on a settings row, not on a singleton "account" row.
+
+**When to use / why here specifically:** The existing codebase DOES cache a projection — `Product.quantity` and `Batch.quantity` are `SUM(qty_delta)` caches, kept in sync inside `record_operation`'s single write path, with a `rebuild_stock()` repair function for drift. That cache exists for a concrete reason stated in the code itself: stock quantity is read **inside the write-path oversell check**, once per batch, on every sale/writeoff/transfer/correction — a hot path that runs before every stock-affecting write. Cash balance has no equivalent hot path: nothing in this milestone's requirements gates a write on "is there enough cash" (unlike oversell, which gates on "is there enough stock"). Balance is a **read-only display value** on the Финансы page. A live `SUM()` is simpler, has zero drift risk by construction (nothing to keep in sync, nothing to repair), and the table it sums will always be far smaller than `operations` (cash rows are one-per-sale plus occasional manual debits, vs. one-or-more `operations` rows per sale line) — this is a strictly easier case than `compute_stock`, which already does the equivalent live `SUM()` on a bigger table and is called from live UI paths (`ledger_view`, `/history`).
+
+**Trade-offs:**
+- Correct: simplest correct answer for an append-only design — the balance is always, by definition, correct; there is nothing to reconcile.
+- Correct: no new "single write path must also update the cache" discipline to enforce for a second table.
+- Cost: if `cash_movements` ever grows to the point a live SUM is measurably slow (would take tens of thousands of rows for a single operator — not expected within this app's realistic lifetime), add an index on `created_at` (cheap) before reaching for a cached column; only add a cached `balance_cents` field later if profiling actually shows a problem, using the exact `Product.quantity` pattern (SQL-side atomic increment inside `record_cash_movement`, plus a `rebuild_balance()` repair function mirroring `rebuild_stock()`) — do not build that machinery speculatively now.
+
+**Example:**
+```python
+def compute_balance(session: Session) -> int:
+    """Live-recomputed cash balance (mirrors ledger.compute_stock)."""
+    return session.scalar(
+        select(func.coalesce(func.sum(CashMovement.amount_cents), 0))
+    )
+```
 
 ## Data Flow
 
-### Sale-time batch picker (new, LOT-02)
+### Key Data Flows
 
-```
-Operator types product code
-    ↓
-HTMX GET → batches.list_for_picker(product_id)
-    → SELECT * FROM batches WHERE product_id = ? AND quantity > 0
-      ORDER BY expiry_date ASC NULLS LAST  (soonest-to-expire first — an
-      operator convenience ordering ONLY; this is not FIFO/FEFO costing,
-      which PROJECT.md explicitly puts Out of Scope)
-    ↓
-Rendered list: price | expiry | remaining qty | comment  (per Batch row)
-    ↓
-Operator picks one row → basket line stores {product_id, batch_id, qty, price}
-    ↓
-On submit: register_sale() aggregates requested qty PER batch_id (re-keyed
-Pitfall-6 guard), compares to Batch.quantity, warns or writes
-    ↓
-record_operation(type_="sale", product_id=…, batch_id=…, qty_delta=-qty, …)
-    → increments Product.quantity AND Batch.quantity atomically
-```
-
-### Receipt flow (modified, resolve-or-create batch)
-
-```
-Operator enters code + qty + cost/sale/catalog prices
-    ↓ (unchanged) resolve-or-create Product if code unknown
-    ↓ NEW: resolve-or-create Batch
-      - "add to existing batch" (pick from this product's open batches
-        in the chosen warehouse) → just tops up quantity
-      - "new batch" → operator enters expiry_date / price / location /
-        comment for a NEW batches row (same transaction, mirrors how a
-        new Product is created today for an unknown code)
-    ↓
-record_operation(type_="receipt", product_id=…, batch_id=…, qty_delta=+qty, …)
-```
+1. **Auto-credit on sale:** `POST /sales` → `routes/sales.py::sale_create` → `services/sales.py::register_sale()` → per-line `ledger.record_operation(commit=False)` loop → **`services/finance.py::record_cash_movement(category="sale", amount_cents=total_cents, sale_id=header.id, commit=False)`** → one `session.commit()` closes `Sale` + N `Operation` rows + 1 `CashMovement` row atomically. Mobile sales (`routes/mobile_sales.py`) hit the identical path — no separate wiring needed.
+2. **Manual debit:** `GET /finance/debit` (form) → `POST /finance/debit` → `routes/finance.py` → `services/finance.py::register_manual_debit(category, note, amount)` — validates `category` against the `CASH_CATEGORIES` allow-list server-side (mirrors `writeoffs.register_writeoff`'s `reason_code not in WRITEOFF_REASONS` check) and requires a non-blank `note`/reason before any write (mirrors write-off's `REASON_ERROR` pattern) → `record_cash_movement(category=..., amount_cents=-amount, sale_id=None, commit=True)`.
+3. **Финансы dashboard read:** `GET /finance` → `services/finance.py::compute_balance()` (live SUM) + a history view (mirrors `services/operations.py::history_view` — paginated, newest-first, reuse `app/services/pagination.py`'s `LIST_PAGE_SIZE` helper already shared by every other list page).
 
 ## Scaling Considerations
 
-This is a single-operator, single-machine SQLite app — scale here is about row count over years, not concurrent users. Add:
-
-| Concern | Approach |
-|---------|----------|
-| Batch-picker query speed | Index `batches(product_id, quantity)` (or a partial index `WHERE quantity > 0`) so "open batches for this product" stays a single index seek even after years of exhausted batches accumulate. |
-| Operation table growth | Add `Index("ix_operations_batch_id", "batch_id")`, mirroring the existing `ix_operations_product_id` — same query patterns (recompute/report joins) will hit it. |
-| Warehouse/batch counts | Realistically dozens of warehouses and low hundreds of batches per product at worst for a single reseller — no partitioning or archiving strategy is needed at this scale. |
+Not applicable in the usual sense — this is a single-operator, single-device, local SQLite app (per `CLAUDE.md` constraints: "Users: 1 operator in year one"). The only "scale" axis that matters here is table growth over years of daily use, and cash-movement rows are strictly fewer than `operations` rows (one credit per sale basket vs. one-or-more `operations` rows per basket), so anything acceptable for `operations`/`/history` today (proven at the dictionary's 6,856-row scale per Phase 14) is acceptable for `cash_movements`.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Duplicating `warehouse_id` onto `Operation`
+### Anti-Pattern 1: Reusing `operations` with `cash_in`/`cash_out` types
 
-**What people do:** Add both `warehouse_id` and `batch_id` to `Operation` "to make warehouse reports faster."
-**Why it's wrong:** `Batch.warehouse_id` already answers "which warehouse" for any batch-tagged operation; a second FK is redundant state that can drift if a batch is ever reassigned, and there is no read pattern in this milestone's requirements that needs it un-joined.
-**Do this instead:** Join `Operation.batch_id → Batch.warehouse_id` when a warehouse-scoped report is needed later.
+**What people do:** Add `"cash_in"`/`"cash_out"` to `OPERATION_TYPES` and write cash movements as `Operation` rows, reusing `record_operation`.
 
-### Anti-Pattern 2: Repurposing `Product.quantity`
+**Why it's wrong:** `Operation.product_id` is `nullable=False` with a hard FK to `products.id`, and `record_operation()` unconditionally does `session.get(Product, product_id)` + rejects soft-deleted products before any write. A cash movement has no product. The only ways to force it through are (a) make `product_id` nullable — weakens an invariant every other write path relies on and every existing report/join (`compute_stock`, `history_view`, `recent_sales`, `recent_writeoffs`) assumes holds — or (b) invent a sentinel "cash" `Product` row — which then shows up in product lists, stock reports, low-stock/stale-product reports, and CSV exports, none of which should ever mention cash. Either path also forces special-casing `STOCK_AFFECTING_TYPES`/mandatory-`batch_id` logic for a type that has no stock dimension at all.
 
-**What people do:** Try to make `Product.quantity` mean "unassigned/legacy stock not yet in a batch" once batches exist.
-**Why it's wrong:** Breaks the catalog list, the low-stock report, and every v1.0 screen that reads `Product.quantity` as "total on hand" — a silent semantic change with no migration signal.
-**Do this instead:** Keep `Product.quantity` computed exactly as it is today (`SUM` across ALL operations for that product, batch-agnostic). `record_operation()`'s existing line `product.quantity = Product.quantity + qty_delta` does not change at all.
+**Do this instead:** A dedicated `CashMovement` table (Pattern 1 above) that copies the sync-ready shape without inheriting the stock-specific constraints.
 
-### Anti-Pattern 3: Backfilling `operations.batch_id` for existing rows with a plain `UPDATE`
+### Anti-Pattern 2: Building a cached balance field before it's needed
 
-**What people do:** Write a normal Alembic migration that does `UPDATE operations SET batch_id = ...` to assign historical operations to a synthetic "legacy batch."
-**Why it's wrong:** Confirmed by reading `alembic/versions/0001_initial_schema.py`: `operations_no_update` is `BEFORE UPDATE ON operations ... RAISE(ABORT, ...)` with **no `WHEN` clause** — it fires on *any* `UPDATE`, migration or application code alike. That migration's own docstring already warns that any future batch-mode migration touching `operations` must re-create these triggers (because SQLite's move-and-copy `ALTER TABLE` strategy drops them); backfilling existing rows compounds this into "drop trigger → UPDATE → recreate trigger" territory.
-**Do this instead:** Add `batch_id` as nullable and leave it `NULL` on every pre-migration row — they simply represent "legacy stock, no batch assigned," which is honest and requires zero trigger surgery. Only require `batch_id` going forward for new writes of stock-affecting operation types. Before finalizing this migration, confirm with the user whether the SQLite file already holds real operator-entered data (v1.0 shipped the same day this milestone starts, and one Phase-1 human-verification item is still deferred per PROJECT.md) — if the DB is still empty/demo-only, this question is moot and a fresh dev DB sidesteps it entirely.
+**What people do:** Add a `settings.cash_balance_cents` field or a singleton `CashAccount.balance_cents` row and update it inside `record_cash_movement`, "because `Product.quantity` does it that way."
 
-### Anti-Pattern 4: Building the batch-picker UI before the mobile-responsive pass
+**Why it's wrong:** `Product.quantity` is cached because it is read inside a write-path validation loop (the oversell check) on every stock-affecting write — a hot path. No such hot path exists for cash balance in this milestone's requirements. A cache with no consumer that needs it is pure drift risk (a second thing that must stay in sync, a second thing `rebuild_stock`-style repair logic would eventually need) for zero benefit.
 
-**What people do:** Build a dense desktop-only multi-column batch picker (price/expiry/qty/comment) first, then try to make it responsive afterward.
-**Why it's wrong:** A 4-5 column picker table is one of the harder responsive-retrofit cases in this app (harder than the existing product/customer lists); designing it card-based-on-mobile from the start is much cheaper than reflowing it later.
-**Do this instead:** Do the mobile-responsive CSS pass early (before batches), establishing a shared responsive list/table pattern that the batch picker and warehouse-management screens can reuse from day one.
+**Do this instead:** Live `SUM(amount_cents)` (Pattern 3). Revisit only if profiling later shows it's actually slow.
+
+### Anti-Pattern 3: Calling `finance.py` from the sales *route* instead of the sales *service*
+
+**What people do:** Leave `services/sales.py::register_sale()` untouched and instead call `finance.record_cash_movement()` from `routes/sales.py::sale_create()`, after `register_sale()` returns successfully.
+
+**Why it's wrong:** There are already two callers of `register_sale()` in this codebase — desktop (`routes/sales.py`) and mobile (`routes/mobile_sales.py`) — and Phase 11 explicitly made mobile reuse the service "unchanged... no service-layer duplication" specifically so business rules have one source of truth. Putting the cash-credit call in the desktop route only credits desktop sales; mobile sales would silently never touch the till. It also breaks the atomicity guarantee (Pattern 2) — a credit issued after `register_sale()` already committed is a separate transaction that can succeed even if something downstream fails, or vice versa.
+
+**Do this instead:** The call lives inside `services/sales.py::register_sale()`, in the same transaction as the ledger writes (Pattern 2), so every current and future caller of `register_sale()` gets the credit for free.
 
 ## Integration Points
-
-### External Services
-
-None — this feature stays fully local/offline, consistent with v1.0's constraints. No new integration surface.
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| `record_operation()` ↔ `Batch` model | Direct SQL-side increment (`batch.quantity = Batch.quantity + qty_delta`), same transaction as the existing `Product.quantity` increment | Only path that may write `Batch.quantity`; mirrors `IN-02`. |
-| `sales.py`/`writeoffs.py`/`returns.py`/`corrections.py` ↔ new `batches.py` service | Resolve/select a `Batch` before calling `record_operation` | Same "resolve before write, whole basket is one transaction" discipline as today (D-03). |
-| `receipts.py` ↔ new `batches.py` service | Resolve-or-create a `Batch` in the same transaction as resolve-or-create `Product` | Direct extension of the existing D-05 auto-create pattern. |
-| `reports.py`/`stock.py` ↔ `Product` | Unchanged — stays product-level, no new dependency on `Batch` this milestone | Explicit scope boundary to keep the milestone's report surface stable. |
-| Category page ↔ `Product.category` | Read-only query, no new FK | `category` already exists on `Product` since v1.0; CAT-01 is additive UI only. |
+| `services/sales.py` → `services/finance.py` | Direct Python function call (`finance.record_cash_movement(session, ..., commit=False)`), same SQLAlchemy `Session`, same transaction | The only production integration point for auto-credit. Mirrors the existing `sales.py → ledger.py` and `sales.py → dictionary.py` intra-service call pattern already in the codebase — no new architectural shape introduced. |
+| `services/writeoffs.py` (pattern reference) → `services/finance.py` (category/note validation shape) | Not a runtime call — a **pattern to mirror**, not a dependency | `register_manual_debit()`'s "required category from an allow-list dict + optional free-text note, both server-validated, both stored on the row" shape should copy `register_writeoff()`'s `reason_code`/`note` handling verbatim, including the RU error-message convention (`"Выберите ..."` for a missing category). |
+| `routes/mobile_sales.py`, other mobile routes → `services/sales.py` | Unchanged — mobile already calls the same `register_sale()` | No new mobile-side finance wiring needed for the auto-credit in this milestone. `PROJECT.md`'s v1.3 target features list a desktop "Финансы" UI section only; mobile Финансы CRUD parity is already tracked separately under the v2.0 "Mobile CRUD parity" deferred item — do not build mobile Финансы screens in this milestone. |
+| `app/routes/__init__.py` (shared `templates`) → `partials/finance_*.html` | Jinja2 filters/globals already registered (`cents`, `local_dt`, `ru_date`) are reusable as-is for money/date rendering on the new templates | Add `CASH_CATEGORIES` to `templates.env.globals` alongside the existing `WRITEOFF_REASONS`/`OPERATION_TYPE_LABELS` globals, for the debit-form `<select>` and the history category label. |
 
-## Suggested Build Order
+## Build Order
 
-Dependency reasoning: `Batch.warehouse_id` is a hard FK dependency on `Warehouse` existing first. `Operation.batch_id` and the whole ledger/report rework depend on `Batch` existing. Category browsing, the minimum-price guardrail, and the mobile-responsive CSS pass have **no** dependency on any of the above or on each other — they are free to sequence wherever is cheapest.
+Dependency-ordered — each step only needs what came before it, matching this codebase's own phase-ordering convention (schema → service → route → template):
 
-1. **Quick, independent wins first — Category browsing (CAT-01) + minimum sale price guardrail (PRICE-01).** Both are additive, low-risk, and touch nothing that the warehouse/batch work will later change (`Product.category` already exists; `Product.min_sale_cents` is a lone new nullable column reusing the existing warn-but-allow pattern). Shipping these first reduces the size of the later, riskier phase and gives visible progress immediately.
-2. **Mobile-responsive CSS pass (UI-01).** Pure styling/template layer, zero schema coupling. Doing this *before* batches means the new batch-picker UI (the most layout-dense screen this milestone adds) gets built mobile-first instead of retrofitted (Anti-Pattern 4).
-3. **Warehouses (WH-01, WH-02 minus the per-batch location, i.e. warehouse CRUD itself).** New `warehouses` table + management page + soft-delete. This is a structural prerequisite for batches (`Batch.warehouse_id` FK) but is not independently very useful without batches, since v1.0 has no per-warehouse stock split yet — treat it as a short phase whose main job is to exist before Phase 4, possibly seeding one default warehouse for continuity.
-4. **Batches (LOT-01..04, plus the deferred half of WH-02 — the free-text location, which lives on the batch row).** The largest phase: `batches` table, `Operation.batch_id`, `record_operation()` extension, `rebuild_stock()` extension, resolve-or-create batch in receipts, batch-keyed oversell in sales/write-offs/returns/corrections, the sale-time batch picker UI, and the migration decision from Anti-Pattern 3 (nullable `batch_id`, no backfill of historical rows). Do this last because it is the only phase that touches the append-only ledger's schema and every stock-affecting service.
+1. **Migration + model.** `alembic/versions/00XX_cash_movements.py`: create `cash_movements` table (mirror the `operations` table's column/index shape where relevant) + the two append-only triggers (mirror `operations_no_update`/`operations_no_delete` from migration 0001, renamed `cash_movements_no_update`/`cash_movements_no_delete`). Add the `CashMovement` model + `CASH_CATEGORIES` dict to `app/models.py`. Nothing downstream can be written or tested without this.
+2. **`app/services/finance.py`.** `record_cash_movement()` (single write path, mirrors `ledger.record_operation`'s `commit` param and `device_id`/`seq` stamping via a `next_seq`-equivalent), `compute_balance()`, `register_manual_debit()` (validation, mirrors `writeoffs.register_writeoff`), a history/read view (mirrors `services/operations.py::history_view`, reusing `services/pagination.py`). Unit-testable in isolation before anything calls it.
+3. **Wire `services/sales.py`.** Add the `finance` import and the one `record_cash_movement(..., commit=False)` call inside `register_sale()`'s existing try block (Pattern 2). This is the only change to an existing file's write path. Verify with a test that a rolled-back sale (bad line, oversell-blocked, `IntegrityError`) produces **zero** `cash_movements` rows, and a committed sale produces exactly one, with `amount_cents == total_cents` and `sale_id == header.id`.
+4. **`app/routes/finance.py`.** Thin routes only, mirroring `routes/writeoffs.py`'s shape: `GET /finance` (dashboard), `GET /finance/debit` + `POST /finance/debit` (manual debit form + submit, HTMX partial re-render on validation error, same as every other form in this codebase).
+5. **Templates.** `pages/finance.html` (balance display + debit form + history table) and `partials/finance_history.html` (the HTMX swap target after a successful/failed debit submit). Add `CASH_CATEGORIES` to `templates.env.globals` (`app/routes/__init__.py`).
+6. **Register.** `app.include_router(finance.router)` in `app/main.py`; add the `Финансы` link to `app/templates/base.html`'s `<nav>` (desktop only — see Integration Points on mobile scope).
+7. **Tests.** `tests/test_finance.py` for the service layer (mirrors `tests/test_ledger.py`'s shape: append-only trigger enforcement, `compute_balance` correctness, category validation), plus an assertion inside the existing sales test suite that a successful sale credits the till by exactly the sale total.
 
 ## Sources
 
-- Direct reading of the project codebase (HIGH confidence — verified firsthand, not web research):
-  - `E:\dev\myorishop\app\models.py`
-  - `E:\dev\myorishop\app\services\ledger.py`
-  - `E:\dev\myorishop\app\services\stock.py`
-  - `E:\dev\myorishop\app\services\sales.py`
-  - `E:\dev\myorishop\app\services\receipts.py`
-  - `E:\dev\myorishop\app\services\writeoffs.py`
-  - `E:\dev\myorishop\app\services\reports.py`
-  - `E:\dev\myorishop\alembic\versions\0001_initial_schema.py`
-  - `E:\dev\myorishop\alembic\versions\0005_product_thresholds.py`
-  - `E:\dev\myorishop\.planning\PROJECT.md`
+- Direct inspection, this repository (`E:\dev\myorishop`): `app/models.py`, `app/services/ledger.py`, `app/services/sales.py`, `app/services/writeoffs.py`, `app/services/operations.py`, `app/routes/sales.py`, `app/routes/__init__.py`, `app/main.py`, `app/config.py`, `app/core.py`, `app/db.py`, `alembic/versions/0001_initial_schema.py`, `app/templates/base.html`, `.planning/PROJECT.md` (v1.3 milestone scope). No external sources — this is a project-specific integration design derived from the codebase's own established conventions, not a generic ecosystem survey.
 
 ---
-*Architecture research for: MyOriShop v1.1 (Multi-Warehouse & Batch Tracking)*
-*Researched: 2026-07-10*
+*Architecture research for: Касса / Финансы module (v1.3 milestone), MyOriShop*
+*Researched: 2026-07-14*

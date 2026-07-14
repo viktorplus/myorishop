@@ -1,157 +1,140 @@
 # Project Research Summary
 
-**Project:** MyOriShop — v1.1 "Multi-Warehouse & Batch Tracking" milestone
-**Domain:** Warehouse inventory web app (small-business, single operator) — schema/architecture evolution of an already-shipped FastAPI/SQLAlchemy/SQLite/HTMX app
-**Researched:** 2026-07-10
+**Project:** MyOriShop - Kassa / Finansy module (v1.3 milestone)
+**Domain:** Cash-balance / cash-flow ledger bolted onto an existing single-operator, offline warehouse-and-sales app
+**Researched:** 2026-07-14
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This milestone extends a shipped, single-warehouse inventory app (FastAPI + SQLAlchemy 2.0 + SQLite + HTMX/Jinja2) to support multiple warehouses, batch/lot tracking with expiry and per-lot pricing, a category browsing page, a minimum-sale-price guardrail, and a mobile-responsive layout. All four research streams agree: no new runtime dependency is needed. Everything is a schema addition (`warehouses`, `batches` tables, nullable `Operation.batch_id`, nullable `Product.min_price_cents`) plus service-layer logic that reuses patterns already proven in v1.0 — the single-choke-point ledger (`record_operation()`), atomic SQL-side quantity increments, warn-but-allow guardrails (already used for oversell), soft-delete for mutable reference entities, and CSS-only responsive patterns.
+This is not a greenfield feature: it is a second append-only ledger grafted onto a codebase that already solved this exact class of problem for stock. The existing operations table plus record_operation() single-write-path pattern (UUID PK, device_id/seq, DB-level immutability triggers, SQL-side atomic cache increments with a rebuild_*() recompute/repair function) is the proven template. All four research files converge on one architectural verdict: do not reuse operations for cash. Instead create a sibling cash_movements table that copies the sync-ready, append-only shape but drops the stock-specific invariants (product_id NOT NULL, mandatory batch_id). No new runtime dependency is required; money stays Integer cents, balance is a live SUM() (no cache needed at this scale), and every UI interaction (warn-but-allow negative balance, category allow-list plus free-text other) should mirror patterns already shipped for oversell/min-price warnings and write-off reasons.
 
-The recommended approach is a two-tier stock cache: keep `Product.quantity` as an unchanged, ledger-derived rollup across all batches/warehouses (so every existing v1.0 report keeps working untouched), and add a new `Batch.quantity` cache maintained by the same atomic-increment mechanism inside the same `record_operation()` transaction. `Operation` gains one nullable `batch_id` FK (never a second `warehouse_id` FK — reachable via `batch.warehouse_id`), added as a bare, non-batch-mode `ALTER TABLE` to avoid dropping the append-only enforcement triggers (a documented, previously-hit pitfall). Historical rows stay `batch_id = NULL` ("legacy, no batch"); no destructive backfill UPDATE is attempted against the trigger-protected `operations` table.
+The recommended approach: one foundation phase creates the cash_movements schema, the finance.py service (single write path, mirrors ledger.py), and wires both sale auto-credit (sales.py) and return auto-debit (returns.py) in the same phase, since these must ship together, not sequentially, because a return without a symmetric debit silently corrupts the balance on day one. A second phase builds the manual-movement UI (bidirectional, credit and debit, not debit-only, to cover opening balance and typo-correction) plus the Finansy dashboard/history page. A third, lower-priority phase covers reports/CSV export if pulled into scope.
 
-The dominant risk is retrofitting granularity onto code that assumes one stock number per product: oversell checks (sales, write-offs), stock corrections' "counted" mode, and price/cost freezing at sale time are all currently keyed to `product_id` only and must be re-keyed to `(product_id, batch_id)` in the same phase the schema changes — deferring this creates a live oversell hole and silently corrupts stock or profit numbers the first time a product has more than one batch. Feature research also flags one gap not in the current Active list — stock transfer between warehouses — which every competitor product treats as core; recommend flagging it for explicit user sign-off rather than silently omitting it.
+Key risks: (1) treating cash as just more operations rows, rejected by all four researchers for concrete, code-grounded reasons (FK/NOT-NULL invariants, report-query pollution); (2) shipping sale-credit without return-debit in the same phase, silently breaking the balance the first time a customer returns something; (3) a debit-only manual form with no opening-balance/correction path, which turns the very first negative-balance warning into a false alarm the operator learns to distrust; (4) reintroducing a stale-cache balance bug that the Product.quantity design already solved, so default to live SUM(), no cache until proven necessary. None of these require new libraries or infrastructure; they require following the codebase own established conventions exactly.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependency. Reuses SQLAlchemy 2.0 (new FK-related tables/columns), Alembic (migrations 0006+, `render_as_batch=True` already configured), SQLite, and FastAPI/Jinja2/HTMX 2.0.10 (batch picker = same "type code -> hx-get filtered partial" pattern as existing product/customer autocomplete). Mobile responsiveness is pure CSS (media queries + a CSS-only details/checkbox nav disclosure) — explicitly rejecting Alpine.js, Pico.css, Bootstrap, or Tailwind as unnecessary for this scope.
+No new dependency. The existing FastAPI / SQLAlchemy 2.0 / SQLite (WAL, busy_timeout=5000) / Alembic / Jinja2 / HTMX stack fully covers this feature: a new mapped class, a new migration with append-only triggers (copied from alembic/versions/0001_initial_schema.py), and a couple of new routes/templates following the exact shape already used by writeoffs.py. Money stays Integer cents (no Decimal/Numeric, no money library); no accounting/double-entry library; no caching/locking library (SQLite WAL plus busy_timeout already handle single-writer concurrency); no charting or scheduling library (out of this milestone scope).
 
-**Core technologies (unchanged from v1.0, reused not added):**
-- SQLAlchemy 2.0.51 — new `warehouses`/`batches` tables, `Operation.batch_id`, `Product.min_price_cents` — ordinary FK-related mapped classes, nothing exotic
-- Alembic 1.18.5 — migrations 0006+; must use native `op.add_column` (not batch_alter_table) on `operations` to avoid dropping append-only triggers
-- FastAPI + Jinja2 + HTMX 2.0.10 (vendored) — batch picker partial, warehouse/category pages, mobile nav — same partial-rendering pattern already established
-
-**Explicitly rejected as unnecessary:** a date/calendar library (stdlib date.fromisoformat/isoformat suffices), any CSS framework, Alpine.js/JS framework for nav toggle, a generic inventory/FEFO package (batch selection here is manual, not automatic).
+**Core technologies (reused, unchanged):**
+- SQLAlchemy 2.0.51 - new CashMovement mapped class, same declarative style as Operation/Batch
+- Alembic 1.18.5 - one new migration adding cash_movements plus its own BEFORE UPDATE/DELETE ... RAISE(ABORT, ...) triggers
+- SQLite WAL plus busy_timeout (already configured in app/db.py) - no new PRAGMA needed; unlimited readers, one writer, already the correct config for balance read often, written on every sale
+- FastAPI plus Jinja2 plus HTMX 2.0.10 (vendored) - new Finansy section using only hx-get/hx-post/hx-target/hx-swap, already exercised throughout the app
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Multi-warehouse CRUD + free-text storage location per batch (WH-01/WH-02)
-- Batch/lot entity with optional expiry, per-lot price, comment (LOT-01, LOT-03, LOT-04)
-- Sale-time batch picker (LOT-02) — the milestone's core value
-- Per-warehouse/per-batch stock visibility
-- Category/rubric browsing page (CAT-01)
-- Minimum-sale-price guardrail, warn-but-allow (PRICE-01)
-- Mobile-responsive layout (UI-01)
+**Must have (table stakes, v1.3 launch):**
+- Current cash balance display (live SUM of the ledger)
+- Auto-credit on every sale (hook into register_sale(), single write path)
+- Auto-debit on sale-linked return - not explicitly in PROJECT.md stated list but flagged as a hard gap: without it the balance drifts from reality the first time a return happens
+- Manual withdrawal with mandatory category (supplier / salary / other) plus comment
+- Movement history (reuse existing list/pagination/filter infrastructure from Phase 14)
+- Insufficient-balance warning on withdrawal - warn-and-allow-override, matching the app existing oversell/min-price convention, never a hard block
+- Separate Finansy UI nav section
 
-**Should have (differentiators, already aligned with project's "simple, offline, single operator" identity):**
-- Manual (not automatic FEFO) batch selection — deliberate, defensible design choice
-- Free-text comment per batch
-- "Товары на складе" as a lightweight operational view, not a buried report
-- Mobile-first design for an operator standing in the warehouse, not a back-office desktop tool
+**Should have (pull into v1.3 or immediate follow-up, recommended, not just nice later):**
+- Manual balance correction / opening-balance entry (bidirectional manual-movement form, credit plus debit) - without it, balance starts wrong on day one for any operator with existing cash on hand, and a mistyped entry has no fix path (append-only trigger blocks UPDATE/DELETE)
+- Cash flow reports (period in/out by category) - reuse existing Reports period-filter helper
+- CSV export of cash movements - reuse existing export.py BOM/semicolon/formula-escape convention
 
-**Flagged gap — recommend explicit user sign-off, not silent omission:**
-- Stock transfer between warehouses — every competitor reviewed (Zoho, Odoo, Finale, LionO360) treats this as core once multi-warehouse exists; without it, moving stock requires write-off + receipt, which corrupts cost/profit history
-- "Batches expiring within N days" list — cheap given existing report infra, closes the "expiry date stored but never surfaced" UX gap
-
-**Defer (v2+):** automatic FEFO/FIFO allocation, per-warehouse low-stock thresholds, structured location hierarchy (zone/aisle/rack/bin), push/email expiry notifications, warehouse-scoped user roles (bundled with the already-deferred v2.0 multi-operator milestone).
+**Defer (v2+):**
+- Structured link: withdrawal to specific goods receipt (deferred-payment tracking)
+- Multiple cash accounts/tills, shift/period reconciliation, scheduled/recurring expenses, budget categories/limits
+- Full double-entry bookkeeping, tax/VAT tracking, invoicing/payment-gateway integration, bank reconciliation, multi-currency, user roles/approval workflow, receipt photo/OCR - all explicit anti-features for a single-operator cash-box tracker
 
 ### Architecture Approach
 
-Two-tier denormalized stock cache maintained entirely inside the existing `record_operation()` choke point: `Product.quantity` stays an unchanged cross-batch rollup; a new `Batch.quantity` is incremented atomically in the same transaction whenever a `batch_id` is supplied. `Operation` gains one nullable, indexed `batch_id` FK (not a second `warehouse_id` FK — derivable via `batch.warehouse_id`); `Operation.product_id` is kept as-is so every existing report query needs zero changes. `Warehouse` is a mutable, soft-deleted reference entity mirroring `Product`'s pattern; `Batch` needs no soft-delete (it simply disappears from the picker once its quantity reaches 0).
+A new app/services/finance.py module, sibling to ledger.py (not a submodule of it), owns the single write path for a new cash_movements table: record_cash_movement(), register_manual_debit() (validation mirrors writeoffs.register_writeoff), compute_balance() (live SUM, mirrors ledger.compute_stock), and a history view (mirrors operations.history_view, reusing pagination.py). sales.py register_sale() calls finance.py directly inside its existing transaction (one more commit=False call before the existing trailing session.commit()), never from the route layer, since there are already two callers (desktop plus mobile) that must both get the credit for free. The same discipline applies symmetrically to returns.py register_return().
 
 **Major components:**
-1. `Warehouse` model + CRUD service — physical location entity, soft-delete, no stock lives here directly
-2. `Batch` model + batches.py service — the actual stock-holding unit (product x warehouse x expiry/price/location/comment), own cached quantity, resolve-or-create in receipts
-3. `record_operation()` (modified, additive) — gains optional batch_id, atomically increments both Product.quantity and Batch.quantity in one transaction
-4. sales.py/writeoffs.py/returns.py/corrections.py (modified) — oversell/removal checks re-keyed from product_id to (product_id, batch_id)
-5. Category page + mobile CSS — pure additive read/UI layers, zero backend coupling to the batch/warehouse work
-
-**Suggested build order** (dependency-driven): quick independent wins (CAT-01 + PRICE-01) first -> mobile-responsive CSS pass (before the batch picker exists, so it's built mobile-first, not retrofitted) -> warehouses (structural prerequisite) -> batches (largest, riskiest phase, touches the ledger schema and every stock-affecting service) last.
+1. CashMovement model (app/models.py) - append-only row, UUID PK, signed amount_cents, category, nullable sale_id FK, device_id/seq/created_at/created_by (same sync-ready shape as Operation)
+2. app/services/finance.py - single write path plus compute_balance() plus history view (new)
+3. sales.py / returns.py - each gets exactly one new call into finance.py inside its existing commit block (modified, not rewritten)
+4. app/routes/finance.py plus pages/finance.html plus partials/finance_history.html - thin routes, dashboard, bidirectional manual-movement form (new)
+5. alembic/versions/00XX_cash_movements.py - new table plus two append-only triggers mirroring migration 0001 (new)
 
 ### Critical Pitfalls
 
-1. **Two independently-drifting stock caches** — Product.quantity must stay a genuine ledger-derived rollup, updated in the same record_operation() call that updates Batch.quantity, never wired up as a separate later step. Avoid by making this an explicit Phase 1 decision before any migration is written.
-2. **Oversell checks keyed by product_id only** — a basket with the same product split across two batches (one nearly empty) must be validated per-(product_id, batch_id), not per-product-total, or a real oversell hole opens the moment batches ship. Must land in the same phase as the batch picker, not deferred.
-3. **Stock correction's "counted" mode diffs against the wrong baseline** — once stock is split, the existing qty_delta = counted - product.quantity corrupts every batch/warehouse except the one actually counted. Must be scoped to a specific batch or explicitly blocked/hidden once a product has >1 batch.
-4. **batch_id/warehouse_id must be real indexed FK columns, not JSON payload fields** — payload was designed for descriptive, non-aggregated data; anything the system needs to SUM()/GROUP BY (oversell, remaining-qty display) needs a real column, exactly like product_id.
-5. **Sale/receipt cost-freeze must snapshot the batch's price/cost, not the product card's** — otherwise profit reports silently use a stale or wrong cost the moment two batches of the same product have different costs, breaking the existing "historical profit reports never change" guarantee.
-
-Additional notable pitfalls: no repair/rebuild path initially for the new batch-level cache (extend rebuild_stock); NOT NULL FK migration against non-empty tables (must be nullable + backfill-free, since operations' append-only triggers forbid a backfill UPDATE); sale basket's parallel array pattern (code[]/qty[]/price[]) needs a 4th strictly index-aligned batch_id[] array, tested against out-of-order row add/remove; minimum-price field must use the same is not None guard as effective_low_stock_threshold (a bare or would treat an explicit 0 minimum as "unset" — a bug already hit once in this codebase for a structurally identical feature).
+1. **Bolting cash onto the operations table** - Operation.product_id is NOT NULL with a hard FK; forcing cash through it requires either a dummy product or relaxing an invariant every stock report/guard depends on. Avoid: dedicated cash_movements table with its own single-write-path function and triggers.
+2. **Auto-credit wired into sales.py but not symmetrically into returns.py** - these are separate service modules; if the debit is not added to register_return in the same phase as the sale credit, returns silently inflate the balance forever. Ship both together; test: sell then fully return then assert balance returns to pre-sale value.
+3. **Matching a return against the original credit row instead of computing independently** - mirror the existing D-06/D-07 pattern: the return debit equals qty_returned times origin frozen unit_price_cents, computed fresh, never looked up/reconciled against a prior movement.
+4. **Cached balance updated outside the writing transaction** - either do not cache (live SUM, recommended at this scale) or use the exact SQL-side atomic-increment-in-same-transaction pattern Product.quantity already uses, plus a rebuild_cash_balance() repair function from day one.
+5. **No opening balance / no correction path** - a debit-only manual form makes the first negative-balance warning a false alarm and leaves mistyped entries permanently unfixable (append-only trigger blocks edits). Ship a bidirectional (credit plus debit) manual-movement form with a Korrektirovka/opening-balance category from the start.
 
 ## Implications for Roadmap
 
-Based on combined research, suggested phase structure (5 phases):
+Based on research, suggested phase structure:
 
-### Phase 1: Quick wins — Category page + Minimum sale price
-**Rationale:** Both are additive, zero dependency on warehouses/batches, and reduce the size of later, riskier phases while delivering visible value immediately.
-**Delivers:** "Товары на складе" category browsing page (CAT-01); per-product min_price_cents with warn-but-allow sale guardrail (PRICE-01).
-**Addresses:** CAT-01, PRICE-01 from FEATURES.md.
-**Avoids:** Pitfall 8 (bare-or fallback bug) — implement with the identical is not None guard pattern already used for effective_low_stock_threshold.
+### Phase 1: Cash ledger foundation (schema plus auto-credit/debit)
+**Rationale:** This is the foundational, hardest-to-reverse data-model decision (Pitfall 1) and must ship the sale-credit/return-debit symmetry together (Pitfall 2/3): splitting these across phases leaves a window where returns silently break the balance.
+**Delivers:** cash_movements table plus triggers, app/services/finance.py (record_cash_movement, compute_balance), sales.py auto-credit wiring, returns.py auto-debit wiring, unit tests proving atomicity (rolled-back sale gives zero cash rows) and return symmetry (sell then return then balance restored).
+**Addresses:** Auto-credit on sale, auto-debit on return (table stakes plus gap)
+**Avoids:** Pitfalls 1, 2, 3, 4 (schema shape plus live-SUM balance plus independent-computation debit)
 
-### Phase 2: Mobile-responsive layout
-**Rationale:** Pure CSS/template layer with zero schema coupling; doing this before batches means the most layout-dense new screen (the batch picker) is built mobile-first instead of retrofitted (a documented anti-pattern).
-**Delivers:** @media breakpoints in style.css, CSS-only collapsible nav, horizontal-scroll wrappers for wide tables.
-**Uses:** Vendored HTMX/Jinja2 stack, no new dependency.
-**Implements:** Shared responsive list/table CSS pattern reused by later warehouse/batch screens.
+### Phase 2: Finansy UI - balance, bidirectional manual movement, history
+**Rationale:** Depends on Phase 1 ledger and write path existing; UI-level warn-and-allow validation and manual-entry design are a distinct, well-precedented concern (mirrors oversell/min-price and writeoffs UX exactly).
+**Delivers:** app/routes/finance.py, pages/finance.html, partials/finance_history.html, nav link, bidirectional manual-movement form (credit for opening-balance/correction, debit for supplier/salary/other with mandatory category plus note), insufficient-balance warn-with-confirm guard, paginated/filterable history view.
+**Uses:** pagination.py (Phase 14 infra), existing warn-but-allow UX contract from sales.py/writeoffs.py
+**Implements:** finance.py service methods register_manual_debit/credit, history view mirroring operations.history_view
 
-### Phase 3: Warehouses (CRUD)
-**Rationale:** Structural prerequisite for batches (Batch.warehouse_id FK) but not independently very useful yet; keep this phase short.
-**Delivers:** warehouses table (soft-delete, mirroring Product's pattern), management page, possibly a seeded default warehouse for continuity.
-**Uses:** SQLAlchemy 2.0 declarative style, Alembic migration with render_as_batch=True.
-
-### Phase 4: Batches, ledger integration, and legacy-data migration
-**Rationale:** The largest and riskiest phase — the only one touching the append-only ledger's schema and every stock-affecting service. Do it last, after warehouses exist and mobile CSS/category/price work is already shipped.
-**Delivers:** batches table; nullable Operation.batch_id (native op.add_column, never batch_alter_table, to preserve the operations_no_update/operations_no_delete triggers); record_operation() extended with optional batch_id; rebuild_stock()/compute_stock() extended to repair batch-level caches; resolve-or-create batch in receipts; oversell checks in sales/write-offs re-keyed to (product_id, batch_id); correction "counted" mode scoped to a batch or blocked when a product has >1 batch; sale-time cost/price freeze sourced from the selected batch; sale basket's parallel arrays extended with a strictly index-aligned batch_id[]; a default "legacy warehouse + legacy batch" backfill for existing v1.0 data so nothing is orphaned.
-**Implements:** Two-tier stock cache pattern; Batch-as-stock-holding-unit pattern; server-side re-validation that a submitted batch_id belongs to the submitted product (mirrors existing register_return origin re-validation).
-
-### Phase 5 (flag for user decision, not yet committed): Stock transfer between warehouses
-**Rationale:** Feature research identifies this as a near-universal table-stakes feature once multi-warehouse exists, but it is not in the current Active scope list.
-**Delivers:** A transfer operation moving quantity from one batch/warehouse to another without corrupting cost/profit history (unlike the write-off + receipt workaround).
-**Addresses:** The one significant gap flagged in FEATURES.md's competitor analysis.
+### Phase 3: Reports and export extension (optional, should-have)
+**Rationale:** Lower priority (P2); adds value once a few weeks of movement history exist, but not blocking for launch.
+**Delivers:** Cash flow report (period in/out by category, reusing existing period-filter helper) and/or CSV export of cash movements (reusing export.py BOM/semicolon/formula-escape convention).
+**Addresses:** Cash flow reports, CSV export (differentiators)
 
 ### Phase Ordering Rationale
 
-- Dependency chain: Batch.warehouse_id requires Warehouse to exist first; Operation.batch_id and all ledger/report rework require Batch to exist. Category browsing, minimum price, and mobile CSS have no dependency on any of the above or each other, so they're sequenced first to reduce the size and risk of the later, coupled phases.
-- Doing the mobile-responsive CSS pass before batches avoids retrofitting the most layout-dense new screen (the batch picker) after the fact — a documented anti-pattern.
-- Batches are sequenced last specifically because they are the only phase touching the append-only ledger schema and every stock-affecting service (sales, receipts, write-offs, returns, corrections) — isolating this risk to one phase, after the lower-risk work has already shipped, limits blast radius.
+- Schema-first ordering matches this codebase own established convention (schema then service then route then template, per ARCHITECTURE.md Build Order) and is non-negotiable because the table shape (Pitfall 1) is the hardest thing to change once real financial rows exist.
+- Sale-credit and return-debit are grouped into the same phase specifically because PITFALLS.md identifies their separation as a critical, easy-to-miss regression (Pitfall 2): the roadmap must not schedule these as sequential, independently-closeable phases.
+- The manual-movement UI is deliberately scoped bidirectional (not debit-only, despite the milestone description emphasizing debit) to close the opening-balance and correction gaps (Pitfalls 7/8) at the same time the debit form is built, rather than as a late patch.
+- Reports/export is pushed to a later, explicitly optional phase since FEATURES.md scores it P2 and none of the P1 table-stakes features depend on it.
 
 ### Research Flags
 
-Needs deeper research during planning:
-- **Phase 4 (Batches/ledger integration):** Highest complexity — schema migration on a trigger-protected table, re-keying multiple oversell checks, cost-freeze rewiring, basket array alignment. Recommend `/gsd-plan-phase --research-phase 4` to work through migration sequencing and test design before implementation.
-- **Phase 5 (Stock transfer, if approved):** Not yet scoped in PROJECT.md; needs its own feature/architecture pass once the user confirms it's in scope.
+Phases likely needing deeper research during planning:
+- None flagged: this is an internal integration project; all four research files are grounded in direct codebase inspection (HIGH confidence), not ecosystem survey.
 
-Phases with standard, well-documented patterns (skip research-phase):
-- **Phase 1 (Category + min price):** Directly reuses existing catalog query patterns and the existing warn-but-allow oversell UX; no new pattern needed.
-- **Phase 2 (Mobile CSS):** Standard CSS media-query technique, no framework decision remaining.
-- **Phase 3 (Warehouses CRUD):** Directly mirrors Product's existing soft-delete + partial-unique-index pattern.
+Phases with standard patterns (skip research-phase):
+- **Phase 1:** Directly mirrors ledger.py/Operation already-proven, in-repo pattern - no external research needed.
+- **Phase 2:** Directly mirrors writeoffs.py validation shape and the existing oversell/min-price warn-and-allow UX - no external research needed.
+- **Phase 3:** Directly mirrors reports.py period-filter helper and export.py CSV convention - no external research needed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; conclusion grounded in direct inspection of the existing codebase rather than external version research, which was unnecessary since nothing new is being added |
-| Features | MEDIUM-HIGH | Codebase facts (what's already scoped in PROJECT.md) are HIGH; competitive feature-landscape claims (Zoho, Odoo, DealPOS, etc.) are triangulated across 3+ independent web sources per claim but are vendor/forum sources, not primary documentation |
-| Architecture | HIGH | Grounded entirely in direct reading of the current codebase's models, services, and migrations — not external research; this is project-specific integration analysis |
-| Pitfalls | HIGH (architecture-fit findings) / MEDIUM (generic domain color) | Pitfalls tied to this codebase's specific patterns (ledger triggers, array-based basket, threshold fallback bug) are HIGH, verified firsthand; generic multi-location-inventory UX/performance color is MEDIUM (marketing-oriented sources) |
+| Stack | HIGH | Zero new dependencies; conclusion rests on direct codebase inspection plus cross-checked practitioner sources on integer-cents money handling and SQLite WAL concurrency |
+| Features | MEDIUM-HIGH | PROJECT.md scope is a HIGH-confidence first-party source; broader petty-cash/POS feature-landscape claims rest on MEDIUM-confidence web sources (multiple cross-checked listings) |
+| Architecture | HIGH | Entirely derived from direct inspection of this repository existing services/models/migrations - a project-specific integration design, not a generic survey |
+| Pitfalls | HIGH (architecture-grounded) / MEDIUM (general financial-ledger practitioner findings) | Codebase-specific pitfalls (1-8) read directly from ledger.py/sales.py/returns.py/db.py; Pitfall 9 cash-vs-profit confusion claim is corroborated by MEDIUM-confidence external sources |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Stock transfer between warehouses** is not in the current Active feature list but is flagged as a near-universal expectation once multi-warehouse exists. Needs explicit user decision before roadmap finalization: promote to this milestone (P1) or defer with a documented workaround (write-off + receipt, understood to lose cost/profit continuity).
-- **Whether the combined-warning UX for oversold-batch + below-minimum-price on the same basket** should be one shared "confirm" flag or two sequential warnings — this is unresolved, recommendation is one shared flag as simplest default, but should be confirmed during phase planning.
-- **Whether the SQLite DB already holds real operator-entered data** (vs. still being empty/demo) affects how cautiously the legacy-data backfill migration (default warehouse + legacy batch) must be tested — confirm with the user before writing that migration.
-- **CSV export / backup** (app/services/export.py) is not required to include batch/warehouse columns this milestone per current scope, but is flagged as technical debt if left silently unaddressed — decide explicitly whether to extend it now or log it as a documented gap in PROJECT.md.
-- **Whether reports (sales_profit_report, low-stock, stale-products) get a warehouse/batch breakdown this milestone** — current recommendation is to leave them product-level, unchanged, but this should be confirmed as an intentional scope boundary during roadmap creation, not an oversight.
+- Return auto-debit is not explicitly in PROJECT.md stated v1.3 target feature list (FEATURES.md/PITFALLS.md both flag it as a gap, not a stated requirement): confirm with the user/PROJECT.md owner before roadmap lock-in that it is in scope for v1.3 rather than a fast-follow; all four research files strongly recommend including it in the foundation phase regardless.
+- Bidirectional manual-movement form (credit direction for opening balance/correction) is also not explicitly stated in PROJECT.md wording (the debit categories text reads debit-only): same treatment, flag explicitly in the roadmap/requirements rather than silently deciding scope during execution.
+- Idempotency / duplicate-sale-submission risk (Pitfall 5) is a pre-existing app-wide gap that becomes financially visible with cash tracking: decide during roadmap planning whether this phase adds only a UI-level submit-guard (hx-disabled-elt) or whether a full idempotency-key mechanism is named as an explicit Future/Out-of-Scope item.
+- Whether CSV export / reports scope includes cash movements is currently undecided: PITFALLS.md flags this must be a stated decision, not an oversight, whichever way it goes.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase inspection: app/models.py, app/services/ledger.py, app/services/sales.py, app/services/stock.py, app/services/reports.py, app/services/writeoffs.py, app/services/returns.py, app/services/corrections.py, app/services/receipts.py, app/services/catalog.py, app/services/export.py, app/templates/base.html, app/templates/partials/sale_row.html, app/static/style.css, alembic/versions/0001_initial_schema.py through 0005_product_thresholds.py, pyproject.toml
-- .planning/PROJECT.md — v1.1 milestone scope, Active feature list, explicit Out of Scope items
+- Direct inspection of this repository: app/models.py, app/services/ledger.py, app/services/sales.py, app/services/returns.py, app/services/writeoffs.py, app/services/operations.py, app/services/reports.py, app/routes/sales.py, app/routes/__init__.py, app/main.py, app/config.py, app/core.py, app/db.py, alembic/versions/0001_initial_schema.py, app/templates/base.html
+- E:\dev\myorishop\CLAUDE.md - prior validated stack research (versions, integer-cents rule, WAL/busy_timeout rationale)
+- .planning/PROJECT.md - v1.3 milestone scope, target features, existing architecture Key Decisions
 
 ### Secondary (MEDIUM confidence)
-- Zoho Inventory, Odoo Inventory/POS, DealPOS, Finale Inventory, LionO360, Wasp, HandiFox — vendor documentation and product pages on multi-warehouse/batch tracking and minimum-selling-price patterns
-- Odoo community forum — minimum-price warning implementation pattern, cross-checked against DealPOS's official docs
-
-### Tertiary (LOW-MEDIUM confidence, needs validation)
-- General multi-location-inventory blog/marketing content (Stockpilot, MRPeasy, EloERP, Sortly, Digit Software, Kladana, Inflow Inventory) — used only for generic UX/performance domain color, not as primary evidence for any architecture-specific claim
+- SQLite concurrent writes and database is locked errors (tenthousandmeters.com) - WAL single-writer model, busy_timeout mitigation
+- Precision Matters: cents vs floating point for money (hackerone.com) - integer-minor-units practitioner consensus
+- Petty-cash/POS feature landscape: Pleo, Zoho Expense, Weel, Shopify POS, KORONA POS, Fit Small Business (multiple cross-checked listings)
+- The Idempotent Ledger (medium.com), Formance - What Is a Ledger - idempotency and standalone-balance-field risks
+- Accu-Tax, GrowthForce - cash-vs-profit confusion pattern
 
 ---
-*Research completed: 2026-07-10*
+*Research completed: 2026-07-14*
 *Ready for roadmap: yes*

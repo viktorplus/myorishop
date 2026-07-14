@@ -1,175 +1,179 @@
 # Feature Research
 
-**Domain:** Small-business warehouse inventory — multi-warehouse, batch/lot tracking, expiry, price guardrails
-**Researched:** 2026-07-10
-**Confidence:** MEDIUM-HIGH (codebase facts verified directly = HIGH; external practice patterns triangulated across multiple independent web sources = MEDIUM; no primary vendor documentation consulted)
+**Domain:** Cash balance / cash-flow tracking ("Касса") module for a single-operator local retail-reseller app — not an accounting system
+**Researched:** 2026-07-14
+**Confidence:** MEDIUM-HIGH (domain is well-established practitioner consensus; PROJECT.md scope itself is HIGH-confidence first-party source)
 
-> Supersedes the v1.0 FEATURES.md (2026-07-08, catalog/receipts/sales/customers/reports domain). This file covers only the v1.1 milestone: Multi-Warehouse & Batch Tracking. v1.0 findings remain valid history in git; see PROJECT.md "Validated" section for what already shipped.
+> Supersedes the v1.1-era FEATURES.md (2026-07-10, multi-warehouse/batch-tracking domain). This file covers only the v1.3 milestone: Финансы / Касса (cash balance tracking). Prior milestone findings remain valid history in git; see PROJECT.md "Validated" section for what already shipped.
 
 ## Feature Landscape
 
-Reference products analyzed for this milestone: **Zoho Inventory** (multi-warehouse + batch/lot tracking, full-featured), **Odoo Inventory/POS** (lot/serial tracking, configurable removal strategies, transfer operations), **DealPOS** (minimum-selling-price warning — closest direct analog to PRICE-01), **Finale Inventory / LionO360 / Wasp** (multi-warehouse transfer and reorder-point patterns). Consistent pattern: every reviewed system treats **stock transfer between warehouses** and **batch-level expiry** as core, non-optional features once "multi-warehouse" or "batch tracking" is on the label — both are relevant checks against this milestone's scope below.
-
 ### Table Stakes (Users Expect These)
 
-Features any multi-warehouse/batch system is assumed to have. Missing these makes the milestone feel incomplete relative to what "batch tracking" and "multi-warehouse" normally mean.
+Features a "Касса"/petty-cash module is broken without — all are already implied by the v1.3 target features in PROJECT.md, made explicit here with complexity.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Stock transfer between warehouses | Every reviewed system (Zoho Inventory, Finale, LionO360, Wasp) treats moving stock from warehouse A to B as core, not optional — it's the most common operation once >1 warehouse exists. **Not in the current v1.1 Active list (WH-01/WH-02/LOT-01..04/PRICE-01/CAT-01/UI-01).** | MEDIUM | Flagged gap — see Dependency Notes. Without it, the only way to "move" stock is write-off + new receipt, which corrupts cost/profit history. |
-| Per-warehouse and per-batch stock visibility | Users expect to see not just "10 units" but "6 in Warehouse A / shelf 3, 4 in Warehouse B" — the entire point of the "Товары на складе" (CAT-01) page. | LOW-MEDIUM | Already implied by LOT-02 (batch picker shows qty per batch); needs a stock-overview page grouping by category, then listing batches per product. |
-| Batch expiry field, optional | Same SKU commonly has several batches with different expiry dates; expiry must live on the batch, not the product. | LOW | Already scoped as LOT-03. Matches industry practice — batch-level, not product-level. |
-| Category/rubric browsing view | Standard secondary navigation once product count grows past ~30-50 items; users don't want to rely on search alone. | LOW | CAT-01. Read view on top of the existing `Product.category` free-text field — no new data model needed. |
-| Minimum-price guardrail (warn, not block) | DealPOS and Odoo both implement exactly this pattern: warn when the entered price is below a floor, but allow an override rather than hard-blocking the sale. | LOW | PRICE-01. Matches the already-shipped oversell warn-but-allow pattern (SAL-04, v1.0) almost exactly — reuse that UX. |
-| Free-text storage location tag | Small operations without scanner hardware universally use a plain shelf/location label rather than structured bin hierarchies. | LOW | WH-02. Right-sized for this project's scale (see Anti-Features: structured location hierarchy). |
-| Mobile-responsive layout | An operator walking a physical warehouse checks stock or records a sale from a phone; desktop-only UI feels broken for this use case. | MEDIUM | UI-01. No data dependency, but touches every template — sequence early/continuously, not as one end-of-milestone pass. |
+| Current cash balance display | The single reason the module exists — operator must see "how much cash do I have right now" at a glance | LOW | Sum of all cash-ledger entries (in − out). If Касса reuses the existing append-only `record_operation()` ledger with new operation types, balance is a `SUM()` query, no new stored-balance column needed (avoids cache-consistency bugs) |
+| Auto-credit on every sale | PROJECT.md target feature; matches how every real petty-cash/POS tool works — revenue is captured automatically, never re-typed | LOW-MEDIUM | Hook into the existing `register_sale()` service (single ledger write path per project's own Key Decision) — do not create a second, parallel write path |
+| Auto-debit on sale-linked return | **Gap found, not in PROJECT.md's stated target list.** A sale-linked return already exists (Phase 5, OPS-01..04) and refunds the customer — if Касса doesn't mirror it as a cash-out, the balance silently drifts from physical reality the first time a return happens | LOW-MEDIUM | Same hook point as auto-credit; wire into the existing return-registration path, not a new manual step |
+| Manual withdrawal with mandatory reason | PROJECT.md target feature: "pay supplier order / salary / other" + free-text comment | LOW | Simple form: category select (3 fixed values) + required comment when "other" (and recommended even for the other two, for traceability) |
+| Movement history (chronological ledger) | Universal expectation for any cash-tracking tool — "show me what happened and when" | LOW-MEDIUM | Reuse the existing `/history` list-page pattern (Phase 5) already built for operations — pagination/filter/sort infrastructure from Phase 14 (`pagination.py`) applies directly |
+| Insufficient-balance guard on withdrawal | The app has an established UX pattern for this exact situation: oversell warns but allows override (Phase 4 SAL-05), min-price warns but allows override (Phase 7 PRICE-01) | LOW | Extend the same "warn, allow override" convention to withdrawals exceeding current balance — do NOT silently block (operator may legitimately need to record a withdrawal that puts cash negative, e.g. cash was topped up from a personal wallet) |
+| Separate "Финансы" UI section | PROJECT.md explicit requirement | LOW | New top-level nav entry + its own routes/templates, following the existing section pattern (Catalog, Warehouses, Reports, etc.) |
 
-### Differentiators (Competitive Advantage)
+### Differentiators (Valuable, Not Required for v1.3 Scope)
 
-Features that set this app apart from generic enterprise WMS/ERP tools, deliberately aligned with "single operator, simple, offline" Core Value.
+Real capabilities seen in petty-cash and POS-till tools, worth flagging for a *future* milestone rather than building now — none are requested in the current PROJECT.md target list.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Manual batch selection (not automatic FEFO) | Enterprise systems force First-Expired-First-Out auto-deduction; a solo reseller often knows their physical stock better than the system (an already-open box, a customer wanting the near-expiry one at a discount). Manual pick with full visibility (price/expiry/qty/comment) is simpler AND more honest about who's actually in control. | LOW (already the plan, LOT-02) | Genuine, defensible design choice — worth stating explicitly so it isn't "fixed" later by someone assuming FEFO is the industry-mandatory default. |
-| Free-text comment per batch | Enterprise batch tracking rarely offers a plain comment field — a cheap, human touch ("dented cap", "customer's favorite scent", "from supplier X's June delivery") that fits a small, personal reseller far better than rigid structured fields. | LOW | LOT-04. Cheap to build, meaningfully improves the sale-time picker's usefulness. |
-| "Товары на складе" as an operational (not report) view | Most competitors bury stock-by-category inside a heavier "inventory report" module. A dedicated, fast, always-current browsing page is lighter-weight and more approachable for a non-technical single operator. | LOW-MEDIUM | Reuses existing catalog + stock query patterns (`all_active_products`, `Product.category`). |
-| Mobile-first for a warehouse operator (not just admin-desk software) | Most small-business inventory tools reviewed assume a back-office desktop user; this app is meant to be used standing in the warehouse. | MEDIUM | Genuine differentiator vs. the desktop-only competitor products surveyed. |
+| Manual balance correction/adjustment entry | Reconciles the ledger-computed balance with what's physically counted in the cash box (miscounts, undocumented historical cash, rounding drift) | LOW-MEDIUM | Same pattern as existing stock "correction" operation (Phase 5 OPS-04) — a signed adjustment entry with a mandatory comment, never a direct edit of past entries. **See Gaps section — likely needed at Касса launch, not just "nice later."** |
+| Cash flow reports (period cash-in/out, by category) | Natural extension once the ledger exists; mirrors the existing Reports module (Phase 6) which already does day/week/month/custom-period aggregation | MEDIUM | Reuse the existing shared period-filter + local-day-boundary helper (Key Decision, Phase 6) rather than writing new date-math |
+| CSV export of cash movements | Consistent with existing data-export pattern (BCK-02, Phase 6) — Excel-compatible CSV, BOM, `;` delimiter, formula-injection escaping already solved once | LOW-MEDIUM | Add as a fourth export file alongside products/sales/customers, reusing the existing CSV-writer helper, not a new implementation |
+| Structured link: withdrawal → specific goods receipt/supplier order | Lets a "pay supplier" withdrawal reference *which* receipt it's paying for (partial/deferred payment tracking) rather than free text | MEDIUM | Would require a nullable FK from the cash-out entry to a receipt/operation ID, plus UI to pick one — real value only once goods are commonly received on credit/deferred payment, which isn't a stated v1.3 need |
+| Shift/period reconciliation (expected vs physically counted) | Standard POS-till practice: compare ledger-computed balance to a manual physical count, surface the delta ("shortage/overage") | MEDIUM | Genuinely valuable for catching data-entry mistakes, but the value is highest with multiple cashiers/shifts. With 1 operator it mostly duplicates the "manual correction" entry above. Low urgency now |
+| Multiple cash accounts/tills (e.g. cash box vs bank account) | Real businesses often split "cash on hand" from "money in the bank" | MEDIUM-HIGH | Explicitly out of scope for this milestone — see Anti-Features |
+| Scheduled/recurring expenses (e.g. auto-log monthly rent) | Reduces repetitive manual entry for predictable recurring costs | MEDIUM-HIGH | Requires a background scheduler (APScheduler or similar) that does not exist anywhere in the current stack — disproportionate complexity for a convenience feature; operator can log it manually in seconds |
+| Budget categories / spending limits per category | Lets the operator cap "how much can go to X per month" and get warned | MEDIUM | This is a personal-finance-app feature, not a cash-box-tracking feature; no signal in PROJECT.md that budgeting is a goal |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that look good on a "batch tracking" checklist but would be scope creep or actively wrong for this project's scale.
+The instinct with any "money" feature is to reach for real accounting patterns. Resist it — this is a cash-box counter for one operator, not a bookkeeping system.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|------------------|-------------|
-| Automatic FEFO enforcement (system auto-picks the batch to sell from) | "Real" WMS software treats this as the definition of batch tracking. | Removes operator judgment for a single-person business where the person IS the expert on their own shelf; contradicts the already-decided Out-of-Scope item "Batch FIFO costing." | Keep the manual picker (LOT-02) as designed; optionally sort the picker list by soonest-expiry-first as a *default sort order only*, not an enforced rule. |
-| Structured location hierarchy (zone → aisle → rack → bin, each a separate entity) | Feels "more professional," matches enterprise WMS vocabulary. | Overkill for "free-text storage location" as specified; adds a whole entity + relations + UI for zero benefit at this scale, with no barcode/scanner hardware to justify it. | Single free-text field per stock item (batch row), exactly as scoped in WH-02. |
-| Push/email/SMS expiry alerts | Feels essential once you have expiry dates — "the system should warn me automatically." | No-internet-required is a hard constraint (runs offline); no auth/notification infra exists; a notification pipeline (scheduler, delivery channel, dedup) is a much larger feature than this milestone scopes. | A simple "batches expiring within N days" list/report, viewed on demand — same pattern as the existing low-stock report, no push mechanism. |
-| Per-warehouse low-stock thresholds | Sounds like a natural extension of "multi-warehouse." | Doubles the settings surface (per-product AND per-warehouse fallback logic) for a business that almost certainly cares about *total* stock of a product when deciding to reorder, not which building it sits in. | Keep the existing single per-product threshold (`effective_low_stock_threshold`) checked against total quantity across all warehouses/batches; batch/warehouse breakdown stays a display-only concern. |
-| Automatic multi-batch splitting on a single sale line (system silently draws from batch 1 then batch 2 when batch 1 runs short) | Looks like a nice convenience once oversell against a single batch is possible. | Hides which physical batch actually left the shelf — breaks the "operator manually selects" design intent (LOT-02) and complicates the frozen cost/price snapshot per sale line (which batch's cost applies?). | Apply the existing oversell warn-but-allow pattern (SAL-04) per selected batch: operator can oversell one chosen batch into negative remaining qty; to split across two batches, add two sale lines. |
-| Warehouse-scoped user permissions / roles | Feels natural once "multiple warehouses" exist ("warehouse manager only sees their warehouse"). | Explicitly out of scope — v1 constraint is 1 operator, no auth complexity; user roles are already deferred to v2.0 per PROJECT.md. | Nothing in v1.1; revisit only alongside v2.0's planned multi-operator roles. |
+| Full double-entry bookkeeping (debits/credits, chart of accounts, trial balance) | "Proper" accounting systems all work this way | Massive conceptual and implementation overhead for a single till with 3 expense categories; the project is explicitly beginner-friendly and local-first | Simple signed append-only ledger: each entry is `+amount` (sale/credit) or `-amount` (withdrawal/debit), balance = running sum |
+| Tax reporting / VAT / tax categories | "Might as well capture it while we're tracking money" | No tax requirement stated anywhere in PROJECT.md; adds jurisdiction-specific complexity that doesn't belong in a warehouse-inventory tool | Nothing — if ever needed, export the CSV and hand it to an accountant/external tool |
+| Invoicing / payment processing / payment gateway integration | Feels like a natural companion to "cash movements" | Already explicitly out of scope project-wide ("Invoicing/payments... not needed for core value") | Nothing — Касса only tracks cash already changing hands via existing sale/withdrawal flows |
+| Bank reconciliation / bank statement import | Businesses do reconcile books against bank statements | This module tracks a *physical* cash box, not a bank account; no bank integration exists or is planned | Nothing — if a bank account is ever tracked, that's a separate "account" concept, not this feature |
+| Multi-currency in Касса | Could seem needed once multi-country sync (v2.0) lands | Already deferred project-wide to v2.0 (CUR-V2-01); adding it here now creates a parallel currency model to retrofit later | Single-currency ledger now; extend when CUR-V2-01 is actually scoped |
+| Multi-till / multi-cash-account structure | "What if there are two registers someday?" | No stated need; single operator, single physical location in v1.3 scope | Ship single-till now; the append-only ledger design doesn't block adding a `till_id` column later if genuinely needed |
+| User roles / manager-approval workflow for withdrawals | Standard in multi-employee petty-cash tools | Project constraint: 1 operator, no auth complexity in v1 (explicit constraint in PROJECT.md and CLAUDE.md) | Nothing — the single operator is trusted by construction |
+| Editable/deletable cash entries | "Let me just fix a typo directly" | Breaks the append-only audit-log invariant the whole app is built on (Key Decision: ledger rows are never UPDATE/DELETE'd) | Reversal/correction entry with a comment — same pattern as existing stock corrections |
+| Receipt photo capture / OCR | Common in expense-tracking apps | No camera/OCR infrastructure anywhere in this stack; this app is manual, fast-entry by design (no barcode scanner either, by explicit prior decision) | Free-text comment field is enough for a single trusted operator |
 
 ## Feature Dependencies
 
 ```
-WH-01 (create/manage warehouses)
-    └──requires──> new Warehouse entity (id, name, soft-delete flag)
+Auto-credit on sale (table stakes)
+    └──requires──> register_sale() service already exists (Phase 4) — hook, don't duplicate
 
-LOT-01 (batches per product code)
-    └──requires──> new Batch entity, scoped to (product_id, warehouse_id)
-                       └──requires──> WH-01 (a batch must live in a warehouse)
+Auto-debit on sale-linked return (table stakes, gap-flagged)
+    └──requires──> return-registration path already exists (Phase 5) — hook, don't duplicate
 
-WH-02 (free-text storage location per stock item)
-    └──best modeled as──> a field ON Batch (batch = "the physical stock item"), not a separate entity
+Manual withdrawal entry (table stakes)
+    └──requires──> category enum (pay supplier / salary / other) + comment field
 
-LOT-02 (sale-time batch picker: price/expiry/qty/comment)
-    └──requires──> LOT-01, LOT-03, LOT-04
-    └──requires──> record_operation() gains an optional batch_id parameter
-                       └──requires──> Batch.quantity cached column, updated the same
-                                       atomic way Product.quantity is today
+Movement history view (table stakes)
+    └──requires──> both of the above writing to one shared cash-ledger table/operation-type
 
-CAT-01 ("Товары на складе" grouped by category)
-    └──requires──> existing Product.category field (already shipped, v1.0)
-    └──enhances──> stock visibility once batches/warehouses exist (shows breakdown)
+Current balance display (table stakes)
+    └──requires──> Movement history ledger (balance = SUM of entries, not a separately maintained counter)
 
-PRICE-01 (per-product minimum sale price, warn-but-allow)
-    └──reuses pattern from──> SAL-04 oversell warn-but-allow (already shipped, v1.0)
-    └──does NOT depend on──> LOT-01 (minimum stays product-level even though price varies per batch)
+Insufficient-balance guard (table stakes)
+    └──requires──> Current balance display (need the number to compare against)
+    └──mirrors──> existing oversell-warning and min-price-warning UX pattern (Phase 4/7)
 
-UI-01 (mobile-responsive layout)
-    └──touches──> every existing template, independent of the data-model features above
+Cash flow reports (differentiator)
+    └──requires──> Movement history ledger + existing period-filter helper (Phase 6)
 
-[Stock transfer between warehouses] (NOT in current Active list — recommended addition)
-    └──requires──> WH-01, LOT-01 (a transfer moves quantity out of one batch/warehouse
-                     and into a batch/warehouse elsewhere)
-    └──conflicts with──> using write-off + receipt as a workaround (loses cost/price
-                          continuity, pollutes write-off reports with fake reasons)
+CSV export of cash movements (differentiator)
+    └──requires──> Movement history ledger + existing CSV export helper (Phase 6)
 
-[Expiring-soon report] (NOT in current Active list — recommended low-cost addition)
-    └──requires──> LOT-03 (expiry date must exist to alert on it)
-    └──reuses──> existing period-report date-window helpers (Phase 6 reports service)
+Manual balance correction (differentiator, likely needed at launch — see Gaps)
+    └──requires──> Movement history ledger
+    └──mirrors──> existing stock "correction" operation pattern (Phase 5 OPS-04)
+
+Structured link: withdrawal → goods receipt (differentiator)
+    └──requires──> Manual withdrawal entry + existing goods-receipt operation IDs (Phase 3)
+
+Shift reconciliation (differentiator)
+    └──requires──> Manual balance correction (functionally overlaps for a single-operator app)
+
+Multiple cash accounts/tills (future) ──conflicts──> current single-balance design
+    (would require a till_id dimension on every ledger entry and every report — a schema
+     decision, so if ever wanted it should be decided before, not after, the balance
+     column/query shape is fixed)
 ```
 
-### Dependency Notes — how this milestone interacts with the shipped v1.0 architecture
+### Dependency Notes
 
-- **Stock cache granularity changes.** Today `Product.quantity` (D-09) is a single cached column, always `SUM(Operation.qty_delta)` for that product, maintained atomically inside `record_operation()` — the sole write path per the "one choke point" Key Decision already validated in v1.0. Introducing batches means stock must exist at (product, batch) granularity at minimum. **Recommended approach:** keep `Product.quantity` as-is (a total rollup, so every Phase 6 report — low-stock, stale-products, top-products, sales/profit — keeps working unchanged), and add a new `Batch.quantity` cached column maintained the same way (`Batch.quantity = Batch.quantity + qty_delta`, atomic SQL-side increment, same transaction). This is the minimal-change path: no existing report needs rewriting.
-- **`record_operation()` needs a new optional `batch_id` parameter.** It is the single sanctioned write path — do not create a second path for batch stock. When `batch_id` is supplied, it must update `Batch.quantity` in addition to `Product.quantity`, in the same transaction, using the identical atomic-increment pattern already used for products. Receipts create/select a batch; sales, write-offs, returns, and corrections must specify which existing batch they affect once a product has batches.
-- **Low-stock threshold logic (`effective_low_stock_threshold`, D-04/D-05) should NOT change.** Keep checking the product-level total (`Product.quantity`), not a per-warehouse or per-batch figure — avoids a second settings surface and matches what a single operator actually needs (a total reorder signal), per the Anti-Features table above.
-- **Reports (`sales_profit_report` and siblings) join `Operation` → `Product` only today** — adding a nullable `batch_id` to `Operation` is backward-compatible and requires no changes to keep the existing reports working. Batch/warehouse-broken-down reports are a natural v2 extension, not required for this milestone.
-- **Batch lifecycle should mirror the existing product soft-delete pattern.** Once a batch's `quantity` reaches 0 it should disappear from the sale-time picker but remain visible in `/history` and any batch-management view (never hard-deleted) — same append-only philosophy already applied to products (`deleted_at`, never a real DELETE).
-- **Warehouse deletion needs a guard**, same shape as the existing product-deletion guard: reject (or require confirmation) if a warehouse still has batches with nonzero quantity.
-- **Data migration / backfill gap:** existing v1.0 stock has no warehouse or batch. Recommend a one-time migration that creates a single "default warehouse" and one "legacy" batch per product (no expiry, current cached quantity, current cost/sale price) so v1.0 data is never orphaned by the schema change. This is as much a pitfall as a dependency — flag for the roadmap's first v1.1 phase.
-- **Minimum sale price (PRICE-01) stays product-level**, not per-batch, even though batches can carry different sale prices — one number is simpler to reason about and matches the milestone's plain-language scope ("per-product minimum sale price").
-- **Mobile-responsive layout (UI-01) has no data dependency** on any of the above — it can be sequenced independently, and doing it early/continuously (shared base template + CSS) avoids one giant end-of-milestone phase touching every existing template at once.
+- **Auto-credit and auto-debit both require the *same* single write path.** The project's own Key Decision ("`record_operation()` as the single ledger write path... makes append-only + stock-cache consistency and future sync conflict resolution tractable") applies directly to cash: Касса should almost certainly be new operation types appended to the *same* ledger table the app already has, not a second parallel `cash_movements` table. That's an architecture call, but it directly shapes which features are "free" (history, reports reuse existing infra) versus which require new plumbing (a second ledger would need its own history view, its own pagination, its own CSV export).
+- **Balance must never be a separately maintained/cached column that can drift.** Compute it from the ledger (`SUM`), exactly like the project already avoids float/cache-consistency bugs elsewhere (money stored as integer minor units per STACK.md).
+- **Manual balance correction enhances all of the above** by giving the operator an escape hatch when the computed balance and physical cash disagree — without it, any data-entry mistake (or the very first day of using Касса, when a real cash balance already exists in the drawer) has no clean recovery path other than a fake "withdrawal" or "sale" abusing the wrong category.
+- **Multiple cash accounts/tills conflicts with the current single-balance design** if bolted on later without planning — worth a one-line schema note (e.g. keep a nullable `till_id`/`account_id` slot even if unused in v1.3) only if the team wants to keep that door open cheaply; not a requirement for this milestone.
 
 ## MVP Definition
 
-### Launch With (this milestone, v1.1)
+### Launch With (v1.3 — matches PROJECT.md target features, refined)
 
-- [ ] Warehouse entity + CRUD (WH-01) — nothing else in this milestone works without it
-- [ ] Batch entity scoped to (product, warehouse), with location, expiry, price, comment, cached quantity (LOT-01, WH-02, LOT-03, LOT-04)
-- [ ] Sale-time batch picker (LOT-02) — this is the milestone's core value; everything else supports it
-- [ ] Per-product minimum sale price, warn-but-allow (PRICE-01) — reuses existing oversell UX, low cost
-- [ ] "Товары на складе" category view (CAT-01) — low cost, high visible payoff
-- [ ] Mobile-responsive layout (UI-01) — stated hard requirement, sequence early to avoid a late scramble
-- [ ] Legacy-data migration: default warehouse + backfill batch per existing product (implicit prerequisite, not user-visible, but required so v1.0 data isn't orphaned)
+- [ ] Auto-credit balance from every sale — table stakes, explicit PROJECT.md requirement
+- [ ] Auto-debit balance from every sale-linked return — **gap not in PROJECT.md's stated list; without it the balance is wrong the first time a return happens**
+- [ ] Manual withdrawal with mandatory category (pay supplier order / salary / other) + comment — explicit PROJECT.md requirement
+- [ ] Movement history view (filterable/sortable, reusing existing list-page infrastructure) — explicit PROJECT.md requirement
+- [ ] Current balance display — explicit PROJECT.md requirement
+- [ ] Insufficient-balance warning on withdrawal (warn, allow override) — matches existing app-wide UX convention
+- [ ] Separate "Финансы" UI section — explicit PROJECT.md requirement
 
-### Add After Validation (v1.x, same milestone or immediate follow-up — recommend for user sign-off)
+### Add After Validation (v1.3.x or immediate follow-up)
 
-- [ ] Stock transfer between warehouses — flagged gap; without it, physical stock moves have no honest representation in the ledger. Recommend adding within v1.1 if any real cross-warehouse movement is expected; otherwise explicitly document as deferred with a stated workaround.
-- [ ] "Batches expiring within N days" list/report — cheap given existing report infrastructure, high perceived value for anyone actually tracking expiry dates (the whole point of LOT-03).
+- [ ] Manual balance correction/adjustment entry — trigger: as soon as the module ships against a business that already has cash on hand (balance starts at 0 otherwise, which is wrong from day one)
+- [ ] Cash flow reports (period in/out, by category) — trigger: once a few weeks of movement history exist and the operator wants trend visibility, same as existing Reports module
+- [ ] CSV export of cash movements — trigger: once the operator wants to hand data to an accountant/backup, matching the existing full-data-export pattern
 
 ### Future Consideration (v2+)
 
-- [ ] Automatic FEFO/FIFO batch suggestion — deliberately rejected for this project's scale; revisit only if the operator explicitly asks for it after using manual selection for a while.
-- [ ] Per-warehouse low-stock thresholds — only worth it if the business grows into genuinely independent warehouses with separate reorder cycles.
-- [ ] Structured multi-level storage locations (zone/aisle/rack/bin) — only worth it alongside barcode scanning, which is already out of scope.
-- [ ] Push/email expiry notifications — needs a scheduler + delivery channel; contradicts current offline/no-auth constraints.
-- [ ] Warehouse-scoped user roles — bundled with the already-deferred v2.0 multi-operator/roles milestone.
+- [ ] Structured link: withdrawal → specific goods receipt/supplier order — defer: no deferred-payment/credit-purchase pattern exists yet in the app to link against
+- [ ] Multiple cash accounts/tills — defer: no second till/location need stated; would be a schema decision better made deliberately, not incidentally
+- [ ] Shift/period reconciliation (expected vs counted) — defer: value is highest with multiple cashiers/shifts; single operator gets most of the benefit from the simpler manual-correction entry
+- [ ] Scheduled/recurring expenses — defer: needs a background scheduler not present anywhere in the stack; disproportionate for the convenience gained
+- [ ] Budget categories/spending limits — defer: no signal this is a goal; it's a personal-finance feature, not a cash-box tracker
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Warehouse entity + CRUD (WH-01) | HIGH | LOW | P1 |
-| Batch entity + storage location (LOT-01, WH-02) | HIGH | MEDIUM | P1 |
-| Sale-time batch picker (LOT-02) | HIGH | MEDIUM | P1 |
-| Optional expiry per batch (LOT-03) | HIGH | LOW | P1 |
-| Optional comment per batch (LOT-04) | MEDIUM | LOW | P1 |
-| Minimum sale price guardrail (PRICE-01) | MEDIUM | LOW | P1 |
-| "Товары на складе" category page (CAT-01) | MEDIUM | LOW | P1 |
-| Mobile-responsive layout (UI-01) | HIGH | MEDIUM | P1 |
-| Legacy-data migration (default warehouse + backfill batch) | HIGH (prevents data loss) | LOW-MEDIUM | P1 (implicit prerequisite, not user-visible) |
-| Stock transfer between warehouses | HIGH | MEDIUM | P2 (recommend promoting to P1 pending user confirmation) |
-| Expiring-soon report | MEDIUM | LOW | P2 |
-| Automatic FEFO suggestion | LOW (for this project) | HIGH | P3 / rejected |
-| Per-warehouse thresholds | LOW | MEDIUM | P3 |
+|---------|------------|----------------------|----------|
+| Auto-credit on sale | HIGH | LOW | P1 |
+| Auto-debit on sale-linked return | HIGH | LOW | P1 |
+| Manual withdrawal + mandatory reason | HIGH | LOW | P1 |
+| Movement history view | HIGH | LOW | P1 |
+| Current balance display | HIGH | LOW | P1 |
+| Insufficient-balance warning | MEDIUM | LOW | P1 |
+| "Финансы" UI section | HIGH | LOW | P1 |
+| Manual balance correction | HIGH | LOW-MEDIUM | P1 (recommend pulling into v1.3, see Gaps) |
+| Cash flow reports | MEDIUM | MEDIUM | P2 |
+| CSV export of cash movements | MEDIUM | LOW-MEDIUM | P2 |
+| Structured link to goods receipt | LOW-MEDIUM | MEDIUM | P3 |
+| Shift/period reconciliation | LOW (single operator) | MEDIUM | P3 |
+| Multiple cash accounts/tills | LOW | MEDIUM-HIGH | P3 |
+| Scheduled/recurring expenses | LOW | MEDIUM-HIGH | P3 |
+| Budget categories/limits | LOW | MEDIUM | P3 |
+
+**Priority key:**
+- P1: Must have for v1.3 launch
+- P2: Should have, add once v1.3 core is validated
+- P3: Nice to have, defer to v2+ or drop
 
 ## Competitor Feature Analysis
 
-| Feature | Zoho Inventory | Odoo (Inventory/POS) | DealPOS | MyOriShop v1.1 Approach |
-|---------|-----------------|------------------------|---------|--------------------------|
-| Multi-warehouse | Full warehouse hierarchy, per-warehouse reorder points, warehouse-specific reports | Multi-location + multi-warehouse with routes/rules (pull/push) | Location-based stock, simpler than Odoo | Flat list of warehouses, single free-text location tag per batch — no routing/rules engine |
-| Batch/lot tracking | Batch numbers with expiry, supports FEFO picking during transfers/sales | Lot/serial tracking, FEFO/FIFO removal strategies configurable per location | Basic batch/expiry support | Batch = (warehouse, location, expiry, price, comment, qty); operator manually picks, no auto-removal strategy |
-| Stock transfer | Dedicated transfer orders between warehouses, can select batch/serial during transfer | Internal transfer operations; stock moves are first-class ledger entries | Simpler stock adjustment between locations | **Gap in current scope** — recommended addition (see MVP Definition) |
-| Minimum/floor price | Not a headline feature; pricing rules are more about tiered/customer pricing | Configurable price list rules; "no sale below cost" achievable via config/customizations | Explicit "minimum selling price" with warning popup — closest match to this project's need | PRICE-01 reuses existing oversell warn-but-allow UX exactly, per-product only |
-| Expiry alerts | Configurable alert thresholds in advanced plans | Activity/automated action rules can flag near-expiry lots | Not a headline feature | Not currently scoped; recommend a simple on-demand "expiring soon" list reusing existing report infra, no push notifications |
+Not a market-facing product (single-operator internal tool), so this compares against the *category* of tool rather than named competitors — small-business petty-cash apps and POS till-management features, per the practitioner sources below.
+
+| Feature | Petty-cash apps (Pleo, Zoho Expense, Weel, etc.) | POS till management (Lightspeed, Shopify POS, etc.) | Our Approach |
+|---------|----------------------------------------------------|--------------------------------------------------------|--------------|
+| Balance visibility | Real-time balance, always shown | Running total per shift/drawer | Real-time balance from ledger `SUM`, always shown |
+| Cash in/out entry | Manual entry + receipt photo/OCR + categories | Auto from sales; manual "cash drop/loan" entries | Auto from sales/returns; manual entry with fixed categories, no OCR (not needed, single trusted operator) |
+| Categorization | Free-form customizable categories | Minimal (drop/loan/paid-in/paid-out) | Fixed 3-category set (supplier/salary/other) + comment — matches PROJECT.md scope, avoids unbounded category sprawl |
+| Approval workflow | Multi-user approval chains | Manager approves cashier's count | Not applicable — single trusted operator, no auth layer |
+| Reconciliation | N/A (not till-based) | End-of-shift count vs expected, shortage/overage report | Deferred to v2+ (manual correction entry covers the single-operator case for now) |
+| Multi-account | Often supports multiple wallets/cards | Multiple registers/drawers | Single balance only, by design |
 
 ## Sources
 
-Confidence: MEDIUM-HIGH overall — direct codebase inspection is HIGH; vendor pages and forum posts are MEDIUM, cross-checked across 3+ independent sources per claim. (Note: gsd-tools `research-plan` / `classify-confidence` / `research-store` seams were not available as registered commands in this installation — `research-plan`, `classify-confidence` fell back through the generic CLI without producing plan/tier output; built-in WebSearch used directly per the tool_strategy fallback rules, confidence self-assessed using the source-hierarchy guidance.)
-
-- [Expiration Date Management for Inventory: FIFO, FEFO, and Batch Tracking](https://stockpilot.co/blog/inventory-expiry-date-tracking-guide) — MEDIUM confidence (vendor blog, practitioner consensus)
-- [First Expired, First Out: What Is FEFO and How Do You Manage It?](https://www.mrpeasy.com/blog/fefo-first-expired-first-out/) — MEDIUM
-- [Batch & Expiry Tracking in Inventory: 7-Step Guide](https://eloerp.net/blog/batch-and-expiry-tracking-in-inventory/) — MEDIUM
-- [Multi Warehouse Management & Inventory Software — LionO360](https://www.lionobytes.com/products/erp/features/multi-warehouse-management) — MEDIUM
-- [Online Warehouse Management System — Zoho Inventory](https://www.zoho.com/us/inventory/warehouse-inventory-management/) — MEDIUM (vendor docs, describes a real shipped product's feature set)
-- [Multi-Warehouse Inventory Management — Finale Inventory](https://www.finaleinventory.com/multi-warehouse-inventory-management) — MEDIUM
-- [Inventory Management Software for Your Warehouse: Basic-to-Advanced Feature Checklist — HandiFox](https://www.handifox.com/handifox-blog/inventory-management-software-for-warehouse) — MEDIUM
-- [Using and Configuring the Minimum Selling Price — DealPOS](https://support.dealpos.com/en/articles/4773830-using-and-configuring-the-minimum-selling-price) — MEDIUM-HIGH (vendor documentation of a real, directly analogous feature)
-- [How to add warning to POS when user input price below standard price? — Odoo forum](https://www.odoo.com/forum/help-1/how-to-add-warning-to-pos-when-user-input-price-below-standard-price-139285) — MEDIUM (community forum, cross-checked against DealPOS's official docs)
-- Direct codebase inspection: `app/models.py`, `app/services/ledger.py`, `app/services/stock.py`, `app/services/reports.py` (v1.0 shipped code) — HIGH confidence, verified firsthand
-- Project context: `E:\dev\myorishop\.planning\PROJECT.md`
+- `.planning/PROJECT.md` — first-party project scope, target features, existing architecture/Key Decisions (Confidence: HIGH)
+- Web search: "simple petty cash management app features small business cash in cash out categories" — [haeywa petty cash app](https://play.google.com/store/apps/details?id=com.dotnovaai.haeywa&hl=en_US), [Weel: Top 5 Petty Cash Management Software](https://letsweel.com/resources/the-weelhouse/articles/the-best-petty-cash-management-software), [Pleo petty cash](https://www.pleo.io/en/petty-cash), [Zoho Expense petty cash](https://www.zoho.com/us/expense/petty-cash-management/) (Confidence: MEDIUM — cross-checked across multiple independent listings, consistent pattern: real-time balance, categorized in/out, approval workflows for multi-user tools)
+- Web search: "POS cash drawer reconciliation shift closing count till features small retail" — [Fit Small Business: POS Reconciliation](https://fitsmallbusiness.com/pos-reconciliation/), [Shopify: Balancing a Cash Drawer](https://www.shopify.com/blog/balancing-a-cash-drawer), [KORONA POS: Count the Till](https://koronapos.com/blog/count-the-till-cash-handling/), [POS Highway: Cash Drawer Management](https://www.poshighway.com/blog/cash-drawer-management-cycle-counts-reconcilation-activation-and-closing/) (Confidence: MEDIUM — cross-checked, confirms reconciliation/shift-count value scales with multiple cashiers, which doesn't apply to this single-operator app)
 
 ---
-*Feature research for: MyOriShop v1.1 — Multi-Warehouse & Batch Tracking*
-*Researched: 2026-07-10*
+*Feature research for: Касса/Финансы module, MyOriShop v1.3*
+*Researched: 2026-07-14*

@@ -1,277 +1,280 @@
 # Pitfalls Research
 
-**Domain:** Retrofitting multi-warehouse + batch/lot stock tracking onto an existing single-quantity-per-product inventory app (MyOriShop v1.1 "Multi-Warehouse & Batch Tracking")
-**Researched:** 2026-07-10
-**Confidence:** HIGH for architecture-fit findings (grounded in direct reading of `app/models.py`, `app/services/ledger.py`, `app/services/sales.py`, `app/services/stock.py`, `app/services/reports.py`, `app/services/writeoffs.py`, `app/services/returns.py`, `app/services/corrections.py`, `app/services/receipts.py`, `app/services/catalog.py`, `app/services/export.py`, `app/templates/base.html`, `app/templates/partials/sale_row.html`, `app/static/style.css`, `alembic/versions/*`, `.planning/PROJECT.md`). MEDIUM for generic multi-location-inventory domain color (web search, marketing-oriented sources, cited at the bottom) used only to round out the generic Performance/UX tables.
-
-**Note:** This supersedes the v1.0 pitfalls research (SQLite/money/ledger fundamentals, dated 2026-07-08) which is already-addressed groundwork baked into the shipped architecture. This file is scoped specifically to what breaks when v1.1's multi-warehouse + batch/lot features are added on top of that architecture.
+**Domain:** Adding a cash-balance/cash-flow ledger ("Касса") module to an existing single-operator, offline, SQLite/FastAPI/HTMX warehouse-and-sales app with an append-only stock ledger
+**Researched:** 2026-07-14
+**Confidence:** HIGH for architecture-grounded pitfalls (read directly from `app/services/ledger.py`, `sales.py`, `returns.py`, `writeoffs.py`, `receipts.py`, `reports.py`, `db.py`, `models.py`); MEDIUM for general financial-ledger/small-business practitioner findings (web search, no official spec exists for "how to bolt cash tracking onto an existing app")
 
 ## Critical Pitfalls
 
-### Pitfall 1: `Product.quantity` stops being "the" stock number, but every read path still trusts it alone
+### Pitfall 1: Bolting cash movements onto the existing `operations` table
 
 **What goes wrong:**
-`Product.quantity` (D-09) is currently the single authoritative cached projection of `SUM(operations.qty_delta)` per product, updated atomically inside `record_operation()` (`product.quantity = Product.quantity + qty_delta`, IN-02). Once stock is split by warehouse + batch, this one number becomes, at best, a rollup — but `app/services/stock.py` (`low_stock_products`, `all_active_products`), `app/services/reports.py`, `app/services/corrections.py` (counted-mode baseline), and the sale/write-off oversell checks in `app/services/sales.py` / `app/services/writeoffs.py` all read `product.quantity` directly today. If a `batches` table is added with its own `quantity` cache but `Product.quantity` isn't kept as a genuinely correct rollup updated in the *same* write, you get two independently-drifting notions of "how much stock exists."
+The temptation is to add `cash_in`/`cash_out` as two more members of `OPERATION_TYPES` and reuse `record_operation()`, since it's already "the single write path." This breaks on contact: `Operation.product_id` is a `NOT NULL` FK, and `record_operation` requires `STOCK_AFFECTING_TYPES` to carry a mandatory, product-owned `batch_id` (D-12 guard) — but a cash withdrawal for "зарплата" has no product and no batch. You'd either force a dummy "cash" product/batch (data-model lie) or special-case the guard (weakens the D-12 invariant for every future stock type too). It also pollutes `reports.py`, which filters `Operation.type == "sale"` / `"writeoff"` directly against this same table for revenue/profit math (`app/services/reports.py:38,102,158,187`) — new row types with `qty_delta` semantics that don't mean "units of stock" corrupt those SUM queries if anyone forgets to add a `type` filter.
 
 **Why it happens:**
-The natural incremental path is "add a `batches` table with its own `quantity` column, leave `Product.quantity` alone for now, wire it up later." That's exactly how the drift starts — two denormalized caches, one write path (`record_operation`) that initially only updates one of them.
+The codebase's existing "one ledger table" story is compelling and the docstrings ("record_operation is the ONLY sanctioned write path") read as a project-wide rule, not a stock-specific one.
 
 **How to avoid:**
-Decide explicitly, before writing any migration: `Product.quantity` becomes a derived rollup of all its batches' quantities, updated by the same SQL-side atomic increment, in the *same* `record_operation` call that increments the batch's quantity — never as a separate later step. Every operation that changes stock must carry a `batch_id` (see Pitfall 4) so `record_operation` can update both the batch row and the product row in one transaction, mirroring the existing IN-02 pattern.
+Create a **separate** append-only ledger table (e.g. `cash_movements`), mirroring the *pattern* of `ledger.py` (own single write-path function, e.g. `record_cash_movement()`) but not the *table*. Give it its own DB-level immutability triggers (copy the `operations_no_update`/`operations_no_delete` pattern in `app/db.py`), its own `id`/`created_at`/`created_by`/`device_id`/`seq` columns, and a nullable `sale_id` FK to link auto-credit rows back to `Sale` — but no `product_id`/`batch_id` requirement.
 
 **Warning signs:**
-- Two code paths that each do `some_row.quantity = SomeModel.quantity + delta` for the same operation.
-- A report or low-stock check that reads `product.quantity` while another screen (e.g. the batch picker) shows per-batch remaining that doesn't sum to it.
-- `rebuild_stock()` (ledger.py) recomputing product totals correctly while batch totals stay wrong because it was never extended (see Pitfall 6).
+Any PR that adds a value to `OPERATION_TYPES` for cash, or that makes `Operation.product_id` nullable "just for cash rows."
 
 **Phase to address:**
-Phase 1 of this milestone (schema + ledger write-path changes), before any UI work.
+The phase that introduces the cash schema (first phase of the milestone) — this is a foundational data-model decision, expensive to reverse once real financial rows exist.
 
 ---
 
-### Pitfall 2: Oversell checks are duplicated across services and keyed by `product_id` only — batches need a different key
+### Pitfall 2: Auto-credit wired into `sales.py` but not symmetrically into `returns.py`
 
 **What goes wrong:**
-`register_sale` (sales.py) aggregates requested quantity **per `product.id`** across every basket line (`requested_by_product: dict[str, int]`) before comparing to `product.quantity` — explicitly to prevent the same product appearing on two lines from bypassing the check (existing code comment: "Pitfall 6"). `register_writeoff` (writeoffs.py) does a simpler single-line check against `product.quantity`. Neither has any concept of "batch." Once a sale line references a specific batch, an operator adding the same product twice with **two different batches** on one basket must be validated against *each batch's own remaining quantity*, not the product's total. If the existing product-keyed aggregation is left as-is and a `batch_id` field is bolted on without joining the aggregation key, a basket like "5 units from batch A (which only has 2 left) + 5 units from batch B (which has 50 left)" passes the check (10 requested ≤ 52 total) while silently overselling batch A.
+`register_sale()` (`app/services/sales.py`) and `register_return()` (`app/services/returns.py`) are two separate service modules with separate write paths. If the cash auto-credit is added only inside `register_sale`'s commit block, a sale-linked return (already a shipped feature, OPS-02) silently leaves the cash balance permanently inflated by however much was returned — the balance stops reflecting reality the very first time a customer returns anything.
 
 **Why it happens:**
-The aggregation key (`product.id`) is deeply embedded in `sales.py`'s oversell logic and is the easiest thing to leave unchanged while adding a batch selector as "just another form field."
+Returns are architecturally a *second* write path that happens to reuse the same `sale_id`/`product_id` shape as sales but lives in a different file (`returns.py`) written in a different phase (Phase 5). It's easy to treat "wire up cash" as a `sales.py`-only task because that's where "Касса пополняется автоматически с каждой продажи" naturally points a developer's attention.
 
 **How to avoid:**
-Change the aggregation key from `product.id` to `(product.id, batch.id)` in `register_sale`'s oversell block, and compare against the batch's own cached quantity, not the product's. Audit `register_writeoff`/`register_correction` too — explicitly decide whether write-offs/corrections also operate at batch granularity (see Pitfall 3), or document that they intentionally stay product-level, because right now both silently assume "one stock number per product."
+Treat cash-in and cash-out as symmetric obligations from day one, the same way the codebase already treats price/cost freezing symmetrically (D-07: "price/cost symmetry — copy the origin sale op's FROZEN unit_price_cents/unit_cost_cents"). Add the return's cash debit in the exact same commit as the `return` operation write inside `register_return`, not as an afterthought bolted onto `sales.py`.
 
 **Warning signs:**
-- A test basket with two lines of the same product code but different batches passes oversell validation when it shouldn't.
-- `requested_by_product` (or its renamed equivalent) is still typed as `dict[str, int]` keyed by a single id after batches ship.
+Grep for the new cash-write call and check it appears in *both* `sales.py` and `returns.py` before the phase is called done. A test that sells, fully returns, and asserts balance is back to its pre-sale value is the concrete regression guard.
 
 **Phase to address:**
-Phase covering batch/lot tracking + sale-time batch picker (LOT-01/LOT-02). Must ship together with Pitfall 1's schema change — cannot be deferred without leaving a real oversell hole.
+Same phase as Pitfall 1 (schema + auto-credit) — return-symmetry must ship in the same phase as sale auto-credit, not deferred to a later phase, or there will be a window where returns silently break the balance.
 
 ---
 
-### Pitfall 3: Stock correction's "counted" mode computes delta against the wrong (aggregate) baseline
+### Pitfall 3: Trying to "match" a return against the original cash-in row instead of deriving the debit independently
 
 **What goes wrong:**
-`register_correction` (corrections.py) has a `count` mode where the operator enters the *physically counted* quantity and the service computes `qty_delta = counted - product.quantity`. This assumes the operator counted **all** stock of that product everywhere. Once stock is split across warehouses/batches, an operator counting *one warehouse's shelf* will type a number that only reflects that location — but the code diffs it against the product's grand total across all warehouses/batches, producing a `qty_delta` that corrupts stock everywhere except the counted location (e.g., silently subtracting stock that was correctly sitting in a different warehouse or batch).
+A naive design looks up the sale's original cash-in movement (by `sale_id`) and tries to reduce it, or asserts the return amount against it, then fails/logs a warning "cannot find matching cash-in movement" when the lookup comes up empty (e.g. legacy sales predating the cash feature, or a partial return where the "amounts don't match" because only part of the line was returned). This reconciliation logic is unnecessary and fragile.
 
 **Why it happens:**
-The correction form (`partials/correction_form.html`, `correction_lookup.html`) currently round-trips only a product code + a single quantity; the "counted" semantics were correct for a single-quantity-per-product model and become silently wrong the moment the baseline is actually a sum of several numbers.
+"Reverse a previous entry" is the natural mental model for a refund, borrowed from double-entry bookkeeping intuition, but this app already solved the equivalent problem for *stock* by never editing the original `sale` op and instead writing a fresh, independently-computed `return` op (D-06/D-07) whose amount comes from the **return's own** `qty * frozen unit_price_cents`, not from re-reading and adjusting the original sale row (which the `operations_no_update` trigger wouldn't even allow).
 
 **How to avoid:**
-Correction must become scoped: require selecting a warehouse + batch when correcting (mirroring the sale batch picker) and diff against that batch's cached quantity — do not let the existing single-number `count` mode survive unchanged with a batch dropdown quietly bolted on. If a whole-product recount mode is kept, it must be a distinct, clearly-labeled path, not the default.
+Mirror `returns.py`'s existing approach exactly: `register_return` already copies `origin.unit_price_cents` (D-07, frozen at sale time) and computes `qty_delta`/amount purely from `qty * origin.unit_price_cents` for the returned quantity — no lookup or match against any prior movement is needed. Apply the identical rule to cash: the return's cash debit = `qty_returned * origin.unit_price_cents` (or, for a multi-line sale, sum only the returned line's own frozen price), written fresh, independent of whatever the original cash-in movement recorded. This sidesteps the "what if the original movement is missing or the amounts don't match" question entirely — there is nothing to match against.
+This also means: don't seed the cash-in movement at the header level as a single lump `total_cents` row per `Sale` if you want partial per-line returns to net cleanly. Prefer one cash-in movement per sale `Operation` line (mirroring the ledger's existing per-line granularity) — or, if a single lump credit per sale is kept for simplicity, ensure the return debit is still computed independently line-by-line and never "diffs" the header's lump sum.
 
 **Warning signs:**
-- A correction QA test: count one batch, and watch the product-level total *and* a different, untouched batch's number both change.
-- Correction form UI shows a batch picker, but `register_correction`'s `qty_delta = counted - product.quantity` line is untouched.
+Any code path that does `session.get(CashMovement, ...)` by `sale_id` and then errors/warns when it's `None`, or that tries to `sum(returns) <= original_credit` and blocks the return if not.
 
 **Phase to address:**
-Same phase as Pitfall 1/2 (batch schema + ledger writes) — at minimum, block/hide count-mode-against-total once a product has more than one batch, or the ledger gets corrupted the first time someone uses corrections after batches ship.
+Same phase as Pitfall 2 (return handling) — design the debit formula before writing any code, since retrofitting "independent computation" after a matching-based design ships is a rewrite, not a patch.
 
 ---
 
-### Pitfall 4: Putting `warehouse_id`/`batch_id` only in `Operation.payload` (JSON) instead of real, indexed FK columns
+### Pitfall 4: Balance computed from a stale cache instead of a live SUM, or updated outside the writing transaction
 
 **What goes wrong:**
-`Operation.payload` is a JSON blob used today only for auxiliary, non-aggregated data (write-off reason/note, price-change old/new values, receipt's `catalog_cents`). `Operation.product_id` — the field every report and the ledger's `SUM(qty_delta)` groups by — is a real FK column with an index. If `batch_id`/`warehouse_id` are added as payload keys "to avoid a migration," every per-batch stock computation (oversell checks, the batch picker's "remaining qty" column, the batch-level `rebuild_stock` equivalent) has to filter/group by a JSON field SQLite cannot index — slow, and it cannot use `GROUP BY` cleanly the way `product_id` does today.
+The existing stock model already had this exact problem and solved it: `Product.quantity` is a cached projection, but it's *always* recomputable from `SUM(operations.qty_delta)` via `compute_stock()`, updated with a SQL-side atomic increment (`product.quantity = Product.quantity + qty_delta`) **inside the same transaction** as the ledger insert (`app/services/ledger.py:120-126`), and there's a `rebuild_stock()` repair/assertion function. A cash balance implemented as "just a cached integer column, updated in application code (`balance += amount`) in a separate step after the ledger write" reintroduces the exact class of bug (stale-read window, no atomicity, no recompute-and-verify path) that `record_operation`'s design was built to eliminate.
 
 **Why it happens:**
-Payload feels like the path of least resistance because it already exists and needs no migration — but it was designed for *descriptive*, non-aggregated fields, not for a value the system needs to `SUM()`/`GROUP BY` on every sale.
+It's tempting to treat "current balance" as a simple running total for display speed, without replicating the SQL-side-increment-in-the-same-transaction discipline, especially since the milestone description literally says "текущий баланс" (a display concept), inviting a naive `balance` column.
 
 **How to avoid:**
-Add `batch_id` (FK to a new `batches` table) and `warehouse_id` (FK to a new `warehouses` table, or derivable via the batch, since a batch belongs to one warehouse) as real, indexed, nullable columns on `Operation`, mirroring exactly how `product_id` and `sale_id` are modeled — nullable so historical pre-migration rows don't need a value (see Pitfall 7), indexed because every oversell check and the batch-picker's remaining-quantity display will filter/group by it on every request.
+Either (a) don't cache at all — at this scale (one operator, local SQLite, at most a few thousand cash rows a year) `SELECT COALESCE(SUM(amount_cents), 0) FROM cash_movements` is cheap and always correct, matching how `compute_stock()` is available as ground truth; or (b) if a cached balance is added for display speed, update it with the same SQL-side atomic increment pattern in the SAME transaction as the movement insert, and ship a `rebuild_cash_balance()` counterpart to `rebuild_stock()` from day one, not as a later "fix."
 
 **Warning signs:**
-- Any new query using `func.json_extract(Operation.payload, '$.batch_id')`.
-- Batch remaining-quantity computed by looping Python-side over all ops for a product rather than one indexed `SUM ... WHERE batch_id = ?`.
+A `balance` field updated via ORM read-modify-write (`balance = balance.value + amount`) instead of `Model.balance + amount` in the UPDATE; a balance update committed in a different `session.commit()` than the movement row.
 
 **Phase to address:**
-Phase 1 of this milestone, as an Alembic migration (`render_as_batch=True`, matching every prior migration in `alembic/versions/`).
+The schema/write-path phase (Pitfall 1) — the balance-computation strategy is part of the same design decision as the table shape.
 
 ---
 
-### Pitfall 5: Sale/receipt price-cost freeze must snapshot the *batch's* price, not the product card's
+### Pitfall 5: No idempotency guard against a sale being processed (and cash auto-credited) twice
 
 **What goes wrong:**
-Today, `register_sale` freezes `unit_cost_cents=product.cost_cents` (D-11) and takes the operator-entered `unit_price_cents` per line — there is exactly one cost/price source: the product card. Once batches carry their own distinct cost/price (LOT-01), a sale line's frozen cost must come from the **selected batch**, not the product card, or profit reports silently use a stale/wrong number instead of the batch actually sold from — breaking the existing "historical profit reports never change when today's prices change" guarantee (SAL-05), which batches are supposed to make *more* accurate, not less.
+`register_sale()` has no idempotency key today — a double-click on submit, a retried HTMX request after a network blip on localhost, or (once multi-operator sync exists) a duplicate sync replay could in principle create two `Sale` headers with duplicate `sale` operations. For stock, a duplicate sale silently oversells by the same amount twice, which the existing oversell warning would at least flag on the *second* attempt if stock runs out — but a duplicate cash auto-credit has no equivalent guard, since cash "oversell" isn't checked at all (crediting cash never fails). Money gets invisibly duplicated with no warning path, unlike stock.
 
 **Why it happens:**
-`unit_cost_cents`/`unit_price_cents` freezing already exists and "just works" for the product-level model; it's easy to leave the freeze source as `product.cost_cents` and add `batch_id` only for *display* purposes without rewiring what actually gets frozen.
+The app was designed for a single trusted local operator with WAL + `busy_timeout=5000` serializing writes at the DB level — which prevents *corruption* from concurrent writes, but does nothing to prevent the *same logical action* (one basket) from being submitted twice as two separate, individually-valid transactions.
 
 **How to avoid:**
-Once a batch is selected at sale time, `unit_cost_cents` must be frozen from the batch's own cost field, and any price pre-fill must pull from the batch, not the product card. If batch prices ever become editable after creation, apply the same "snapshot the OLD value before mutating" discipline already used in `register_receipt`'s price_change block.
+This is a pre-existing gap in the whole app, not something the cash feature must fully solve — but the cash feature is where it becomes financially visible for the first time. At minimum: disable the sale-submit button/form during the HTMX request (standard `hx-disabled-elt` pattern) to close the double-click window, and document that duplicate-basket detection (e.g. an idempotency token per basket submission) is a gap worth closing before/alongside this milestone rather than silently inherited. Do not treat "cash auto-credit never fails" as a reason to skip this — the absence of a failure mode is exactly what makes duplicates invisible.
 
 **Warning signs:**
-- A sale test with two batches of the same product at different costs, both sold; the profit report shows the same (wrong) cost for both lines.
-- `sales_profit_report` (reports.py) numbers stop matching a manual per-batch reconciliation.
+Two `Sale` headers with identical `customer_id`, lines, and `created_at` within the same second; a balance that's "suspiciously exactly 2x" a spot-check total.
 
 **Phase to address:**
-Same phase as batch/lot tracking (LOT-01/LOT-02) — not deferrable, since the profit reports already shipped in v1.0 and are actively relied on; a silent regression here is worse than a missing feature.
+Flag for the schema/auto-credit phase to at least add the UI-level submit-guard; a full idempotency-key mechanism can be deferred but should be an explicit, named deferral (Future/Out-of-Scope entry), not a silent gap.
 
 ---
 
-### Pitfall 6: `rebuild_stock()`/`compute_stock()` have no repair path for the new batch-level cache
+### Pitfall 6: Negative-balance validation inconsistent with the app's established warn-but-allow pattern
 
 **What goes wrong:**
-`app/services/ledger.py`'s `compute_stock`/`rebuild_stock` are the FND-01 guarantee: the cached `Product.quantity` is "always recomputable" from the ledger alone, and this is the disaster-recovery tool if the cache ever drifts (bug, crash mid-write, manual DB edit). If a new `batches.quantity` cache is added without an equivalent recompute/repair function, that guarantee silently stops covering the numbers the batch picker and oversell checks actually depend on — the *new*, more failure-prone caches are exactly the ones with no safety net.
+Two wrong choices are equally tempting and equally bad: (a) hard-blocking any withdrawal that would take the balance negative (inconsistent with how this app treats every other "physically implausible" situation — oversell and below-minimum-price both warn-and-allow-with-confirm, never hard-block), or (b) allowing withdrawals with zero warning at all, which for real money is worse than for stock because a negative cash balance either means a data-entry mistake or a genuinely urgent real-world problem (cash box empty), and the operator should be told either way.
 
 **Why it happens:**
-`rebuild_stock` iterates `Product` rows and calls `compute_stock(session, product.id)`, both scoped to `product_id` only; extending them to also rebuild batch-level quantities is easy to forget because the function "already exists and already works" for the product level.
+"Money" instinctively feels like it should be stricter than "stock count," pulling toward a hard block; but this app has a strong, already-validated precedent (oversell in `sales.py`/`writeoffs.py`/`transfers.py`, below-minimum-price in `sales.py` PRICE-01) of warn-with-`confirm=1`-to-override, chosen specifically because a purely local single-operator tool should never trap the operator behind a check it can't override (e.g. a legitimate reason: cash was withdrawn in person before this app recorded the receipt).
 
 **How to avoid:**
-Extend `compute_stock`/`rebuild_stock` (or add sibling functions with the same shape) to recompute `SUM(qty_delta)` grouped by `(product_id, batch_id)` and repair every batch's cached quantity in the same pass, in the same transaction, using the same "recomputable from the ledger alone" contract.
+Reuse the exact same warn-but-allow UX contract already implemented for oversell/min-price: compute the check, and when `confirm != "1"` and the resulting balance would go negative, return a warning payload with ZERO writes; `confirm == "1"` skips the check and writes anyway (balance may go negative, exactly like stock may go negative). This keeps the whole app's validation vocabulary consistent for the operator instead of introducing a third, different pattern.
 
 **Warning signs:**
-- A manual DB edit or a bug leaves a batch's cached quantity wrong, and there is no documented/tested way to fix it short of hand-editing the DB.
-- `rebuild_stock`'s docstring/tests still say "including soft-deleted" products but say nothing about batches.
+A withdrawal route that returns a raw 4xx/500 or refuses the write entirely with no `confirm` escape hatch.
 
 **Phase to address:**
-Same phase as Pitfall 1 (schema + ledger writes) — a repair tool shipped alongside the new cache, not bolted on after the first production drift incident.
+The manual-debit phase.
 
 ---
 
-### Pitfall 7: Migrating existing rows — NOT NULL FK columns on non-empty tables, and basket array-index misalignment
+### Pitfall 7: No opening/seed balance, so the very first negative-balance warning is a false alarm
 
 **What goes wrong:**
-Two related migration risks:
-1. **Schema:** `products`, `operations`, and `sales` already have real rows once this app is in daily use. Adding `warehouse_id`/`batch_id` and making them `NOT NULL` without first backfilling every existing row with a value fails the migration outright, or leaves pre-migration operations silently unattributed to any warehouse/batch.
-2. **UI/forms:** the sale basket (`partials/sale_row.html`) uses parallel array-named inputs (`code[]`, `qty[]`, `price[]`) that `non_blank_lines()` (sales.py) `zip()`s together **positionally** — the posted arrays carry no explicit row id (DOM row ids like `row-3` never reach the server). Adding a `batch_id[]` array for the batch picker means a 4th parallel array that MUST stay index-aligned with the other three. The existing "Удалить строку" button just does `this.closest('tr').remove()` client-side; if the batch-picker fragment for a row isn't removed in lockstep, a submitted basket can end up with `batch_id[2]` describing a different logical line than `code[2]` — silently attributing a sale to the wrong batch.
+The milestone's target features list auto-credit-on-sale and manual-debit-with-reason, but no "set starting balance" concept. If Финансы launches computing balance purely from `SUM(cash_movements.amount_cents)` starting at zero, then any real-world cash the operator already has on hand at go-live is invisible to the app. The very first supplier payment or salary withdrawal recorded — even though physically fine — will trip the negative-balance warning from Pitfall 6, teaching the operator to distrust or ignore the warning from day one.
 
 **Why it happens:**
-(1) is the classic "migration works on an empty test DB, breaks on the first real dataset" trap. (2) is specific to this codebase's row-array pattern, which was designed for exactly 3 aligned arrays and has no defensive index/row-id validation today.
+This mirrors a genuine architectural blind spot: the app has never modeled "initial state" for money the way it does for stock (every stock item starts at zero and is built up via receipts — there's no equivalent "cash receipt" concept to seed a starting cash balance, since receipts in this app only ever add *stock*, never cash — see Pitfall 9).
 
 **How to avoid:**
-For (1): add `warehouse_id`/`batch_id` as **nullable** columns first; write a data-migration step that creates a single default "legacy"/"Основной склад" warehouse (and a default "legacy" batch if needed) and backfills existing rows to reference it — matching the existing project convention of `is not None` checks (never bare `or`) so a genuinely-unset historical row stays distinguishable from an explicit default. For (2): extend `non_blank_lines()`'s zip and the route's line-building to include `batch_id[]` as a 4th strictly-aligned array, and add a test basket that adds/removes rows out of order before submitting, specifically to catch index drift.
+Give the operator an explicit way to record a starting/adjustment cash-in movement (e.g. a "Внесение/корректировка" category available on the manual-movement form, or a dedicated one-time "opening balance" action) before relying on the negative-balance warning. This does not need its own UI flow — reusing the manual movement form with an `is_credit` direction and a "внесение наличных" category, mirroring how `WRITEOFF_REASONS` already models a category dict with an `"other"` free-text escape hatch, covers it.
 
 **Warning signs:**
-- A migration that adds a NOT NULL FK with no default and no backfill step, tested only against a fresh empty DB.
-- Manual QA: add 3 basket rows, delete the middle one, fill the remaining two with different batches, submit, and check the recorded batch_id actually matches the product on that line.
+The requirements list only mentions debit categories ("оплата заказа поставщику, зарплата, прочее") — if the shipped UI genuinely has no way to add a manual *credit*, this is unaddressed.
 
 **Phase to address:**
-Migration backfill: Phase 1 (schema). Basket array alignment: the batch-picker UI phase (LOT-02) — write this test before the picker ships.
+The manual-debit phase — build the movement form bidirectional (credit + debit) from the start rather than debit-only, even though the milestone description emphasizes debit.
 
 ---
 
-### Pitfall 8: New minimum-sale-price field must repeat the exact `is not None` effective-threshold pattern — a bare `or` silently disables an explicit 0
+### Pitfall 8: No correction/reversal path for a mistyped manual entry, colliding with the append-only trigger
 
 **What goes wrong:**
-The codebase already hit this bug once and fixed it: `effective_low_stock_threshold` (stock.py) and `_effective_stale_days` (reports.py) both use `product.field if product.field is not None else settings.default` specifically because a naive `product.field or settings.default` would treat an explicit `0` as falsy and wrongly fall through to the global default. The new optional per-product minimum sale price (PRICE-01) is the same shape of feature (per-product override, global-or-none fallback) and is at real risk of reintroducing exactly this bug — e.g. "minimum price of 0" is a legitimate value that a bare `or` would silently misinterpret as "not set."
+`operations_no_update`/`operations_no_delete` (`app/db.py`) ABORT any UPDATE/DELETE at the SQLite trigger level — this is a deliberate, hard architectural guarantee, and any new cash table should copy it verbatim (Pitfall 1). But that means an operator who fat-fingers a withdrawal amount (e.g. types 5000 instead of 500) has **no way to fix it** unless the UI explicitly supports adding a compensating entry. If the shipped UI only exposes the three named debit categories from the requirements (supplier payment / salary / other) with no way to add a manual credit, the operator is stuck with a permanently wrong balance and no recourse except a raw SQL edit — which defeats the entire point of an immutable, trustworthy ledger.
 
 **Why it happens:**
-It's a new field likely implemented by copy-pasting the sale-price-entry code path, not the threshold-fallback code path, so the existing convention isn't automatically inherited.
+The stock side already solved this with a dedicated `correction` operation type (Phase 5) precisely because "the recorded number is wrong and needs fixing without editing history" is a known, expected need — but the v1.3 requirements as scoped don't mention an equivalent "cash correction" category, likely because the milestone description focuses on the two headline flows (auto-credit, manual debit) and doesn't explicitly call out reversals.
 
 **How to avoid:**
-Implement the minimum-price check with the identical `is not None` guard, cross-referencing `effective_low_stock_threshold`/`_effective_stale_days` in a comment. Add a unit test asserting a minimum price of exactly `0` cents is honored (warns on any sale price below it) and is not treated as "no minimum."
+Ship a manual-credit path (see Pitfall 7) with a "Корректировка" category from day one, so a wrong entry is always fixable by adding an offsetting movement with a note explaining why — never by editing/deleting the original row. Document this in the UI itself (e.g. helper text near the balance: "Ошибку нельзя удалить — добавьте корректирующую запись").
 
 **Warning signs:**
-- Code review sees `product.min_price_cents or ...` anywhere.
-- A product with `min_price_cents = 0` never triggers the warning — identical in shape to the low-stock-threshold bug this project already fixed once.
+Any support/debug request that ends in "can we just edit that row in the database" is a sign this path is missing in the UI.
 
 **Phase to address:**
-The phase implementing PRICE-01 (minimum sale price / warn-but-allow).
+The manual-debit phase, same as Pitfall 7 (they're the same underlying gap: debit-only UI).
+
+---
+
+### Pitfall 9: UI conflates "cash balance" with "profit"/"revenue," and goods-receipt cost isn't auto-linked to a cash debit
+
+**What goes wrong:**
+Two distinct confusions:
+1. `reports.py` already computes sales/profit reports (RPT-01..04) from the same `operations` table. A business owner glancing at a big "баланс кассы" number on the new Финансы page can easily read it as "profit," when it actually also contains money that must be reserved to restock inventory (cost of goods) and is reduced by non-COGS expenses (salary) that never touch the profit report. Confusing available cash with profit is one of the most common small-business financial mistakes in general (external sources below) — U.S. Bank found most business failures trace to cash-flow mismanagement, not unprofitability, and it stems exactly from this "I have money in the account, so I must be doing fine" confusion. This app now has two overlapping-but-different money views (Отчёты profit/revenue vs. Финансы cash balance) that must be labeled unambiguously or the owner will misread one for the other.
+2. `receipts.py` (goods intake) records `unit_cost_cents` for stock but has zero connection to cash — the v1.3 spec treats "оплата заказа поставщику" as a manual withdrawal category, entirely decoupled from recording the receipt itself. This is intentional per the requirements, but if undocumented in the UI, an operator's natural mental model ("I sold something → cash went up automatically; I bought stock → shouldn't cash go down automatically too?") will be violated silently, leading them to either forget to record the manual payment (balance overstated) or worry the app is missing a feature.
+
+**Why it happens:**
+The milestone deliberately scopes cash tracking as an *aggregate* module bolted onto an existing product-centric app, not a full accounting/AP system — so the natural symmetry a user expects (every stock-affecting money event has a cash-affecting counterpart) is only half-built by design (sale → auto; receipt → manual, and only if the operator remembers).
+
+**How to avoid:**
+Label the Финансы balance explicitly as cash-on-hand ("Наличные в кассе"), distinct from the existing Отчёты "Выручка"/"Прибыль" labels, and consider a short explanatory line or link between the two pages. Add a one-line note on the receipt form near the cost field, or on the Финансы manual-debit form, clarifying that recording a receipt does NOT withdraw cash automatically — the operator must record a separate withdrawal if they paid at receipt time.
+
+**Warning signs:**
+User-facing copy that uses "баланс"/"касса"/"выручка"/"прибыль" interchangeably; support questions like "why doesn't my cash match my profit report."
+
+**Phase to address:**
+UI/history-and-balance-display phase (whichever phase builds the Финансы page and its copy) — this is a labeling/documentation fix, cheap to do right the first time, expensive to retrofit once the owner has already formed a wrong mental model.
 
 ---
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems.
-
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|-----------------|-----------------|
-| Store `batch_id`/`warehouse_id` in `Operation.payload` JSON instead of real FK columns | No migration needed right away | Every oversell/rollup query becomes an unindexed JSON scan; batch-level `rebuild_stock` can't repair it (Pitfalls 4/6) | Never — this app's whole ledger design already treats FK columns as the correct pattern for anything aggregated |
-| Keep `register_correction`'s count-mode diffing against `product.quantity` (grand total) even after batches ship, "just for now" | Correction feature doesn't need touching this milestone | First real-world use after batches exist corrupts stock at every batch/warehouse except the one counted (Pitfall 3) | Only if count-mode is explicitly disabled/hidden the moment a product has >1 batch, with a clear UI message, until reworked |
-| Skip backfilling a default "legacy" warehouse/batch for existing rows, leave `warehouse_id`/`batch_id` NULL forever | Simpler migration | Every report/query that groups by warehouse or batch must special-case NULL as "unattributed," forever, in every phase after this one | Acceptable only as a deliberate, documented permanent design (NULL = "pre-migration, no location known") |
-| Ship the batch picker without extending the CSV export (products/sales dumps) to include batch/warehouse columns | Export code untouched this milestone | Operator's own backup/export data becomes less detailed than the app's UI, and profit reconciliation against the sales export loses batch-level cost granularity (Pitfall 5) | Acceptable for one milestone if explicitly logged as an open gap in PROJECT.md, not acceptable to leave silently forever |
+|----------|--------------------|-----------------|------------------|
+| Cache the balance as a plain column updated by application-code `+=` instead of a SQL-side atomic increment | Slightly less code to write initially | Balance drift under any concurrent/retried write, no audit trail to explain drift (same failure mode the ledger-vs-standalone-balance-field research above warns against) | Never — the SQL-side-increment-in-same-transaction pattern already exists in `ledger.py`; copying it costs nothing extra |
+| Skip the "opening balance" / manual-credit UI and ship debit-only for v1.3 | Matches the literal milestone wording faster | Every operator whose real cash box has starting money gets a false negative-balance warning on day one, and any mistyped debit is permanently unfixable | Only acceptable if explicitly flagged to the user as a known v1.3 gap and fast-followed — not silently deferred |
+| Store the cash-movement "reason" as unconstrained free text only (no category allow-list) | Faster form to build | Loses the reportability the `WRITEOFF_REASONS` pattern already proved valuable (filterable categories in `/history`) — a future "expenses by category" report becomes a text-parsing problem | Never, given the app already has a working allow-list + "other" free-text pattern one file away (`writeoffs.py`) to copy |
+| Skip a `rebuild_cash_balance()`/recompute-from-ledger repair function | Saves one function in the first phase | No way to detect or repair drift if a bug is ever found, unlike stock which has `rebuild_stock()` as a safety net | Acceptable only if the balance is never cached (computed live via SUM every read) — then there's nothing to rebuild |
 
 ## Integration Gotchas
 
-Not applicable in the usual external-service sense (no external services) — the closest equivalent is the app's own read/export layers being blind to the new granularity.
+Mistakes when wiring the new Финансы module into the existing sales/returns/receipts/reports code, not external services (this app has none — fully local/offline).
 
-| "Integration point" | Common Mistake | Correct Approach |
-|-------------|----------------|-----------------|
-| CSV export (`app/services/export.py`) | Leave `stream_products_csv`'s "Остаток" column as the product-level rollup only, with no per-batch/per-warehouse breakdown | Add batch/warehouse columns (or a 4th export stream) so exported data matches what the UI now shows |
-| Reports (`app/services/reports.py`) | `sales_profit_report`/`writeoff_report`/`stale_products` keep grouping strictly by `product.id`, silently hiding which warehouse/batch drove a number | Decide per-report whether warehouse/batch breakdown is in scope for this milestone; if not, say so explicitly rather than let it look already handled |
-| Alembic migrations | Add the new FK columns and stop, assuming SQLite will "just work" like Postgres on partial constraints | Every new constraint needs `render_as_batch=True` (already the project convention) plus an explicit backfill step for existing rows |
+| Integration point | Common Mistake | Correct Approach |
+|--------------------|-----------------|-------------------|
+| `sales.py` (`register_sale`) | Wiring the cash credit as a second, separate `session.commit()` after the sale operations commit | Stage the cash-credit write inside the SAME try/commit block as the sale operations (WR-03 pattern: one commit closes the whole transaction) |
+| `returns.py` (`register_return`) | Forgetting to add the symmetric debit at all (Pitfall 2), or computing it by looking up/matching the original credit (Pitfall 3) | Compute the debit independently from `qty_returned * origin.unit_price_cents`, write it in the same transaction as the `return` op |
+| `writeoffs.py` / `corrections.py` / `transfers.py` | Assuming these need cash wiring too, since they're stock-affecting operation types | Per v1.3 scope, only `sale` (credit) and `return` (debit) touch cash automatically — write-off/correction/transfer are stock-only and must NOT silently create cash movements |
+| `receipts.py` | Assuming goods receipt should auto-debit cash for the cost (natural symmetry expectation) | Per v1.3 scope this is explicitly a MANUAL category ("оплата заказа поставщику") — do not auto-wire it; document the gap in UI (Pitfall 9) |
+| `reports.py` | Extending existing profit/revenue report queries to also sum cash movements from the operations table | Cash movements live in their own table (Pitfall 1) — a "Финансы" report is a separate query/page, not a modification to the existing `Operation.type == "sale"` filters |
+| `/history` view (`operations.py`, `OPERATION_TYPE_LABELS`) | Trying to merge cash movements into the same history list/pagination as stock operations | Give Финансы its own history view (mirrors the existing `LIST-01..03` pagination/filter/sort pattern from `pagination.py`, applied to the new table) rather than injecting rows into the stock ledger's `/history` |
+| CSV export (`export.py`, BCK-02) | Silently omitting cash movements from the existing three-file export, or bolting them onto an existing CSV without the same BOM/`;`-delimiter/formula-injection-escape treatment | If cash export is in scope, reuse the exact same CSV-safety convention (BOM-once, `;` delimiter, apostrophe-escape of formula-injection prefixes) already proven in `export.py`; if out of scope for v1.3, say so explicitly rather than leaving it ambiguous |
 
 ## Performance Traps
 
-Patterns that work at small scale but fail as usage grows. Reality check: still one operator, so absolute scale stays low — the real risk here is unbounded per-product history (batches accumulate over years), not concurrent load.
+Low risk at this project's actual scale (one operator, local SQLite, hundreds to low thousands of cash rows/year), but worth naming so the design doesn't accidentally block growth.
 
 | Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Batch picker queries all batches for a product with no filter/ordering | Sale-lookup HTMX response grows slowly as a long-lived product accumulates dozens of exhausted (0-qty) batches over years | Filter to batches with quantity > 0 (or show exhausted ones only on demand), order by expiry, cap the list | Noticeable once a fast-moving product has 50+ historical batches |
-| Computing per-batch remaining quantity via a Python-side loop over all `operations` rows instead of an indexed `SUM ... WHERE batch_id = ?` | Batch picker slows as the ledger grows, even for a single product lookup | Aggregate via SQL (`func.sum`/`.group_by()`), matching the existing `top_selling_products`/`compute_stock` pattern | Becomes visible after a year or two of daily receipts/sales once `operations` has tens of thousands of rows |
+|------|----------|------------|-----------------|
+| Recomputing `SUM(amount_cents)` on every page load with no index | Финансы page feels slightly slower to load over years of accumulated rows | Index on the movement table's `created_at` (for period filters) — mirrors existing `Operation.product_id`/`created_at` indexing choices | Not before tens of thousands of rows on SQLite; unlikely to matter for a single-store operator within the app's realistic lifetime |
+| Financial history page with no pagination | Page becomes slow/unwieldy after a year or two of daily movements | Reuse `app/services/pagination.py`, the same helper already applied uniformly to all six existing list pages (Phase 14, LIST-01..03) | Same threshold as the existing `/history` and `dictionary` pages that already needed it (thousands of rows) |
 
 ## Security Mistakes
 
-Domain-specific issues beyond general web security (trusted single-operator local app — the bar is "don't corrupt data," not "don't leak data").
+This is a local, offline, single-operator app with no auth — "security" here means protecting the integrity guarantees the app already relies on, not network/auth hardening.
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Trusting a client-submitted `batch_id`/`warehouse_id` without re-validating server-side that it belongs to the product/warehouse on that line | A crafted/stale form submission (stale HTMX fragment, browser back-button resubmit) attributes a sale to an unrelated batch, corrupting that batch's stock and freezing the wrong cost/price | Server-side: re-look-up the batch by id, verify `batch.product_id == product.id` before writing, exactly as `register_return` already re-validates `origin.type == "sale"` before trusting a client-supplied `origin_op_id` |
-| Trusting a minimum-sale-price / oversell "confirm" flag from a hidden form field without re-running the check server-side | An operator's stale page (or crafted request) sets `confirm=1` on a basket that was never actually shown the warning | Already correctly done today for oversell (`confirm != "1"` gate re-runs every submission); replicate exactly for minimum-price warn-but-allow |
+| Adding an admin/debug route that directly UPDATEs a cash balance or movement row "just for fixing mistakes" | Defeats the append-only guarantee the whole ledger design (and this feature's trustworthiness) depends on; also would silently succeed only until the trigger is copied onto this table (Pitfall 1), then fail confusingly | Never add such a route; use compensating entries (Pitfall 8) instead, exactly like the rest of the app has no "edit a past sale" backdoor |
+| Free-text reason/note field rendered unescaped anywhere (UI or future CSV export) | Reflected-content or formula-injection risk if ever exported to Excel/CSV, mirroring the exact risk the existing export already had to solve | Reuse the existing Jinja2 autoescape + CSV apostrophe-escape conventions already proven in `export.py`/templates — don't build a new unescaped path for this one feature |
+| Trusting a client-submitted amount/category without server-side re-validation | A crafted form POST could submit a category not in the allow-list, or a negative "credit" amount used to secretly debit | Validate category against a server-side allow-list (mirror `WRITEOFF_REASONS`) and validate amount sign/positivity server-side, exactly like `sales.py` re-validates price sign (D-10/WR-04) rather than trusting the form |
 
 ## UX Pitfalls
 
-Common user experience mistakes specific to this milestone's features.
-
 | Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Batch picker shows every batch including fully exhausted (0-qty) ones, unsorted | Operator wastes clicks/scroll finding a batch that actually has stock, especially on a small phone screen | Sort by expiry date (soonest first) or remaining qty; de-emphasize or hide 0-qty batches by default |
-| Expiry date field (LOT-03) is stored but never surfaced as a warning anywhere | Stock quietly expires with no signal to the operator, defeating the point of tracking expiry | Even a minimal "batches expiring within N days" line on the stock/low-stock report closes this gap — flag as an explicit scope decision, not an accidental omission |
-| Mobile nav bar (`base.html`) is a flat `<nav>` with 10 links and no collapse/hamburger behavior | On a phone-width screen the nav wraps into a multi-row ragged block above every page | Add a `@media (max-width: ...)` collapse (even a simple `<details>`-based disclosure, no JS framework needed) as part of the mobile-responsive item (UI-01) |
-| Wide fixed-column tables (reports, `/history`, and the new batch-picker's price/expiry/qty/comment columns) have no horizontal-scroll wrapper | On a narrow phone screen a `<table>` either overflows the viewport or squishes columns unreadably | Wrap every data table in a `<div style="overflow-x:auto">` (or a shared CSS class) rather than trying to make table columns reflow — matches the "no framework, vendor a small CSS file" stack decision already made |
+|---------|--------------|-------------------|
+| Labeling the Финансы balance ambiguously (just "Баланс") next to the existing profit/revenue reports | Owner conflates cash-on-hand with profit, may over-withdraw believing all of it is profit (Pitfall 9) | Explicit label "Наличные в кассе" distinct from "Выручка"/"Прибыль", short explanatory copy or cross-link |
+| Debit-only manual movement form (matches literal requirements wording) | No way to seed an opening balance or fix a mistake (Pitfall 7/8) | Bidirectional form (credit + debit) with a "Корректировка"/"Внесение" category from day one |
+| Hard-blocking negative balance | Breaks the app's own established warn-and-override precedent (oversell, min-price), traps the operator in a state they can't record | Warn-with-`confirm=1`-override, identical to the existing oversell/min-price pattern (Pitfall 6) |
+| No visible link between a sale's cash-in and the sale itself in the movement history | Owner sees a growing list of anonymous "приход" rows and can't tell which sale generated which credit, especially once returns start appearing as separate debit rows | Show the linked sale (customer/products) inline in the Финансы history row, reusing the existing `sale_id` FK, the same way `/history` already resolves op → product/batch context |
+| Receipt form silent about cash (Pitfall 9) | Operator forgets to record the manual supplier-payment withdrawal, balance silently overstated | One-line note on the receipt form near the cost field pointing to the manual withdrawal flow |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces.
-
-- [ ] **Batch/lot tracking (LOT-01):** Often missing the actual per-batch cached quantity repair path — verify `rebuild_stock` (or its batch-scoped sibling) can recompute every batch's quantity from the ledger alone, not just the product total.
-- [ ] **Manual batch selection at sale (LOT-02):** Often missing server-side re-validation that the submitted `batch_id` actually belongs to the submitted product — verify a crafted/stale request with a mismatched batch is rejected, not silently written.
-- [ ] **Oversell check after batches ship:** Often still keyed by `product_id` only — verify a basket with the same product split across two batches is validated per-batch, not per-product-total (Pitfall 2).
-- [ ] **Multiple warehouses (WH-01):** Often modeled as free text instead of a real table — verify warehouses have their own id/table (so stock can be reliably grouped/filtered), distinct from the free-text location tag within a warehouse (WH-02).
-- [ ] **Category browsing page (CAT-01):** Often reuses the raw free-text `Product.category` for grouping — verify near-duplicate categories differing only by case/whitespace/Cyrillic-fold don't fragment into separate groups (mirrors the already-fixed `name_lc` Cyrillic-case bug, D-27).
-- [ ] **Minimum sale price (PRICE-01):** Often implemented with a bare `or` fallback — verify an explicit minimum of exactly 0 is honored, not treated as "unset" (Pitfall 8).
-- [ ] **Mobile-responsive layout (UI-01):** Often "done" by just confirming the viewport meta tag exists — verify actual `@media` breakpoints exist in `style.css` (currently zero) and every wide table/basket/nav element has been checked at a real narrow width (360-400px), not just resized on a laptop.
-- [ ] **CSV export / backup:** Often left untouched after a data-model change — verify the batch/warehouse dimension is either included in `app/services/export.py`'s dumps or explicitly documented as an out-of-scope gap.
+- [ ] **Auto-credit on sale:** Often missing the symmetric debit on return — verify `returns.py`'s `register_return` writes a cash debit in the same transaction as the `return` op, computed independently (not matched against the original credit).
+- [ ] **Current balance display:** Often backed by a cached field with no recompute-from-ledger safety net — verify a `compute_cash_balance()` (mirroring `compute_stock()`) exists and, if a cache is used, a `rebuild_cash_balance()` (mirroring `rebuild_stock()`) exists too.
+- [ ] **Manual withdrawal reason:** Often free-text only, or category-only with no escape hatch — verify it mirrors `WRITEOFF_REASONS`: a server-validated category allow-list plus an optional free-text note, with "прочее" as the escape hatch.
+- [ ] **Negative-balance handling:** Often either silently allowed with no warning or hard-blocked — verify it follows the existing warn-with-`confirm=1`-override pattern used by oversell/min-price.
+- [ ] **Opening balance:** Often entirely absent — verify there's a way to record a starting/adjustment cash-in that isn't tied to a fake sale.
+- [ ] **Audit fields on cash movements:** Often reinvented ad hoc — verify the new table reuses `created_by`/`device_id`/`seq`/`synced_at` exactly like `Operation`, not a bespoke "operator" text field, so v2 multi-operator sync doesn't require a schema rewrite.
+- [ ] **Финансы history view:** Often built without pagination/filter/sort — verify it reuses `app/services/pagination.py`, matching every other list page (LIST-01..03).
+- [ ] **Reports/CSV export scope:** Often silently left out — verify whether cash movements are (or explicitly are not) part of the existing profit reports and the three-file CSV export (BCK-02), and that this is a stated decision, not an oversight.
 
 ## Recovery Strategies
 
-When pitfalls occur despite prevention, how to recover.
-
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|-----------------|
-| Batch/product cache drift (Pitfall 1/6) | LOW, if a rebuild function exists | Run the batch-scoped `rebuild_stock` equivalent to recompute every batch (and the product rollup) from `SUM(operations.qty_delta)` grouped by `batch_id`/`product_id` — this is exactly why FND-01's "always recomputable" contract must be extended, not just kept for products |
-| Correction "counted" mode corrupted a non-counted batch (Pitfall 3) | MEDIUM | Every write is an immutable ledger row (never UPDATE/DELETE), so the bad correction op is still visible in `/history`; write a compensating `correction` op restoring the affected batch's quantity, and fix the count-mode logic before it happens again — never hand-edit `products`/`batches` rows directly |
-| Wrong batch attributed to a sale line due to array index drift (Pitfall 7) | MEDIUM-HIGH | Same recovery pattern: use the existing partial-return machinery to reverse the wrongly-decremented batch and a manual correction against the batch that should have been sold from, with a note explaining the reattribution — do not try to mutate the original `sale` operation, it is append-only by design (DB trigger enforced) |
+|---------|----------------|-----------------|
+| Cash reused the `operations` table (Pitfall 1) | HIGH | Requires a new migration to split cash rows into a dedicated table, backfilling from the polluted `operations` rows, and auditing every `reports.py` query that filters `Operation.type` to confirm no cash rows leaked into profit/revenue sums |
+| Return didn't debit cash (Pitfall 2) | LOW–MEDIUM | Because the ledger is append-only, recovery is itself a compensating entry: a one-time backfill script that finds every `return` op lacking a matching cash debit and inserts the missing debit rows (never edits existing ones) |
+| Duplicate cash credit from a double-submitted sale (Pitfall 5) | LOW | Insert a compensating manual debit with a "Корректировка" category and a note referencing the duplicate sale/op id — same recovery mechanism as Pitfall 8, no special tooling needed if the bidirectional manual-movement form (Pitfall 7) was built |
+| Balance drifted from a non-atomic cache update (Pitfall 4) | LOW (if `rebuild_cash_balance()` exists) / MEDIUM (if it doesn't) | With the recompute function: call it to snap the cache back to `SUM(cash_movements.amount_cents)`. Without it: write the function first, then run it — same shape as the existing `rebuild_stock()` repair path |
 
 ## Pitfall-to-Phase Mapping
 
-How roadmap phases should address these pitfalls.
-
 | Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| 1. Two independently-drifting stock caches (product vs batch) | Phase 1 — schema + ledger write path | After any receipt/sale/writeoff/correction, `product.quantity` equals `SUM` of that product's batch quantities, checked by an automated test |
-| 2. Oversell check keyed by product, not (product, batch) | Batch/lot + sale-picker phase | Test: same product, two batches, one nearly empty — basket oversells only the empty batch and is caught |
-| 3. Correction count-mode diffs against the wrong baseline | Phase 1 (block/redesign) | Test: count one batch, assert no *other* batch's or the product's unrelated total changes incorrectly |
-| 4. `batch_id`/`warehouse_id` as JSON payload instead of FK columns | Phase 1 — schema migration | Migration review: both are real indexed nullable FK columns on `operations`, mirroring `product_id`/`sale_id` |
-| 5. Sale freeze uses product-card price/cost instead of batch's | Batch/lot + sale-picker phase | Test: two batches with different costs, both sold — profit report shows the correct, distinct cost per line |
-| 6. No repair path for batch-level cache | Phase 1, alongside the schema change | A `rebuild_stock`-equivalent function exists and is tested for batches, not just products |
-| 7. NOT NULL migration on non-empty tables / basket array misalignment | Phase 1 (migration), batch-picker phase (array alignment) | Migration tested against a DB seeded with pre-existing rows, not just an empty one; a basket test adds/removes rows before submit and checks batch attribution |
-| 8. Minimum price bare-`or` bug recurrence | Minimum-sale-price phase (PRICE-01) | Unit test: `min_price_cents = 0` still triggers the warning path |
-| Mobile nav overflow / non-scrollable wide tables | Mobile-responsive phase (UI-01) | Manual check at 360-400px viewport width: nav collapses or wraps cleanly, every data table scrolls horizontally instead of breaking layout |
-| Warehouse-as-free-text vs real entity | Multi-warehouse phase (WH-01/WH-02) | Warehouses list comes from a real table with stable ids, not a distinct-values query over a text column |
-| Category grouping fragmented by case/whitespace | Category browsing phase (CAT-01) | Two products entered as "Косметика" and "косметика " (trailing space) land in the same group on the browsing page |
+|---------|--------------------|----------------|
+| 1. Cash bolted onto `operations` table | Schema/foundation phase | New migration creates a dedicated `cash_movements` table (or equivalent) with its own immutability triggers; `OPERATION_TYPES` unchanged; no new `NOT NULL` relaxation on `Operation.product_id` |
+| 2. Return doesn't debit cash | Same schema/foundation phase (ship credit + debit together) | Test: sell → fully return → assert balance returns to pre-sale value |
+| 3. Return "matches" against original credit | Same schema/foundation phase | Code review: return-debit computation reads only from the `return` op's own frozen price/qty, never queries prior cash movements |
+| 4. Cache/balance drift | Same schema/foundation phase | Either no cache (live SUM), or a `rebuild_cash_balance()` exists and is exercised by a test that intentionally desyncs and repairs the cache |
+| 5. No idempotency guard | Schema/foundation phase (UI guard) + explicit Future/Out-of-Scope note if full fix deferred | Submit button disabled during HTMX request; PROJECT.md/roadmap explicitly notes duplicate-basket detection as a known gap if not fully solved |
+| 6. Negative-balance validation inconsistency | Manual-debit phase | Withdrawal form returns a warning + `confirm=1` override on negative-balance, verified against the same test shape as existing oversell tests |
+| 7. No opening balance | Manual-debit phase | Manual movement form supports a credit direction with an "opening/adjustment" category, not debit-only |
+| 8. No correction path for manual entries | Manual-debit phase (same as 7 — same underlying gap) | UI copy explicitly tells the operator to add a compensating entry rather than edit/delete; no admin route exists that UPDATEs a movement row |
+| 9. Balance/profit conflation + receipt-cash expectation gap | UI/history-and-balance-display phase | Финансы page copy uses "Наличные в кассе" (not "Прибыль"/"Выручка"); receipt form has a note about manual supplier-payment withdrawal |
 
 ## Sources
 
-- Direct reading of this repository (HIGH confidence — primary source for every architecture-specific pitfall above): `app/models.py`, `app/services/ledger.py`, `app/services/sales.py`, `app/services/stock.py`, `app/services/reports.py`, `app/services/writeoffs.py`, `app/services/returns.py`, `app/services/corrections.py`, `app/services/receipts.py`, `app/services/catalog.py`, `app/services/export.py`, `app/templates/base.html`, `app/templates/partials/sale_row.html`, `app/static/style.css`, `alembic/versions/0001..0005`, `.planning/PROJECT.md`.
-- General multi-location/batch inventory practitioner guidance (MEDIUM/LOW confidence, marketing-oriented sources, used only for generic domain color in the Performance/UX sections, not as primary evidence for any architecture-specific claim):
-  - [A Simple Guide to Multi-Location Inventory Management](https://www.inflowinventory.com/blog/multi-location-inventory-management/)
-  - [Multi Location Inventory Management: Tools, Strategies & Best Practices](https://www.kladana.com/blog/inventory-management/multi-location-inventory-management/)
-  - [Multi-Location Inventory Management: A Complete Guide](https://www.digit-software.com/blog/multi-location-inventory-software)
-  - [7 Multi-Location Inventory Management Tips to Optimize Your Business | Sortly](https://www.sortly.com/blog/multiple-location-inventory-management/)
-  - [Multi-Location Inventory Management: What to Know Before You Scale](https://www.handifox.com/handifox-blog/multi-location-inventory-management)
+- `app/services/ledger.py`, `sales.py`, `returns.py`, `writeoffs.py`, `receipts.py`, `reports.py`, `db.py`, `models.py` (this repository) — direct code reading, HIGH confidence, primary grounding for all architecture-specific pitfalls
+- `.planning/PROJECT.md` — milestone scope, requirements, and prior Key Decisions (D-XX/WR-XX conventions), HIGH confidence
+- [The Idempotent Ledger: Solving the Duplicate Event Problem in High-Throughput Financial Systems](https://medium.com/@adeyemi_malik/the-idempotent-ledger-solving-the-duplicate-event-problem-in-high-throughput-financial-systems-e41dfa390f25) — general idempotency/duplicate-write pitfalls in ledger design, MEDIUM confidence (practitioner blog, cross-checked against this app's own WAL/`operations_no_update` design)
+- [Formance — What Is a Ledger? A Guide for Software Engineers](https://www.formance.com/blog/financial-operations/what-is-a-ledger) — "storing a running balance as a standalone field is error-prone" finding used in Pitfall 4, MEDIUM confidence
+- [Accu-Tax — Cash Flow vs. Profit: The Mistake That Sinks Small Businesses](https://www.accutaxinc.net/cash-flow-vs-profit-the-mistake-that-sinks-small-businesses/) — small-business cash-vs-profit confusion pattern used in Pitfall 9, MEDIUM confidence
+- [GrowthForce — Why Profits Don't Equal Cash Flow](https://www.growthforce.com/blog/why-profits-dont-equal-cash-flow) — corroborating source for Pitfall 9, MEDIUM confidence
 
 ---
-*Pitfalls research for: MyOriShop v1.1 — Multi-Warehouse & Batch Tracking*
-*Researched: 2026-07-10*
+*Pitfalls research for: Adding a Касса (cash-balance) module to MyOriShop's existing warehouse/sales app*
+*Researched: 2026-07-14*
