@@ -14,9 +14,19 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 Delivered catalog/consultant-price + name autofill by product code on the product-add form and goods receipt (desktop + mobile), sales-page name↔code cross-autofill, mobile wizard context/navigation fixes (visible code/name/warehouse, uniform "Назад", basket step indicator, search quick actions), and pagination/filtering/sorting plus stock-guarded quick-delete on every list page. Milestone audit passed 13/13 requirements with no cross-phase integration gaps. See `.planning/milestones/v1.2-ROADMAP.md` and `.planning/MILESTONES.md` for full details.
 
+## Current Milestone: v1.3 Финансы / Касса
+
+**Goal:** Ввести кассу как агрегированный учёт денежных средств — автопополнение с каждой продажи, расход с обязательным указанием назначения, история движений и баланс — в виде отдельного модуля «Финансы».
+
+**Target features:**
+- Касса пополняется автоматически с каждой продажи (текущий баланс)
+- Списание из кассы с указанием назначения: оплата заказа поставщику, зарплата, прочее (с комментарием/причиной)
+- История движений кассы (приход с продаж + расход по категориям)
+- Отдельный раздел UI «Финансы»
+
 ## Next Milestone Goals
 
-v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally.
+v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally after v1.3 ships.
 
 <details>
 <summary>Archived: v1.1 Multi-Warehouse & Batch Tracking (SHIPPED 2026-07-13)</summary>
@@ -169,4 +179,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 after v1.2 milestone completion (Catalog Pricing UX & List Ergonomics) — v2.0 not yet scoped, run `/gsd-new-milestone` to start it*
+*Last updated: 2026-07-14 — milestone v1.3 (Финансы / Касса) started, requirements being defined*
