@@ -1,11 +1,14 @@
 """History page (OPS-04): thin route, read-only via app/services/operations.py."""
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
 from app.services.operations import filter_products, history_view
+from app.services.pagination import page_window
 
 router = APIRouter()
 
@@ -15,38 +18,45 @@ def history_page(
     request: Request,
     type: str = "",
     product: str = "",
+    sort: str = "",
     page: int = 0,
     session: Session = Depends(get_session),
 ):
-    result = history_view(session, type_filter=type or None, product_id=product or None, page=page)
-    # D-14/D-15/CR-01: only a genuine htmx request (a real HX-Request header,
-    # i.e. a filter change or "Показать ещё") gets the chrome-less rows-only
-    # partial with oob=True so the load-more control replaces itself in
-    # place. Every other request — including a plain top-level GET that
-    # happens to carry a type/product filter param (a browser reload, a
-    # bookmark, or a shared URL after hx-push-url wrote the filter into the
-    # address bar) — must always render the full pages/history.html chrome
-    # (nav + filter bar + table), with the filter bar pre-selecting the
-    # current type_filter/product_id via partials/history_filters.html's
-    # existing `selected` logic. Filter presence alone must never route to
-    # the chrome-less partial (that was the CR-01 bug: a real browser drops
-    # a bare rows fragment per HTML5 parsing rules, rendering a blank page).
-    # CR-01 (new, 05-09): the chrome-less HX response now renders the
-    # combined-response partial below, which pairs the data-rows main-swap
-    # payload with an oob update of the now-<tfoot>-isolated #load-more
-    # control. A filter change's default innerHTML swap on #history-tbody
-    # and the pagination button's own beforeend swap into the same target
-    # can no longer destroy the pagination control (previously both lived
-    # inside #history-tbody, the exact defect this plan fixes).
+    result = history_view(
+        session, type_filter=type or None, product_id=product or None, sort=sort, page=page
+    )
+    # D-02/D-03: page-number pagination retires the old "Показать ещё"
+    # load-more mechanism — both the is_hx and full-page branches now render
+    # the same single swappable partials/history_rows.html block (sort
+    # dropdown + header-row filters + table + pagination), consistent with
+    # every other list page. `extra_qs` re-serializes the active filter/sort
+    # state onto every pagination link so paging never loses the active view.
     is_hx = bool(request.headers.get("HX-Request"))
+    pw = page_window(result["page"], result["total_pages"])
+    qs_parts = {
+        k: v
+        for k, v in {
+            "type": result["type_filter"],
+            "product": result["product_id"],
+            "sort": result["sort"],
+        }.items()
+        if v
+    }
+    extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
     context = {
         "rows": result["rows"],
-        "has_next": result["has_next"],
         "page": result["page"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page_window": pw,
         "type_filter": result["type_filter"],
         "product_id": result["product_id"],
+        "sort": result["sort"],
+        "list_url": "/history",
+        "rows_target_id": "history-rows",
+        "extra_qs": extra_qs,
+        "products": filter_products(session),
     }
     if is_hx:
-        return templates.TemplateResponse(request, "partials/history_response.html", context)
-    context["products"] = filter_products(session)
+        return templates.TemplateResponse(request, "partials/history_rows.html", context)
     return templates.TemplateResponse(request, "pages/history.html", context)
