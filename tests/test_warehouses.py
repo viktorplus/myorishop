@@ -12,6 +12,7 @@ from alembic.config import Config
 
 from alembic import command
 from app.config import settings
+from app.models import Warehouse
 from app.services.warehouses import (
     NAME_REQUIRED_ERROR,
     WAREHOUSE_NOT_FOUND_ERROR,
@@ -61,7 +62,7 @@ def test_add_warehouse_requires_name(session):
 
     assert warehouse is None
     assert errors["name"] == NAME_REQUIRED_ERROR
-    assert list_warehouses(session) == []
+    assert list_warehouses(session)["warehouses"] == []
 
 
 def test_add_warehouse_allows_duplicate_names(session):
@@ -110,13 +111,91 @@ def test_soft_delete_and_restore_roundtrip(session):
     assert deleted is True
     assert warning == {}
     assert warehouse_a.deleted_at
-    # D-09: soft-deleted rows are STILL returned by list_warehouses.
-    all_rows = list_warehouses(session)
+    # D-14: the default list view now HIDES deleted rows.
+    default_rows = list_warehouses(session)["warehouses"]
+    assert warehouse_a.id not in [w.id for w in default_rows]
+    # status="all" still reaches it (the resolved restore path).
+    all_rows = list_warehouses(session, status="all")["warehouses"]
     assert warehouse_a.id in [w.id for w in all_rows]
 
     restore_warehouse(session, warehouse_a.id)
 
     assert warehouse_a.deleted_at is None
+
+
+def test_list_warehouses_default_hides_deleted(session):
+    active, _ = add_warehouse(session, name="Активный склад", address="")
+    deleted, _ = add_warehouse(session, name="Удалённый склад", address="")
+    soft_delete_warehouse(session, deleted.id, confirm=True)
+
+    result = list_warehouses(session)
+
+    ids = [w.id for w in result["warehouses"]]
+    assert active.id in ids
+    assert deleted.id not in ids
+
+
+def test_list_warehouses_status_all_and_deleted(session):
+    active, _ = add_warehouse(session, name="Активный склад", address="")
+    deleted, _ = add_warehouse(session, name="Удалённый склад", address="")
+    soft_delete_warehouse(session, deleted.id, confirm=True)
+
+    all_result = list_warehouses(session, status="all")
+    deleted_result = list_warehouses(session, status="deleted")
+
+    all_ids = [w.id for w in all_result["warehouses"]]
+    assert active.id in all_ids
+    assert deleted.id in all_ids
+    deleted_ids = [w.id for w in deleted_result["warehouses"]]
+    assert deleted_ids == [deleted.id]
+
+
+def test_list_warehouses_filters_by_name_and_address(session):
+    add_warehouse(session, name="Главный склад", address="ул. Ленина, 1")
+    add_warehouse(session, name="Запасной склад", address="ул. Мира, 5")
+
+    by_name = list_warehouses(session, name="главн")["warehouses"]
+    assert [w.name for w in by_name] == ["Главный склад"]
+
+    by_address = list_warehouses(session, address="ленина")["warehouses"]
+    assert [w.name for w in by_address] == ["Главный склад"]
+
+
+def test_list_warehouses_sort_name_asc_desc(session):
+    add_warehouse(session, name="Бета склад", address="")
+    add_warehouse(session, name="Альфа склад", address="")
+
+    asc = list_warehouses(session, status="all", sort="name_asc")["warehouses"]
+    assert [w.name for w in asc] == ["Альфа склад", "Бета склад"]
+
+    desc = list_warehouses(session, status="all", sort="name_desc")["warehouses"]
+    assert [w.name for w in desc] == ["Бета склад", "Альфа склад"]
+
+
+def test_soft_delete_warehouse_blocked_when_stock_positive(session, batch):
+    batch.quantity = 5
+    session.commit()
+
+    deleted, warning = soft_delete_warehouse(session, batch.warehouse_id, confirm=False)
+
+    assert deleted is False
+    assert warning == {"stock": 5}
+    warehouse = session.get(Warehouse, batch.warehouse_id)
+    assert warehouse.deleted_at is None
+
+
+def test_soft_delete_warehouse_stock_guard_runs_before_last_active_guard(session, batch):
+    # `batch`'s `warehouse` fixture is the ONLY warehouse in this session AND
+    # carries stock — the non-overridable stock guard (checked first) must
+    # win over the existing last-active guard.
+    batch.quantity = 3
+    session.commit()
+
+    deleted, warning = soft_delete_warehouse(session, batch.warehouse_id, confirm=False)
+
+    assert deleted is False
+    assert "stock" in warning
+    assert "warehouse" not in warning
 
 
 def test_delete_last_active_warehouse_warns_then_allows(session):
