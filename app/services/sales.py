@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
 from app.models import Batch, Operation, Product, Sale
-from app.services import catalog
+from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
 
@@ -264,6 +264,17 @@ def register_sale(
                 commit=False,
             )
             total_cents += qty * price_cents
+
+        # FIN-01/D-00c: stage ONE aggregated credit for the whole basket,
+        # linked by header.id, in the SAME transaction as the Sale + N
+        # Operation rows — closed by the single session.commit() below.
+        finance.record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=total_cents,
+            sale_id=header.id,
+            commit=False,
+        )
 
         # WR-03/WR-04: single transaction close.
         session.commit()

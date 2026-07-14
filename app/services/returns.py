@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.core import new_id
 from app.models import Batch, Operation, Product
+from app.services import finance
 from app.services.batches import legacy_batch
 from app.services.ledger import record_operation
 
@@ -158,8 +159,24 @@ def register_return(
             sale_id=origin.sale_id,
             batch_id=batch_id,
             payload={"origin_op_id": origin.id},
-            commit=True,
+            commit=False,
         )
+
+        # FIN-02/D-00d: the debit is computed INDEPENDENTLY from the
+        # return's own qty x the origin op's FROZEN unit_price_cents —
+        # never reconciled against or read from the prior sale credit row.
+        debit = qty * (origin.unit_price_cents or 0)
+        if debit:
+            finance.record_cash_movement(
+                session,
+                category="return",
+                amount_cents=-debit,
+                sale_id=origin.sale_id,
+                commit=False,
+            )
+
+        # T-15-03: close the return op + the cash debit in ONE commit.
+        session.commit()
     except ValueError:
         # Pitfall 7: record_operation raises ValueError for a soft-deleted
         # product (IN-01 guard) — surface an RU 4xx, never a raw 500.
