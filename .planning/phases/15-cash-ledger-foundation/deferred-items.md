@@ -26,3 +26,19 @@ normally — only the offline/`--sql` full-chain replay is affected.
 `bind.execute` if a from-scratch offline SQL dump is ever needed; not
 blocking for online `alembic upgrade head`, which is the only path used by
 `run.bat` / the app / test fixtures.
+
+## Pre-existing: `test_mobile_sales.py::test_batch_step_shows_per_card_warehouse_when_batches_span_two_warehouses` flakes under full-suite run
+
+**Found during:** 15-02 Task 2 full-suite verification (`uv run pytest -q`).
+
+**Issue:** `1 failed, 568 passed` on a full-suite run; the same test passes
+in isolation (`uv run pytest tests/test_mobile_sales.py::test_batch_step_shows_per_card_warehouse_when_batches_span_two_warehouses -q` → `1 passed`).
+Test-order/state-leak flake in an unrelated file (`test_mobile_sales.py`),
+not touched by Phase 15/finance.py or test_finance.py changes.
+
+**Scope:** Out of scope for Phase 15 Plan 02 — pre-existing issue, unrelated
+file. Not fixed per the Scope Boundary rule.
+
+**Recommendation:** investigate test isolation (likely a shared-fixture or
+DB-state leak) in `test_mobile_sales.py` if it recurs; does not block
+Phase 15 acceptance (`tests/test_finance.py -x` is green, 6/6 passed).
