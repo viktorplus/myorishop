@@ -49,7 +49,11 @@ def history_view(
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         .order_by(*order_by)
     )
-    count_stmt = select(func.count()).select_from(Operation).join(Product, Operation.product_id == Product.id)
+    count_stmt = (
+        select(func.count())
+        .select_from(Operation)
+        .join(Product, Operation.product_id == Product.id)
+    )
     if type_filter and type_filter in OPERATION_TYPES:
         stmt = stmt.where(Operation.type == type_filter)
         count_stmt = count_stmt.where(Operation.type == type_filter)
