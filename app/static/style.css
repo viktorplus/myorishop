@@ -129,6 +129,33 @@ select {
   margin-bottom: 16px;
 }
 
+/* Shared pagination bar (Phase 14, LIST-01, D-01/D-03): reused by every list page. */
+.pagination {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.pagination .current-page {
+  padding: 8px;
+  background: #e8effd;
+  font-size: 14px;
+}
+
+/* Per-column header-row filters (Phase 14, LIST-02, D-04). */
+.filter-row th {
+  background: #ffffff;
+  padding: 8px;
+}
+
+.filter-row input,
+.filter-row select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Visible focus state — never outline:none without replacement. */
 input:focus,
 select:focus,

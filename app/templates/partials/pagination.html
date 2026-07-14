@@ -1,0 +1,29 @@
+{# Phase 14 (LIST-01, D-01/D-02/D-03) shared page-number pagination bar.
+
+Expects ambient context vars: list_url, page (0-based), total_pages,
+page_window (list[int | "…"]), rows_target_id, extra_qs. Every list page
+includes this unchanged (Contract A) — do not hand-roll a second copy. #}
+<nav class="pagination" aria-label="Страницы">
+  {% if page > 0 %}
+  <button type="button" class="secondary"
+          hx-get="{{ list_url }}?page={{ page - 1 }}{{ extra_qs }}"
+          hx-target="#{{ rows_target_id }}" hx-swap="outerHTML" hx-push-url="true">‹ Пред.</button>
+  {% endif %}
+  {% for p in page_window %}
+    {% if p == '…' %}
+    <span class="muted">…</span>
+    {% elif p == page %}
+    <span class="current-page">{{ p + 1 }}</span>
+    {% else %}
+    <button type="button" class="secondary"
+            hx-get="{{ list_url }}?page={{ p }}{{ extra_qs }}"
+            hx-target="#{{ rows_target_id }}" hx-swap="outerHTML" hx-push-url="true">{{ p + 1 }}</button>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages - 1 %}
+  <button type="button" class="secondary"
+          hx-get="{{ list_url }}?page={{ page + 1 }}{{ extra_qs }}"
+          hx-target="#{{ rows_target_id }}" hx-swap="outerHTML" hx-push-url="true">След. ›</button>
+  {% endif %}
+  <span class="muted">Страница {{ page + 1 }} из {{ total_pages }}</span>
+</nav>

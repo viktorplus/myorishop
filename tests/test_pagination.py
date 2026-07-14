@@ -1,7 +1,9 @@
 """Phase 14 (LIST-01) executable contract: the shared pagination helper
-module (D-01/D-02/D-03) — LIST_PAGE_SIZE, page_window, paginate.
+module (D-01/D-02/D-03) — LIST_PAGE_SIZE, page_window, paginate — and the
+shared pagination partial (Contract A).
 """
 
+from app.routes import templates
 from app.services.pagination import LIST_PAGE_SIZE, page_window, paginate
 
 
@@ -37,3 +39,23 @@ def test_paginate_clamps_out_of_range_page():
     assert rows == list(range(40, 45))
     assert total == 45
     assert total_pages == 3
+
+
+# --- Shared partial rendering (Contract A) ---
+
+
+def test_pagination_partial_renders_standalone():
+    html = templates.env.get_template("partials/pagination.html").render(
+        list_url="/products",
+        page=1,
+        total_pages=5,
+        page_window=[0, 1, 2, "…", 4],
+        rows_target_id="product-rows",
+        extra_qs="",
+    )
+    assert 'class="pagination"' in html
+    assert "‹ Пред." in html
+    assert "След. ›" in html
+    assert 'class="current-page"' in html
+    assert "Страница 2 из 5" in html
+    assert 'hx-target="#product-rows"' in html
