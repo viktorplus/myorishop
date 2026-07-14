@@ -227,3 +227,32 @@ def test_web_customers_search_route_retired(client):
     /sales/customer-search route is untouched."""
     response = client.get("/customers/search")
     assert response.status_code == 404
+
+
+def test_web_customers_filter_row_narrows_results(client, session):
+    """LIST-02/D-04/D-05: the surname header-row filter narrows /customers rows."""
+    create_customer(session, name="Анна", surname="Иванова", consultant_number="")
+    create_customer(session, name="Ольга", surname="Петрова", consultant_number="")
+
+    response = client.get("/customers", params={"surname": "иванов"})
+    assert response.status_code == 200
+    assert "Иванова" in response.text
+    assert "Петрова" not in response.text
+
+
+def test_web_customers_pagination_bar_shows_correct_total(client, session):
+    """LIST-01/D-01/D-03: 25 seeded customers -> «Страница 1 из 2»."""
+    for i in range(25):
+        create_customer(session, name=f"Покупатель{i:02d}", surname="", consultant_number="")
+
+    response = client.get("/customers")
+    assert response.status_code == 200
+    assert "Страница 1 из 2" in response.text
+
+
+def test_web_customers_page_has_no_standalone_search_input(client):
+    """Pitfall 6: the old standalone q search box/route is gone; only header-row filters remain."""
+    response = client.get("/customers")
+    assert response.status_code == 200
+    assert 'hx-get="/customers/search"' not in response.text
+    assert 'name="q"' not in response.text
