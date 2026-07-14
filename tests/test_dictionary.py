@@ -36,7 +36,7 @@ def test_add_entry_creates_row_with_uuid_pk(session):
     assert entry.code == "1234"
     assert entry.name == "Губная Помада"
     assert len(entry.id) == 36
-    assert [e.id for e in list_entries(session)] == [entry.id]
+    assert [e.id for e in list_entries(session)["entries"]] == [entry.id]
     # Phase 14 (LIST-02): name_lc kept in sync on create.
     assert entry.name_lc == "губная помада"
 
@@ -119,6 +119,58 @@ def test_lookup_exact_code_after_strip(session):
     assert lookup(session, "1234").id == entry.id
     assert lookup(session, " 1234 ").id == entry.id
     assert lookup(session, "9999") is None
+
+
+# --- Phase 14 (LIST-01/02/03): SQL-side filter/sort/pagination ---
+
+
+def test_list_entries_filters_by_code_substring(session):
+    """code filter is a CONTAINS match, not just a prefix match."""
+    add_entry(session, code="1234", name="Помада")
+    add_entry(session, code="12345", name="Тушь")
+    add_entry(session, code="999", name="Тени")
+
+    result = list_entries(session, code="1234")
+    assert result["total"] == 2
+    assert {e.code for e in result["entries"]} == {"1234", "12345"}
+
+
+def test_list_entries_filters_by_name_cyrillic_safe(session):
+    """name filter matches name_lc, folding Cyrillic case in Python."""
+    add_entry(session, code="1234", name="Губная Помада")
+    add_entry(session, code="5678", name="Тушь Для Ресниц")
+
+    for query in ("помада", "ПОМАДА", "Помада"):
+        result = list_entries(session, name=query)
+        assert result["total"] == 1
+        assert result["entries"][0].code == "1234"
+
+
+def test_list_entries_sort_by_name(session):
+    """sort='name' orders by name_lc asc; default stays code asc (D-07)."""
+    add_entry(session, code="2", name="Яблоко")
+    add_entry(session, code="1", name="Апельсин")
+
+    by_name = list_entries(session, sort="name")
+    assert [e.code for e in by_name["entries"]] == ["1", "2"]
+
+    by_default = list_entries(session)
+    assert [e.code for e in by_default["entries"]] == ["1", "2"]
+
+
+def test_list_entries_paginates_and_clamps_page(session):
+    """20/page, total/total_pages reflect the filtered set; page clamps."""
+    for i in range(45):
+        add_entry(session, code=f"{i:02d}", name=f"Товар {i:02d}")
+
+    first = list_entries(session, page=0)
+    assert len(first["entries"]) == 20
+    assert first["total"] == 45
+    assert first["total_pages"] == 3
+
+    clamped = list_entries(session, page=99)
+    assert clamped["page"] == 2
+    assert len(clamped["entries"]) == 5
 
 
 def test_migration_0012_adds_name_lc_and_backfills_cyrillic(tmp_path, monkeypatch):
