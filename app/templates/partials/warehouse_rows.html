@@ -10,6 +10,22 @@
   </div>
   {% endif %}
 
+  {# Sort control (Phase 14, LIST-03, D-06/D-07): default order stays
+     active-first-then-name, matching the EXISTING behavior unchanged. #}
+  <div class="filter-bar">
+    <div class="field">
+      <label for="sort">Сортировать по</label>
+      <select id="sort" name="sort"
+              hx-get="/warehouses" hx-trigger="change"
+              hx-include="#warehouse-rows input, #warehouse-rows select"
+              hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value=""{% if not sort %} selected{% endif %}>Активные сначала (по умолчанию)</option>
+        <option value="name_asc"{% if sort == "name_asc" %} selected{% endif %}>Название (А→Я)</option>
+        <option value="name_desc"{% if sort == "name_desc" %} selected{% endif %}>Название (Я→А)</option>
+      </select>
+    </div>
+  </div>
+
   {% if warehouses %}
   <table>
     <thead>
@@ -17,6 +33,33 @@
         <th>Название</th>
         <th>Адрес</th>
         <th>Действия</th>
+      </tr>
+      {# Per-column header-row filters (Phase 14, LIST-02, D-04/D-05). The
+         status select is the resolved restore-path: selecting "Удалённые"
+         makes the existing per-row Восстановить button reachable again. #}
+      <tr class="filter-row">
+        <th>
+          <input type="text" name="name" value="{{ name }}" placeholder="Фильтр…"
+                 hx-get="/warehouses" hx-trigger="input changed delay:300ms"
+                 hx-include="#warehouse-rows input, #warehouse-rows select"
+                 hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
+        </th>
+        <th>
+          <input type="text" name="address" value="{{ address }}" placeholder="Фильтр…"
+                 hx-get="/warehouses" hx-trigger="input changed delay:300ms"
+                 hx-include="#warehouse-rows input, #warehouse-rows select"
+                 hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
+        </th>
+        <th>
+          <select name="status"
+                  hx-get="/warehouses" hx-trigger="change"
+                  hx-include="#warehouse-rows input, #warehouse-rows select"
+                  hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
+            <option value=""{% if not status %} selected{% endif %}>Активные (по умолчанию)</option>
+            <option value="deleted"{% if status == "deleted" %} selected{% endif %}>Удалённые</option>
+            <option value="all"{% if status == "all" %} selected{% endif %}>Все склады</option>
+          </select>
+        </th>
       </tr>
     </thead>
     <tbody>
@@ -54,6 +97,13 @@
           {% endif %}
         </td>
       </tr>
+      {% if stock_blocked_id == w.id %}
+      <tr>
+        <td colspan="3">
+          <p class="error">Нельзя удалить: на складе есть остаток. Переместите или спишите товар, чтобы удалить склад.</p>
+        </td>
+      </tr>
+      {% endif %}
       {% if warning_id == w.id %}
       <tr>
         <td colspan="3">
@@ -79,7 +129,12 @@
       {% endfor %}
     </tbody>
   </table>
+  {% include "partials/pagination.html" %}
   {% else %}
-  <p class="empty-state">Складов пока нет. Добавьте первый склад выше.</p>
+    {% if name or address or status %}
+    <p class="empty-state muted">Ничего не найдено по заданным фильтрам.</p>
+    {% else %}
+    <p class="empty-state">Складов пока нет. Добавьте первый склад выше.</p>
+    {% endif %}
   {% endif %}
 </div>

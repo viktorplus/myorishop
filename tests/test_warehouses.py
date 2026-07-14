@@ -270,7 +270,9 @@ def test_web_add_invalid_returns_swappable_422_partial(client):
     assert "Укажите название склада." in response.text
 
 
-def test_web_deleted_warehouse_stays_visible_with_restore(client, session):
+def test_web_quick_deleted_warehouse_hidden_by_default_reachable_via_status_filter(
+    client, session
+):
     # Two active warehouses so the one being deleted is not the last active one.
     add_warehouse(session, name="Склад А", address="")
     target, _ = add_warehouse(session, name="Склад на удаление", address="")
@@ -279,8 +281,15 @@ def test_web_deleted_warehouse_stays_visible_with_restore(client, session):
 
     assert response.status_code == 200
     assert "HX-Redirect" not in response.headers
-    assert "Склад на удаление" in response.text
-    assert "Восстановить" in response.text
+    # D-14: the default (active) response no longer shows the deleted row.
+    assert "Склад на удаление" not in response.text
+
+    default_view = client.get("/warehouses")
+    assert "Склад на удаление" not in default_view.text
+
+    deleted_view = client.get("/warehouses", params={"status": "deleted"})
+    assert "Склад на удаление" in deleted_view.text
+    assert "Восстановить" in deleted_view.text
 
 
 def test_web_delete_last_active_warehouse_warns_then_confirm_deletes(client, session):
@@ -299,7 +308,33 @@ def test_web_delete_last_active_warehouse_warns_then_confirm_deletes(client, ses
         f"/warehouses/{only.id}/delete", data={"confirm": "1"}
     )
     assert confirm_response.status_code == 200
-    assert "Восстановить" in confirm_response.text
+    # D-14: it was the only warehouse, so the default active-only view is
+    # now empty — the deleted row is absent, not shown with Восстановить.
+    assert "Единственный склад" not in confirm_response.text
+    assert "Складов пока нет" in confirm_response.text
+
+
+def test_web_warehouses_status_all_shows_active_and_deleted(client, session):
+    add_warehouse(session, name="Активный склад", address="")
+    deleted, _ = add_warehouse(session, name="Удалённый склад", address="")
+    soft_delete_warehouse(session, deleted.id, confirm=True)
+
+    response = client.get("/warehouses", params={"status": "all"})
+
+    assert response.status_code == 200
+    assert "Активный склад" in response.text
+    assert "Удалённый склад" in response.text
+    assert "Восстановить" in response.text
+
+
+def test_web_warehouses_sort_name_desc(client, session):
+    add_warehouse(session, name="Альфа склад", address="")
+    add_warehouse(session, name="Бета склад", address="")
+
+    response = client.get("/warehouses", params={"sort": "name_desc"})
+
+    assert response.status_code == 200
+    assert response.text.index("Бета склад") < response.text.index("Альфа склад")
 
 
 def test_web_quick_delete_blocked_when_stock_positive(client, session, batch):
