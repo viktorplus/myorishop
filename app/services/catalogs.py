@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Dictionary
+from app.services.pagination import paginate
 
 _JSON_CODE_RE = re.compile(r"^(\d{1,2})_(\d{2})$")  # MM_YY
 _URL_CODE_RE = re.compile(r"^(\d{4})-(\d{1,2})$")  # YYYY-MM
@@ -93,23 +94,46 @@ def _membership_counts(session: Session) -> dict[tuple[int, int], int]:
     return counts
 
 
-def list_catalogs(session: Session) -> list[dict]:
-    """All catalog PDFs, newest first, with product counts (CAT-04)."""
+def list_catalogs(session: Session, *, year: str = "", sort: str = "", page: int = 0) -> dict:
+    """Catalog PDFs with product counts, year filter, sort, and pagination (CAT-04, LIST-01..03).
+
+    Pagination slices the FLAT sorted list BEFORE the caller's year-grouping
+    template loop runs (Pitfall 5) — every returned page is self-contained.
+    """
     files = scan_catalog_files()
     counts = _membership_counts(session)
     catalogs = [
         {
-            "year": year,
+            "year": year_,
             "number": number,
             "filename": filename,
-            "url_code": to_url_code(year, number),
-            "label": catalog_label(year, number),
-            "product_count": counts.get((year, number), 0),
+            "url_code": to_url_code(year_, number),
+            "label": catalog_label(year_, number),
+            "product_count": counts.get((year_, number), 0),
         }
-        for (year, number), filename in files.items()
+        for (year_, number), filename in files.items()
     ]
-    catalogs.sort(key=lambda c: (c["year"], c["number"]), reverse=True)
-    return catalogs
+    if year.strip().isdigit():
+        catalogs = [c for c in catalogs if c["year"] == int(year.strip())]
+    catalogs.sort(key=lambda c: (c["year"], c["number"]), reverse=(sort != "oldest"))
+    page_rows, total, total_pages = paginate(catalogs, page)
+    return {
+        "catalogs": page_rows,
+        "total": total,
+        "total_pages": total_pages,
+        "page": page,
+        "year": year,
+        "sort": sort,
+    }
+
+
+def catalog_year_options(session: Session) -> list[int]:
+    """Distinct years present in the folder scan, sorted descending.
+
+    Always reflects every year on disk regardless of any active `year`
+    filter, so the `<select>` never loses an option the operator could pick.
+    """
+    return sorted({key[0] for key in scan_catalog_files()}, reverse=True)
 
 
 def get_catalog(url_code: str) -> dict | None:

@@ -4,6 +4,8 @@ Read-only: no writes here. The PDF list is a folder scan (no DB table); the
 per-catalog product list joins the Dictionary.catalogs membership column.
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -12,10 +14,12 @@ from app.db import get_session
 from app.routes import templates
 from app.services.catalogs import (
     catalog_file_path,
+    catalog_year_options,
     get_catalog,
     list_catalogs,
     products_in_catalog,
 )
+from app.services.pagination import page_window
 from app.services.pricing import prices_for_catalog
 
 router = APIRouter()
@@ -24,10 +28,39 @@ router = APIRouter()
 # /catalogs/{url_code} routes below.
 
 
+def _catalogs_context(session: Session, *, year: str = "", sort: str = "", page: int = 0) -> dict:
+    """Shared context builder for both the full-page and HTMX-partial responses."""
+    result = list_catalogs(session, year=year, sort=sort, page=page)
+    pw = page_window(result["page"], result["total_pages"])
+    qs_parts = {k: v for k, v in {"year": result["year"], "sort": result["sort"]}.items() if v}
+    extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
+    return {
+        "catalogs": result["catalogs"],
+        "page": result["page"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page_window": pw,
+        "year": result["year"],
+        "sort": result["sort"],
+        "year_options": catalog_year_options(session),
+        "list_url": "/catalogs",
+        "rows_target_id": "catalog-rows",
+        "extra_qs": extra_qs,
+    }
+
+
 @router.get("/catalogs")
-def catalogs_page(request: Request, session: Session = Depends(get_session)):
-    context = {"catalogs": list_catalogs(session)}
-    return templates.TemplateResponse(request, "pages/catalogs.html", context)
+def catalogs_page(
+    request: Request,
+    year: str = "",
+    sort: str = "",
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    context = _catalogs_context(session, year=year, sort=sort, page=page)
+    is_hx = bool(request.headers.get("HX-Request"))
+    template = "partials/catalog_rows.html" if is_hx else "pages/catalogs.html"
+    return templates.TemplateResponse(request, template, context)
 
 
 @router.get("/catalogs/{url_code}/file")
