@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
-status: planning
+status: executing
 stopped_at: Phase 15 context gathered
-last_updated: "2026-07-14T19:33:35.091Z"
+last_updated: "2026-07-14T20:12:12.628Z"
 last_activity: 2026-07-14 — v1.3 roadmap created (Phases 15-17), 12/12 requirements mapped
 progress:
   total_phases: 3
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 Phase: 15 of 17 (Cash Ledger Foundation)
 Plan: — (not yet planned)
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-07-14 — v1.3 roadmap created (Phases 15-17), 12/12 requirements mapped
 
 Progress: [░░░░░░░░░░] 0%

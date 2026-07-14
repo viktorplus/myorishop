@@ -65,42 +65,62 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 ## Phase Details
 
 ### Phase 15: Cash Ledger Foundation
+
 **Goal**: Every sale credits the till and every return debits it symmetrically, and the operator can see the resulting balance in a new «Финансы» section
 **Depends on**: Phase 14 (adds a new sibling `cash_movements` ledger — distinct from the existing `operations` table, per research: cash has no `product_id`/batch invariants — wired into the existing `register_sale`/`register_return` write paths inside their current transactions; no reuse of Phase 14's list infra yet, that lands in Phase 16)
 **Requirements**: FIN-01, FIN-02, FIN-06
 **Success Criteria** (what must be TRUE):
+
   1. Operator sees a new «Финансы» nav section showing the current cash balance
   2. Registering a sale immediately increases the displayed cash balance by the sale's total amount
-  3. Registering a return against that sale immediately decreases the balance by the same amount, restoring it to the pre-sale value
-**Plans**: 4 plans
+  3. Registering a return against that sale immediately decreases the balance by the same amount, restoring it to the pre-sale value**Plans**: 4 plans
+
+**Wave 1**
+
 - [ ] 15-01-PLAN.md — Cash ledger schema: CashMovement model + append-only triggers (db.py + migration 0013)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 15-02-PLAN.md — finance.py single write path + live-SUM compute_balance
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 15-03-PLAN.md — Auto-credit on sale + atomic auto-debit on return
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 15-04-PLAN.md — «Финансы» section: routes, «Баланс кассы» pages, desktop nav + mobile tile
+
 **UI hint**: yes
 
 ### Phase 16: Manual Cash Movements & History
+
 **Goal**: Operator can manually adjust the till — withdrawals with a mandatory category, deposits for opening balance/correction — and review every movement, automatic and manual, in one paginated/filterable history
 **Depends on**: Phase 15 (extends the `cash_movements` ledger and the Финансы section with a manual-entry write path and a read view over all entries, both auto and manual)
 **Requirements**: FIN-03, FIN-04, FIN-05, FIN-07
 **Success Criteria** (what must be TRUE):
+
   1. Operator can withdraw funds from the till by selecting a mandatory category (оплата поставщику / зарплата / аренда / коммунальные / прочее) and entering a comment; the balance decreases accordingly
   2. Operator can manually add funds (opening balance or correction) with a comment; the balance increases accordingly
   3. Withdrawing an amount that would take the balance negative shows a warning but still lets the operator confirm and proceed, matching the existing oversell/min-price warn-but-allow pattern
   4. Operator can browse a paginated, filterable history of every cash movement — sale credits, return debits, and manual entries — on the Финансы page
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 17: Financial Reports, Export & Dashboard Analytics
+
 **Goal**: Operator can analyze cash flow and overall profitability for any period, export cash movements to CSV, and see the till's business-health metrics (profit, stock value) on the Финансы dashboard
 **Depends on**: Phase 16 (net profit needs manual expense movements from Phase 16 to subtract; the period report and CSV export reuse the full movement set plus the existing period-filter/CSV-export conventions from Phase 6. FIN-10/11/12 (profit, stock valuation) are grouped here rather than with Phase 16's manual-movement UI because they are read-only period/point-in-time aggregation queries — reusing `sales_profit_report` and extending the existing stock-report shape — the same nature as FIN-08's cash-flow report and FIN-09's export, not the write-path/form work of Phase 16)
 **Requirements**: FIN-08, FIN-09, FIN-10, FIN-11, FIN-12
 **Success Criteria** (what must be TRUE):
+
   1. Operator can view a report of cash movements for a chosen period, broken down by income (sales) vs. expense category
   2. Operator can export a period's cash movements to CSV, opening correctly in Excel via the same BOM/semicolon/formula-escape convention as the existing exports
   3. The Финансы dashboard shows gross profit for the selected period (sale price minus purchase cost across sales, reusing `sales_profit_report`)
   4. The Финансы dashboard shows net profit for the same period (gross profit minus cash expenses recorded in that period)
   5. The Финансы dashboard shows the total value of stock currently on hand, both at purchase cost and at sale price
+
 **Plans**: TBD
 **UI hint**: yes
 
