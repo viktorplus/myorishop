@@ -120,7 +120,7 @@ Items acknowledged and carried forward from previous milestone close:
 | uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
 | code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) |
-| verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | human_needed | 2026-07-14 (phase 15 execution) |
+| verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | confirmed_working | 2026-07-14 (phase 15 execution), confirmed by operator 2026-07-15 |
 
 ## Session Continuity
 
@@ -130,5 +130,5 @@ Resume file: .planning/phases/15-cash-ledger-foundation/15-VERIFICATION.md
 
 ## Operator Next Steps
 
-- Manually check `/finance` and `/m/finance` in the browser (human_needed item from 15-VERIFICATION.md) — confirm balance updates through real sale/return forms
+- Run `/gsd-plan-phase 16` to plan Phase 16: Manual Cash Movements & History
 - Run `/gsd-plan-phase 16` to plan Phase 16: Manual Cash Movements & History
