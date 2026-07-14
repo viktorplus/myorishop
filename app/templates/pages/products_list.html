@@ -4,13 +4,5 @@
 
 <p class="page-actions"><a class="button" href="/products/new">Добавить товар</a></p>
 
-{# D-25: active search — debounce 300ms, hx-sync kills stale-response races. #}
-<input type="search" name="q" placeholder="Код или название товара…" autofocus
-       hx-get="/products/search"
-       hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
-       hx-target="#product-rows"
-       hx-swap="outerHTML"
-       hx-sync="this:replace">
-
 {% include "partials/product_rows.html" %}
 {% endblock %}

@@ -1,7 +1,23 @@
-{# Stable HTMX swap target: the /products search input swaps #product-rows (outerHTML).
-   Context comes from catalog.search_view: q + rows of {product, code_seg, name_seg}.
-   Pattern 5: segments are autoescaped; <mark> is literal template HTML — never |safe. #}
+{# Stable HTMX swap target: sort/filter-row inputs and pagination all swap
+   #product-rows (outerHTML). Context comes from catalog.list_products_view
+   via routes.products._products_context: rows (plain Product), page/total/
+   total_pages/page_window, code/name/category/sort, list_url, rows_target_id,
+   extra_qs, blocked_id/blocked_qty (LIST-01..05, Phase 14). #}
 <div id="product-rows">
+  <div class="filter-bar">
+    <div class="field">
+      <label for="sort">Сортировать по</label>
+      <select id="sort" name="sort"
+              hx-get="/products" hx-trigger="change"
+              hx-include="#product-rows input, #product-rows select"
+              hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value="" {% if not sort %}selected{% endif %}>Название (А→Я) (по умолчанию)</option>
+        <option value="name_desc" {% if sort == 'name_desc' %}selected{% endif %}>Название (Я→А)</option>
+        <option value="code" {% if sort == 'code' %}selected{% endif %}>Код (А→Я)</option>
+      </select>
+    </div>
+  </div>
+
   {% if rows %}
   <table>
     <thead>
@@ -14,25 +30,54 @@
         <th class="num">Каталог</th>
         <th>Действия</th>
       </tr>
+      <tr class="filter-row">
+        <th><input type="text" name="code" placeholder="Фильтр…" value="{{ code }}"
+                   hx-get="/products" hx-trigger="input changed delay:300ms"
+                   hx-include="#product-rows input, #product-rows select"
+                   hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><input type="text" name="name" placeholder="Фильтр…" value="{{ name }}"
+                   hx-get="/products" hx-trigger="input changed delay:300ms"
+                   hx-include="#product-rows input, #product-rows select"
+                   hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><input type="text" name="category" placeholder="Фильтр…" value="{{ category }}"
+                   hx-get="/products" hx-trigger="input changed delay:300ms"
+                   hx-include="#product-rows input, #product-rows select"
+                   hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th></th>
+        <th></th>
+        <th></th>
+        <th></th>
+      </tr>
     </thead>
     <tbody>
-      {% for row in rows %}
-      {% set product = row.product %}
+      {% for product in rows %}
       <tr>
-        <td>{% set pre, match, post = row.code_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
-        <td>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</td>
+        <td>{{ product.code }}</td>
+        <td>{{ product.name }}</td>
         <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td><a href="/products/{{ product.id }}/edit">Изменить</a></td>
+        <td>
+          <a href="/products/{{ product.id }}/edit">Изменить</a>
+          <button type="button" class="danger"
+                  hx-post="/products/{{ product.id }}/quick-delete"
+                  hx-confirm="Удалить товар „{{ product.name }}“? Он будет скрыт из каталога и поиска, история операций сохранится."
+                  hx-target="#product-rows" hx-swap="outerHTML">Удалить</button>
+        </td>
       </tr>
+      {% if blocked_id == product.id %}
+      <tr>
+        <td colspan="7"><p class="error">Нельзя удалить: на остатке {{ blocked_qty }} шт. Спишите остаток, чтобы удалить товар.</p></td>
+      </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
   </table>
-  {% elif q and q.strip() %}
+  {% include "partials/pagination.html" %}
+  {% elif code or name or category %}
   <div class="empty-state">
-    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте код или название.</p>
+    <p class="muted">Ничего не найдено по заданным фильтрам.</p>
   </div>
   {% else %}
   <div class="empty-state">

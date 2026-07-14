@@ -1181,3 +1181,31 @@ def test_web_quick_delete_succeeds_and_removes_row(client, product):
     response = client.post(f"/products/{product.id}/quick-delete")
     assert response.status_code == 200
     assert product.name not in response.text
+
+
+def test_web_products_filter_row_narrows_results(client, session):
+    """LIST-02: filtering by category narrows the rendered rows to matches only."""
+    _create(session, "F1", "Тушь Для Ресниц", category="Макияж")
+    _create(session, "F2", "Крем Для Рук", category="Уход")
+
+    page = client.get("/products", params={"category": "макияж"})
+    assert page.status_code == 200
+    assert "Тушь Для Ресниц" in page.text
+    assert "Крем Для Рук" not in page.text
+
+
+def test_web_products_pagination_bar_shows_correct_total(client, session):
+    """LIST-01: 25 active products -> two pages, page-of-total text rendered."""
+    for i in range(25):
+        _create(session, f"PG{i:03d}", f"Товар Страница {i:03d}")
+
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Страница 1 из 2" in page.text
+
+
+def test_web_products_page_has_no_standalone_search_input(client):
+    """Pitfall 6: the standalone /products/search input is retired."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert 'hx-get="/products/search"' not in page.text
