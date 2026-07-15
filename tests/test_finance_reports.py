@@ -463,3 +463,102 @@ def test_web_finance_report_empty_state(client):
     assert response.status_code == 200
     assert "За выбранный период движений не было." in response.text
     assert "<h2>Приход</h2>" not in response.text
+
+
+# --- web: mobile /m/finance/metrics + /m/finance/report + CSV (17-04 Task 1) -
+
+
+def test_web_mobile_finance_metrics_hx_tiles(client):
+    """Mirrors test_web_finance_metrics_hx_returns_tiles_partial: an HX-Request
+    GET returns ONLY the SHARED tiles partial (finance_tiles.html, D-04c — no
+    mobile-specific tiles partial); a plain GET returns the full /m/finance
+    page chrome. GET /m/finance itself also still returns 200 with the merged
+    metrics context wired into mobile_finance_page (no write path added)."""
+    hx_response = client.get("/m/finance/metrics", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "metric-tile" in hx_response.text
+    assert "<h1>Баланс кассы</h1>" not in hx_response.text
+
+    plain_response = client.get("/m/finance/metrics")
+    assert plain_response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in plain_response.text
+
+    page_response = client.get("/m/finance")
+    assert page_response.status_code == 200
+
+
+def test_web_mobile_finance_report_hx(client):
+    """Mirrors test_web_finance_report_hx_returns_partial_only: a genuine
+    HX-Request GET returns ONLY the shared results partial, never the full
+    page chrome; a plain GET returns the full /m/finance/report page."""
+    hx_response = client.get("/m/finance/report", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" not in hx_response.text
+
+    plain_response = client.get("/m/finance/report")
+    assert plain_response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" in plain_response.text
+
+
+def test_web_mobile_finance_report_csv(session, client, monkeypatch):
+    """Mirrors test_web_finance_report_csv_streams_period_scoped_csv (17-03
+    Task 1): /m/finance/report.csv delegates to the SAME
+    stream_cash_movements_csv service used by the desktop route."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=1500)
+
+    response = client.get("/m/finance/report.csv?from=2026-07-10&to=2026-07-10")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "cash_movements.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    assert "Когда;Категория;Комментарий;Сумма" in text
+    assert "15,00" in text
+
+
+# --- web: mobile finance.html «Показатели» + finance_report.html shell (17-04 Task 2) -
+
+
+def test_web_mobile_finance_report_matches_desktop_subtotals(session, client, monkeypatch):
+    """Mobile parity (D-04c): /m/finance/report renders the SAME income/expense
+    «Итого за период» subtotals as the desktop /finance/report for an identical
+    period — both delegate to the same cash_flow_report service + shared
+    partials/cash_flow_report.html, only finance_base differs."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=3000)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+
+    desktop = client.get("/finance/report?from=2026-07-10&to=2026-07-10")
+    mobile = client.get("/m/finance/report?from=2026-07-10&to=2026-07-10")
+    assert desktop.status_code == 200
+    assert mobile.status_code == 200
+    assert "Скачать CSV" in mobile.text
+    assert 'href="/m/finance/report.csv' in mobile.text
+    for needle in ("Приход", "Расход", "Продажа", "Аренда", "Итого за период"):
+        assert needle in desktop.text
+        assert needle in mobile.text
+
+
+def test_web_mobile_finance_tiles_net_caveat(client):
+    """/m/finance shows the gross/net/stock tiles (D-04) with the mandatory
+    net cash-outflow caveat line (D-01b) — the Phase 15-16 balance/forms/
+    history includes stay intact alongside the new «Показатели» section."""
+    response = client.get("/m/finance")
+    assert response.status_code == 200
+    assert "Показатели" in response.text
+    assert "metric-tile" in response.text
+    assert (
+        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Это не бухгалтерская прибыль."
+    ) in response.text
+    assert "на текущий момент" in response.text
+    assert "<h1>Баланс кассы</h1>" in response.text
+    assert "Снять деньги" in response.text
+    assert "Внести деньги" in response.text
+    assert "История движений" in response.text
