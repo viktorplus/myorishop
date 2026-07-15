@@ -342,17 +342,23 @@ def test_mobile_page_shows_balance(mobile_client_factory, session):
 
 def test_withdraw_writes_one_negative_row(session):
     """FIN-03/D-02a: a manual withdrawal writes exactly one row with the sign
-    applied server-side (positive input -> negative amount_cents)."""
+    applied server-side (positive input -> negative amount_cents). Balance is
+    pre-seeded so the negative-balance gate (D-05) does not fire here."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
     result, errors = record_manual_movement(
         session, category="withdrawal_supplier", amount_raw="15,00", note=""
     )
     assert errors == {}
     assert result
-    rows = list(session.scalars(select(CashMovement)))
-    assert len(rows) == 1
-    assert rows[0].amount_cents == -1500
-    assert rows[0].category == "withdrawal_supplier"
-    assert compute_balance(session) == -1500
+    withdraw_rows = list(
+        session.scalars(
+            select(CashMovement).where(CashMovement.category == "withdrawal_supplier")
+        )
+    )
+    assert len(withdraw_rows) == 1
+    assert withdraw_rows[0].amount_cents == -1500
+    assert withdraw_rows[0].category == "withdrawal_supplier"
+    assert compute_balance(session) == 10000 - 1500
 
 
 def test_deposit_writes_one_positive_row(session):
@@ -413,23 +419,29 @@ def test_deposit_correction_requires_comment(session):
 
 
 def test_withdraw_other_with_comment_succeeds(session):
-    """D-04: the mandatory-comment categories succeed with a non-blank note."""
+    """D-04: the mandatory-comment categories succeed with a non-blank note.
+    Balance pre-seeded so the D-05 gate does not fire."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
     result, errors = record_manual_movement(
         session, category="withdrawal_other", amount_raw="10,00", note="ремонт"
     )
     assert errors == {}
     assert result
-    assert _cash_count(session) == 1
+    assert result["movement"].note == "ремонт"
+    assert _cash_count(session) == 2
 
 
 def test_withdraw_supplier_allows_blank_comment(session):
-    """D-04: other categories succeed with a blank note."""
+    """D-04: other categories succeed with a blank note (stored as NULL).
+    Balance pre-seeded so the D-05 gate does not fire."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
     result, errors = record_manual_movement(
         session, category="withdrawal_supplier", amount_raw="10,00", note=""
     )
     assert errors == {}
     assert result
-    assert _cash_count(session) == 1
+    assert result["movement"].note is None
+    assert _cash_count(session) == 2
 
 
 def test_negative_gate_blocks_without_confirm(session):
