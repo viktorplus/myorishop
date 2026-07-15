@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-07-15T19:18:37.854Z"
 last_activity: 2026-07-15
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,20 +20,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 17 — financial-reports-export-dashboard-analytics
+**Current focus:** Phase 18 — Two-Price Model Consolidation (ДЦ/ПЦ)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-15 — Milestone v2.0 started
+Phase: 18 of 24 (Two-Price Model Consolidation) — first phase of v2.0
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-15 — v2.0 roadmap created (7 phases, 18-24; 46/46 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0% (v2.0)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 59
+- Total plans completed: 59 (v1.0-v1.3)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -41,63 +43,29 @@ Last activity: 2026-07-15 — Milestone v2.0 started
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 3 | - | - |
-| 2 | 4 | - | - |
-| 05 | 9 | - | - |
-| 06 | 6 | - | - |
-| 07 | 4 | - | - |
-| 09 | 9 | - | - |
-| 10 | 3 | - | - |
-| 12 | 4 | - | - |
-| 13 | 6 | - | - |
-| 14 | 7 | - | - |
-| 16 | 4 | - | - |
+| 1-17 | 59 | - | - |
 
 **Recent Trend:**
 
 - Last 5 plans: -
 - Trend: -
 
-*Updated after each plan completion*
-| Phase 01 P01 | 8min | 2 tasks | 12 files |
-| Phase 01 P02 | 5min | 2 tasks | 9 files |
-| Phase 01 P03 | 7min | 3 tasks | 16 files |
-| Phase 02 P01 | 16min | 3 tasks | 12 files |
-| Phase 02 P02 | 17min | 3 tasks | 6 files |
-| Phase 02 P03 | 6min | 2 tasks | 6 files |
-| Phase 02 P04 | 9min | 2 tasks | 9 files |
-| Phase 03 P01 | 8min | 3 tasks | 9 files |
-| Phase 03 P02 | 10min | 3 tasks | 6 files |
-| Phase 03 P03 | 9min | 3 tasks | 11 files |
-| Phase 04 P06 | 8min | 1 tasks | 2 files |
-| Phase 05 P01 | 12min | 2 tasks | 7 files |
-| Phase 05 P02 | 13min | 3 tasks | 8 files |
-| Phase 05 P03 | 10min | 3 tasks | 6 files |
-| Phase 05 P04 | 13min | 3 tasks | 8 files |
-| Phase 05 P05 | 18min | 3 tasks | 8 files |
-| Phase 14 P01 | 15min | 3 tasks | 8 files |
-| Phase 16 P01 | 5m | 2 tasks | 3 files |
-| Phase 16 P02 | 12min | 2 tasks | 2 files |
-| Phase 16 P03 | 18min | 2 tasks | 8 files |
-| Phase 16 P04 | 20min | 2 tasks | 5 files |
+*Updated after each plan completion. Per-plan v1.0-v1.3 timings archived with their milestones.*
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+Decisions are logged in PROJECT.md Key Decisions table (v1.0-v1.3 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
 
-- **v1.3 roadmap (2026-07-14):** 12 requirements grouped into 3 phases — Phase 15 (Cash Ledger Foundation: FIN-01/02/06 — new sibling `cash_movements` ledger, auto-credit on sale, auto-debit on return, balance visible in a new «Финансы» section), Phase 16 (Manual Cash Movements & History: FIN-03/04/05/07 — bidirectional manual entry with mandatory category on withdrawal, warn-but-allow negative balance, paginated/filterable history), Phase 17 (Financial Reports, Export & Dashboard Analytics: FIN-08/09/10/11/12 — period cash-flow report, CSV export, gross/net profit and stock valuation on the dashboard).
-- Sale-credit (FIN-01) and return-debit (FIN-02) kept in the same phase (15), not split across phases, per research Pitfall 2 — a return without its symmetric debit silently corrupts the balance the first time a customer returns something.
-- FIN-06 (balance display) folded into Phase 15 rather than deferred to Phase 16 — makes the foundation phase's success criteria observable through the UI (mirrors the v1.0 Phase 1 "walking skeleton" pattern) instead of requiring a debug-only verification path.
-- FIN-10/11/12 (gross profit, net profit, stock valuation — added after research via user follow-up) grouped into Phase 17 alongside FIN-08 (cash-flow report) and FIN-09 (CSV export) rather than into Phase 16's manual-movement UI — all five are read-only period/point-in-time aggregation queries reusing existing report infrastructure (`sales_profit_report`, the stock report shape, the export.py CSV convention), distinct in nature from Phase 16's write-path/form work. Net profit (FIN-11) also has a hard dependency on Phase 16's manual expense movements existing to subtract.
-- 3 phases (not the 4-6 "standard" granularity default) mirrors the v1.2 precedent — 13 requirements also compressed to 3 phases under the same granularity setting — and follows the "don't pad small projects" rule for a contained, single-ledger integration milestone.
-- [Phase ?]: D-01: manual cash movements extend CASH_CATEGORIES — no type column, no migration
-- [Phase ?]: CASH_BUCKETS kept server-side only (not a Jinja global) — a filter map, never rendered
-- [Phase ?]: Manual-entry sign tests pre-seed a covering balance so the D-05 negative gate does not fire; sign/comment verified independently
-- [Phase ?]: [Phase 16-03]: Manual cash forms shared desktop-mobile via a finance_base context var (no hardcoded /finance); Plan 04 reuses withdraw_form/deposit_form/cash_negative_balance verbatim with finance_base=/m/finance
-- [Phase ?]: [Phase 16-03]: negative-balance warn re-renders at HTTP 200 (not 422) so htmx swaps it; deposit route relabels the service category error to Vyberite osnovanie
-- [Phase ?]: [Phase 16-04]: Mobile /m/finance reuses the shared withdraw/deposit forms + record_manual_movement service verbatim (finance_base=/m/finance); only the history presentation is forked — cards + Pokazat esche load-more (has_next sentinel), never the desktop numbered bar (UI-SPEC Q1)
+- **v2.0 roadmap (2026-07-15):** 46 requirements grouped into 7 phases (18-24) — Phase 18 (Two-Price Model: PROD-05/06/07), Phase 19 (Products Page Rebuild: PROD-01..04/08), Phase 20 (Warehouses & Batch-Split Transfers: WH-01..03/XFER-01), Phase 21 (Customer Profiles & Insights: CUST-01..08), Phase 22 (Sales Page Rebuild: SALE-01..07), Phase 23 (Dashboard & History Rebuild: DASH-01..05/HIST-01..04), Phase 24 (Navigation Restructure & Settings: NAV-01..08/RPT-01/MOB-01).
+- **Price consolidation (PROD-05/06/07) sequenced first, as its own phase.** It is the only schema-affecting change in the milestone (`Product.catalog_cents` collapses into ПЦ; `min_sale_cents` stays — see Blockers/Concerns) and it is read by receipts, sales, product cards, the dictionary, and the stock-valuation reports. Every later phase builds UI on the final two-price shape — mirrors the v1.1 "riskiest ledger-schema work before the UI that reads it" ordering decision that held for 5 phases.
+- **Navigation (NAV-01..08) sequenced last, not first.** NAV-01/02/03 nest Приход/Списание/Справочник under Товары and NAV-07 nests Перемещение under the product context — all soft-depend on those pages being in final shape (Phases 19/20), and NAV-08's final top-level tab set can only be settled once Главная is rebuilt (Phase 23). MOB-01 (mobile tab parity) reads the final desktop tab set, so it rides with NAV-08 rather than standing alone.
+- **RPT-01 ("Назад к отчётам") and MOB-01 folded into Phase 24 rather than becoming standalone phases.** Both are single-requirement navigation items; per the anti-fragmentation rule they belong with the nav phase they are conceptually part of. RPT-01 also directly addresses the class of gap UAT found in Phase 17 (report pages shipped without entry/exit navigation).
+- **CUST-01..08 (Phase 21) sequenced before SALE-01..07 (Phase 22).** SALE-05 requires the inline new-customer form to show "optional profile fields" — those fields must exist on the profile before the sale form can render them, otherwise the sale rebuild would ship against a profile shape it then has to redo.
+- **DASH-01..05 and HIST-01..04 combined into one phase (23).** Both are read-only presentations over the existing ledger, and DASH-05's per-operation-type feed columns and HIST-01's per-operation-type column sets are the same mapping — building them apart would duplicate it. Most underlying data (period totals, stock valuation) is already computed by the Phase 6/17 reporting services.
+- **XFER-01 grouped with the warehouse work (Phase 20), not the batch/product work.** It is warehouse-to-warehouse batch-split behavior; v1.1's Phase 10 set the precedent of pairing transfers with warehouse-domain work.
+- **7 phases (above the 4-6 "standard" granularity band) is deliberate.** v1.2 and v1.3 each compressed ~12-13 requirements into 3 phases (~4.3 reqs/phase); at that established rate 46 requirements implies ~10 phases. 7 is already a compression, and each phase still owns one coherent page/capability with user-observable criteria. Compressing further would produce grab-bag phases mixing schema migration, service logic, and unrelated page rebuilds.
 
 ### Pending Todos
 
@@ -109,10 +77,23 @@ None yet.
 
 ### Blockers/Concerns
 
+- ✅ [Phase 18] RESOLVED 2026-07-15 (operator decision). The two-price consolidation
+  touches live money columns that shipped features read. Scope now explicit:
+  `Product.catalog_cents` collapses into ПЦ (`sale_cents`); `Product.cost_cents`
+  is ДЦ; `CatalogPrice.consumer_cents`/`consultant_cents` map to ПЦ/ДЦ (v1.2
+  catalog autofill, quick-tasks 260714-2w6 / 260714-fix). **`Product.min_sale_cents`
+  is NOT removed** — the operator confirmed it is a guardrail threshold (like the
+  low-stock threshold), not a displayed price, so Phase 7's below-minimum sale
+  warning (PRICE-01, shipped v1.1) must keep working unchanged. PROD-05 and the
+  Phase 18 roadmap entry both carry this exemption; Phase 18 success criterion 5
+  is the PRICE-01 regression guard.
 - ℹ️ [Phase 16] Advisory (cosmetic, desktop only): a movement saved with an empty
   comment renders literal `None` in the `/finance` «Комментарий» column (mobile
   cards handle it correctly). Guard the desktop template cell with
   `{{ movement.note or "" }}` when next touching finance templates. Non-blocking.
+- ℹ️ [v1.3 close] No `17-SECURITY.md` threat verification or `/gsd-audit-milestone`
+  was run before v1.3 shipped (operator chose to skip both). v2.0 touches the same
+  money paths; consider restoring the gate at this milestone's close.
 
 ### Quick Tasks Completed
 
@@ -130,15 +111,16 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
-| code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) |
+| code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) — **Phase 20 touches transfers.py; close them there** |
 | verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | confirmed_working | 2026-07-14 (phase 15 execution), confirmed by operator 2026-07-15 |
 
 ## Session Continuity
 
-Last session: 2026-07-15T13:46:16.600Z
-Stopped at: Phase 17 UI-SPEC approved
-Resume file: .planning/phases/17-financial-reports-export-dashboard-analytics/17-UI-SPEC.md
+Last session: 2026-07-15
+Stopped at: v2.0 roadmap created — 7 phases (18-24), 46/46 requirements mapped
+Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 17` to plan Phase 17: Financial Reports, Export & Dashboard Analytics
+- Run `/gsd-plan-phase 18` to plan Phase 18: Two-Price Model Consolidation (ДЦ/ПЦ)
+- Every v2.0 phase is UI-bearing — `/gsd-ui-phase 18` is available before planning (config `ui_phase: true`)
