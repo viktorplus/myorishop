@@ -4,13 +4,13 @@ milestone: v1.3
 milestone_name: Финансы / Касса
 status: executing
 stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-07-15T07:03:55.338Z"
+last_updated: "2026-07-15T07:23:11.866Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 33
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 16 (manual-cash-movements-history) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-15
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [████████░░] 75%
 | Phase 14 P01 | 15min | 3 tasks | 8 files |
 | Phase 16 P01 | 5m | 2 tasks | 3 files |
 | Phase 16 P02 | 12min | 2 tasks | 2 files |
+| Phase 16 P03 | 18min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone deci
 - [Phase ?]: D-01: manual cash movements extend CASH_CATEGORIES — no type column, no migration
 - [Phase ?]: CASH_BUCKETS kept server-side only (not a Jinja global) — a filter map, never rendered
 - [Phase ?]: Manual-entry sign tests pre-seed a covering balance so the D-05 negative gate does not fire; sign/comment verified independently
+- [Phase ?]: [Phase 16-03]: Manual cash forms shared desktop-mobile via a finance_base context var (no hardcoded /finance); Plan 04 reuses withdraw_form/deposit_form/cash_negative_balance verbatim with finance_base=/m/finance
+- [Phase ?]: [Phase 16-03]: negative-balance warn re-renders at HTTP 200 (not 422) so htmx swaps it; deposit route relabels the service category error to Vyberite osnovanie
 
 ### Pending Todos
 
@@ -129,7 +132,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T07:03:24.251Z
+Last session: 2026-07-15T07:21:57.585Z
 Stopped at: Phase 16 UI-SPEC approved
 Resume file: None
 
