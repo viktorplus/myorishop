@@ -1,0 +1,53 @@
+{# «Снять деньги» form (D-06/FIN-03) — SHARED desktop↔mobile, parameterised by
+   `finance_base` (UI-SPEC Q2) so hx-post resolves on each surface. Swapped
+   WHOLE on every POST response (mirrors writeoff_form.html). The conditional
+   negative-balance warn is an include (mirrors writeoff_form including
+   writeoff_oversell). Category labels come from the CASH_CATEGORIES Jinja
+   global — never hardcoded (V5: server re-validates the allow-list). Untrusted
+   echoed values render via Jinja autoescape only, never |safe. #}
+<div id="withdraw-form-wrap">
+  {% if negative_balance %}
+  {% with balance = negative_balance.balance, amount = negative_balance.amount %}
+  {% include "partials/cash_negative_balance.html" %}
+  {% endwith %}
+  {% endif %}
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  <form id="withdraw-form" class="stacked-form"
+        hx-post="{{ finance_base }}/withdraw"
+        hx-target="#withdraw-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <div class="field">
+      <label for="withdraw-amount">Сумма</label>
+      <input type="text" id="withdraw-amount" name="amount" inputmode="decimal"
+             placeholder="0,00" value="{{ form.amount or '' }}">
+      {% if errors.amount %}<p class="error">{{ errors.amount }}</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label for="withdraw-category">Категория</label>
+      {# D-01b/V5: stored value is the latin key; the visible RU label comes from
+         the CASH_CATEGORIES global. Only the withdrawal_* keys appear here. #}
+      <select id="withdraw-category" name="category">
+        <option value=""></option>
+        {% for key, label in CASH_CATEGORIES.items() if key.startswith("withdrawal_") %}
+        <option value="{{ key }}"{% if form.category == key %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% if errors.category %}<p class="error">{{ errors.category }}</p>{% endif %}
+    </div>
+
+    <div class="field">
+      {# D-04: neutral label — the comment is conditionally required; the error
+         appears on submit only, never a static «(необязательно)» hint. #}
+      <label for="withdraw-note">Комментарий</label>
+      <input type="text" id="withdraw-note" name="note" value="{{ form.note or '' }}">
+      {% if errors.note %}<p class="error">{{ errors.note }}</p>{% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit">Снять</button>
+    </div>
+  </form>
+</div>

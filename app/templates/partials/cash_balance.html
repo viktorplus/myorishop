@@ -1,0 +1,4 @@
+{# Cash balance figure (FIN-06). Keeps the existing .num/bold treatment.
+   The `oob` flag lets a successful POST refresh the balance in place via an
+   out-of-band swap (mirrors writeoff_rows' oob pattern). #}
+<p id="cash-balance" class="num"{% if oob %} hx-swap-oob="true"{% endif %}><strong>{{ balance_cents | cents }}</strong></p>

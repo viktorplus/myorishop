@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Баланс кассы</h1>
-<p class="num"><strong>{{ balance_cents | cents }}</strong></p>
+{% include "partials/cash_balance.html" %}
+
+<h2>Снять деньги</h2>
+{% include "partials/withdraw_form.html" %}
+
+<h2>Внести деньги</h2>
+{% include "partials/deposit_form.html" %}
 {% endblock %}

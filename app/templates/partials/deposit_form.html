@@ -1,0 +1,43 @@
+{# «Внести деньги» form (D-06/FIN-04) — SHARED desktop↔mobile, parameterised by
+   `finance_base` (UI-SPEC Q2). Same shell as withdraw_form.html but: the select
+   is «Основание» over the deposit_* keys, the submit is «Внести», and there is
+   NO negative-balance branch (deposits only increase the balance, D-05).
+   Category labels come from the CASH_CATEGORIES Jinja global; echoed values
+   render via Jinja autoescape only, never |safe. #}
+<div id="deposit-form-wrap">
+  {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+
+  <form id="deposit-form" class="stacked-form"
+        hx-post="{{ finance_base }}/deposit"
+        hx-target="#deposit-form-wrap"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <div class="field">
+      <label for="deposit-amount">Сумма</label>
+      <input type="text" id="deposit-amount" name="amount" inputmode="decimal"
+             placeholder="0,00" value="{{ form.amount or '' }}">
+      {% if errors.amount %}<p class="error">{{ errors.amount }}</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label for="deposit-category">Основание</label>
+      <select id="deposit-category" name="category">
+        <option value=""></option>
+        {% for key, label in CASH_CATEGORIES.items() if key.startswith("deposit_") %}
+        <option value="{{ key }}"{% if form.category == key %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% if errors.category %}<p class="error">{{ errors.category }}</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label for="deposit-note">Комментарий</label>
+      <input type="text" id="deposit-note" name="note" value="{{ form.note or '' }}">
+      {% if errors.note %}<p class="error">{{ errors.note }}</p>{% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit">Внести</button>
+    </div>
+  </form>
+</div>

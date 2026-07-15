@@ -1,0 +1,24 @@
+{# D-05/T-16-05: negative-balance warn (withdraw only) — the server already
+   wrote ZERO rows (confirm != "1"). Mirrors writeoff_oversell.html: reuses the
+   existing .error-block + .form-actions + button.danger, no new CSS/color.
+   `finance_base` parameterises the confirm re-POST so the same partial serves
+   desktop (/finance) and mobile (/m/finance). `balance`/`amount` are passed in
+   via a {% with %} block from the withdraw form. Rendered at HTTP 200 — htmx
+   swaps 200 responses; the 422 error-swap config covers true errors only. #}
+<div class="error-block" id="withdraw-negative-warning">
+  <p><strong>Баланс уйдёт в минус</strong></p>
+  <p>Текущий баланс {{ balance | cents }}, снимаете {{ amount | cents }}.</p>
+  <div class="form-actions">
+    {# Re-POSTs the SAME withdraw form via form association; hx-vals merges
+       confirm=1 into the form's amount/category/note (no re-serialization).
+       The confirm=="1" re-POST re-runs the server-side gate live. #}
+    <button type="submit" class="danger" form="withdraw-form"
+            hx-post="{{ finance_base }}/withdraw" hx-vals='{"confirm": "1"}'
+            hx-target="#withdraw-form-wrap" hx-swap="outerHTML"
+            hx-disabled-elt="this">Снять всё равно</button>
+    {# Client-side dismiss only — no server call, no write; the form
+       underneath keeps the operator's typed values. #}
+    <button type="button" class="secondary"
+            hx-on:click="this.closest('#withdraw-negative-warning').remove()">Вернуться к форме</button>
+  </div>
+</div>
