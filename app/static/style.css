@@ -334,6 +334,13 @@ button.mobile-card.selected:hover { background: #e8effd; }
   gap: 16px;
 }
 
+/* WR-01 fix: the mobile shell (480px, see .mobile-shell above) is too narrow
+   for 3 columns of tile-heading + bold money figure + caveat line(s) — mirrors
+   .mobile-tile-grid's 2-column choice for the same viewport. */
+.mobile-shell .metric-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
 .metric-tile {
   background: #ffffff;
   border: 1px solid #d9d9d9;
