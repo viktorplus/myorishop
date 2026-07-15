@@ -24,7 +24,12 @@ from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
     Operation,
 )
 from app.services.batches import open_batches
-from app.services.finance import compute_balance, next_seq, record_cash_movement
+from app.services.finance import (
+    compute_balance,
+    next_seq,
+    record_cash_movement,
+    record_manual_movement,
+)
 from app.services.returns import register_return
 from app.services.sales import register_sale
 
@@ -330,3 +335,143 @@ def test_mobile_page_shows_balance(mobile_client_factory, session):
     assert response.status_code == 200
     assert "Баланс кассы" in response.text
     assert "125,00" in response.text
+
+
+# --- Plan 02: record_manual_movement (FIN-03/04/05) ---
+
+
+def test_withdraw_writes_one_negative_row(session):
+    """FIN-03/D-02a: a manual withdrawal writes exactly one row with the sign
+    applied server-side (positive input -> negative amount_cents)."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw="15,00", note=""
+    )
+    assert errors == {}
+    assert result
+    rows = list(session.scalars(select(CashMovement)))
+    assert len(rows) == 1
+    assert rows[0].amount_cents == -1500
+    assert rows[0].category == "withdrawal_supplier"
+    assert compute_balance(session) == -1500
+
+
+def test_deposit_writes_one_positive_row(session):
+    """FIN-04/D-02a: a manual deposit writes exactly one positive row."""
+    result, errors = record_manual_movement(
+        session, category="deposit_opening", amount_raw="100", note=""
+    )
+    assert errors == {}
+    assert result
+    rows = list(session.scalars(select(CashMovement)))
+    assert len(rows) == 1
+    assert rows[0].amount_cents == 10000
+    assert compute_balance(session) == 10000
+
+
+@pytest.mark.parametrize("bad", ["", "0", "-5", "abc", "1,2,3"])
+def test_withdraw_rejects_bad_amount(session, bad):
+    """T-16-01/D-02a: blank/zero/negative/non-numeric amount -> (None, errors),
+    ZERO writes."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw=bad, note=""
+    )
+    assert result is None
+    assert "amount" in errors
+    assert _cash_count(session) == 0
+
+
+@pytest.mark.parametrize("cat", ["sale", "return", "bogus", ""])
+def test_withdraw_rejects_unknown_category(session, cat):
+    """T-16-02: a system key ("sale"/"return") or unknown key is NOT a manual
+    category -> (None, {"category": ...}), ZERO writes."""
+    result, errors = record_manual_movement(
+        session, category=cat, amount_raw="10,00", note="x"
+    )
+    assert result is None
+    assert "category" in errors
+    assert _cash_count(session) == 0
+
+
+def test_withdraw_other_requires_comment(session):
+    """D-04: withdrawal_other with a whitespace note -> (None, {"note": ...})."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_other", amount_raw="10,00", note="   "
+    )
+    assert result is None
+    assert "note" in errors
+    assert _cash_count(session) == 0
+
+
+def test_deposit_correction_requires_comment(session):
+    """D-04: deposit_correction with a blank note -> (None, {"note": ...})."""
+    result, errors = record_manual_movement(
+        session, category="deposit_correction", amount_raw="10,00", note=""
+    )
+    assert result is None
+    assert "note" in errors
+    assert _cash_count(session) == 0
+
+
+def test_withdraw_other_with_comment_succeeds(session):
+    """D-04: the mandatory-comment categories succeed with a non-blank note."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_other", amount_raw="10,00", note="ремонт"
+    )
+    assert errors == {}
+    assert result
+    assert _cash_count(session) == 1
+
+
+def test_withdraw_supplier_allows_blank_comment(session):
+    """D-04: other categories succeed with a blank note."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw="10,00", note=""
+    )
+    assert errors == {}
+    assert result
+    assert _cash_count(session) == 1
+
+
+def test_negative_gate_blocks_without_confirm(session):
+    """D-05/FIN-05: a withdrawal that would drive the balance below zero with
+    confirm != "1" warns with ZERO writes."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw="50,00", confirm="", note=""
+    )
+    assert errors == {}
+    assert result and "negative_balance" in result
+    assert result["negative_balance"] == {"balance": 0, "amount": 5000}
+    assert _cash_count(session) == 0
+    assert compute_balance(session) == 0
+
+
+def test_negative_gate_allows_with_confirm(session):
+    """D-05/FIN-05: confirm == "1" writes and the balance may go negative."""
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw="50,00", confirm="1", note=""
+    )
+    assert errors == {}
+    assert result
+    assert _cash_count(session) == 1
+    assert compute_balance(session) == -5000
+
+
+def test_negative_gate_deposit_never_warns(session):
+    """D-05: a deposit never enters the negative-balance branch."""
+    result, errors = record_manual_movement(
+        session, category="deposit_opening", amount_raw="50,00", confirm="", note=""
+    )
+    assert errors == {}
+    assert result and "negative_balance" not in result
+    assert compute_balance(session) == 5000
+
+
+def test_negative_gate_covered_withdrawal_no_warn(session):
+    """D-05: a withdrawal the balance covers never warns."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    result, errors = record_manual_movement(
+        session, category="withdrawal_supplier", amount_raw="50,00", confirm="", note=""
+    )
+    assert errors == {}
+    assert result and "negative_balance" not in result
+    assert compute_balance(session) == 5000
