@@ -12,6 +12,12 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
+from app.services.pagination import LIST_PAGE_SIZE
+
+# Fixed newest-first order for the cash history read (mirrors
+# operations._DEFAULT_ORDER). created_at is ISO-8601 UTC text (sorts
+# chronologically); seq breaks ties within the same second.
+_CASH_DEFAULT_ORDER = (CashMovement.created_at.desc(), CashMovement.seq.desc())
 
 # RU validation messages (UI-SPEC Copywriting Contract). The service is the
 # security-critical tier (V5): every message is returned WITHOUT any HTML.
@@ -163,3 +169,43 @@ def compute_balance(session: Session) -> int:
     ledger; the signed sum otherwise.
     """
     return session.scalar(select(func.coalesce(func.sum(CashMovement.amount_cents), 0)))
+
+
+def cash_history_view(
+    session: Session,
+    *,
+    bucket: str | None = None,
+    page: int = 0,
+    page_size: int = LIST_PAGE_SIZE,
+) -> dict:
+    """Paginated, bucket-filtered, newest-first read over the whole cash ledger (D-07).
+
+    Mirrors operations.history_view but SIMPLER — bare CashMovement rows, no
+    Product/Batch join. The «Тип» filter is a COARSE bucket, not an exact
+    category: it maps through CASH_BUCKETS to a SET of category keys and filters
+    with `category.in_(cats)` (Pitfall 3 — a single `== bucket` cannot express
+    «Снятие»'s 5 categories). An unknown/tampered bucket resolves to None and is
+    ignored (no filter), mirroring history_view's OPERATION_TYPES membership
+    guard (T-16-07). An out-of-range page is clamped server-side (T-14-04).
+    Portable ORM only — no raw/SQLite-specific SQL.
+    """
+    stmt = select(CashMovement).order_by(*_CASH_DEFAULT_ORDER)
+    count_stmt = select(func.count()).select_from(CashMovement)
+
+    cats = CASH_BUCKETS.get(bucket) if bucket else None
+    if cats:
+        stmt = stmt.where(CashMovement.category.in_(cats))
+        count_stmt = count_stmt.where(CashMovement.category.in_(cats))
+
+    total = session.scalar(count_stmt) or 0
+    total_pages = max(1, -(-total // page_size))
+    page = max(0, min(page, total_pages - 1))
+
+    rows = list(session.scalars(stmt.limit(page_size).offset(page * page_size)))
+    return {
+        "rows": rows,
+        "page": page,
+        "total": total,
+        "total_pages": total_pages,
+        "bucket": bucket or "",
+    }
