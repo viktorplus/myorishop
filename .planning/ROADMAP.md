@@ -158,7 +158,7 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 
 **Wave 5** *(gap closure — UAT Test 2)*
 
-- [ ] 17-05-PLAN.md — Navigation entry points to /finance/report and /m/finance/report (desktop top-nav item + mobile home tile + button-styled dashboard links)
+- [x] 17-05-PLAN.md — Navigation entry points to /finance/report and /m/finance/report (desktop top-nav item + mobile home tile + button-styled dashboard links)
 
 **UI hint**: yes
 
@@ -185,4 +185,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete    | 2026-07-14 |
 | 15. Cash Ledger Foundation | v1.3 | 4/4 | Complete   | 2026-07-14 |
 | 16. Manual Cash Movements & History | v1.3 | 4/4 | Complete    | 2026-07-15 |
-| 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 4/4 | Complete   | 2026-07-15 |
+| 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
