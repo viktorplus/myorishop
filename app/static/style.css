@@ -323,6 +323,29 @@ button.mobile-card.selected:hover { background: #e8effd; }
 .mobile-actions { display: flex; gap: 16px; margin-top: 24px; }
 .mobile-actions button, .mobile-actions a.button { flex: 1; min-height: 44px; }
 
+/* Dashboard metric tiles (Phase 17, D-04): gross/net-profit + stock-valuation
+   tiles on /finance and /m/finance. Reuses ONLY existing token values —
+   identical white surface/border/radius/padding to .mobile-tile /
+   .customer-chip, and the same 16px gap as .mobile-tile-grid. No new
+   color/size token introduced (UI-SPEC Q1). */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.metric-tile {
+  background: #ffffff;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.tile-label {
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
 /* Accessibility utility (Plan 05): keeps a native input focusable/keyboard-
    operable (e.g. the write-off reason radio inside a .mobile-card row) while
    visually hiding it — the wrapping label is the tap/visual target. Standard

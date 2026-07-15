@@ -1,0 +1,46 @@
+{# finance_tiles.html (D-04/D-04b/FIN-10/FIN-11/FIN-12): gross/net/stock
+   dashboard tiles for the light period selector on /finance and /m/finance.
+   Swapped in place by period_filter's hx-get/hx-target into #finance-metrics
+   — no wrapping id here, the page template supplies div#finance-metrics
+   around the include (mirrors sales_report_results.html's own convention).
+   Expects: metrics (dict|None — None on a bad-date period error), valuation
+   (dict, always present — point-in-time, D-02b, ignores the period). Money
+   is NEVER sign-colored (UI-SPEC Q4): plain `| cents` in default text color. #}
+<div class="metric-grid">
+  <div class="metric-tile">
+    <p class="tile-label">Валовая прибыль</p>
+    {% if metrics %}
+    <p class="num"><strong>{{ metrics.gross_profit_cents | cents }}</strong></p>
+    {% if metrics.cost_unknown_count > 0 %}
+    <p class="muted">{{ metrics.cost_unknown_count }} продаж без себестоимости — не учтены.</p>
+    {% endif %}
+    {% else %}
+    <p class="muted">Проверьте даты.</p>
+    {% endif %}
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Чистая прибыль</p>
+    {% if metrics %}
+    <p class="num"><strong>{{ metrics.net_profit_cents | cents }}</strong></p>
+    {% else %}
+    <p class="muted">Проверьте даты.</p>
+    {% endif %}
+    {# MANDATORY (D-01b) — always visible, never a title= tooltip alone. #}
+    <p class="muted">Денежный поток: валовая прибыль минус снятия и возвраты за период. Это не бухгалтерская прибыль.</p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Стоимость склада</p>
+    <p class="num">По закупке: <strong>{{ valuation.cost_value_cents | cents }}</strong></p>
+    <p class="num">По продаже: <strong>{{ valuation.sale_value_cents | cents }}</strong></p>
+    {# D-04b: point-in-time cue — this tile ignores the period selector. #}
+    <p class="muted">на текущий момент</p>
+    {% if valuation.cost_unknown_count > 0 %}
+    <p class="muted">{{ valuation.cost_unknown_count }} товаров без цены закупки — не учтены.</p>
+    {% endif %}
+    {% if valuation.sale_unknown_count > 0 %}
+    <p class="muted">{{ valuation.sale_unknown_count }} товаров без цены продажи — не учтены.</p>
+    {% endif %}
+  </div>
+</div>

@@ -286,3 +286,87 @@ def test_cash_flow_report_movement_count_matches_bucketed_rows(session, monkeypa
     expense_cats = {entry["category"] for entry in report["expense"]}
     assert income_cats.isdisjoint(expense_cats)
     assert report["movement_count"] == len(report["income"]) + len(report["expense"])
+
+
+# --- web: /finance/metrics + tiles context on /finance (17-02 Task 1) -------
+
+
+def test_web_finance_metrics_hx_returns_tiles_partial(client):
+    """An HX-Request GET returns ONLY the tiles partial (finance_tiles.html);
+    a plain GET returns the full /finance page chrome (mirrors
+    test_web_export_page's route-shape assertions). finance.html itself is
+    not required to *visually* embed the tiles yet — that wiring is Task 2's
+    job (D-04 "Показатели" section) — this task only proves the route
+    branches correctly and the tiles partial renders on its own."""
+    hx_response = client.get("/finance/metrics", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "metric-tile" in hx_response.text
+    assert "<h1>Баланс кассы</h1>" not in hx_response.text
+
+    plain_response = client.get("/finance/metrics")
+    assert plain_response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in plain_response.text
+
+
+def test_web_finance_page_renders_tiles(session, client):
+    """GET /finance still returns 200 with the existing balance/forms/history
+    chrome intact, and the route's _metrics_context computes net profit as a
+    plain addition of gross profit + cash_expense_total (never a subtraction,
+    D-01a). Visually embedding the tiles into finance.html is Task 2's job."""
+    from app.routes.finance import _metrics_context
+    from app.services.finance import record_cash_movement
+
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in response.text
+
+    context = _metrics_context(session, "", "")
+    assert context["metrics"]["net_profit_cents"] == (
+        context["metrics"]["gross_profit_cents"] - 800
+    )
+    assert context["valuation"] is not None
+
+
+# --- web: finance_tiles.html markup/copy + finance.html wiring (Task 2) -----
+
+
+def test_web_finance_net_caveat_present(client):
+    """The MANDATORY net-profit cash-outflow caveat line (D-01b) is a visible
+    .muted line on /finance itself, not hidden behind a title= tooltip."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert (
+        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Это не бухгалтерская прибыль."
+    ) in response.text
+
+
+def test_web_finance_tiles_caveat_hx(client):
+    """Same MANDATORY caveat line is present in the /finance/metrics HX partial."""
+    response = client.get("/finance/metrics", headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    assert "не бухгалтерская прибыль" in response.text
+
+
+def test_web_finance_stock_tile_point_in_time_cue(client):
+    """The stock-valuation tile carries the "на текущий момент" cue (D-04b) so
+    the operator sees it deliberately ignores the period selector."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "на текущий момент" in response.text
+    assert "По закупке" in response.text
+    assert "По продаже" in response.text
+
+
+def test_web_finance_page_untouched_surfaces(client):
+    """Regression guard (D-04): the Phase 15-16 balance/forms/history includes
+    still render unchanged alongside the new «Показатели» section."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "Показатели" in response.text
+    assert "<h1>Баланс кассы</h1>" in response.text
+    assert "Снять деньги" in response.text
+    assert "Внести деньги" in response.text
+    assert "История движений" in response.text
