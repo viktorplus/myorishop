@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
-status: executing
+status: verifying
 stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-07-15T07:23:11.866Z"
+last_updated: "2026-07-15T07:45:57.508Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 33
+  completed_plans: 8
+  percent: 67
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 Phase: 16 (manual-cash-movements-history) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-15
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [█████████░] 88%
 | Phase 16 P01 | 5m | 2 tasks | 3 files |
 | Phase 16 P02 | 12min | 2 tasks | 2 files |
 | Phase 16 P03 | 18min | 2 tasks | 8 files |
+| Phase 16 P04 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone deci
 - [Phase ?]: Manual-entry sign tests pre-seed a covering balance so the D-05 negative gate does not fire; sign/comment verified independently
 - [Phase ?]: [Phase 16-03]: Manual cash forms shared desktop-mobile via a finance_base context var (no hardcoded /finance); Plan 04 reuses withdraw_form/deposit_form/cash_negative_balance verbatim with finance_base=/m/finance
 - [Phase ?]: [Phase 16-03]: negative-balance warn re-renders at HTTP 200 (not 422) so htmx swaps it; deposit route relabels the service category error to Vyberite osnovanie
+- [Phase ?]: [Phase 16-04]: Mobile /m/finance reuses the shared withdraw/deposit forms + record_manual_movement service verbatim (finance_base=/m/finance); only the history presentation is forked — cards + Pokazat esche load-more (has_next sentinel), never the desktop numbered bar (UI-SPEC Q1)
 
 ### Pending Todos
 
@@ -132,7 +134,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T07:21:57.585Z
+Last session: 2026-07-15T07:44:33.235Z
 Stopped at: Phase 16 UI-SPEC approved
 Resume file: None
 

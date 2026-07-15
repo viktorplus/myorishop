@@ -59,7 +59,7 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 **Milestone Goal:** Ввести кассу как агрегированный учёт денежных средств — автопополнение с каждой продажи, расход с обязательным указанием назначения, история движений и баланс — в виде отдельного модуля «Финансы».
 
 - [x] **Phase 15: Cash Ledger Foundation** - Every sale credits the till and every return debits it symmetrically; the operator sees the resulting balance in a new «Финансы» section (completed 2026-07-14)
-- [ ] **Phase 16: Manual Cash Movements & History** - Operator can manually withdraw (categorized) or deposit funds, with a warn-but-allow negative-balance check, and browse all movements in a paginated/filterable history
+- [x] **Phase 16: Manual Cash Movements & History** - Operator can manually withdraw (categorized) or deposit funds, with a warn-but-allow negative-balance check, and browse all movements in a paginated/filterable history (completed 2026-07-15)
 - [ ] **Phase 17: Financial Reports, Export & Dashboard Analytics** - Operator can view a period cash-flow report, export movements to CSV, and see gross profit, net profit, and stock valuation on the Финансы dashboard
 
 ## Phase Details
@@ -121,7 +121,7 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 16-04-PLAN.md — Mobile «Финансы»: reuse shared forms, cards + «Показать ещё» history parity
+- [x] 16-04-PLAN.md — Mobile «Финансы»: reuse shared forms, cards + «Показать ещё» history parity
 
 **UI hint**: yes
 
@@ -163,5 +163,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete    | 2026-07-14 |
 | 15. Cash Ledger Foundation | v1.3 | 4/4 | Complete   | 2026-07-14 |
-| 16. Manual Cash Movements & History | v1.3 | 3/4 | In Progress|  |
+| 16. Manual Cash Movements & History | v1.3 | 4/4 | Complete   | 2026-07-15 |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 0/TBD | Not started | - |
