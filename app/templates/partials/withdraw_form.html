@@ -4,7 +4,7 @@
    negative-balance warn is an include (mirrors writeoff_form including
    writeoff_oversell). Category labels come from the CASH_CATEGORIES Jinja
    global — never hardcoded (V5: server re-validates the allow-list). Untrusted
-   echoed values render via Jinja autoescape only, never |safe. #}
+   echoed values render via Jinja autoescape only (safe filter never used). #}
 <div id="withdraw-form-wrap">
   {% if negative_balance %}
   {% with balance = negative_balance.balance, amount = negative_balance.amount %}

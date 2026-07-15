@@ -1,0 +1,57 @@
+{# Cash-movement history (D-07/D-07a/D-07b) — single swappable #cash-history-rows
+   block: header-row «Тип» bucket filter + 4-column table + shared numbered
+   pagination. Mirrors partials/history_rows.html but SIMPLER (bare CashMovement
+   rows, no Product/Batch join). `finance_base` parameterises the filter's
+   hx-get so it serves desktop (/finance) here; the mobile surface (Plan 04)
+   forks its own card layout. The `oob` flag lets a successful POST refresh the
+   list in place. Autoescape ONLY — `note` and category labels are untrusted
+   operator/at-rest text (T-16-06); the safe filter is NEVER applied. #}
+<div id="cash-history-rows"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <table>
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Тип</th>
+        <th>Комментарий</th>
+        <th class="num">Сумма</th>
+      </tr>
+      <tr class="filter-row">
+        <th></th>
+        <th>
+          <select name="bucket"
+                  hx-get="{{ finance_base }}/history" hx-trigger="change"
+                  hx-include="#cash-history-rows select"
+                  hx-target="#cash-history-rows" hx-swap="outerHTML" hx-push-url="true">
+            <option value=""{% if not bucket %} selected{% endif %}>Все типы</option>
+            {% for key, label in CASH_BUCKET_LABELS.items() %}
+            <option value="{{ key }}"{% if key == bucket %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </th>
+        <th></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if not rows %}
+      <tr>
+        <td colspan="4" class="empty-state muted">
+          {% if bucket %}Нет движений по выбранному типу.{% else %}Движений пока нет.{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      {% for mv in rows %}
+      <tr>
+        <td>{{ mv.created_at | local_dt }}</td>
+        {# D-01b: RU label from the CASH_CATEGORIES global; fall back to the raw
+           key if a legacy/unknown category ever appears. Autoescape only. #}
+        <td>{{ CASH_CATEGORIES.get(mv.category, mv.category) }}</td>
+        <td>{{ mv.note }}</td>
+        <td class="num">{{ mv.amount_cents | cents }}</td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+  {% include "partials/pagination.html" %}
+</div>

@@ -3,7 +3,7 @@
    is «Основание» over the deposit_* keys, the submit is «Внести», and there is
    NO negative-balance branch (deposits only increase the balance, D-05).
    Category labels come from the CASH_CATEGORIES Jinja global; echoed values
-   render via Jinja autoescape only, never |safe. #}
+   render via Jinja autoescape only (safe filter never used). #}
 <div id="deposit-form-wrap">
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
 
