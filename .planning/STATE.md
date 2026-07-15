@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
-status: verifying
-stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-07-15T07:45:57.508Z"
+status: planning
+stopped_at: Phase 16 complete, ready to plan Phase 17
+last_updated: "2026-07-15T11:47:11.037Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 3
@@ -18,16 +18,16 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-14)
+See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 16 — manual-cash-movements-history
+**Current focus:** Phase 17 — financial-reports, export & dashboard analytics
 
 ## Current Position
 
-Phase: 16 (manual-cash-movements-history) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: 17
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-07-15
 
 Progress: [██████████] 100%
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 55
+- Total plans completed: 59
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 | 12 | 4 | - | - |
 | 13 | 6 | - | - |
 | 14 | 7 | - | - |
+| 16 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -111,7 +112,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None open.
+- ℹ️ [Phase 16] Advisory (cosmetic, desktop only): a movement saved with an empty
+  comment renders literal `None` in the `/finance` «Комментарий» column (mobile
+  cards handle it correctly). Guard the desktop template cell with
+  `{{ movement.note or "" }}` when next touching finance templates. Non-blocking.
 
 ### Quick Tasks Completed
 
@@ -134,11 +138,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T07:44:33.235Z
-Stopped at: Phase 16 UI-SPEC approved
+Last session: 2026-07-15
+Stopped at: Phase 16 complete (UAT 2/2 pass, security verified), ready to plan Phase 17
 Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 16` to plan Phase 16: Manual Cash Movements & History
-- Run `/gsd-plan-phase 16` to plan Phase 16: Manual Cash Movements & History
+- Run `/gsd-plan-phase 17` to plan Phase 17: Financial Reports, Export & Dashboard Analytics

@@ -94,6 +94,8 @@ v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, us
 - ✓ Every list page (products, warehouses, customers, dictionary, catalogs, history) paginates 20 rows/page, filters by its relevant columns, and sorts via a dropdown — Phase 14 (LIST-01, LIST-02, LIST-03)
 - ✓ Quick-delete a warehouse directly from its list row, guarded by a non-overridable stock check — Phase 14 (LIST-04)
 - ✓ Quick-delete a product directly from its list row, guarded by a non-overridable stock check — Phase 14 (LIST-05)
+- ✓ Cash ledger: auto-credit on every sale, symmetric auto-debit on return, current balance shown in a new «Финансы» section — Phase 15 (FIN-01, FIN-02, FIN-06)
+- ✓ Manual cash movements: withdrawal with mandatory category + comment, manual deposit, warn-but-allow negative balance, paginated/filterable history (desktop `/finance` + mobile `/m/finance`) — Phase 16 (FIN-03, FIN-04, FIN-05, FIN-07)
 
 ### Active
 
@@ -179,4 +181,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-14 — milestone v1.3 (Финансы / Касса) started, requirements being defined*
+*Last updated: 2026-07-15 — Phase 16 (manual cash movements & history) complete; v1.3 at 2/3 phases, Phase 17 (reports/export/dashboard) next*
