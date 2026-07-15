@@ -11,7 +11,11 @@ from datetime import date
 from app.core import local_day_bounds_utc, new_id
 from app.models import Product
 from app.services.finance import record_cash_movement
-from app.services.finance_reports import cash_expense_total, stock_valuation
+from app.services.finance_reports import (
+    cash_expense_total,
+    cash_flow_report,
+    stock_valuation,
+)
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
@@ -198,3 +202,87 @@ def test_stock_valuation_ignores_period(session):
     session.commit()
 
     assert stock_valuation(session) == stock_valuation(session)
+
+
+# --- cash_flow_report (FIN-08 / D-05) ---------------------------------------
+
+
+def test_cash_flow_report_groups_income_and_expense(session, monkeypatch):
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid = "2026-07-10T10:00:00+00:00"
+    _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=3000)
+    _record_cash_at(
+        session, monkeypatch, mid, category="deposit_opening", amount_cents=1000
+    )
+    _record_cash_at(
+        session, monkeypatch, mid, category="withdrawal_rent", amount_cents=-800
+    )
+    _record_cash_at(
+        session, monkeypatch, mid, category="withdrawal_salary", amount_cents=-1200
+    )
+    _record_cash_at(session, monkeypatch, mid, category="return", amount_cents=-500)
+
+    report = cash_flow_report(session, start_iso, end_iso)
+    assert report["income"] == [
+        {"category": "sale", "total_cents": 3000},
+        {"category": "deposit_opening", "total_cents": 1000},
+    ]
+    assert report["income_total_cents"] == 4000
+    expense_cats = {entry["category"] for entry in report["expense"]}
+    assert expense_cats == {"withdrawal_rent", "withdrawal_salary", "return"}
+    assert report["expense_total_cents"] == -2500
+    assert report["movement_count"] == 5
+
+
+def test_cash_flow_report_reconciles_with_expense_total(session, monkeypatch):
+    """D-05 hard reconciliation: expense_total_cents == cash_expense_total for the same period."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid = "2026-07-10T10:00:00+00:00"
+    _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=3000)
+    _record_cash_at(
+        session, monkeypatch, mid, category="withdrawal_rent", amount_cents=-800
+    )
+    _record_cash_at(session, monkeypatch, mid, category="return", amount_cents=-500)
+
+    report = cash_flow_report(session, start_iso, end_iso)
+    assert report["expense_total_cents"] == cash_expense_total(
+        session, start_iso, end_iso
+    )
+
+
+def test_cash_flow_report_empty_period(session):
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    report = cash_flow_report(session, start_iso, end_iso)
+    assert report == {
+        "income": [],
+        "income_total_cents": 0,
+        "expense": [],
+        "expense_total_cents": 0,
+        "movement_count": 0,
+    }
+
+
+def test_cash_flow_report_half_open_bounds(session, monkeypatch):
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    _record_cash_at(session, monkeypatch, start_iso, category="sale", amount_cents=1000)
+    _record_cash_at(session, monkeypatch, end_iso, category="sale", amount_cents=2000)
+
+    report = cash_flow_report(session, start_iso, end_iso)
+    assert report["income_total_cents"] == 1000
+    assert report["movement_count"] == 1
+
+
+def test_cash_flow_report_movement_count_matches_bucketed_rows(session, monkeypatch):
+    """movement_count == len(income) + len(expense); every category lands income XOR expense."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid = "2026-07-10T10:00:00+00:00"
+    _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=100)
+    _record_cash_at(
+        session, monkeypatch, mid, category="withdrawal_rent", amount_cents=-100
+    )
+
+    report = cash_flow_report(session, start_iso, end_iso)
+    income_cats = {entry["category"] for entry in report["income"]}
+    expense_cats = {entry["category"] for entry in report["expense"]}
+    assert income_cats.isdisjoint(expense_cats)
+    assert report["movement_count"] == len(report["income"]) + len(report["expense"])

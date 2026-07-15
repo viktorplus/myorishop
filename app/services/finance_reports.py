@@ -9,7 +9,7 @@ this codebase.
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CASH_BUCKETS, CashMovement, Product
+from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement, Product
 
 
 def cash_expense_total(session: Session, start_iso: str, end_iso: str) -> int:
@@ -64,4 +64,53 @@ def stock_valuation(session: Session) -> dict:
         "sale_value_cents": sale_value_cents,
         "cost_unknown_count": cost_unknown_count,
         "sale_unknown_count": sale_unknown_count,
+    }
+
+
+def cash_flow_report(session: Session, start_iso: str, end_iso: str) -> dict:
+    """Income-vs-expense grouping of a UTC [start_iso, end_iso) period (FIN-08).
+
+    Each CASH_CATEGORIES key present in the period becomes exactly one row,
+    placed in income (CASH_BUCKETS["sale"] + CASH_BUCKETS["deposit"]) XOR
+    expense (CASH_BUCKETS["withdrawal"] + CASH_BUCKETS["return"]) via
+    server-side bucket membership — never a hardcoded category-string
+    comparison. Rows are emitted in CASH_CATEGORIES key order so the report
+    is stable across calls. movement_count counts only rows actually placed
+    in a bucket (len(income) + len(expense)), so a category outside both
+    bucket sets can never be silently double-dropped-yet-counted.
+
+    RECONCILIATION (D-05, hard invariant): expense_total_cents for a period
+    MUST equal cash_expense_total(session, start_iso, end_iso) for the same
+    bounds — the cash-flow report and the net-profit tile can never disagree.
+    """
+    income_cats = CASH_BUCKETS["sale"] + CASH_BUCKETS["deposit"]
+    expense_cats = CASH_BUCKETS["withdrawal"] + CASH_BUCKETS["return"]
+
+    rows = session.execute(
+        select(CashMovement.category, func.sum(CashMovement.amount_cents))
+        .where(
+            CashMovement.created_at >= start_iso,
+            CashMovement.created_at < end_iso,
+        )
+        .group_by(CashMovement.category)
+    ).all()
+    totals_by_category = dict(rows)
+
+    income: list[dict] = []
+    expense: list[dict] = []
+    for category in CASH_CATEGORIES:
+        if category not in totals_by_category:
+            continue
+        entry = {"category": category, "total_cents": totals_by_category[category]}
+        if category in income_cats:
+            income.append(entry)
+        elif category in expense_cats:
+            expense.append(entry)
+
+    return {
+        "income": income,
+        "income_total_cents": sum(entry["total_cents"] for entry in income),
+        "expense": expense,
+        "expense_total_cents": sum(entry["total_cents"] for entry in expense),
+        "movement_count": len(income) + len(expense),
     }
