@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
 status: planning
-stopped_at: Phase 15 complete
-last_updated: "2026-07-14T22:10:08.467Z"
+stopped_at: Phase 16 context gathered
+last_updated: "2026-07-15T00:20:54.704Z"
 last_activity: "2026-07-14 — Phase 15 (Cash Ledger Foundation) complete: all 4 plans executed, merged, verified (577/577 tests passing)"
 progress:
   total_phases: 3
@@ -124,9 +124,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-14T22:07:56.914Z
-Stopped at: Phase 15 complete
-Resume file: .planning/phases/15-cash-ledger-foundation/15-VERIFICATION.md
+Last session: 2026-07-15T00:20:54.692Z
+Stopped at: Phase 16 context gathered
+Resume file: .planning/phases/16-manual-cash-movements-history/16-CONTEXT.md
 
 ## Operator Next Steps
 
