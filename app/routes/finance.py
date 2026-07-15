@@ -153,6 +153,7 @@ def finance_history(
         "balance_cents": compute_balance(session),
         "form": {},
         "errors": {},
+        **_metrics_context(session, "", ""),
     }
     return templates.TemplateResponse(request, "pages/finance.html", context)
 

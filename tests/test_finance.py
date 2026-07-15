@@ -743,6 +743,19 @@ def test_web_cash_history_hx_returns_partial_only(client, session):
     assert "125,00" not in response.text  # sale row filtered out
 
 
+def test_web_cash_history_non_hx_full_page_renders(client, session):
+    """CR-01 regression: a plain (non-HX) GET /finance/history — the URL every
+    filter/pagination control pushes via hx-push-url — must render the full
+    page, not 500. It must include the dashboard tiles context (_metrics_context)
+    exactly like GET /finance does."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    response = client.get("/finance/history?bucket=withdrawal")
+    assert response.status_code == 200
+    assert "<!doctype" in response.text.lower()
+    assert 'id="cash-history-rows"' in response.text
+    assert "metric-tile" in response.text  # dashboard tiles rendered, no UndefinedError
+
+
 def test_web_cash_history_pagination_preserves_bucket(client, session):
     """FIN-07: with >20 movements the second page renders, and pagination links
     carry &bucket=… so the active filter survives paging (extra_qs)."""
@@ -971,6 +984,19 @@ def test_mobile_cash_history_hx_returns_cards_and_load_more(
     assert "hx-swap-oob" in response.text
     assert "Показать ещё" in response.text
     assert "page=1" in response.text  # next page on the load-more button
+
+
+def test_mobile_cash_history_non_hx_full_page_renders(mobile_client_factory, session):
+    """CR-01 regression: a plain (non-HX) GET /m/finance/history — the URL every
+    filter/«Показать ещё» control pushes via hx-push-url — must render the full
+    page, not 500. It must include the dashboard tiles context (_metrics_context)
+    exactly like GET /m/finance does."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance/history?bucket=withdrawal")
+    assert response.status_code == 200
+    assert 'id="cash-history-cards"' in response.text
+    assert "metric-tile" in response.text  # dashboard tiles rendered, no UndefinedError
 
 
 def test_mobile_cash_history_last_page_hides_button(mobile_client_factory, session):

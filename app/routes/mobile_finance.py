@@ -180,6 +180,7 @@ def mobile_finance_history(
         "balance_cents": compute_balance(session),
         "form": {},
         "errors": {},
+        **_metrics_context(session, "", ""),
     }
     return templates.TemplateResponse(request, "mobile_pages/finance.html", context)
 
