@@ -10,23 +10,26 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ## Current State
 
-**Shipped: v1.2 Catalog Pricing UX & List Ergonomics (2026-07-14)**
+**Shipped: v1.3 Финансы / Касса (2026-07-15)**
 
-Delivered catalog/consultant-price + name autofill by product code on the product-add form and goods receipt (desktop + mobile), sales-page name↔code cross-autofill, mobile wizard context/navigation fixes (visible code/name/warehouse, uniform "Назад", basket step indicator, search quick actions), and pagination/filtering/sorting plus stock-guarded quick-delete on every list page. Milestone audit passed 13/13 requirements with no cross-phase integration gaps. See `.planning/milestones/v1.2-ROADMAP.md` and `.planning/MILESTONES.md` for full details.
+Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Current Milestone: v1.3 Финансы / Касса
+## Next Milestone Goals
+
+v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally.
+
+<details>
+<summary>Archived: v1.3 Финансы / Касса (SHIPPED 2026-07-15)</summary>
 
 **Goal:** Ввести кассу как агрегированный учёт денежных средств — автопополнение с каждой продажи, расход с обязательным указанием назначения, история движений и баланс — в виде отдельного модуля «Финансы».
 
-**Target features:**
+**Target features (all delivered):**
 - Касса пополняется автоматически с каждой продажи и списывается автоматически при возврате товара (текущий баланс)
 - Списание из кассы с указанием категории (оплата поставщику / зарплата / аренда / коммунальные / прочее) и комментарием; ручное пополнение (начальный остаток/корректировка)
 - История движений кассы (приход с продаж + расход по категориям), отчёт за период, CSV-экспорт
 - Отдельный раздел UI «Финансы»: баланс кассы, валовая и чистая прибыль за период, стоимость товара на складе (по закупочным и по продажным ценам)
 
-## Next Milestone Goals
-
-v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally after v1.3 ships.
+</details>
 
 <details>
 <summary>Archived: v1.1 Multi-Warehouse & Batch Tracking (SHIPPED 2026-07-13)</summary>
@@ -96,6 +99,8 @@ v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, us
 - ✓ Quick-delete a product directly from its list row, guarded by a non-overridable stock check — Phase 14 (LIST-05)
 - ✓ Cash ledger: auto-credit on every sale, symmetric auto-debit on return, current balance shown in a new «Финансы» section — Phase 15 (FIN-01, FIN-02, FIN-06)
 - ✓ Manual cash movements: withdrawal with mandatory category + comment, manual deposit, warn-but-allow negative balance, paginated/filterable history (desktop `/finance` + mobile `/m/finance`) — Phase 16 (FIN-03, FIN-04, FIN-05, FIN-07)
+- ✓ Period cash-flow report (income vs. expense by category) and CSV export of cash movements — Phase 17 (FIN-08, FIN-09)
+- ✓ Финансы dashboard: gross profit, net profit, and stock valuation (at cost and at sale price) for a selected period — Phase 17 (FIN-10, FIN-11, FIN-12)
 
 ### Active
 
@@ -132,6 +137,8 @@ None yet — v2.0 not scoped. Run `/gsd-new-milestone` to define the next set of
 - **Phase 13 shipped 2026-07-14**: mobile wizard context/navigation gaps closed (UI-02..05) — all 5 wizards (sale/receipt/write-off/correction/transfer) now show code/name/warehouse as visible text, use a uniform hx-get/hx-post "Назад" pattern (write-off's `history.back()` retired), sale basket has a step indicator, and search product-detail links jump straight into sale/receipt. First-pass verification found the sale wizard alone missing the warehouse line; gap-closure plan 13-06 fixed it and re-verification passed 4/4. Code review: 0 critical, 6 advisory warnings carried/found (e.g. inconsistent "Далее" batch-pick guards across wizards) — non-blocking.
 - **Phase 14 shipped 2026-07-14 (final phase of v1.2)**: pagination/filter/sort added uniformly to all six list pages (products, warehouses, customers, dictionary, catalogs, history) via a shared `app/services/pagination.py` helper — SQL LIMIT/OFFSET for the two large lists (dictionary's 6,856 rows, history), Python-side slicing for the four small ones. Quick-delete added to warehouse and product lists (LIST-04/LIST-05), each with a new non-overridable stock guard checked ahead of any existing soft-block guard. Code review found 1 genuine blocker (filter/sort/page state was dropped on write-response re-render, silently hiding row-specific error/blocked messages off the reset default page) — fixed and behaviorally re-verified end-to-end before phase completion, along with 3 advisory warnings (missing `autoescape` on a filter, a template gate ordering issue, a line-length lint fix).
 - **v1.2 shipped 2026-07-14** (started 2026-07-13, 2 days): 3 phases (12-14), 17 plans, 41 tasks, 186 files changed, +12,808/-882 lines, 142 commits. Stack held unchanged. Milestone audit (`/gsd-audit-milestone`) passed clean: 13/13 requirements satisfied across three independent sources (REQUIREMENTS.md traceability, VERIFICATION.md, SUMMARY.md frontmatter), cross-phase integration checker found no wiring gaps or broken flows across Phase 12→13→14 (autofill → wizard context → list management). Phases 12/13 carry a discovery-only Nyquist gap (draft VALIDATION.md, `nyquist_compliant: false`) — both independently verified passed regardless; Phase 14 is fully Nyquist-compliant. No new tech debt introduced; the two advisory transfers.py/writeoffs.py warnings from v1.1 remain the only carried-forward debt.
+- **Phase 17 shipped 2026-07-15 (final phase of v1.3)**: read-only aggregation services (`cash_expense_total`, `stock_valuation`, `cash_flow_report`) plus period-scoped CSV export, Финансы dashboard tiles (gross/net profit, stock valuation) on desktop and mobile, a cash-flow report page with CSV download, and mobile parity via shared `finance_base`-parameterised partials. Gap-closure plan 17-05 added missing navigation entry points to the new report pages (desktop top-nav, mobile home tile, dashboard buttons), found by UAT Test 2.
+- **v1.3 shipped 2026-07-15** (started 2026-07-14, 2 days): 3 phases (15-17), 13 plans, 102 commits, 142 files changed, +11,114/-10,521 lines. Stack held unchanged: FastAPI + SQLAlchemy 2.0 + SQLite (WAL) + HTMX 2.0.10 (vendored) + Jinja2, uv, Alembic. All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close — both skipped by explicit operator decision at completion time (2026-07-15), a deviation from the v1.0/v1.1/v1.2 pattern of auditing/security-checking before archiving. One new advisory (non-blocking) warning: desktop `/finance` history renders literal `None` for an empty comment (mobile cards handle it correctly); guard with `{{ movement.note or "" }}` when next touching finance templates. The two advisory transfers.py/writeoffs.py warnings from v1.1 remain untouched.
 - **v2.0 (next):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Was deferred from v1.1 because it first needed the local data model changes (multi-warehouse, batches) that sync must now account for — those changes are now shipped.
 
 ## Constraints
@@ -181,4 +188,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-15 — Phase 16 (manual cash movements & history) complete; v1.3 at 2/3 phases, Phase 17 (reports/export/dashboard) next*
+*Last updated: 2026-07-15 — v1.3 Финансы / Касса shipped (3/3 phases); v2.0 not yet scoped, run `/gsd-new-milestone`*

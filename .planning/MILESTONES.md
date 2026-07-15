@@ -1,5 +1,27 @@
 # Milestones
 
+## v1.3 Финансы / Касса (Shipped: 2026-07-15)
+
+**Delivered:** A cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price).
+
+**Phases completed:** 3 phases (15-17), 13 plans
+**Timeline:** 2026-07-14 → 2026-07-15 (2 days)
+**Git range:** `fb60988` (feat(15-01)) → `d34fe1b` (docs(17)) — 142 files changed, +11,114/-10,521 lines, 102 commits
+**Known deferred items at close:** 1 carried forward from v1.1 (2 advisory code-review warnings in transfers.py/writeoffs.py, unrelated to v1.3 scope) + 1 new advisory (desktop `/finance` history renders literal `None` for an empty comment; mobile unaffected) + no `17-SECURITY.md` threat-verification pass or `/gsd-audit-milestone` run before close (both skipped by operator decision at completion time)
+
+**Key accomplishments:**
+
+- `CashMovement` model + append-only `cash_movements` ledger (migration 0013) mirroring the existing `Operation` ledger's sync-ready shape (UUID PK, device_id/seq, DB-level no-update/no-delete triggers) but with no cached balance column — balance is always a live `SUM(amount_cents)`.
+- `app/services/finance.py` as the single sanctioned cash write path (`record_cash_movement`, `compute_balance`), wired into `register_sale`/`register_return` at the service layer so both desktop and mobile callers credit/debit for free, with the return debit always recomputed from the return's own qty × the origin sale's frozen unit price.
+- New «Финансы» section (desktop nav + mobile hub tile) showing the live «Баланс кассы».
+- Manual cash movements: `record_manual_movement` with server-applied sign, a mandatory-category gate on withdrawal, and a warn-but-allow negative-balance check matching the existing oversell/min-price pattern; shared `finance_base`-parameterised form partials reused verbatim across desktop `/finance` and mobile `/m/finance`.
+- Paginated/filterable cash history: desktop numbered pagination (mirrors Phase 14's `pagination.html`), mobile cards + «Показать ещё» load-more — both filterable by a coarse `CASH_BUCKETS` category grouping.
+- `app/services/finance_reports.py`: `cash_expense_total`, `stock_valuation`, and `cash_flow_report` — read-only aggregation services reusing `sales_profit_report` and the existing period-filter/local-day-boundary helpers; net profit computed as `gross_profit + cash_expense_total` (rows already signed negative).
+- Финансы dashboard tiles (gross profit, net profit, stock valuation at cost and at sale price) on both `/finance` and `/m/finance`, plus a period cash-flow report page and CSV export (`/finance/report`, `/finance/report.csv`) reusing the existing BOM/semicolon/formula-escape export convention.
+- Gap-closure plan 17-05 added missing navigation entry points to the new report pages (desktop top-nav item, mobile home tile, dashboard buttons), found by UAT Test 2.
+
+---
+
 ## v1.2 Catalog Pricing UX & List Ergonomics (Shipped: 2026-07-14)
 
 **Delivered:** Formalized catalog/consultant-price and name autofill by product code across the product-add form, goods receipt (desktop + mobile), and sales page (name↔code cross-autofill); closed mobile wizard context/navigation gaps (visible code/name/warehouse, uniform Назад, basket step indicator, search quick actions); added pagination, filtering, and sorting to every list page plus stock-guarded quick-delete for warehouses and products.
