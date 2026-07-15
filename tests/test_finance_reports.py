@@ -517,3 +517,48 @@ def test_web_mobile_finance_report_csv(session, client, monkeypatch):
     text = response.content.decode("utf-8-sig")
     assert "Когда;Категория;Комментарий;Сумма" in text
     assert "15,00" in text
+
+
+# --- web: mobile finance.html «Показатели» + finance_report.html shell (17-04 Task 2) -
+
+
+def test_web_mobile_finance_report_matches_desktop_subtotals(session, client, monkeypatch):
+    """Mobile parity (D-04c): /m/finance/report renders the SAME income/expense
+    «Итого за период» subtotals as the desktop /finance/report for an identical
+    period — both delegate to the same cash_flow_report service + shared
+    partials/cash_flow_report.html, only finance_base differs."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=3000)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+
+    desktop = client.get("/finance/report?from=2026-07-10&to=2026-07-10")
+    mobile = client.get("/m/finance/report?from=2026-07-10&to=2026-07-10")
+    assert desktop.status_code == 200
+    assert mobile.status_code == 200
+    assert "Скачать CSV" in mobile.text
+    assert 'href="/m/finance/report.csv' in mobile.text
+    for needle in ("Приход", "Расход", "Продажа", "Аренда", "Итого за период"):
+        assert needle in desktop.text
+        assert needle in mobile.text
+
+
+def test_web_mobile_finance_tiles_net_caveat(client):
+    """/m/finance shows the gross/net/stock tiles (D-04) with the mandatory
+    net cash-outflow caveat line (D-01b) — the Phase 15-16 balance/forms/
+    history includes stay intact alongside the new «Показатели» section."""
+    response = client.get("/m/finance")
+    assert response.status_code == 200
+    assert "Показатели" in response.text
+    assert "metric-tile" in response.text
+    assert (
+        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Это не бухгалтерская прибыль."
+    ) in response.text
+    assert "на текущий момент" in response.text
+    assert "<h1>Баланс кассы</h1>" in response.text
+    assert "Снять деньги" in response.text
+    assert "Внести деньги" in response.text
+    assert "История движений" in response.text

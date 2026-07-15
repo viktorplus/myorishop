@@ -7,6 +7,12 @@
    swap can never destroy the load-more control (CR-01 precedent). #}
 {% block step_indicator %}{% endblock %}
 {% block content %}
+<h2>Показатели</h2>
+{% with period_action = "/m/finance/metrics", period_target = "#finance-metrics" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+<div id="finance-metrics">{% include "partials/finance_tiles.html" %}</div>
+
 <h1>Баланс кассы</h1>
 {% include "partials/cash_balance.html" %}
 

@@ -1,11 +1,22 @@
 {% extends "mobile_base.html" %}
-{# Wiring-only placeholder (Plan 17-04 Task 1): proves the /m/finance/report
-   route branches correctly (full page vs HX partial). Task 2 adds the shared
-   period_filter.html + the plain CSV download link + the "Показатели"-style
-   chrome per UI-SPEC. #}
+{# Mobile period cash-flow report (FIN-08/D-04c): mirrors pages/finance_report.html
+   (desktop) — same shared partials/period_filter.html + partials/cash_flow_report.html,
+   only the finance_base prefix differs ("/m/finance"). No mobile-specific report
+   partial is created. #}
 {% block step_indicator %}{% endblock %}
 {% block content %}
 <h1>Движения кассы за период</h1>
+
+{% with period_action = "/m/finance/report", period_target = "#cashflow-results" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+
+{# Plain download link, NEVER hx-get — htmx would swap the CSV text into the
+   DOM instead of letting the browser save the file (T-17-09). from_date/to_date
+   echo the currently-resolved period so the export scope always matches the
+   on-screen report. #}
+<a class="button" href="/m/finance/report.csv?from={{ from_date }}&amp;to={{ to_date }}">Скачать CSV</a>
+
 <div id="cashflow-results">
   {% include "partials/cash_flow_report.html" %}
 </div>
