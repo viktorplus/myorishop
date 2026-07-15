@@ -427,14 +427,16 @@ No external technology changes apply — this is an internal reuse phase on a lo
 
 **All other claims are VERIFIED against in-repo source.** No external/registry claims were made.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Mobile history pagination style**
+   - RESOLVED: see 16-UI-SPEC.md "Resolved Open Questions" Q1 — mobile cash history uses `.mobile-card` stacks + a «Показать ещё» `has_next` load-more (mobile-native); the desktop numbered `page_window` bar is NOT reused on mobile.
    - What we know: desktop uses numbered `page_window`; mobile `/m/history` uses cards + `has_next` load-more.
    - What's unclear: which to use for mobile cash history (D-06a/D-07 leave it to discretion).
    - Recommendation: planner/UI-SPEC picks ONE explicitly; simplest parity is to reuse the desktop numbered bar on mobile too (fewer new partials), but mirroring `mobile_history` keeps mobile-native feel. State the choice in the plan.
 
 2. **Whether desktop and mobile share the history-rows / form partials**
+   - RESOLVED: see 16-UI-SPEC.md "Resolved Open Questions" Q2 — the two forms are SHARED across surfaces (parameterised by `finance_base`); the history presentation is FORKED (desktop table rows vs mobile cards). Amount format is Q3 — a money string parsed by `to_cents`, not whole units.
    - What we know: some features share partials, some render their own (CONTEXT discretion).
    - Recommendation: share the withdraw/deposit form + cash-history-rows partials if the markup is identical; only fork if mobile needs a distinct card layout.
 

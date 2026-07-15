@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Финансы / Касса
-status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-07-15T00:20:54.704Z"
-last_activity: "2026-07-14 — Phase 15 (Cash Ledger Foundation) complete: all 4 plans executed, merged, verified (577/577 tests passing)"
+status: executing
+stopped_at: Phase 16 UI-SPEC approved
+last_updated: "2026-07-15T01:37:14.036Z"
+last_activity: 2026-07-15 -- Phase 16 planning complete
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
+  total_plans: 8
   completed_plans: 4
   percent: 33
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 
 Phase: 16 of 17 (Manual Cash Movements & History) — not yet planned
 Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-07-14 — Phase 15 (Cash Ledger Foundation) complete: all 4 plans executed, merged, verified (577/577 tests passing)
+Status: Ready to execute
+Last activity: 2026-07-15 -- Phase 16 planning complete
 
 Progress: [███░░░░░░░] 33%
 
@@ -124,9 +124,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T00:20:54.692Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-manual-cash-movements-history/16-CONTEXT.md
+Last session: 2026-07-15T00:59:13.654Z
+Stopped at: Phase 16 UI-SPEC approved
+Resume file: .planning/phases/16-manual-cash-movements-history/16-UI-SPEC.md
 
 ## Operator Next Steps
 

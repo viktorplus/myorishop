@@ -105,7 +105,24 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
   3. Withdrawing an amount that would take the balance negative shows a warning but still lets the operator confirm and proceed, matching the existing oversell/min-price warn-but-allow pattern
   4. Operator can browse a paginated, filterable history of every cash movement — sale credits, return debits, and manual entries — on the Финансы page
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+**Wave 1**
+
+- [ ] 16-01-PLAN.md — Extend CASH_CATEGORIES (7 manual keys) + CASH_BUCKETS/CASH_BUCKET_LABELS + Jinja globals
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 16-02-PLAN.md — finance.record_manual_movement (sign/validate/comment/negative-gate) + cash_history_view read service
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 16-03-PLAN.md — Desktop «Финансы»: shared withdraw/deposit forms, POST routes, negative-balance warn, numbered history
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 16-04-PLAN.md — Mobile «Финансы»: reuse shared forms, cards + «Показать ещё» history parity
+
 **UI hint**: yes
 
 ### Phase 17: Financial Reports, Export & Dashboard Analytics
@@ -146,5 +163,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete    | 2026-07-14 |
 | 15. Cash Ledger Foundation | v1.3 | 4/4 | Complete   | 2026-07-14 |
-| 16. Manual Cash Movements & History | v1.3 | 0/TBD | Not started | - |
+| 16. Manual Cash Movements & History | v1.3 | 0/4 | Not started | - |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 0/TBD | Not started | - |
