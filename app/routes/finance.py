@@ -19,13 +19,13 @@ from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
 from app.routes.reports import _resolve_period
+from app.services import export as export_service
 from app.services.finance import (
     CATEGORY_ERROR,
     cash_history_view,
     compute_balance,
     record_manual_movement,
 )
-from app.services import export as export_service
 from app.services.finance_reports import cash_expense_total, cash_flow_report, stock_valuation
 from app.services.pagination import page_window
 from app.services.reports import sales_profit_report

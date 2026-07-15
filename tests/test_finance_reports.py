@@ -410,3 +410,56 @@ def test_web_finance_report_csv_streams_period_scoped_csv(session, client, monke
     text = response.content.decode("utf-8-sig")
     assert "Когда;Категория;Комментарий;Сумма" in text
     assert "15,00" in text
+
+
+# --- web: cash_flow_report.html partial content (17-03 Task 2) -------------
+
+
+def test_web_finance_report_full_page(session, client, monkeypatch):
+    """A plain GET /finance/report returns the FULL page containing the
+    «Скачать CSV» link and the Приход/Расход sections with CASH_CATEGORIES
+    labels (never hardcoded RU category strings)."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=3000)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+
+    response = client.get("/finance/report?from=2026-07-10&to=2026-07-10")
+    assert response.status_code == 200
+    assert "Скачать CSV" in response.text
+    assert "Приход" in response.text
+    assert "Расход" in response.text
+    assert "Продажа" in response.text
+    assert "Аренда" in response.text
+    assert "Итого за период" in response.text
+
+
+def test_web_finance_report_hx_partial(session, client, monkeypatch):
+    """A GET /finance/report with an HX-Request header returns ONLY the
+    results partial, not the full page chrome (nav / period filter / CSV
+    link belong to the page shell, not the swap payload)."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=3000)
+
+    response = client.get(
+        "/finance/report?from=2026-07-10&to=2026-07-10", headers={"HX-Request": "true"}
+    )
+    assert response.status_code == 200
+    assert "Приход" in response.text
+    assert "<h1>Движения кассы за период</h1>" not in response.text
+    assert "Скачать CSV" not in response.text
+    assert "preset-bar" not in response.text
+
+
+def test_web_finance_report_empty_state(client):
+    """An empty period (no movements) renders the empty-state copy, not the
+    Приход/Расход tables."""
+    response = client.get("/finance/report?from=2020-01-01&to=2020-01-01")
+    assert response.status_code == 200
+    assert "За выбранный период движений не было." in response.text
+    assert "<h2>Приход</h2>" not in response.text
