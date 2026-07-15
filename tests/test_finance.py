@@ -16,7 +16,13 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import CashMovement, Operation  # noqa: F401  (CASH_CATEGORIES: contract symbol)
+from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
+    CASH_BUCKET_LABELS,
+    CASH_BUCKETS,
+    CASH_CATEGORIES,
+    CashMovement,
+    Operation,
+)
 from app.services.batches import open_batches
 from app.services.finance import compute_balance, next_seq, record_cash_movement
 from app.services.returns import register_return
@@ -102,6 +108,53 @@ def test_contract_unknown_category_raises(session):
         record_cash_movement(session, category="bogus", amount_cents=1)
     session.rollback()
     assert session.scalar(text("SELECT COUNT(*) FROM cash_movements")) == 0
+
+
+# --- Phase 16 Plan 01: manual category + bucket constant contracts ---
+
+_MANUAL_CATEGORY_KEYS = (
+    "withdrawal_supplier",
+    "withdrawal_salary",
+    "withdrawal_rent",
+    "withdrawal_utilities",
+    "withdrawal_other",
+    "deposit_opening",
+    "deposit_correction",
+)
+
+
+def test_categories_manual_keys_present():
+    """D-01/D-01b: all 7 manual keys exist in CASH_CATEGORIES with non-empty RU
+    labels, and every category key fits CashMovement.category String(20)."""
+    for key in _MANUAL_CATEGORY_KEYS:
+        assert key in CASH_CATEGORIES, f"missing manual category key: {key!r}"
+        assert CASH_CATEGORIES[key].strip(), f"empty label for {key!r}"
+    # existing system keys stay unchanged
+    assert CASH_CATEGORIES["sale"] == "Продажа"
+    assert CASH_CATEGORIES["return"] == "Возврат"
+    # every key must fit the String(20) category column
+    assert all(len(k) <= 20 for k in CASH_CATEGORIES)
+
+
+def test_buckets_cover_categories():
+    """D-01a: every key in every CASH_BUCKETS tuple is a real CASH_CATEGORIES
+    key (no orphans), and CASH_BUCKET_LABELS keys match CASH_BUCKETS keys."""
+    for bucket, cats in CASH_BUCKETS.items():
+        assert cats, f"empty bucket tuple for {bucket!r}"
+        for cat in cats:
+            assert cat in CASH_CATEGORIES, f"orphan bucket category: {cat!r}"
+    assert set(CASH_BUCKET_LABELS) == set(CASH_BUCKETS)
+    assert all(label.strip() for label in CASH_BUCKET_LABELS.values())
+    # the 4 coarse buckets from D-01a/D-07a
+    assert set(CASH_BUCKETS) == {"sale", "return", "withdrawal", "deposit"}
+    assert set(CASH_BUCKETS["withdrawal"]) == {
+        "withdrawal_supplier",
+        "withdrawal_salary",
+        "withdrawal_rent",
+        "withdrawal_utilities",
+        "withdrawal_other",
+    }
+    assert set(CASH_BUCKETS["deposit"]) == {"deposit_opening", "deposit_correction"}
 
 
 # --- Plan 03 integration: sale credit / return debit hooks ---
