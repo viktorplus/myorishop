@@ -59,9 +59,52 @@ WRITEOFF_REASONS = {
 # return-debit write paths. "return" is kept distinct from Phase 16's
 # manual-withdrawal categories so the Phase 16/17 history/report views can
 # separate system-generated movements from operator-entered ones.
+# Phase 16 (D-01/D-01a/D-01b): manual movements are modeled by EXTENDING this
+# dict — no new `type` column, no migration. Direction lives in the
+# amount_cents sign (withdrawal negative, deposit positive); kind lives in the
+# category-key prefix so the 4 coarse history buckets derive trivially
+# (CASH_BUCKETS below). Every key MUST be <= 20 chars (CashMovement.category
+# is String(20); "withdrawal_utilities" is exactly 20). This is also the exact
+# server-side allow-list record_cash_movement / record_manual_movement gate on.
 CASH_CATEGORIES = {
     "sale": "Продажа",
     "return": "Возврат",
+    # Withdrawals (снятие) — amount_cents stored negative.
+    "withdrawal_supplier": "Оплата поставщику",
+    "withdrawal_salary": "Зарплата",
+    "withdrawal_rent": "Аренда",
+    "withdrawal_utilities": "Коммунальные",
+    "withdrawal_other": "Прочее",
+    # Deposits (внесение) — amount_cents stored positive.
+    "deposit_opening": "Начальный остаток",
+    "deposit_correction": "Корректировка",
+}
+
+# Phase 16 (D-01a): coarse history buckets → the CASH_CATEGORIES keys they
+# group. The «Тип» history filter maps one bucket to a SET of categories, so
+# the read service uses `category.in_(CASH_BUCKETS[bucket])` — a single
+# `== bucket` cannot express «Снятие» (5 categories). Mirrors how history_view
+# gates on OPERATION_TYPES membership. Server-side only — never a Jinja global.
+CASH_BUCKETS: dict[str, tuple[str, ...]] = {
+    "sale": ("sale",),
+    "return": ("return",),
+    "withdrawal": (
+        "withdrawal_supplier",
+        "withdrawal_salary",
+        "withdrawal_rent",
+        "withdrawal_utilities",
+        "withdrawal_other",
+    ),
+    "deposit": ("deposit_opening", "deposit_correction"),
+}
+
+# Phase 16 (D-01a/D-07a): coarse bucket key → RU label for the history «Тип»
+# filter. Registered as a Jinja global alongside CASH_CATEGORIES.
+CASH_BUCKET_LABELS = {
+    "sale": "Продажа",
+    "return": "Возврат",
+    "withdrawal": "Снятие",
+    "deposit": "Внесение",
 }
 
 # Phase 5 (D-16): latin operation type -> RU label for the /history "Тип" column.
