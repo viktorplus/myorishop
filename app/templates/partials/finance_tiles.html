@@ -1,0 +1,16 @@
+{# finance_tiles.html (D-04/D-04b): gross/net/stock dashboard tiles for the
+   light period selector on /finance and /m/finance.
+   Task 1 wiring stub — Task 2 fills in the full headings, mandatory
+   D-01b net-profit caveat and unknown-price caveats per UI-SPEC §A.
+   Expects: metrics (dict|None), valuation (dict). #}
+<div class="metric-grid">
+  <div class="metric-tile">
+    <p class="num"><strong>{% if metrics %}{{ metrics.gross_profit_cents | cents }}{% endif %}</strong></p>
+  </div>
+  <div class="metric-tile">
+    <p class="num"><strong>{% if metrics %}{{ metrics.net_profit_cents | cents }}{% endif %}</strong></p>
+  </div>
+  <div class="metric-tile">
+    <p class="num"><strong>{{ valuation.cost_value_cents | cents }}</strong></p>
+  </div>
+</div>

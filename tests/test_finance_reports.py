@@ -286,3 +286,44 @@ def test_cash_flow_report_movement_count_matches_bucketed_rows(session, monkeypa
     expense_cats = {entry["category"] for entry in report["expense"]}
     assert income_cats.isdisjoint(expense_cats)
     assert report["movement_count"] == len(report["income"]) + len(report["expense"])
+
+
+# --- web: /finance/metrics + tiles context on /finance (17-02 Task 1) -------
+
+
+def test_web_finance_metrics_hx_returns_tiles_partial(client):
+    """An HX-Request GET returns ONLY the tiles partial (finance_tiles.html);
+    a plain GET returns the full /finance page chrome (mirrors
+    test_web_export_page's route-shape assertions). finance.html itself is
+    not required to *visually* embed the tiles yet — that wiring is Task 2's
+    job (D-04 "Показатели" section) — this task only proves the route
+    branches correctly and the tiles partial renders on its own."""
+    hx_response = client.get("/finance/metrics", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "metric-tile" in hx_response.text
+    assert "<h1>Баланс кассы</h1>" not in hx_response.text
+
+    plain_response = client.get("/finance/metrics")
+    assert plain_response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in plain_response.text
+
+
+def test_web_finance_page_renders_tiles(session, client):
+    """GET /finance still returns 200 with the existing balance/forms/history
+    chrome intact, and the route's _metrics_context computes net profit as a
+    plain addition of gross profit + cash_expense_total (never a subtraction,
+    D-01a). Visually embedding the tiles into finance.html is Task 2's job."""
+    from app.routes.finance import _metrics_context
+    from app.services.finance import record_cash_movement
+
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in response.text
+
+    context = _metrics_context(session, "", "")
+    assert context["metrics"]["net_profit_cents"] == (
+        context["metrics"]["gross_profit_cents"] - 800
+    )
+    assert context["valuation"] is not None

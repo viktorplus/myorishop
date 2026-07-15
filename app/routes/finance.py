@@ -9,20 +9,25 @@ cash directly; it only reads the balance and delegates writes to the service.
 import logging
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
+from app.routes.reports import _resolve_period
 from app.services.finance import (
     CATEGORY_ERROR,
     cash_history_view,
     compute_balance,
     record_manual_movement,
 )
+from app.services.finance_reports import cash_expense_total, stock_valuation
 from app.services.pagination import page_window
+from app.services.reports import sales_profit_report
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -60,6 +65,39 @@ def _history_context(session: Session, *, bucket: str = "", page: int = 0) -> di
     }
 
 
+def _metrics_context(session: Session, from_: str, to: str) -> dict:
+    """Build the dashboard-tile render context (D-04/D-04b): gross + net profit
+    follow the light period selector; stock_valuation is called UNCONDITIONALLY
+    (point-in-time, period-independent — mirrors reports_products_page's
+    unconditional stale_products call outside the period-error guard).
+    Net profit is gross PLUS the already-negative cash_expense_total, a plain
+    addition, never a subtraction (D-01a)."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    metrics = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        gross = sales_profit_report(session, start_iso, end_iso)
+        expense = cash_expense_total(session, start_iso, end_iso)
+        metrics = {
+            "gross_profit_cents": gross["totals"]["profit_cents"],
+            "cost_unknown_count": gross["totals"]["cost_unknown_count"],
+            "net_profit_cents": gross["totals"]["profit_cents"] + expense,
+        }
+    valuation = stock_valuation(session)
+    return {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "metrics": metrics,
+        "valuation": valuation,
+        "finance_base": FINANCE_BASE,
+    }
+
+
 @router.get("/finance")
 def finance_page(request: Request, session: Session = Depends(get_session)):
     context = {
@@ -68,6 +106,31 @@ def finance_page(request: Request, session: Session = Depends(get_session)):
         "form": {},
         "errors": {},
         **_history_context(session),
+        **_metrics_context(session, "", ""),
+    }
+    return templates.TemplateResponse(request, "pages/finance.html", context)
+
+
+@router.get("/finance/metrics")
+def finance_metrics(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """D-04b light period selector target: HX swap returns only the tiles
+    partial into #finance-metrics; a plain GET (deep link / no-JS) returns
+    the full /finance page with balance/forms/history intact."""
+    context = _metrics_context(session, from_, to)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(request, "partials/finance_tiles.html", context)
+    context = {
+        "finance_base": FINANCE_BASE,
+        "balance_cents": compute_balance(session),
+        "form": {},
+        "errors": {},
+        **_history_context(session),
+        **context,
     }
     return templates.TemplateResponse(request, "pages/finance.html", context)
 
