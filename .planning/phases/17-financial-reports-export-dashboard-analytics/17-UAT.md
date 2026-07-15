@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: closed
 phase: 17-financial-reports-export-dashboard-analytics
 source: [17-VERIFICATION.md]
 started: 2026-07-15T00:00:00Z
@@ -49,7 +49,8 @@ blocked: 0
 ## Gaps
 
 - truth: "CSV export page is reachable via navigation from the main page"
-  status: failed
+  status: resolved
+  resolved_by: "17-05-PLAN.md / 17-05-SUMMARY.md (commits 5ff71b7, 2308d01, a3bb704)"
   reason: "User reported: все хорошо но ненащел точку входа на эту страницу начиная с главной"
   severity: major
   test: 2
