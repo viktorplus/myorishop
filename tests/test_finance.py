@@ -706,3 +706,84 @@ def test_web_finance_page_renders_both_forms(client):
     assert "Внести деньги" in response.text
     assert "Оплата поставщику" in response.text  # withdrawal_supplier label
     assert "Начальный остаток" in response.text  # deposit_opening label
+
+
+# --- Plan 03 Task 2: GET /finance/history + desktop history block ---
+
+
+def test_web_cash_history_full_page_renders_rows_and_filter(client, session):
+    """D-07: GET /finance (non-HX) renders the #cash-history-rows block with the
+    «Тип» bucket filter (Все типы + the 4 bucket labels) and the movement rows."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000)
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "<!doctype" in response.text.lower()  # full-page chrome
+    assert 'id="cash-history-rows"' in response.text
+    assert "Все типы" in response.text
+    for label in ("Продажа", "Возврат", "Снятие", "Внесение"):
+        assert label in response.text
+    assert "Аренда" in response.text  # withdrawal_rent category label in a row
+
+
+def test_web_cash_history_hx_returns_partial_only(client, session):
+    """D-07: an HX GET /finance/history returns ONLY the rows partial (no base
+    chrome) and a bucket filter narrows to that bucket's categories."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000)
+    response = client.get("/finance/history?bucket=withdrawal", headers=_HX)
+    assert response.status_code == 200
+    assert "<!doctype" not in response.text.lower()  # partial, no full chrome
+    assert "Баланс кассы" not in response.text
+    assert 'id="cash-history-rows"' in response.text
+    assert "Аренда" in response.text  # withdrawal row present
+    assert "Продажа" not in response.text  # sale filtered out (no bucket label either)
+
+
+def test_web_cash_history_pagination_preserves_bucket(client, session):
+    """FIN-07: with >20 movements the second page renders, and pagination links
+    carry &bucket=… so the active filter survives paging (extra_qs)."""
+    for _ in range(25):
+        record_cash_movement(session, category="withdrawal_supplier", amount_cents=-100)
+    first = client.get("/finance/history?bucket=withdrawal", headers=_HX)
+    assert first.status_code == 200
+    assert "bucket=withdrawal" in first.text  # extra_qs on pagination links
+    second = client.get("/finance/history?bucket=withdrawal&page=1", headers=_HX)
+    assert second.status_code == 200
+    assert "Страница 2 из 2" in second.text
+
+
+def test_web_cash_history_empty_states(client, session):
+    """UI-SPEC §C: unfiltered empty ledger vs a filter with no matches show the
+    two distinct empty-state messages."""
+    empty = client.get("/finance/history", headers=_HX)
+    assert "Движений пока нет." in empty.text
+
+    record_cash_movement(session, category="sale", amount_cents=100)
+    filtered = client.get("/finance/history?bucket=withdrawal", headers=_HX)
+    assert "Нет движений по выбранному типу." in filtered.text
+
+
+def test_web_cash_history_escapes_note(client, session):
+    """T-16-06: a note containing markup renders escaped (autoescape; no |safe)."""
+    record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-100, note="<script>alert(1)</script>"
+    )
+    response = client.get("/finance/history", headers=_HX)
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;" in response.text
+
+
+def test_web_withdraw_oob_refreshes_history(client, session):
+    """D-07: a successful withdraw POST carries an out-of-band #cash-history-rows
+    refresh showing the new movement."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "15,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    assert 'id="cash-history-rows"' in response.text
+    assert response.text.count("hx-swap-oob") >= 2  # balance + history both oob
+    assert "Оплата поставщику" in response.text  # the new withdrawal row
