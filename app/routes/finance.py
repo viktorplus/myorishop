@@ -19,13 +19,14 @@ from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
 from app.routes.reports import _resolve_period
+from app.services import export as export_service
 from app.services.finance import (
     CATEGORY_ERROR,
     cash_history_view,
     compute_balance,
     record_manual_movement,
 )
-from app.services.finance_reports import cash_expense_total, stock_valuation
+from app.services.finance_reports import cash_expense_total, cash_flow_report, stock_valuation
 from app.services.pagination import page_window
 from app.services.reports import sales_profit_report
 
@@ -292,3 +293,52 @@ def finance_deposit(
         )
 
     return _movement_success(session, "partials/deposit_form.html")
+
+
+@router.get("/finance/report")
+def finance_report_page(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """FIN-08/D-04a: period cash-flow report — near-verbatim clone of
+    reports_sales_page's HX-vs-full-page branch (app/routes/reports.py)."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    report = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        report = cash_flow_report(session, start_iso, end_iso)
+
+    context = {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "report": report,
+        "finance_base": FINANCE_BASE,
+    }
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(request, "partials/cash_flow_report.html", context)
+    return templates.TemplateResponse(request, "pages/finance_report.html", context)
+
+
+@router.get("/finance/report.csv")
+def finance_report_csv(
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """FIN-09/D-03b: period-scoped cash-movement CSV, delegating to the
+    17-01 stream_cash_movements_csv service. Plain download route (no
+    Request/template) — _resolve_period never raises (malformed/inverted
+    falls back to today), so bounds are always valid (T-06-09 bounded
+    exception, documented in app/services/export.py)."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    start_iso, end_iso = local_day_bounds_utc(
+        period["from_date"], period["to_date"], settings.display_tz
+    )
+    return export_service.stream_cash_movements_csv(session, start_iso, end_iso)

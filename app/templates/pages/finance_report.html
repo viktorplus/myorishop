@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Движения кассы за период</h1>
+
+{% with period_action = "/finance/report", period_target = "#cashflow-results" %}
+{% include "partials/period_filter.html" %}
+{% endwith %}
+
+{# Plain download link, NEVER hx-get — htmx would swap the CSV text into the
+   DOM instead of letting the browser save the file (T-17-09). from_date/to_date
+   echo the currently-resolved period so the export scope always matches the
+   on-screen report. #}
+<a class="button" href="/finance/report.csv?from={{ from_date }}&amp;to={{ to_date }}">Скачать CSV</a>
+
+<div id="cashflow-results">
+  {% include "partials/cash_flow_report.html" %}
+</div>
+{% endblock %}

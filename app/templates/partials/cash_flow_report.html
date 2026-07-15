@@ -1,0 +1,46 @@
+{# Cash-flow report results (FIN-08/D-05): income-vs-expense grouping,
+   swapped in place by the period filter's hx-get/hx-target — no wrapping id
+   here, the page template supplies div#cashflow-results around the include
+   (this same partial is the HX innerHTML swap payload). Category labels
+   come ONLY from the CASH_CATEGORIES Jinja global — never hardcoded — so
+   the expense subtotal here is guaranteed to reconcile with the net-profit
+   tile's cash_expense_total (D-05 hard invariant). #}
+{% if report is none %}
+<div class="error-block">
+  <p class="error">Не удалось загрузить отчёт. Проверьте даты и попробуйте ещё раз.</p>
+</div>
+{% elif report.movement_count == 0 %}
+<p class="empty-state muted">За выбранный период движений не было.</p>
+{% else %}
+<h2>Приход</h2>
+<table>
+  <tbody>
+    {% for row in report.income %}
+    <tr>
+      <td>{{ CASH_CATEGORIES[row.category] }}</td>
+      <td class="num">{{ row.total_cents | cents }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td><strong>Итого за период</strong></td>
+      <td class="num"><strong>{{ report.income_total_cents | cents }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Расход</h2>
+<table>
+  <tbody>
+    {% for row in report.expense %}
+    <tr>
+      <td>{{ CASH_CATEGORIES[row.category] }}</td>
+      <td class="num">{{ row.total_cents | cents }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td><strong>Итого за период</strong></td>
+      <td class="num"><strong>{{ report.expense_total_cents | cents }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
