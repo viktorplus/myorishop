@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 17-financial-reports-export-dashboard-analytics
 source: [17-VERIFICATION.md]
 started: 2026-07-15T00:00:00Z
@@ -53,5 +53,18 @@ blocked: 0
   reason: "User reported: все хорошо но ненащел точку входа на эту страницу начиная с главной"
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "The link to /finance/report exists but is low-prominence and mislabeled. Desktop top nav (base.html) has no direct entry to /finance/report; the only link is a bare unstyled <a> in pages/finance.html sandwiched between the metrics tiles and a heavier 'Баланс кассы' section. A second path exists via reports_landing.html but it's one of 6 links crammed into a paragraph. Mobile has no persistent nav at all (mobile_base.html) — only the home tile grid, and mobile_pages/finance.html has the same unstyled inline-link pattern as desktop. Link text ('Отчёт по кассе за период' / 'Движения кассы') never says 'export'/'CSV'/'скачать', which mismatches the tester's mental model."
+  artifacts:
+    - path: "app/templates/pages/finance.html"
+      issue: "Report link present (line 10) but unstyled plain <a>, no button/CTA treatment, buried between tiles and balance section"
+    - path: "app/templates/mobile_pages/finance.html"
+      issue: "Same low-prominence unstyled link pattern (line 15) on mobile"
+    - path: "app/templates/pages/reports_landing.html"
+      issue: "Alternate path to report exists but crowded among 6 links in one paragraph"
+    - path: "app/templates/base.html"
+      issue: "Desktop top nav has 'Финансы' -> /finance but no direct entry to /finance/report"
+    - path: "app/templates/mobile_pages/home.html"
+      issue: "Mobile home tile grid has no direct report/export tile; mobile_base.html has no persistent nav"
+  missing:
+    - "A distinctly-labeled, higher-prominence entry point (.button or .mobile-tile styled) using 'export'/'CSV'/'скачать' wording, reachable in one hop from the main page on both desktop and mobile"
+  debug_session: ".planning/debug/finance-report-nav-entry-missing.md"
