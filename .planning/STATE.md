@@ -4,13 +4,13 @@ milestone: v1.3
 milestone_name: Финансы / Касса
 status: executing
 stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-07-15T06:47:58.720Z"
+last_updated: "2026-07-15T07:03:55.338Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 33
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-14)
 ## Current Position
 
 Phase: 16 (manual-cash-movements-history) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-15
 
-Progress: [██████░░░░] 63%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [██████░░░░] 63%
 | Phase 05 P05 | 18min | 3 tasks | 8 files |
 | Phase 14 P01 | 15min | 3 tasks | 8 files |
 | Phase 16 P01 | 5m | 2 tasks | 3 files |
+| Phase 16 P02 | 12min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone deci
 - 3 phases (not the 4-6 "standard" granularity default) mirrors the v1.2 precedent — 13 requirements also compressed to 3 phases under the same granularity setting — and follows the "don't pad small projects" rule for a contained, single-ledger integration milestone.
 - [Phase ?]: D-01: manual cash movements extend CASH_CATEGORIES — no type column, no migration
 - [Phase ?]: CASH_BUCKETS kept server-side only (not a Jinja global) — a filter map, never rendered
+- [Phase ?]: Manual-entry sign tests pre-seed a covering balance so the D-05 negative gate does not fire; sign/comment verified independently
 
 ### Pending Todos
 
@@ -127,7 +129,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T06:47:32.146Z
+Last session: 2026-07-15T07:03:24.251Z
 Stopped at: Phase 16 UI-SPEC approved
 Resume file: None
 
