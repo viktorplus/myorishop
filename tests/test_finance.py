@@ -580,3 +580,129 @@ def test_cash_history_includes_all_categories(session):
     record_cash_movement(session, category="deposit_opening", amount_cents=200)
     cats = {r.category for r in cash_history_view(session)["rows"]}
     assert cats == {"sale", "return", "withdrawal_rent", "deposit_opening"}
+
+
+# --- Plan 03 Task 1: desktop withdraw/deposit POST routes + shared forms ---
+
+_HX = {"HX-Request": "true"}
+
+
+def test_web_withdraw_persists_and_refreshes_balance(client, session):
+    """FIN-03: a valid withdraw POST returns 200, persists exactly one negative
+    row via the service, and carries an out-of-band #cash-balance refresh."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "15,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    rows = list(
+        session.scalars(
+            select(CashMovement).where(CashMovement.category == "withdrawal_supplier")
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0].amount_cents == -1500
+    # oob balance refresh: 10000 - 1500 = 8500 -> «85,00»
+    assert 'id="cash-balance"' in response.text
+    assert "hx-swap-oob" in response.text
+    assert "85,00" in response.text
+
+
+def test_web_withdraw_blank_amount_returns_422(client, session):
+    """T-16-01: a blank amount re-renders the form (422) with the UI-SPEC error
+    and writes nothing."""
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Введите сумму больше нуля." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_withdraw_missing_comment_returns_422(client, session):
+    """D-04: withdrawal_other with a blank comment -> 422, «Укажите комментарий.»,
+    zero writes."""
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "10,00", "category": "withdrawal_other", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Укажите комментарий." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_negative_warns_without_confirm(client, session):
+    """D-05/T-16-05: a withdrawal that would go negative without confirm returns
+    HTTP 200 (not 422) with the warn + a confirm control, and writes nothing."""
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "50,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    assert "Баланс уйдёт в минус" in response.text
+    assert "Снять всё равно" in response.text
+    assert "confirm" in response.text
+    assert "#withdraw-form-wrap" in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_negative_allows_with_confirm(client, session):
+    """D-05: the same withdrawal with confirm="1" returns 200 and persists the row."""
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "50,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "confirm": "1",
+        },
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    assert _cash_count(session) == 1
+    assert compute_balance(session) == -5000
+
+
+def test_web_deposit_writes_positive_row(client, session):
+    """FIN-04: a valid deposit POST returns 200 and persists exactly one positive
+    row; the negative-balance branch never fires for deposits."""
+    response = client.post(
+        "/finance/deposit",
+        data={"amount": "100", "category": "deposit_opening", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    rows = list(session.scalars(select(CashMovement)))
+    assert len(rows) == 1
+    assert rows[0].amount_cents == 10000
+    assert "Баланс уйдёт в минус" not in response.text
+
+
+def test_web_deposit_blank_category_returns_422(client, session):
+    """UI-SPEC §D: a blank basis on the deposit form surfaces «Выберите основание.»
+    (deposit-specific copy) at 422 with zero writes."""
+    response = client.post(
+        "/finance/deposit",
+        data={"amount": "100", "category": "", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Выберите основание." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_finance_page_renders_both_forms(client):
+    """D-06: GET /finance renders «Снять деньги» / «Внести деньги» forms whose
+    select options carry the RU labels from CASH_CATEGORIES."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "Снять деньги" in response.text
+    assert "Внести деньги" in response.text
+    assert "Оплата поставщику" in response.text  # withdrawal_supplier label
+    assert "Начальный остаток" in response.text  # deposit_opening label
