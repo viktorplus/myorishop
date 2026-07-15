@@ -4,13 +4,13 @@ milestone: v1.3
 milestone_name: Финансы / Касса
 status: executing
 stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-07-15T01:37:14.036Z"
-last_activity: 2026-07-15 -- Phase 16 planning complete
+last_updated: "2026-07-15T06:47:58.720Z"
+last_activity: 2026-07-15
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 33
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-14)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 16: Manual Cash Movements & History — ready to plan
+**Current focus:** Phase 16 — manual-cash-movements-history
 
 ## Current Position
 
-Phase: 16 of 17 (Manual Cash Movements & History) — not yet planned
-Plan: — (not yet planned)
+Phase: 16 (manual-cash-movements-history) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-15 -- Phase 16 planning complete
+Last activity: 2026-07-15
 
-Progress: [███░░░░░░░] 33%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 05 P04 | 13min | 3 tasks | 8 files |
 | Phase 05 P05 | 18min | 3 tasks | 8 files |
 | Phase 14 P01 | 15min | 3 tasks | 8 files |
+| Phase 16 P01 | 5m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0/v1.1 milestone deci
 - FIN-06 (balance display) folded into Phase 15 rather than deferred to Phase 16 — makes the foundation phase's success criteria observable through the UI (mirrors the v1.0 Phase 1 "walking skeleton" pattern) instead of requiring a debug-only verification path.
 - FIN-10/11/12 (gross profit, net profit, stock valuation — added after research via user follow-up) grouped into Phase 17 alongside FIN-08 (cash-flow report) and FIN-09 (CSV export) rather than into Phase 16's manual-movement UI — all five are read-only period/point-in-time aggregation queries reusing existing report infrastructure (`sales_profit_report`, the stock report shape, the export.py CSV convention), distinct in nature from Phase 16's write-path/form work. Net profit (FIN-11) also has a hard dependency on Phase 16's manual expense movements existing to subtract.
 - 3 phases (not the 4-6 "standard" granularity default) mirrors the v1.2 precedent — 13 requirements also compressed to 3 phases under the same granularity setting — and follows the "don't pad small projects" rule for a contained, single-ledger integration milestone.
+- [Phase ?]: D-01: manual cash movements extend CASH_CATEGORIES — no type column, no migration
+- [Phase ?]: CASH_BUCKETS kept server-side only (not a Jinja global) — a filter map, never rendered
 
 ### Pending Todos
 
@@ -124,9 +127,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T00:59:13.654Z
+Last session: 2026-07-15T06:47:32.146Z
 Stopped at: Phase 16 UI-SPEC approved
-Resume file: .planning/phases/16-manual-cash-movements-history/16-UI-SPEC.md
+Resume file: None
 
 ## Operator Next Steps
 

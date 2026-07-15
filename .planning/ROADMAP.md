@@ -109,7 +109,7 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 
 **Wave 1**
 
-- [ ] 16-01-PLAN.md — Extend CASH_CATEGORIES (7 manual keys) + CASH_BUCKETS/CASH_BUCKET_LABELS + Jinja globals
+- [x] 16-01-PLAN.md — Extend CASH_CATEGORIES (7 manual keys) + CASH_BUCKETS/CASH_BUCKET_LABELS + Jinja globals
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -163,5 +163,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Mobile Wizard Context & Navigation | v1.2 | 6/6 | Complete    | 2026-07-13 |
 | 14. List Pagination, Filtering, Sorting & Quick Delete | v1.2 | 7/7 | Complete    | 2026-07-14 |
 | 15. Cash Ledger Foundation | v1.3 | 4/4 | Complete   | 2026-07-14 |
-| 16. Manual Cash Movements & History | v1.3 | 0/4 | Not started | - |
+| 16. Manual Cash Movements & History | v1.3 | 1/4 | In Progress|  |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 0/TBD | Not started | - |
