@@ -1,6 +1,16 @@
 {% extends "mobile_base.html" %}
+{# Mobile «Финансы» (D-06a): balance + the two SHARED forms (withdraw/deposit)
+   reused from Plan 03 and parameterised by finance_base="/m/finance" so their
+   hx-post resolves on the mobile router. The cash-movement history block (cards
+   + «Показать ещё» load-more) is wired below in Task 2. #}
 {% block step_indicator %}{% endblock %}
 {% block content %}
 <h1>Баланс кассы</h1>
-<p class="num"><strong>{{ balance_cents | cents }}</strong></p>
+{% include "partials/cash_balance.html" %}
+
+<h2>Снять деньги</h2>
+{% include "partials/withdraw_form.html" %}
+
+<h2>Внести деньги</h2>
+{% include "partials/deposit_form.html" %}
 {% endblock %}
