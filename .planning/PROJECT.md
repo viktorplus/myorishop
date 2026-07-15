@@ -14,9 +14,21 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Next Milestone Goals
+## Current Milestone: v2.0 UX Overhaul & Navigation Restructure
 
-v2.0 is not yet scoped: multi-operator sync across countries, multi-currency, user roles, and customer intelligence features, plus mobile CRUD parity for warehouses/products/customers/dictionary/reports (deferred from v1.2 audit). Run `/gsd-new-milestone` to scope it formally.
+**Goal:** Rework navigation into nested/secondary menus, add an operational dashboard to the home page, unify the product price model to two fields (cost/sale), and rebuild the Products/Warehouses/Sales/History/Customers pages around the operator's real workflow instead of their original one-feature-at-a-time shape.
+
+**Target features:**
+- Home-page dashboard: current date/weekday/time, active catalog number + days until it closes, day/week/month totals (revenue, profit, expenses), total stock codes + valuation, an enriched recent-operations feed (type-specific columns including customer)
+- Navigation restructured into nested menus: Приход/Списание/Справочник under Товары; Склады/Резервные копии under Настройки; Экспорт under Резервные копии; Перемещение under Товар
+- Products page: remove the "Добавить товар" button (receipt already covers it), delete becomes a text link (not a button), rows grouped by product code showing total quantity across batches (batches broken out with their own expiry/name), price model collapsed to exactly two fields — ДЦ (cost) and ПЦ (sale price) — editable at any stage (product card, receipt, sale) with color-coded deviation from the dictionary's reference price, category shown and filterable
+- Warehouses page rebuilt: add/edit/delete via links into dedicated forms, delete only when the warehouse holds no stock, list shows item count + last-receipt date per warehouse
+- Transfers: fix the batch-split scenario when moved stock has a different expiry date or condition than the source batch
+- Sales page rebuilt: code/name/qty/price table, a live running total shown directly under the form, a new/existing/anonymous customer flow with autocomplete on existing, customer name shown in the recent-sales list
+- Customers: extended profile (multiple phones/Telegram/emails/social profiles/address) plus purchase stats and recommendations (last order date, spend by month/quarter/year, favorite products by frequency/quantity)
+- History page rebuilt: nested menu by operation type with type-specific columns, filters (code/date/customer/category), sort, pagination
+- Reports: a "Back to Reports" navigation link from any report detail page
+- Mobile navigation reaches parity with desktop's main tabs (excluding Настройки)
 
 <details>
 <summary>Archived: v1.3 Финансы / Касса (SHIPPED 2026-07-15)</summary>

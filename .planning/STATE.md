@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Финансы / Касса
-status: completed
-stopped_at: Phase 17 UI-SPEC approved
-last_updated: "2026-07-15T18:26:11.988Z"
-last_activity: 2026-07-15 -- Phase 17 marked complete
+milestone: v2.0
+milestone_name: UX Overhaul & Navigation Restructure
+status: planning
+last_updated: "2026-07-15T19:18:37.854Z"
+last_activity: 2026-07-15
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 17 — COMPLETE
-Plan: 1 of 4
-Status: Phase 17 complete
-Last activity: 2026-07-15 -- Phase 17 marked complete
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-15 — Milestone v2.0 started
 
 ## Performance Metrics
 
