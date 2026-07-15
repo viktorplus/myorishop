@@ -25,6 +25,7 @@ from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
 )
 from app.services.batches import open_batches
 from app.services.finance import (
+    cash_history_view,
     compute_balance,
     next_seq,
     record_cash_movement,
@@ -487,3 +488,95 @@ def test_negative_gate_covered_withdrawal_no_warn(session):
     assert errors == {}
     assert result and "negative_balance" not in result
     assert compute_balance(session) == 5000
+
+
+# --- Plan 02: cash_history_view (FIN-07) ---
+
+_WITHDRAWAL_KEYS = (
+    "withdrawal_supplier",
+    "withdrawal_salary",
+    "withdrawal_rent",
+    "withdrawal_utilities",
+    "withdrawal_other",
+)
+
+
+def test_cash_history_empty(session):
+    """FIN-07: an empty ledger returns the contract shape, total_pages >= 1."""
+    assert cash_history_view(session) == {
+        "rows": [],
+        "page": 0,
+        "total": 0,
+        "total_pages": 1,
+        "bucket": "",
+    }
+
+
+def test_cash_history_paginates_and_clamps(session):
+    """FIN-07/T-14-04: page never exceeds page_size; out-of-range page clamps
+    to the last page (never empty)."""
+    for _ in range(25):
+        record_cash_movement(session, category="sale", amount_cents=100)
+
+    page0 = cash_history_view(session, page=0)
+    assert len(page0["rows"]) == 20  # LIST_PAGE_SIZE
+    assert page0["total"] == 25
+    assert page0["total_pages"] == 2
+
+    page1 = cash_history_view(session, page=1)
+    assert len(page1["rows"]) == 5
+
+    clamped = cash_history_view(session, page=9)
+    assert clamped["page"] == 1
+    assert len(clamped["rows"]) == 5
+
+
+def test_cash_history_newest_first(session):
+    """FIN-07: rows are ordered created_at desc, seq desc."""
+    for _ in range(3):
+        record_cash_movement(session, category="sale", amount_cents=100)
+    rows = cash_history_view(session)["rows"]
+    assert rows[0].created_at >= rows[1].created_at
+    assert rows[0].seq > rows[1].seq
+
+
+def test_cash_history_bucket_withdrawal(session):
+    """FIN-07/Pitfall 3: bucket="withdrawal" narrows to exactly the 5
+    withdrawal_* categories (a `== bucket` filter cannot express «Снятие»)."""
+    record_cash_movement(session, category="sale", amount_cents=100)
+    for cat in _WITHDRAWAL_KEYS:
+        record_cash_movement(session, category=cat, amount_cents=-100)
+
+    result = cash_history_view(session, bucket="withdrawal")
+    assert result["total"] == 5
+    assert result["bucket"] == "withdrawal"
+    assert {r.category for r in result["rows"]} == set(_WITHDRAWAL_KEYS)
+
+
+def test_cash_history_bucket_sale_only(session):
+    """FIN-07: bucket="sale" returns only sale rows."""
+    record_cash_movement(session, category="sale", amount_cents=100)
+    record_cash_movement(session, category="return", amount_cents=-50)
+    result = cash_history_view(session, bucket="sale")
+    assert result["total"] == 1
+    assert result["rows"][0].category == "sale"
+
+
+def test_cash_history_unknown_bucket_ignored(session):
+    """FIN-07/T-16-07: an unknown/tampered bucket is ignored (no filter)."""
+    record_cash_movement(session, category="sale", amount_cents=100)
+    record_cash_movement(session, category="return", amount_cents=-50)
+    unfiltered_total = cash_history_view(session)["total"]
+    result = cash_history_view(session, bucket="bogus")
+    assert result["total"] == unfiltered_total == 2
+
+
+def test_cash_history_includes_all_categories(session):
+    """FIN-07: the unfiltered view includes sale credits, return debits AND
+    manual entries — no category is excluded."""
+    record_cash_movement(session, category="sale", amount_cents=100)
+    record_cash_movement(session, category="return", amount_cents=-50)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-30)
+    record_cash_movement(session, category="deposit_opening", amount_cents=200)
+    cats = {r.category for r in cash_history_view(session)["rows"]}
+    assert cats == {"sale", "return", "withdrawal_rent", "deposit_opening"}
