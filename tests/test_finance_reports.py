@@ -370,3 +370,43 @@ def test_web_finance_page_untouched_surfaces(client):
     assert "Снять деньги" in response.text
     assert "Внести деньги" in response.text
     assert "История движений" in response.text
+
+
+# --- web: /finance/report + /finance/report.csv routes (17-03 Task 1) ------
+
+
+def test_web_finance_report_hx_returns_partial_only(client):
+    """A genuine HX-Request GET returns ONLY the results partial, never the
+    full page chrome (mirrors reports_sales_page's branch, T-04)."""
+    hx_response = client.get("/finance/report", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" not in hx_response.text
+    assert "Скачать CSV" not in hx_response.text
+
+
+def test_web_finance_report_page_full_page(client):
+    """A plain GET returns the full page chrome (title + period filter +
+    CSV link + results div)."""
+    response = client.get("/finance/report")
+    assert response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" in response.text
+    assert 'href="/finance/report.csv' in response.text
+    assert 'id="cashflow-results"' in response.text
+
+
+def test_web_finance_report_csv_streams_period_scoped_csv(session, client, monkeypatch):
+    """FIN-09: /finance/report.csv delegates to stream_cash_movements_csv and
+    scopes the export to the from/to period params."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=1500)
+
+    response = client.get("/finance/report.csv?from=2026-07-10&to=2026-07-10")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "cash_movements.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    assert "Когда;Категория;Комментарий;Сумма" in text
+    assert "15,00" in text
