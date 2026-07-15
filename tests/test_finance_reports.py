@@ -327,3 +327,46 @@ def test_web_finance_page_renders_tiles(session, client):
         context["metrics"]["gross_profit_cents"] - 800
     )
     assert context["valuation"] is not None
+
+
+# --- web: finance_tiles.html markup/copy + finance.html wiring (Task 2) -----
+
+
+def test_web_finance_net_caveat_present(client):
+    """The MANDATORY net-profit cash-outflow caveat line (D-01b) is a visible
+    .muted line on /finance itself, not hidden behind a title= tooltip."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert (
+        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Это не бухгалтерская прибыль."
+    ) in response.text
+
+
+def test_web_finance_tiles_caveat_hx(client):
+    """Same MANDATORY caveat line is present in the /finance/metrics HX partial."""
+    response = client.get("/finance/metrics", headers={"HX-Request": "true"})
+    assert response.status_code == 200
+    assert "не бухгалтерская прибыль" in response.text
+
+
+def test_web_finance_stock_tile_point_in_time_cue(client):
+    """The stock-valuation tile carries the "на текущий момент" cue (D-04b) so
+    the operator sees it deliberately ignores the period selector."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "на текущий момент" in response.text
+    assert "По закупке" in response.text
+    assert "По продаже" in response.text
+
+
+def test_web_finance_page_untouched_surfaces(client):
+    """Regression guard (D-04): the Phase 15-16 balance/forms/history includes
+    still render unchanged alongside the new «Показатели» section."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert "Показатели" in response.text
+    assert "<h1>Баланс кассы</h1>" in response.text
+    assert "Снять деньги" in response.text
+    assert "Внести деньги" in response.text
+    assert "История движений" in response.text
