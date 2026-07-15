@@ -1,8 +1,10 @@
 {% extends "mobile_base.html" %}
-{# Mobile «Финансы» (D-06a): balance + the two SHARED forms (withdraw/deposit)
-   reused from Plan 03 and parameterised by finance_base="/m/finance" so their
-   hx-post resolves on the mobile router. The cash-movement history block (cards
-   + «Показать ещё» load-more) is wired below in Task 2. #}
+{# Mobile «Финансы» (D-06a/D-07): balance + the two SHARED forms (withdraw/deposit)
+   reused from Plan 03 and parameterised by finance_base="/m/finance", then a
+   mobile-native cash-movement history — a «Тип» bucket filter, a .mobile-card
+   stack, and a «Показать ещё» load-more (UI-SPEC Q1). #cash-history-cards and
+   #cash-history-load-more are DOM siblings (never nested) so a filter innerHTML
+   swap can never destroy the load-more control (CR-01 precedent). #}
 {% block step_indicator %}{% endblock %}
 {% block content %}
 <h1>Баланс кассы</h1>
@@ -13,4 +15,19 @@
 
 <h2>Внести деньги</h2>
 {% include "partials/deposit_form.html" %}
+
+<h2>История движений</h2>
+<div class="field">
+  <label for="bucket">Тип</label>
+  <select id="bucket" name="bucket"
+          hx-get="/m/finance/history" hx-trigger="change"
+          hx-target="#cash-history-cards" hx-push-url="true">
+    <option value=""{% if not bucket %} selected{% endif %}>Все типы</option>
+    {% for key, label in CASH_BUCKET_LABELS.items() %}
+    <option value="{{ key }}"{% if key == bucket %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div id="cash-history-cards">{% include "mobile_partials/cash_history_cards.html" %}</div>
+{% include "mobile_partials/cash_history_load_more.html" %}
 {% endblock %}

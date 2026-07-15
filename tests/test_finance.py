@@ -930,3 +930,109 @@ def test_mobile_finance_page_renders_both_forms(mobile_client_factory):
     assert 'hx-post="/m/finance/withdraw"' in response.text
     assert 'hx-post="/m/finance/deposit"' in response.text
     assert 'hx-post="/finance/withdraw"' not in response.text  # no desktop leakage
+
+
+# --- Plan 04 Task 2: mobile cash history (cards + «Показать ещё» load-more) ---
+
+
+def test_mobile_cash_history_full_page_renders_cards_and_filter(
+    mobile_client_factory, session
+):
+    """D-07/UI-SPEC Q1: GET /m/finance (non-HX) renders a #cash-history-cards div
+    with a .mobile-card per movement and a «Тип» bucket <select> (Все типы + the
+    4 bucket labels) — NOT a numbered pagination bar."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance")
+    assert response.status_code == 200
+    assert 'id="cash-history-cards"' in response.text
+    assert "mobile-card" in response.text
+    assert "Все типы" in response.text
+    for label in ("Продажа", "Возврат", "Снятие", "Внесение"):
+        assert label in response.text
+    assert "Аренда" in response.text  # withdrawal_rent category label in a card
+
+
+def test_mobile_cash_history_hx_returns_cards_and_load_more(
+    mobile_client_factory, session
+):
+    """D-07: an HX GET /m/finance/history returns the card partial PLUS an oob
+    #cash-history-load-more; with more pages the «Показать ещё» button's hx-get
+    carries the next page and the active bucket."""
+    for _ in range(25):
+        record_cash_movement(session, category="sale", amount_cents=100)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance/history?page=0", headers=_HX)
+    assert response.status_code == 200
+    assert "<!doctype" not in response.text.lower()  # partial, no full chrome
+    assert "mobile-card" in response.text
+    assert 'id="cash-history-load-more"' in response.text
+    assert "hx-swap-oob" in response.text
+    assert "Показать ещё" in response.text
+    assert "page=1" in response.text  # next page on the load-more button
+
+
+def test_mobile_cash_history_last_page_hides_button(mobile_client_factory, session):
+    """D-07: on the last page has_next is false, so the «Показать ещё» button
+    is absent (the oob sentinel div is still present, empty)."""
+    for _ in range(25):
+        record_cash_movement(session, category="sale", amount_cents=100)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance/history?page=1", headers=_HX)
+    assert response.status_code == 200
+    assert 'id="cash-history-load-more"' in response.text
+    assert "Показать ещё" not in response.text
+
+
+def test_mobile_cash_history_bucket_filter(mobile_client_factory, session):
+    """FIN-07/Pitfall 3: bucket=withdrawal lists only withdrawal-category cards."""
+    record_cash_movement(session, category="sale", amount_cents=12500)
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance/history?bucket=withdrawal", headers=_HX)
+    assert response.status_code == 200
+    assert "Аренда" in response.text  # withdrawal_rent card present
+    assert "-30,00" in response.text
+    assert "125,00" not in response.text  # sale card filtered out
+
+
+def test_mobile_cash_history_escapes_note(mobile_client_factory, session):
+    """T-16-06: a note containing markup renders escaped (autoescape; no |safe)."""
+    record_cash_movement(
+        session,
+        category="withdrawal_rent",
+        amount_cents=-100,
+        note="<script>alert(1)</script>",
+    )
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.get("/m/finance/history", headers=_HX)
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;" in response.text
+
+
+def test_mobile_cash_history_empty_states(mobile_client_factory, session):
+    """UI-SPEC §C: unfiltered empty ledger vs a filter with no matches show the
+    two distinct empty-state messages on the mobile cards."""
+    mc = _mobile_finance_client(mobile_client_factory)
+    empty = mc.get("/m/finance/history", headers=_HX)
+    assert "Движений пока нет." in empty.text
+
+    record_cash_movement(session, category="sale", amount_cents=100)
+    filtered = mc.get("/m/finance/history?bucket=withdrawal", headers=_HX)
+    assert "Нет движений по выбранному типу." in filtered.text
+
+
+def test_mobile_withdraw_oob_refreshes_history(mobile_client_factory, session):
+    """D-07: a successful mobile withdraw POST carries an out-of-band
+    #cash-history-cards refresh showing the new movement."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.post(
+        "/m/finance/withdraw",
+        data={"amount": "15,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 200
+    assert 'id="cash-history-cards"' in response.text
+    assert "Оплата поставщику" in response.text  # the new withdrawal card label

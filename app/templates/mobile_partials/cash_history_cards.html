@@ -1,0 +1,34 @@
+{# Mobile cash-history cards (D-07/D-07b) — mirrors mobile_partials/history_cards.html
+   but SIMPLER: bare CashMovement rows (no Product/Batch join) restacked into one
+   .mobile-card each, showing exactly the 4 D-07b fields (Когда · Тип / Комментарий /
+   Сумма). Autoescape ONLY — `note` and the category label are untrusted operator/
+   at-rest text (T-16-06); the safe filter is NEVER applied.
+
+   RENDER MODES (the `oob` flag drives the wrapper):
+   - page include / load-more append: content-only cards (oob unset), appended
+     beforeend into #cash-history-cards or innerHTML-swapped on a filter change;
+   - success oob-refresh: wrapped in `<div id="cash-history-cards" hx-swap-oob>` so
+     a movement replaces the whole card list in place. #}
+{% if oob %}<div id="cash-history-cards" hx-swap-oob="true">{% endif %}
+{% if not rows %}
+<p class="empty-state muted">
+  {%- if bucket -%}
+  Нет движений по выбранному типу.
+  {%- else -%}
+  Движений пока нет.
+  {%- endif -%}
+</p>
+{% else %}
+{% for mv in rows %}
+<div class="mobile-card">
+  {# D-01b: RU label from the CASH_CATEGORIES global; fall back to the raw key if a
+     legacy/unknown category ever appears. Autoescape only. #}
+  <p class="muted">{{ mv.created_at | local_dt }} · {{ CASH_CATEGORIES.get(mv.category, mv.category) }}</p>
+  {%- if mv.note %}
+  <p>{{ mv.note }}</p>
+  {%- endif %}
+  <p class="num">{{ mv.amount_cents | cents }}</p>
+</div>
+{% endfor %}
+{% endif %}
+{% if oob %}</div>{% endif %}

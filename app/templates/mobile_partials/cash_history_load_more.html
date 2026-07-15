@@ -1,0 +1,14 @@
+{# Mobile cash-history load-more control (D-07/UI-SPEC Q1) — mirrors
+   mobile_partials/history_load_more.html. Rendered as its own element, a DOM
+   sibling of #cash-history-cards (never nested), so a filter-select innerHTML
+   swap on #cash-history-cards can never destroy this control (CR-01 precedent).
+   The `oob` flag drives hx-swap-oob so every HX response updates it in place.
+   Mobile-native: a `has_next` sentinel + «Показать ещё», NOT the desktop
+   numbered pagination bar (Pitfall 7). #}
+<div id="cash-history-load-more"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if has_next %}
+  <button type="button" class="secondary"
+          hx-get="{{ finance_base }}/history?bucket={{ bucket }}&page={{ page + 1 }}"
+          hx-target="#cash-history-cards" hx-swap="beforeend" hx-disabled-elt="this">Показать ещё</button>
+  {% endif %}
+</div>
