@@ -12,7 +12,13 @@ RU-locale auto-import into the wrong columns.
 Security T-06-09: no function here accepts a filename, path, or any other
 externally-supplied parameter — every export is a full, unfiltered table
 dump (matches the V12 pattern already established by app/services/backup.py
-and app/routes/backup.py). T-06-10: _csv_safe prefixes any free-text value
+and app/routes/backup.py), WITH ONE BOUNDED EXCEPTION: stream_cash_movements_csv
+(FIN-09/D-03b) accepts a VALIDATED calendar start_iso/end_iso range, clamped
+upstream by _resolve_period before this module ever sees it, and consumes it
+ONLY as an ORM `.where(CashMovement.created_at ...)` bound — never as a
+filename, path, or arbitrary string. This is a documented, bounded
+relaxation for period-scoped export, not a general "exports may take
+arbitrary params" policy. T-06-10: _csv_safe prefixes any free-text value
 starting with =, +, -, or @ with a leading apostrophe so Excel never
 interprets it as a formula on open (CSV/formula-injection hardening).
 """
@@ -27,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import format_cents, iso_to_local
-from app.models import Customer, Operation, Product, Sale
+from app.models import CASH_CATEGORIES, CashMovement, Customer, Operation, Product, Sale
 
 _INJECTION_PREFIXES = ("=", "+", "-", "@")
 
@@ -158,4 +164,41 @@ def stream_customers_csv(session: Session) -> StreamingResponse:
         _encode_once(_csv_rows(header, rows)),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=customers.csv"},
+    )
+
+
+def stream_cash_movements_csv(
+    session: Session, start_iso: str, end_iso: str
+) -> StreamingResponse:
+    """Period-scoped cash-movement dump, oldest-first (FIN-09/D-03).
+
+    D-03b: the ONLY export in this module accepting a filter — start_iso/
+    end_iso are a VALIDATED calendar range clamped upstream by
+    _resolve_period, consumed ONLY as an ORM `.where(created_at ...)` bound.
+    Every existing export convention stays intact (D-03a): reuses
+    _encode_once/_csv_rows/_csv_safe verbatim (one UTF-8 BOM, ";" delimiter,
+    formula-injection escape on every free-text cell).
+    """
+    movements = session.scalars(
+        select(CashMovement)
+        .where(
+            CashMovement.created_at >= start_iso,
+            CashMovement.created_at < end_iso,
+        )
+        .order_by(CashMovement.created_at)
+    ).all()
+    header = ["Когда", "Категория", "Комментарий", "Сумма"]
+    rows = [
+        [
+            iso_to_local(movement.created_at, settings.display_tz),
+            _csv_safe(CASH_CATEGORIES.get(movement.category, movement.category)),
+            _csv_safe(movement.note or ""),
+            format_cents(movement.amount_cents),
+        ]
+        for movement in movements
+    ]
+    return StreamingResponse(
+        _encode_once(_csv_rows(header, rows)),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cash_movements.csv"},
     )
