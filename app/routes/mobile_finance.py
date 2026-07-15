@@ -16,8 +16,10 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import CASH_BUCKETS
 from app.routes import templates
 from app.services.finance import (
+    CATEGORY_ERROR,
     cash_history_view,
     compute_balance,
     record_manual_movement,
@@ -128,6 +130,18 @@ def mobile_finance_withdraw(
     # String fields on purpose: parsing/validation happens in the service, which
     # returns RU errors. The route never writes cash (D-00c).
     form_echo = {"amount": amount, "category": category, "note": note}
+    # WR-01 defence-in-depth: this endpoint accepts ONLY withdrawal categories
+    # (mirror of the desktop guard). A crafted deposit_* POST here would
+    # otherwise be recorded as a deposit via the withdraw route.
+    if category in CASH_BUCKETS["deposit"]:
+        context = {
+            "finance_base": FINANCE_BASE,
+            "errors": {"category": CATEGORY_ERROR},
+            "form": form_echo,
+        }
+        return templates.TemplateResponse(
+            request, "partials/withdraw_form.html", context, status_code=422
+        )
     try:
         result, errors = record_manual_movement(
             session, category=category, amount_raw=amount, note=note, confirm=confirm
@@ -179,6 +193,18 @@ def mobile_finance_deposit(
     # D-05: deposits never warn (they only increase the balance) — confirm is
     # irrelevant, so this route has only the errors/success branches.
     form_echo = {"amount": amount, "category": category, "note": note}
+    # WR-01 defence-in-depth: this endpoint accepts ONLY deposit categories
+    # (mirror of the desktop guard). A crafted withdrawal_* POST here would
+    # otherwise reach the withdrawal direction via the deposit route.
+    if category in CASH_BUCKETS["withdrawal"]:
+        context = {
+            "finance_base": FINANCE_BASE,
+            "errors": {"category": DEPOSIT_CATEGORY_ERROR},
+            "form": form_echo,
+        }
+        return templates.TemplateResponse(
+            request, "partials/deposit_form.html", context, status_code=422
+        )
     try:
         result, errors = record_manual_movement(
             session, category=category, amount_raw=amount, note=note

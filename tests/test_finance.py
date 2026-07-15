@@ -1036,3 +1036,61 @@ def test_mobile_withdraw_oob_refreshes_history(mobile_client_factory, session):
     assert response.status_code == 200
     assert 'id="cash-history-cards"' in response.text
     assert "Оплата поставщику" in response.text  # the new withdrawal card label
+
+
+def test_web_withdraw_rejects_deposit_category(client, session):
+    """WR-01 defence-in-depth: a deposit_* category posted to /finance/withdraw is
+    rejected at the route (422, «Выберите категорию.») with zero writes — the
+    withdraw endpoint accepts only withdrawal_* categories, never a
+    cross-direction deposit (the service derives direction from the category)."""
+    response = client.post(
+        "/finance/withdraw",
+        data={"amount": "15,00", "category": "deposit_opening", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Выберите категорию." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_deposit_rejects_withdrawal_category(client, session):
+    """WR-01 defence-in-depth: a withdrawal_* category posted to /finance/deposit is
+    rejected at the route (422, «Выберите основание.») with zero writes — no
+    expense is recorded via the deposit endpoint, and no false 'success' leaks
+    from the shared service's negative-balance branch."""
+    response = client.post(
+        "/finance/deposit",
+        data={"amount": "50,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Выберите основание." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_mobile_withdraw_rejects_deposit_category(mobile_client_factory, session):
+    """WR-01 defence-in-depth (mobile parity): a deposit_* category posted to
+    /m/finance/withdraw is rejected at the route (422) with zero writes."""
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.post(
+        "/m/finance/withdraw",
+        data={"amount": "15,00", "category": "deposit_opening", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Выберите категорию." in response.text
+    assert _cash_count(session) == 0
+
+
+def test_mobile_deposit_rejects_withdrawal_category(mobile_client_factory, session):
+    """WR-01 defence-in-depth (mobile parity): a withdrawal_* category posted to
+    /m/finance/deposit is rejected at the route (422) with zero writes."""
+    mc = _mobile_finance_client(mobile_client_factory)
+    response = mc.post(
+        "/m/finance/deposit",
+        data={"amount": "50,00", "category": "withdrawal_supplier", "note": ""},
+        headers=_HX,
+    )
+    assert response.status_code == 422
+    assert "Выберите основание." in response.text
+    assert _cash_count(session) == 0
