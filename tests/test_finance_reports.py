@@ -463,3 +463,57 @@ def test_web_finance_report_empty_state(client):
     assert response.status_code == 200
     assert "За выбранный период движений не было." in response.text
     assert "<h2>Приход</h2>" not in response.text
+
+
+# --- web: mobile /m/finance/metrics + /m/finance/report + CSV (17-04 Task 1) -
+
+
+def test_web_mobile_finance_metrics_hx_tiles(client):
+    """Mirrors test_web_finance_metrics_hx_returns_tiles_partial: an HX-Request
+    GET returns ONLY the SHARED tiles partial (finance_tiles.html, D-04c — no
+    mobile-specific tiles partial); a plain GET returns the full /m/finance
+    page chrome. GET /m/finance itself also still returns 200 with the merged
+    metrics context wired into mobile_finance_page (no write path added)."""
+    hx_response = client.get("/m/finance/metrics", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "metric-tile" in hx_response.text
+    assert "<h1>Баланс кассы</h1>" not in hx_response.text
+
+    plain_response = client.get("/m/finance/metrics")
+    assert plain_response.status_code == 200
+    assert "<h1>Баланс кассы</h1>" in plain_response.text
+
+    page_response = client.get("/m/finance")
+    assert page_response.status_code == 200
+
+
+def test_web_mobile_finance_report_hx(client):
+    """Mirrors test_web_finance_report_hx_returns_partial_only: a genuine
+    HX-Request GET returns ONLY the shared results partial, never the full
+    page chrome; a plain GET returns the full /m/finance/report page."""
+    hx_response = client.get("/m/finance/report", headers={"HX-Request": "true"})
+    assert hx_response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" not in hx_response.text
+
+    plain_response = client.get("/m/finance/report")
+    assert plain_response.status_code == 200
+    assert "<h1>Движения кассы за период</h1>" in plain_response.text
+
+
+def test_web_mobile_finance_report_csv(session, client, monkeypatch):
+    """Mirrors test_web_finance_report_csv_streams_period_scoped_csv (17-03
+    Task 1): /m/finance/report.csv delegates to the SAME
+    stream_cash_movements_csv service used by the desktop route."""
+    import app.services.finance as finance_module
+    from app.services.finance import record_cash_movement
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_cash_movement(session, category="sale", amount_cents=1500)
+
+    response = client.get("/m/finance/report.csv?from=2026-07-10&to=2026-07-10")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "cash_movements.csv" in response.headers["content-disposition"]
+    text = response.content.decode("utf-8-sig")
+    assert "Когда;Категория;Комментарий;Сумма" in text
+    assert "15,00" in text

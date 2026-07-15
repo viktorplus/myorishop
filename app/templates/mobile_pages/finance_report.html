@@ -1,0 +1,12 @@
+{% extends "mobile_base.html" %}
+{# Wiring-only placeholder (Plan 17-04 Task 1): proves the /m/finance/report
+   route branches correctly (full page vs HX partial). Task 2 adds the shared
+   period_filter.html + the plain CSV download link + the "Показатели"-style
+   chrome per UI-SPEC. #}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Движения кассы за период</h1>
+<div id="cashflow-results">
+  {% include "partials/cash_flow_report.html" %}
+</div>
+{% endblock %}

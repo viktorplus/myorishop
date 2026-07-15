@@ -1,29 +1,38 @@
-"""Mobile Финансы (FIN-03/04/05/06/07): balance display + manual cash entry +
-cash-movement history, mirroring app/routes/finance.py at parity (D-06a).
+"""Mobile Финансы (FIN-03/04/05/06/07/08/09/10/11/12): balance display +
+manual cash entry + cash-movement history + dashboard tiles + period report +
+CSV export, mirroring app/routes/finance.py at parity (D-06a/D-04c).
 
 Routes stay THIN — every cash write and ALL validation live in
 app.services.finance.record_manual_movement (D-00c). This module NEVER writes
 cash directly; it delegates writes to the service and reuses the Plan 03 SHARED
-form partials (parameterised by `finance_base`). Only the history PRESENTATION
-is mobile-specific: card stacks + a «Показать ещё» load-more (UI-SPEC Q1),
-NOT the desktop numbered pagination bar (Pitfall 7).
+form partials (parameterised by `finance_base`), plus (Plan 04) the SHARED
+partials/finance_tiles.html and partials/cash_flow_report.html — no
+mobile-specific tiles/report partial is created (D-04c). Only the history
+PRESENTATION is mobile-specific: card stacks + a «Показать ещё» load-more
+(UI-SPEC Q1), NOT the desktop numbered pagination bar (Pitfall 7).
 """
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core import local_day_bounds_utc
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
+from app.routes.reports import _resolve_period
+from app.services import export as export_service
 from app.services.finance import (
     CATEGORY_ERROR,
     cash_history_view,
     compute_balance,
     record_manual_movement,
 )
+from app.services.finance_reports import cash_expense_total, cash_flow_report, stock_valuation
+from app.services.reports import sales_profit_report
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,6 +59,39 @@ def _history_context(session: Session, *, bucket: str = "", page: int = 0) -> di
         "has_next": result["page"] < result["total_pages"] - 1,
         "page": result["page"],
         "bucket": result["bucket"],
+    }
+
+
+def _metrics_context(session: Session, from_: str, to: str) -> dict:
+    """Build the dashboard-tile render context (D-04/D-04b/D-04c): near-verbatim
+    clone of app.routes.finance._metrics_context with finance_base=FINANCE_BASE
+    (= "/m/finance"). Gross + net profit follow the light period selector;
+    stock_valuation is called UNCONDITIONALLY (point-in-time, period-independent).
+    Net profit is gross PLUS the already-negative cash_expense_total, a plain
+    addition, never a subtraction (D-01a)."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    metrics = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        gross = sales_profit_report(session, start_iso, end_iso)
+        expense = cash_expense_total(session, start_iso, end_iso)
+        metrics = {
+            "gross_profit_cents": gross["totals"]["profit_cents"],
+            "cost_unknown_count": gross["totals"]["cost_unknown_count"],
+            "net_profit_cents": gross["totals"]["profit_cents"] + expense,
+        }
+    valuation = stock_valuation(session)
+    return {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "metrics": metrics,
+        "valuation": valuation,
+        "finance_base": FINANCE_BASE,
     }
 
 
@@ -86,6 +128,30 @@ def mobile_finance_page(
         "form": {},
         "errors": {},
         **_history_context(session, bucket=bucket, page=page),
+        **_metrics_context(session, "", ""),
+    }
+    return templates.TemplateResponse(request, "mobile_pages/finance.html", context)
+
+
+@router.get("/m/finance/metrics")
+def mobile_finance_metrics(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """D-04b light period selector target: HX swap returns only the SHARED
+    tiles partial into #finance-metrics; a plain GET (deep link / no-JS)
+    returns the full /m/finance page with balance/forms/history intact."""
+    context = _metrics_context(session, from_, to)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(request, "partials/finance_tiles.html", context)
+    context = {
+        "balance_cents": compute_balance(session),
+        "form": {},
+        "errors": {},
+        **_history_context(session),
+        **context,
     }
     return templates.TemplateResponse(request, "mobile_pages/finance.html", context)
 
@@ -235,3 +301,52 @@ def mobile_finance_deposit(
         )
 
     return _movement_success(session, "partials/deposit_form.html")
+
+
+@router.get("/m/finance/report")
+def mobile_finance_report(
+    request: Request,
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """FIN-08/D-04c: period cash-flow report — near-verbatim clone of
+    finance_report_page (app/routes/finance.py) with finance_base=FINANCE_BASE.
+    Reuses the SHARED partials/cash_flow_report.html; no mobile-specific
+    report partial is created."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    report = None
+    if not period["error"]:
+        start_iso, end_iso = local_day_bounds_utc(
+            period["from_date"], period["to_date"], settings.display_tz
+        )
+        report = cash_flow_report(session, start_iso, end_iso)
+
+    context = {
+        "from_date": period["from_date"].isoformat(),
+        "to_date": period["to_date"].isoformat(),
+        "active_preset": period["active_preset"],
+        "presets": period["presets"],
+        "error": period["error"],
+        "report": report,
+        "finance_base": FINANCE_BASE,
+    }
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(request, "partials/cash_flow_report.html", context)
+    return templates.TemplateResponse(request, "mobile_pages/finance_report.html", context)
+
+
+@router.get("/m/finance/report.csv")
+def mobile_finance_report_csv(
+    from_: str = Query("", alias="from"),
+    to: str = Query("", alias="to"),
+    session: Session = Depends(get_session),
+):
+    """FIN-09/D-03b: period-scoped cash-movement CSV, delegating to the same
+    export_service.stream_cash_movements_csv used by the desktop route (from/to
+    only, no filename/path param — plain download route, no Request/template)."""
+    period = _resolve_period(from_, to, settings.display_tz)
+    start_iso, end_iso = local_day_bounds_utc(
+        period["from_date"], period["to_date"], settings.display_tz
+    )
+    return export_service.stream_cash_movements_csv(session, start_iso, end_iso)
