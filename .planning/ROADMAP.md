@@ -138,7 +138,7 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
   4. The Финансы dashboard shows net profit for the same period (gross profit minus cash expenses recorded in that period)
   5. The Финансы dashboard shows the total value of stock currently on hand, both at purchase cost and at sale price
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 
 **Wave 1**
 
@@ -155,6 +155,10 @@ Full phase details archived in `.planning/milestones/v1.2-ROADMAP.md`.
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 17-04-PLAN.md — Mobile parity: /m/finance tiles + /m/finance/report + CSV (shared partials via finance_base)
+
+**Wave 5** *(gap closure — UAT Test 2)*
+
+- [ ] 17-05-PLAN.md — Navigation entry points to /finance/report and /m/finance/report (desktop top-nav item + mobile home tile + button-styled dashboard links)
 
 **UI hint**: yes
 
