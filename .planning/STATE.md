@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Финансы / Касса
 status: executing
 stopped_at: Phase 17 UI-SPEC approved
-last_updated: "2026-07-15T14:30:43.288Z"
-last_activity: 2026-07-15 -- Phase 17 planning complete
+last_updated: "2026-07-15T15:08:16.090Z"
+last_activity: 2026-07-15 -- Phase 17 execution started
 progress:
   total_phases: 3
   completed_phases: 2
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 17 — financial-reports, export & dashboard analytics
+**Current focus:** Phase 17 — financial-reports-export-dashboard-analytics
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-15 -- Phase 17 planning complete
+Phase: 17 (financial-reports-export-dashboard-analytics) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 17
+Last activity: 2026-07-15 -- Phase 17 execution started
 
 Progress: [██████████] 100%
 
