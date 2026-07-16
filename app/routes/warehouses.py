@@ -128,7 +128,9 @@ def warehouse_edit(
     request: Request, warehouse_id: str, session: Session = Depends(get_session)
 ):
     warehouse = session.get(Warehouse, warehouse_id)
-    if warehouse is None:
+    # WR-02: a soft-deleted warehouse is not editable — treat its edit URL
+    # (bookmark/history/typed) the same as an unknown id.
+    if warehouse is None or warehouse.deleted_at is not None:
         raise HTTPException(status_code=404, detail="unknown warehouse")
     context = {"warehouse": warehouse, "errors": {}, "form": None}
     return templates.TemplateResponse(request, "pages/warehouse_form.html", context)

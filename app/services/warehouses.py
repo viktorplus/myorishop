@@ -130,6 +130,10 @@ def update_warehouse(
     warehouse = session.get(Warehouse, warehouse_id)
     if warehouse is None:
         return None, {"warehouse": WAREHOUSE_NOT_FOUND_ERROR}
+    # WR-02: editing a soft-deleted warehouse is rejected up front (mirrors
+    # update_product's D-20 check) — the route 404s on the "warehouse" key.
+    if warehouse.deleted_at is not None:
+        return None, {"warehouse": WAREHOUSE_NOT_FOUND_ERROR}
     name = name.strip()
     address = address.strip()
     errors: dict[str, str] = {}
