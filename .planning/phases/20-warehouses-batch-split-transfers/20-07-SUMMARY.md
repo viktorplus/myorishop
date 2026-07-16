@@ -87,3 +87,11 @@ This was the final plan touching the transfer surface in Phase 20 (per the plan'
 ---
 *Phase: 20-warehouses-batch-split-transfers*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: app/templates/partials/transfer_batch_wrap.html
+- FOUND: .planning/phases/20-warehouses-batch-split-transfers/20-07-SUMMARY.md
+- FOUND commit: 2bb7e4a (Task 1)
+- FOUND commit: 5c64389 (Task 2)
+- FOUND commit: 9631a78 (docs: summary)
