@@ -549,7 +549,6 @@ def test_register_receipt_autogenerates_batch_name(session):
         qty_raw="5",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -568,7 +567,6 @@ def test_register_receipt_autogenerates_batch_name(session):
         qty_raw="3",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice=batch.id,
     )

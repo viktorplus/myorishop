@@ -27,7 +27,6 @@
 <input type="hidden" name="qty" value="{{ qty }}">
 <input type="hidden" name="cost" value="{{ cost }}">
 <input type="hidden" name="sale" value="{{ sale }}">
-<input type="hidden" name="catalog" value="{{ catalog }}">
 {% if is_new_batch %}
 <input type="hidden" name="expiry" value="{{ expiry }}">
 <input type="hidden" name="location" value="{{ location }}">
@@ -40,7 +39,6 @@
   <dt>Количество</dt><dd>{{ qty }} шт.</dd>
   <dt>Закупочная цена</dt><dd>{{ cost or "—" }}</dd>
   <dt>Цена продажи</dt><dd>{{ sale or "—" }}</dd>
-  <dt>Цена по каталогу</dt><dd>{{ catalog or "—" }}</dd>
   {% if is_new_batch %}
   <dt>Срок годности</dt><dd>{{ (expiry | ru_date) if expiry else "—" }}</dd>
   <dt>Место хранения</dt><dd>{{ location or "—" }}</dd>

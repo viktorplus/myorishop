@@ -392,7 +392,6 @@ def test_web_receipt_page_renders_form(client):
     assert 'inputmode="decimal"' in response.text
     assert "Закупочная цена" in response.text
     assert "Цена продажи" in response.text
-    assert "Цена по каталогу" in response.text
     assert "(необязательно)" in response.text
     notice = "Если товара с таким кодом ещё нет — карточка будет создана автоматически."
     assert notice in response.text
@@ -933,7 +932,7 @@ def test_web_lookup_form_wiring(client):
     assert "delay:300ms" in response.text
     assert 'hx-target="#name-wrap"' in response.text
     assert 'hx-sync="this:replace"' in response.text
-    include = "[name='name'],[name='cost'],[name='sale'],[name='catalog'],[name='warehouse_id']"
+    include = "[name='name'],[name='cost'],[name='sale'],[name='warehouse_id']"
     assert f'hx-include="{include}"' in response.text
 
 
