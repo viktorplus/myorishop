@@ -3,12 +3,19 @@
    live input by id (hx-swap-oob), filling it with the latest catalog price.
    Only the fields that should be filled are emitted; the rest stay untouched.
    D-01/Pitfall 6 (Phase 18 plan 02): the catalog reference field is gone —
-   only #cost/#sale remain (PROD-05 two-price collapse). #}
+   only #cost/#sale remain (PROD-05 two-price collapse).
+   PROD-06 / Pitfall 2 (Phase 18 plan 07): hx-swap-oob REPLACES the whole
+   element, so the mirror now includes data-ref-cents too — a bare re-render
+   would otherwise silently strip the cue right after a code lookup. #}
 {% if fill_cost %}
 <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
-       value="{{ cost_cents | cents }}" hx-swap-oob="true">
+       value="{{ cost_cents | cents }}"
+       {% if ref_cost_cents is not none %}data-ref-cents="{{ ref_cost_cents }}"{% endif %}
+       hx-swap-oob="true">
 {% endif %}
 {% if fill_sale %}
 <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00"
-       value="{{ sale_cents | cents }}" hx-swap-oob="true">
+       value="{{ sale_cents | cents }}"
+       {% if ref_sale_cents is not none %}data-ref-cents="{{ ref_sale_cents }}"{% endif %}
+       hx-swap-oob="true">
 {% endif %}

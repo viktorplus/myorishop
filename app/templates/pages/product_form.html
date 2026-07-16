@@ -60,15 +60,24 @@
 
   {# D-19: exactly two NAMED prices on the card — ДЦ (cost/consultant) and
      ПЦ (sale/consumer) — the same two names used on catalog_detail.html. #}
+  {# PROD-06 / D-05: data-ref-cents pairs consultant_cents->ДЦ, consumer_cents
+     ->ПЦ (18-01's reference lookup), read by the price-cue.js delegated
+     listener (D-10). `latest_price is defined` guards routes that never
+     resolve a reference for this render (e.g. create/update 422 re-render);
+     falsy latest_price (unknown code, D-07) simply omits the attribute. #}
   <div class="field">
     <label for="cost">ДЦ — закупочная цена <span class="muted">(необязательно)</span></label>
-    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.cost or '' }}{% elif product and product.cost_cents is not none %}{{ product.cost_cents | cents }}{% endif %}">
+    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
+           {% if latest_price is defined and latest_price and latest_price.consultant_cents is not none %}data-ref-cents="{{ latest_price.consultant_cents }}"{% endif %}
+           value="{% if form %}{{ form.cost or '' }}{% elif product and product.cost_cents is not none %}{{ product.cost_cents | cents }}{% endif %}">
     {% if errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="sale">ПЦ — цена продажи <span class="muted">(необязательно)</span></label>
-    <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.sale or '' }}{% elif product and product.sale_cents is not none %}{{ product.sale_cents | cents }}{% endif %}">
+    <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00"
+           {% if latest_price is defined and latest_price and latest_price.consumer_cents is not none %}data-ref-cents="{{ latest_price.consumer_cents }}"{% endif %}
+           value="{% if form %}{{ form.sale or '' }}{% elif product and product.sale_cents is not none %}{{ product.sale_cents | cents }}{% endif %}">
     {% if errors.sale %}<p class="error">{{ errors.sale }}</p>{% endif %}
   </div>
 
@@ -116,6 +125,13 @@
     {% if latest_price.consultant_cents is not none %}<span class="muted">· ДЦ {{ latest_price.consultant_cents | cents }}</span>{% endif %}
     <span class="muted">(каталог {{ latest_price.number }} · {{ latest_price.year }} — цена на момент последнего появления кода в каталоге, а не текущая)</span>
   </p>
+</div>
+{% elif latest_price is defined %}
+{# D-07: no CatalogPrice row for this code is the MAIN path (6 of 7 live
+   products), not an edge case — say so explicitly rather than silently
+   hiding the reference block, which would read as "matches the reference". #}
+<div class="field">
+  <p class="muted">нет справочной цены</p>
 </div>
 {% endif %}
 

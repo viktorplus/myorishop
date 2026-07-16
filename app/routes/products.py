@@ -146,6 +146,10 @@ def product_price_lookup(
     longer echoed into an editable field here — PROD-05 collapses product
     pricing to ДЦ/ПЦ only. The catalog's consumer price (ПЦ) is still this
     shop's default sale price, so it fills #sale when empty.
+
+    PROD-06 / D-08/D-22 (Phase 18 plan 07): ref_cost_cents/ref_sale_cents are
+    threaded independently of fill_cost/fill_sale so the OOB fragment can
+    stamp data-ref-cents on whichever field it re-renders (Pitfall 2).
     """
     latest = latest_price_for_code(session, code)
     fill_cost = latest is not None and latest.consultant_cents is not None and not cost.strip()
@@ -155,8 +159,10 @@ def product_price_lookup(
     context = {
         "fill_cost": fill_cost,
         "cost_cents": latest.consultant_cents if latest else None,
+        "ref_cost_cents": latest.consultant_cents if latest else None,
         "fill_sale": fill_sale,
         "sale_cents": latest.consumer_cents if latest else None,
+        "ref_sale_cents": latest.consumer_cents if latest else None,
     }
     return templates.TemplateResponse(request, "partials/product_price_autofill.html", context)
 
@@ -168,6 +174,11 @@ def product_new(request: Request, code: str = "", session: Session = Depends(get
     If `code` already names a live product, redirect straight to its editable
     card (never an inline edit on the read-only catalog page). Otherwise
     prefill the new-product form's code field so the operator can create it.
+
+    PROD-06 (Phase 18 plan 07): also resolves the ДЦ/ПЦ reference for a
+    prefilled code so the cost/sale inputs carry data-ref-cents on first
+    render, mirroring product_edit's latest_price below. None when no code
+    is given yet (D-07: no reference is the MAIN path, not an error).
     """
     code_clean = code.strip()
     if code_clean:
@@ -183,6 +194,7 @@ def product_new(request: Request, code: str = "", session: Session = Depends(get
         "form": {"code": code_clean} if code_clean else {},
         "low_stock_default": settings.low_stock_threshold,
         "stale_days_default": settings.stale_days,
+        "latest_price": latest_price_for_code(session, code_clean) if code_clean else None,
     }
     return templates.TemplateResponse(request, "pages/product_form.html", context)
 

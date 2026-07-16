@@ -134,6 +134,35 @@ def test_price_autofill_unknown_code_is_noop(priced, client):
     assert r.status_code == 204
 
 
+def test_price_autofill_oob_fragment_preserves_data_ref_cents(priced, client):
+    """Pitfall 2: hx-swap-oob REPLACES the whole element, so the OOB #cost/
+    #sale fragment must re-stamp data-ref-cents itself — a bare re-render
+    would silently strip it and kill the cue right after a code lookup."""
+    r = client.get(
+        "/products/lookup-price",
+        params={"code": "100", "cost": "", "sale": ""},
+    )
+    assert r.status_code == 200
+    assert 'hx-swap-oob="true"' in r.text
+    assert 'id="cost"' in r.text and 'data-ref-cents="700"' in r.text
+    assert 'id="sale"' in r.text and 'data-ref-cents="1200"' in r.text
+
+
+# --- price-cue data-ref-cents wiring (PROD-06) ------------------------------
+
+
+def test_product_form_cues_only_dc_and_pc(client, priced):
+    """D-14/Pitfall 8: ДЦ and ПЦ carry data-ref-cents; min_sale — the guardrail —
+    must NOT, or the cue invents a third price (criterion 1)."""
+    r = client.get("/products/new", params={"code": "100"})
+    assert r.status_code == 200
+    assert 'id="cost"' in r.text and 'data-ref-cents="700"' in r.text
+    assert 'id="sale"' in r.text and 'data-ref-cents="1200"' in r.text
+    # min_sale renders, but bare — no reference, no cue (Pitfall 8)
+    assert 'id="min_sale"' in r.text
+    assert r.text.count("data-ref-cents") == 2
+
+
 # --- filename parsing (import script) --------------------------------------
 
 
