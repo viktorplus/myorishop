@@ -112,3 +112,9 @@ None — the `?code=` param is resolved via a bound-parameter ORM query (`Produc
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All 4 modified files (product_form.html, catalog_detail.html, products.py,
+test_catalogs_feature.py) and this SUMMARY.md verified present on disk; all
+3 commits (`abf41a7`, `3e64791`, `ae9d588`) verified present in `git log`.
