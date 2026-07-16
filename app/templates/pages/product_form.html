@@ -58,28 +58,34 @@
     {% if errors.category %}<p class="error">{{ errors.category }}</p>{% endif %}
   </div>
 
+  {# D-19: exactly two NAMED prices on the card — ДЦ (cost/consultant) and
+     ПЦ (sale/consumer) — the same two names used on catalog_detail.html. #}
   <div class="field">
-    <label for="cost">Закупочная цена <span class="muted">(необязательно)</span></label>
+    <label for="cost">ДЦ — закупочная цена <span class="muted">(необязательно)</span></label>
     <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.cost or '' }}{% elif product and product.cost_cents is not none %}{{ product.cost_cents | cents }}{% endif %}">
     {% if errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
   </div>
 
   <div class="field">
-    <label for="sale">Цена продажи <span class="muted">(необязательно)</span></label>
+    <label for="sale">ПЦ — цена продажи <span class="muted">(необязательно)</span></label>
     <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.sale or '' }}{% elif product and product.sale_cents is not none %}{{ product.sale_cents | cents }}{% endif %}">
     {% if errors.sale %}<p class="error">{{ errors.sale }}</p>{% endif %}
-  </div>
-
-  <div class="field">
-    <label for="min_sale">Минимальная цена продажи <span class="muted">(необязательно)</span></label>
-    <input type="text" id="min_sale" name="min_sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.min_sale or '' }}{% elif product and product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% endif %}">
-    {% if errors.min_sale %}<p class="error">{{ errors.min_sale }}</p>{% endif %}
   </div>
 
   <div class="field">
     <label for="low_stock_threshold">Порог «мало на складе», шт. <span class="muted">(необязательно, по умолчанию: {{ low_stock_default }})</span></label>
     <input type="text" id="low_stock_threshold" name="low_stock_threshold" inputmode="numeric" value="{% if form %}{{ form.low_stock_threshold or '' }}{% elif product and product.low_stock_threshold is not none %}{{ product.low_stock_threshold }}{% endif %}">
     {% if errors.low_stock_threshold %}<p class="error">{{ errors.low_stock_threshold }}</p>{% endif %}
+  </div>
+
+  {# D-21: min_sale is a GUARDRAIL setting (same family as the low-stock
+     threshold above), NOT a third named price — regrouped here, wording
+     changed to read as a limit, but the id/name/value binding and PRICE-01
+     logic are unchanged (frozen, no data-ref-cents). #}
+  <div class="field">
+    <label for="min_sale">Порог минимальной цены продажи <span class="muted">(необязательно)</span></label>
+    <input type="text" id="min_sale" name="min_sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.min_sale or '' }}{% elif product and product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% endif %}">
+    {% if errors.min_sale %}<p class="error">{{ errors.min_sale }}</p>{% endif %}
   </div>
 
   <div class="field">
@@ -97,14 +103,18 @@
 </form>
 
 {% if product %}
-{# CAT-05: latest known catalog price for this code (from the price lists). #}
+{# CAT-05: latest known catalog price for this code (from the price lists).
+   D-19: labeled ПЦ/ДЦ to match the card's two price names above.
+   D-09/Pitfall 6 (Phase 18 plan 02): this is a REFERENCE only — the price
+   from the code's LAST catalog appearance, not necessarily today's price;
+   the caveat below makes that explicit so it is never read as current. #}
 {% if latest_price is defined and latest_price %}
 <div class="field">
   <label>Последняя цена по каталогу</label>
   <p>
-    {% if latest_price.consumer_cents is not none %}{{ latest_price.consumer_cents | cents }}{% endif %}
-    {% if latest_price.consultant_cents is not none %}<span class="muted">· консультант {{ latest_price.consultant_cents | cents }}</span>{% endif %}
-    <span class="muted">(каталог {{ latest_price.number }} · {{ latest_price.year }})</span>
+    {% if latest_price.consumer_cents is not none %}ПЦ {{ latest_price.consumer_cents | cents }}{% endif %}
+    {% if latest_price.consultant_cents is not none %}<span class="muted">· ДЦ {{ latest_price.consultant_cents | cents }}</span>{% endif %}
+    <span class="muted">(каталог {{ latest_price.number }} · {{ latest_price.year }} — цена на момент последнего появления кода в каталоге, а не текущая)</span>
   </p>
 </div>
 {% endif %}
