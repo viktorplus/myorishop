@@ -91,3 +91,12 @@ None - no external service configuration required.
 ---
 *Phase: 20-warehouses-batch-split-transfers*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: app/routes/mobile_transfers.py
+- FOUND: app/templates/mobile_partials/transfers_step_dest.html
+- FOUND: .planning/phases/20-warehouses-batch-split-transfers/20-06-SUMMARY.md
+- FOUND: ddf1dc3 (Task 1 commit)
+- FOUND: 58a2fd8 (Task 2 commit)
+- FOUND: dea70db (SUMMARY commit)
