@@ -45,13 +45,6 @@ def _warehouses_context(
     status: str = "",
     sort: str = "",
     page: int = 0,
-    warning_id: str | None = None,
-    stock_blocked_id: str | None = None,
-    stock_blocked_qty: int | None = None,
-    errors: dict | None = None,
-    form: dict | None = None,
-    error_entry_id: str | None = None,
-    error_form: dict | None = None,
 ) -> dict:
     """Shared template context for every warehouse GET/POST response."""
     result = list_warehouses(
@@ -82,13 +75,6 @@ def _warehouses_context(
         "list_url": "/warehouses",
         "rows_target_id": "warehouse-rows",
         "extra_qs": extra_qs,
-        "errors": errors or {},
-        "form": form or {},
-        "warning_id": warning_id,
-        "stock_blocked_id": stock_blocked_id,
-        "stock_blocked_qty": stock_blocked_qty,
-        "error_entry_id": error_entry_id,
-        "error_form": error_form,
     }
 
 

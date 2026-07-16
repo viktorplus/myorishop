@@ -13,7 +13,7 @@ from alembic import command
 from app.config import settings
 from app.core import new_id
 from app.models import Batch, Operation, Product, Warehouse
-from app.services.ledger import next_seq
+from app.services.ledger import next_seq, record_operation
 from app.services.warehouses import (
     NAME_REQUIRED_ERROR,
     WAREHOUSE_NOT_FOUND_ERROR,
@@ -549,3 +549,61 @@ def test_web_warehouse_delete_last_active_warns_then_confirm_redirects(client, s
 
     assert confirm_response.status_code == 200
     assert confirm_response.headers["HX-Redirect"] == "/warehouses"
+
+
+# --- Plain picker restructure (Plan 20-03, WH-01/D-01) ---
+
+
+def test_web_warehouses_page_shows_item_count_and_last_receipt_columns(client, session):
+    warehouse, _ = add_warehouse(session, name="Склад с товаром", address="")
+    product = Product(id=new_id(), code="WH3-001", name="Товар склада", quantity=0)
+    session.add(product)
+    session.commit()
+    batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
+    session.add(batch)
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        batch_id=batch.id,
+    )
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    assert "Товаров" in response.text
+    assert "Последняя приёмка" in response.text
+    row = response.text.split("Склад с товаром")[1].split("</tr>")[0]
+    assert '<td class="num">1</td>' in row
+    assert "—" not in row
+
+
+def test_web_warehouses_row_action_is_edit_link_not_inline_buttons(client, session):
+    warehouse, _ = add_warehouse(session, name="Склад для проверки", address="")
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    assert f'href="/warehouses/{warehouse.id}/edit"' in response.text
+    row = response.text.split("Склад для проверки")[1].split("</tr>")[0]
+    assert 'name="name"' not in row
+    assert ">Удалить<" not in row
+    assert ">Сохранить<" not in row
+
+
+def test_web_warehouses_page_preserves_filter_sort_status_bar_after_restructure(client, session):
+    """RESEARCH Pitfall 1: D-01's restructure must not strip Phase 14's list chrome."""
+    add_warehouse(session, name="Склад для проверки чекбоксов", address="")
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    assert 'class="filter-bar"' in response.text
+    assert 'name="sort"' in response.text
+    assert 'name="name"' in response.text
+    assert 'name="address"' in response.text
+    assert 'name="status"' in response.text
