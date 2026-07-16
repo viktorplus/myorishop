@@ -33,7 +33,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 - [ ] **PROD-03**: Product list groups rows by product code, showing the total quantity summed across all of that code's batches
 - [ ] **PROD-04**: Within a grouped code, individual batches remain visible with their own expiry date and batch name
 - [ ] **PROD-05**: Product pricing is reduced to exactly two fields — ДЦ (cost/distributor price) and ПЦ (sale/catalog price); every other product price field is removed or consolidated into one of these two. Explicitly exempt: `Product.min_sale_cents` — it is a guardrail threshold (like the low-stock threshold), not a price the operator reads off the card, and the Phase 7 below-minimum sale warning (PRICE-01, shipped v1.1) must keep working unchanged (operator decision, 2026-07-15)
-- [ ] **PROD-06**: Entering a ДЦ or ПЦ that differs from the dictionary's reference price — at any entry point (product card, dictionary, receipt, sale) — shows a color cue: below reference = yellow, above reference = blue
+- [x] **PROD-06**: Entering a ДЦ or ПЦ that differs from the dictionary's reference price — at any entry point (product card, dictionary, receipt, sale) — shows a color cue: below reference = yellow, above reference = blue
 - [ ] **PROD-07**: ДЦ/ПЦ can be edited at any stage — product card, dictionary, goods receipt, or sale — and the change is saved from wherever it was made
 - [ ] **PROD-08**: Product list shows each product's category and can be filtered by category
 
@@ -107,7 +107,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PROD-05 | Phase 18 | Pending |
-| PROD-06 | Phase 18 | Pending |
+| PROD-06 | Phase 18 | Complete |
 | PROD-07 | Phase 18 | Pending |
 | PROD-01 | Phase 19 | Pending |
 | PROD-02 | Phase 19 | Pending |
