@@ -38,7 +38,7 @@
        so this simply omits the attribute (D-07) until a lookup/batch-pick
        resolves one. #}
     <input type="text" name="price[]" inputmode="decimal" placeholder="0,00"
-           {% if ref_pc_cents is not none and ref_pc_cents %}data-ref-cents="{{ ref_pc_cents }}"{% endif %}
+           {% if ref_pc_cents is not none %}data-ref-cents="{{ ref_pc_cents }}"{% endif %}
            value="{{ price or '' }}">
     {% if error_price %}<p class="error">{{ error_price }}</p>{% endif %}
   </td>
