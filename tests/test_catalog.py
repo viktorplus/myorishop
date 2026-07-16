@@ -272,7 +272,11 @@ def test_migration_0002_fresh_db_and_backfill(tmp_path, monkeypatch):
     with closing(sqlite3.connect(db_file)) as conn:
         # (a) new products columns present
         cols = {row[1] for row in conn.execute("PRAGMA table_info(products)")}
-        assert {"category", "cost_cents", "sale_cents", "catalog_cents", "name_lc"} <= cols
+        assert {"category", "cost_cents", "sale_cents", "name_lc"} <= cols
+        # Phase 18 (D-01/PROD-05): migration 0014 (part of "head" above) drops
+        # the third stored price column - it must be gone from the reflected
+        # schema, not merely unused.
+        assert "catalog_cents" not in cols
 
         # (b) Python-side backfill folded the Cyrillic name (NOT SQL lower()).
         (name_lc,) = conn.execute(
