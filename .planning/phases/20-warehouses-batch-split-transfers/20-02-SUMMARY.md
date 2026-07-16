@@ -105,3 +105,7 @@ None - no external service configuration required.
 ---
 *Phase: 20-warehouses-batch-split-transfers*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All created files exist on disk; all task/summary commits (97db26f, dc5045b, 6f48cb3) confirmed in git log.
