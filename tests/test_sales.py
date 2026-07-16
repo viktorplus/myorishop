@@ -20,7 +20,7 @@ import re
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation, Product
+from app.models import Batch, CatalogPrice, Operation, Product
 from app.services import catalog
 from app.services.batches import open_batches
 from app.services.ledger import compute_stock, record_operation
@@ -891,6 +891,97 @@ def test_web_sale_batch_hint_states_sale_only_scope(client, session, product, wa
     assert response.status_code == 200
     assert "Цена подставлена из партии" in response.text
     assert "сохранится только в этой продаже" in response.text
+
+
+# --- Plan 18-08: data-ref-cents colour-cue wiring (PROD-06) -----------------
+
+
+def test_web_sale_lookup_carries_data_ref_cents(client, session, product):
+    """The sale lookup's ПЦ price[] input carries data-ref-cents = the code's
+    CATALOG consumer_cents reference (D-05/D-08/D-22) — independent of the
+    card's own sale_cents fill value."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code=product.code,
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert 'name="price[]"' in response.text
+    assert 'data-ref-cents="1500"' in response.text
+
+
+def test_web_sale_lookup_no_catalog_row_shows_no_cue(client, session, product):
+    """D-07: no CatalogPrice row for the code -> no data-ref-cents (the MAIN
+    path, not an edge case)."""
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert "data-ref-cents" not in response.text
+
+
+def test_web_sale_batch_pick_carries_data_ref_cents(client, session, product, warehouse):
+    """The batch-pick OOB price fragment also stamps data-ref-cents — Pitfall
+    2: hx-swap-oob REPLACES the element, so it must re-stamp itself."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code=product.code,
+            year=2026,
+            number=1,
+            consumer_cents=2000,
+            consultant_cents=1200,
+        )
+    )
+    session.commit()
+    b = _batch(session, product, warehouse, qty=3, price=1234)
+
+    response = client.get(
+        "/sales/batch-pick", params={"row": "", "batch_id": b.id, "code": product.code}
+    )
+    assert response.status_code == 200
+    assert 'data-ref-cents="2000"' in response.text
+
+
+def test_web_sale_422_basket_row_carries_data_ref_cents(client, session, product):
+    """Desktop basket rows: a 422 re-render (bad qty) still stamps
+    data-ref-cents on the echoed ПЦ price[] input — the colour cue survives
+    the round-trip (D-08/D-22 independent per-row resolution)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code=product.code,
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [product.code],
+            "qty[]": ["abc"],
+            "price[]": ["15,00"],
+            "batch_id[]": [""],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert 'data-ref-cents="1500"' in response.text
 
 
 def test_web_sale_batch_drift_attribution_holds(client, session, warehouse):

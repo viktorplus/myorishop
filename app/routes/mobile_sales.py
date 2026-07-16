@@ -15,6 +15,7 @@ from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
+from app.services.pricing import reference_prices_for_code
 from app.services.sales import (
     PRODUCT_NOT_FOUND_TMPL,
     SALE_BATCH_FILL_HINT,
@@ -96,12 +97,17 @@ def mobile_sale_step_product(
         # Dictionary-only match (no product row, desktop's dictionary-only
         # path): skip straight to step 3 — no batch to pick, price pre-fill
         # left empty (no product card to fill the price from).
+        # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
+        # reference (D-05/D-08/D-22) — independent of the dictionary/product
+        # match, a code can still carry a CatalogPrice row.
+        _, ref_pc_cents = reference_prices_for_code(session, code_clean)
         context = {
             "code": code_clean,
             "name": result["name"],
             "batch_id": "",
             "fill_price_cents": None,
             "fill_price_hint": "",
+            "ref_pc_cents": ref_pc_cents,
             # 11-UAT.md Test 4 (Bug B): no batch step was ever shown for a
             # dictionary-only match, so this step's own "Назад" must return
             # straight to the product step, not to a batch step that never
@@ -215,7 +221,11 @@ def mobile_sale_step_qty_price(
 
     # T-13-11: warehouse_name resolved ONLY from the already ownership-
     # validated `picked` batch above, never from a raw client-supplied field.
-    warehouse_name = _warehouse_names(session).get(picked.warehouse_id) if picked is not None else None
+    # Line wrapped (Phase 18 plan 08): pre-existing ruff E501, deferred at
+    # 18-06, now fixed since this plan touches mobile_sales.py anyway.
+    warehouse_name = (
+        _warehouse_names(session).get(picked.warehouse_id) if picked is not None else None
+    )
 
     # Mirrors sale_batch_pick's fill rule exactly (app/routes/sales.py):
     # with a picked batch, the batch price is the SOLE source (Pitfall 4 —
@@ -231,6 +241,12 @@ def mobile_sale_step_qty_price(
             fill_price_cents = product.sale_cents if product is not None else None
             fill_price_hint = SALE_CARD_FILL_HINT
 
+    # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
+    # reference (D-05/D-08/D-22), resolved independently of fill_price_cents
+    # — the batch/card fill value is not the same thing as the catalog
+    # reference the cue compares against.
+    _, ref_pc_cents = reference_prices_for_code(session, code_clean)
+
     context = {
         "code": code_clean,
         "name": product.name if product is not None else "",
@@ -239,6 +255,7 @@ def mobile_sale_step_qty_price(
         "price": "",
         "fill_price_cents": fill_price_cents,
         "fill_price_hint": fill_price_hint,
+        "ref_pc_cents": ref_pc_cents,
         # 11-UAT.md Test 4 (Bug B): this route's only caller is the batch
         # step's own "Далее" button, so a batch step was always shown for
         # this line — this step's own "Назад" must return to it (fresh
@@ -281,7 +298,12 @@ def _basket_lines(
                 "batch_id": batch_id,
                 "product_name": product.name if product is not None else code_clean,
                 "batch": batch,
-                "warehouse_name": warehouse_names.get(batch.warehouse_id) if batch is not None else None,
+                # Line wrapped (Phase 18 plan 08): pre-existing ruff E501,
+                # deferred at 18-06, now fixed since this plan touches
+                # mobile_sales.py anyway.
+                "warehouse_name": (
+                    warehouse_names.get(batch.warehouse_id) if batch is not None else None
+                ),
             }
         )
     return lines

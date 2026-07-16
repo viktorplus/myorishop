@@ -1,9 +1,16 @@
 {# Single source for ONE receipt price field (PD-10): the static form include
    renders it today; Plan 03-02's lookup fill re-renders the same fragment
    with oob=True targeting id="{field}-wrap". Parameters: field, label,
-   value, error (optional), oob (optional, default false). #}
+   value, error (optional), oob (optional, default false),
+   ref_cents (optional). #}
+{# PROD-06 (Phase 18 plan 08): being the single source for BOTH the static
+   and OOB render paths (D-14/Pitfall 2) means this one ref_cents param
+   covers both at once — the price-cue.js listener (plan 18-07) reads
+   data-ref-cents off whichever element is currently in the DOM. #}
 <div class="field" id="{{ field }}-wrap"{% if oob %} hx-swap-oob="true"{% endif %}>
   <label for="{{ field }}">{{ label }} <span class="muted">(необязательно)</span></label>
-  <input type="text" id="{{ field }}" name="{{ field }}" inputmode="decimal" placeholder="0,00" value="{{ value or '' }}">
+  <input type="text" id="{{ field }}" name="{{ field }}" inputmode="decimal" placeholder="0,00"
+         {% if ref_cents is not none and ref_cents %}data-ref-cents="{{ ref_cents }}"{% endif %}
+         value="{{ value or '' }}">
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
 </div>

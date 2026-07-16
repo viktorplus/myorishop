@@ -220,6 +220,44 @@ def test_web_step_details_omits_new_batch_fields_for_topup(
     assert 'name="comment"' not in response.text
 
 
+def test_web_step_details_carries_data_ref_cents(mobile_client_factory, session):
+    """PROD-06 (Phase 18 plan 08): the mobile receipt wizard's ДЦ/ПЦ inputs
+    carry data-ref-cents from reference_prices_for_code (D-05/D-08/D-22) —
+    one of the two mobile price surfaces (D-20)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "5555", "warehouse_id": "wh-1", "name": "Тушь", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert 'id="receipt-cost"' in response.text and 'data-ref-cents="900"' in response.text
+    assert 'id="receipt-sale"' in response.text and 'data-ref-cents="1500"' in response.text
+
+
+def test_web_step_details_no_code_shows_no_cue(mobile_client_factory, session):
+    """D-07: an unresolved code (no CatalogPrice row) omits data-ref-cents
+    entirely — the MAIN path for most codes."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "9999", "warehouse_id": "wh-1", "name": "Крем", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert "data-ref-cents" not in response.text
+
+
 def test_web_step_confirm_renders_summary(mobile_client_factory, session):
     client = mobile_client_factory(mobile_receipts.router)
     response = client.post(

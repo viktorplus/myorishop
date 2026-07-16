@@ -13,8 +13,15 @@
 {% endwith %}
 {% if source in ("product", "catalog") %}
 {% set labels = {"cost": "Закупочная цена", "sale": "Цена продажи", "catalog": "Цена по каталогу"} %}
+{# PROD-06 / Pitfall 2 (Phase 18 plan 08): hx-swap-oob REPLACES the whole
+   element, so this OOB fragment must re-stamp data-ref-cents itself —
+   reusing receipt_price_inputs.html (the same file the static form
+   includes) covers both render paths at once. ref_cost_cents/
+   ref_sale_cents come from reference_prices_for_code (18-01), resolved
+   independently of fill_fields/source (D-08/D-22). #}
+{% set refs = {"cost": ref_cost_cents, "sale": ref_sale_cents} %}
 {% for f in fill_fields %}
-{% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True %}
+{% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True, ref_cents = refs[f] %}
 {% include "partials/receipt_price_inputs.html" %}
 {% endwith %}
 {% endfor %}

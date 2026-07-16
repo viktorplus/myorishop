@@ -32,7 +32,14 @@
     {% if error_qty %}<p class="error">{{ error_qty }}</p>{% endif %}
   </td>
   <td id="{{ price_wrap_id }}">
-    <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ price or '' }}">
+    {# PROD-06/D-13 (Phase 18 plan 08): a sale shows ПЦ only — data-ref-cents
+       is the code's consumer_cents reference (reference_prices_for_code,
+       18-01), threaded when known. The initial empty row has no code yet,
+       so this simply omits the attribute (D-07) until a lookup/batch-pick
+       resolves one. #}
+    <input type="text" name="price[]" inputmode="decimal" placeholder="0,00"
+           {% if ref_pc_cents is not none and ref_pc_cents %}data-ref-cents="{{ ref_pc_cents }}"{% endif %}
+           value="{{ price or '' }}">
     {% if error_price %}<p class="error">{{ error_price }}</p>{% endif %}
   </td>
   <td>

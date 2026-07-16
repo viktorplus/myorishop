@@ -23,6 +23,10 @@ changes).
 Both are out of scope for 18-06 (wording-only plan for sale prefill hints); revisit if
 `mobile_sales.py` is touched again for an unrelated reason.
 
+**RESOLVED at Plan 18-08:** both lines wrapped (`ruff check app/routes/mobile_sales.py`
+is a hard acceptance criterion for 18-08's Task 2, which touches this file for the
+data-ref-cents wiring) — the plan's own scope satisfies the "revisit" note above.
+
 ## Plan 18-02
 
 - **app/routes/products.py:127** — `ruff` E501 (line too long, 106 > 100), on the

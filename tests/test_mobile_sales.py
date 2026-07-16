@@ -8,7 +8,7 @@ in isolation, without app.main registration (that happens in Plan 09).
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, Operation
+from app.models import Batch, CatalogPrice, Operation
 from app.routes import mobile_sales
 from app.services.ledger import record_operation
 
@@ -435,6 +435,88 @@ def test_qty_price_step_card_hint_states_sale_only_scope(
     assert resp.status_code == 200
     assert "Цена подставлена из карточки товара" in resp.text
     assert "сохранится только в этой продаже" in resp.text
+
+
+# --- Plan 18-08: data-ref-cents colour-cue wiring (PROD-06) -----------------
+
+
+def test_qty_price_step_carries_data_ref_cents(mobile_client_factory, session, product, warehouse):
+    """PROD-06/D-20: the mobile sale wizard's ONLY price input carries
+    data-ref-cents = the code's CATALOG consumer_cents reference (D-05/D-08/
+    D-22), independent of the batch/card fill value."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code=product.code,
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    batch.price_cents = 1234
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=6,
+        unit_cost_cents=500,
+        unit_price_cents=1234,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id})
+    assert resp.status_code == 200
+    assert 'data-ref-cents="1500"' in resp.text
+
+
+def test_qty_price_step_no_catalog_row_shows_no_cue(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-07: no CatalogPrice row for the code -> no data-ref-cents."""
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    batch.price_cents = 1234
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=6,
+        unit_cost_cents=500,
+        unit_price_cents=1234,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id})
+    assert resp.status_code == 200
+    assert "data-ref-cents" not in resp.text
+
+
+def test_qty_price_step_dictionary_source_carries_data_ref_cents(mobile_client_factory, session):
+    """The dictionary-only-match branch (skip-to-step-3, no batch) also
+    threads the CATALOG reference independently of the dictionary match."""
+    from app.services.dictionary import add_entry
+
+    add_entry(session, code="DICT-01", name="Словарный товар")
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="DICT-01",
+            year=2026,
+            number=1,
+            consumer_cents=2500,
+            consultant_cents=1800,
+        )
+    )
+    session.commit()
+
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": "DICT-01"})
+    assert resp.status_code == 200
+    assert 'data-ref-cents="2500"' in resp.text
 
 
 # ---------------------------------------------------------------------------
