@@ -36,6 +36,10 @@ from app.services.receipts import (
 )
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+# D-04 (Plan 18-03): register_receipt no longer accepts catalog_raw — a
+# receipt-scoped twin of EMPTY_MONEY without it. EMPTY_MONEY itself stays
+# unchanged: app.services.catalog.create_product still requires catalog_raw.
+RECEIPT_EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}
 # Plan 09-02: the default new-batch path used by every previously batch-less
 # service-level receipt test (warehouse_id supplied per test via the fixture).
 NEW_BATCH = {"batch_choice": "new"}
@@ -53,7 +57,6 @@ def test_register_receipt_increases_stock_for_existing_product(session, product,
         qty_raw="5",
         cost_raw="10",
         sale_raw="12,50",
-        catalog_raw="15",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -69,7 +72,8 @@ def test_register_receipt_increases_stock_for_existing_product(session, product,
     assert op.qty_delta == 5
     assert op.unit_cost_cents == 1000
     assert op.unit_price_cents == 1250
-    assert op.payload["catalog_cents"] == 1500
+    # D-04: new receipts no longer write payload.catalog_cents to the ledger.
+    assert op.payload is None
     assert len(op.id) == 36
     # NOTE: no assertions about the product card's price fields — card
     # price sync is Plan 03-02 scope.
@@ -84,7 +88,6 @@ def test_register_receipt_autocreates_product_for_unknown_code(session, warehous
         qty_raw="3",
         cost_raw="5",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -124,7 +127,7 @@ def test_register_receipt_requires_code_name_and_positive_int_qty(session, produ
     products_before = len(session.scalars(select(Product)).all())
     for kwargs, field, message in cases:
         result, errors = register_receipt(
-            session, **kwargs, **EMPTY_MONEY, warehouse_id=warehouse.id, **NEW_BATCH
+            session, **kwargs, **RECEIPT_EMPTY_MONEY, warehouse_id=warehouse.id, **NEW_BATCH
         )
         assert result is None, kwargs
         assert errors[field] == message, kwargs
@@ -142,7 +145,6 @@ def test_register_receipt_rejects_bad_money(session, product, warehouse):
         qty_raw="1",
         cost_raw="abc",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -167,7 +169,6 @@ def test_register_receipt_soft_deleted_code_creates_new_product(session, warehou
         qty_raw="4",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -182,7 +183,7 @@ def test_register_receipt_soft_deleted_code_creates_new_product(session, warehou
 
 
 def test_register_receipt_empty_prices_are_null(session, product, warehouse):
-    """PD-8 / A3: empty price strings -> NULL op columns and NULL payload price."""
+    """PD-8 / A3: empty price strings -> NULL op columns; no ledger payload at all."""
     result, errors = register_receipt(
         session,
         code="TEST-001",
@@ -190,7 +191,6 @@ def test_register_receipt_empty_prices_are_null(session, product, warehouse):
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -200,7 +200,8 @@ def test_register_receipt_empty_prices_are_null(session, product, warehouse):
     op = session.scalars(select(Operation).where(Operation.type == "receipt")).one()
     assert op.unit_cost_cents is None
     assert op.unit_price_cents is None
-    assert op.payload["catalog_cents"] is None
+    # D-04: new receipts no longer write payload.catalog_cents to the ledger.
+    assert op.payload is None
 
 
 # --- Plan 09-02: batch birth path (D-01/D-02, LOT-03, WH-02, LOT-04) ---
@@ -230,7 +231,6 @@ def test_register_receipt_new_batch_stores_location_expiry_and_price(
         qty_raw="6",
         cost_raw="",
         sale_raw="12,50",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
         expiry_raw="2026-05-01",
@@ -262,7 +262,6 @@ def test_register_receipt_topup_freezes_batch_price(session, product, warehouse)
         qty_raw="4",
         cost_raw="",
         sale_raw="10,00",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -279,7 +278,6 @@ def test_register_receipt_topup_freezes_batch_price(session, product, warehouse)
         qty_raw="3",
         cost_raw="",
         sale_raw="99,00",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice=batch.id,
     )
@@ -309,7 +307,6 @@ def test_register_receipt_rejects_foreign_product_batch(session, product, wareho
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice=foreign.id,
     )
@@ -336,7 +333,6 @@ def test_register_receipt_rejects_foreign_warehouse_batch(session, product, ware
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice=other_batch.id,
     )
@@ -354,7 +350,6 @@ def test_register_receipt_malformed_expiry_error(session, product, warehouse):
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
         expiry_raw="2026-13-40",
@@ -373,7 +368,6 @@ def test_register_receipt_zero_warehouses_rejected_server_side(session, product)
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id="00000000-0000-4000-8000-000000000010",
         batch_choice="new",
     )
@@ -620,7 +614,6 @@ def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
         qty_raw="1",
         cost_raw="2,00",
         sale_raw="5,00",
-        catalog_raw="3,00",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -633,7 +626,8 @@ def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
 
     ops = session.scalars(select(Operation)).all()
     price_ops = {op.payload["field"]: op for op in ops if op.type == "price_change"}
-    # catalog price unchanged (300 -> 300): NO price_change op for it.
+    # D-04: receipts no longer sync catalog_cents at all — no price_change op
+    # for it regardless of the card's value.
     assert set(price_ops) == {"cost_cents", "sale_cents"}
     assert price_ops["cost_cents"].payload == {
         "field": "cost_cents",
@@ -665,7 +659,6 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product, warehous
         qty_raw="2",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -681,7 +674,8 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product, warehous
     op = ops[0]
     assert op.unit_cost_cents is None
     assert op.unit_price_cents is None
-    assert op.payload["catalog_cents"] is None
+    # D-04: new receipts no longer write payload.catalog_cents to the ledger.
+    assert op.payload is None
 
 
 def test_price_sync_ignores_name_for_existing_product(session, product, warehouse):
@@ -693,7 +687,6 @@ def test_price_sync_ignores_name_for_existing_product(session, product, warehous
         qty_raw="1",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
@@ -972,7 +965,6 @@ def test_web_receipt_batches_chooser_lists_open_batches(client, session, product
         qty_raw="5",
         cost_raw="",
         sale_raw="12,50",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
         location_raw="стеллаж А3",
@@ -1030,7 +1022,6 @@ def test_web_receipt_chooser_topup_hint_with_open_batches(client, session, produ
         qty_raw="5",
         cost_raw="",
         sale_raw="12,50",
-        catalog_raw="",
         warehouse_id=warehouse.id,
         batch_choice="new",
     )
