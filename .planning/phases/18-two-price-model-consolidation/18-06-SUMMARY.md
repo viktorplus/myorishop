@@ -100,6 +100,10 @@ None - no external service configuration required.
 - PROD-07 is now fully satisfied: every sale prefill hint (card + batch, desktop + mobile) states the sale-only scope, and the no-write-back guarantee (D-15/D-16, protecting PRICE-01's criterion 5) is test-locked.
 - No blockers for the remaining Phase 18 plans (18-07/18-08 price-cue UI work) or Phase 19 (Products Page Rebuild).
 
+## Self-Check: PASSED
+
+All 5 modified source/test files and 2 planning artifacts confirmed present on disk; all 3 task/metadata commit hashes (393c955, cc937a1, 4483936) confirmed present in `git log`.
+
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
