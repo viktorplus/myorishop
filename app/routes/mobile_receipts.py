@@ -103,7 +103,6 @@ def mobile_receipt_step_batch(
     name: str = Form(""),
     cost: str = Form(""),
     sale: str = Form(""),
-    catalog: str = Form(""),
     session: Session = Depends(get_session),
 ):
     actives = active_warehouses(session)
@@ -111,9 +110,10 @@ def mobile_receipt_step_batch(
     chooser = _chooser_context(session, code, selected, actives)
     code_clean = code.strip()
     # D-06/PRICE-04: a single lookup_prefill call resolves both name and
-    # cost/sale/catalog for either a "product" or "catalog" source match —
-    # result["name"] can be None for a catalog-source match with a
-    # CatalogPrice but no Dictionary entry (None-guard below).
+    # cost/sale for either a "product" or CatalogPrice/Dictionary-matched
+    # source match — the Каталог price field itself is removed from the
+    # receipt slice (Pitfall 1). result["name"] can be None for a
+    # CatalogPrice-only match with no Dictionary entry (None-guard below).
     result = lookup_prefill(session, code_clean) if code_clean else None
     resolved_name = (result["name"] or "") if result else ""
     # A fresh lookup wins over a stale typed name (code changed to a now-known
@@ -124,16 +124,12 @@ def mobile_receipt_step_batch(
     prices = result["prices"] if result and result["prices"] else {}
     resolved_cost = format_cents(prices["cost"]) if prices.get("cost") is not None else ""
     resolved_sale = format_cents(prices["sale"]) if prices.get("sale") is not None else ""
-    resolved_catalog = (
-        format_cents(prices["catalog"]) if prices.get("catalog") is not None else ""
-    )
     # CR-01: a fresh lookup wins over stale typed prices (code changed to a
-    # now-known product/catalog match); otherwise preserve whatever the
-    # operator already typed on step 3, so tapping "Назад" and then "Далее"
-    # again does not silently discard a manual price edit.
+    # now-known match); otherwise preserve whatever the operator already
+    # typed on step 3, so tapping "Назад" and then "Далее" again does not
+    # silently discard a manual price edit.
     final_cost = resolved_cost or cost.strip()
     final_sale = resolved_sale or sale.strip()
-    final_catalog = resolved_catalog or catalog.strip()
     context = {
         "code": code_clean,
         "warehouse_id": selected,
@@ -142,7 +138,6 @@ def mobile_receipt_step_batch(
         "warehouse_name": _warehouse_names(session).get(selected),
         "cost": final_cost,
         "sale": final_sale,
-        "catalog": final_catalog,
         **chooser,
     }
     return templates.TemplateResponse(
@@ -160,7 +155,6 @@ def mobile_receipt_step_details(
     qty: str = Form(""),
     cost: str = Form(""),
     sale: str = Form(""),
-    catalog: str = Form(""),
     expiry: str = Form(""),
     location: str = Form(""),
     comment: str = Form(""),
@@ -178,7 +172,6 @@ def mobile_receipt_step_details(
         "qty": qty,
         "cost": cost,
         "sale": sale,
-        "catalog": catalog,
         "expiry": expiry,
         "location": location,
         "comment": comment,
@@ -198,7 +191,6 @@ def mobile_receipt_step_confirm(
     qty: str = Form(""),
     cost: str = Form(""),
     sale: str = Form(""),
-    catalog: str = Form(""),
     expiry: str = Form(""),
     location: str = Form(""),
     comment: str = Form(""),
@@ -212,7 +204,6 @@ def mobile_receipt_step_confirm(
         "qty": qty,
         "cost": cost,
         "sale": sale,
-        "catalog": catalog,
         "expiry": expiry,
         "location": location,
         "comment": comment,
@@ -231,7 +222,6 @@ def mobile_receipt_create(
     qty: str = Form(""),
     cost: str = Form(""),
     sale: str = Form(""),
-    catalog: str = Form(""),
     warehouse_id: str = Form(""),
     batch_choice: str = Form(""),
     expiry: str = Form(""),
@@ -245,7 +235,6 @@ def mobile_receipt_create(
         "qty": qty,
         "cost": cost,
         "sale": sale,
-        "catalog": catalog,
         "warehouse_id": warehouse_id,
         "batch_choice": batch_choice,
         "is_new_batch": batch_choice == "new",
@@ -261,7 +250,6 @@ def mobile_receipt_create(
             qty_raw=qty,
             cost_raw=cost,
             sale_raw=sale,
-            catalog_raw=catalog,
             warehouse_id=warehouse_id,
             batch_choice=batch_choice,
             expiry_raw=expiry,

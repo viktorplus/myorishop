@@ -408,7 +408,6 @@ def test_web_receipt_post_success_returns_fresh_form(client, warehouse):
             "qty": "2",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -431,7 +430,6 @@ def test_web_receipt_post_validation_422_preserves_input(client, product, wareho
             "qty": "0",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -452,7 +450,7 @@ def test_web_receipt_unexpected_error_shows_block(client, monkeypatch):
     monkeypatch.setattr(receipts_routes, "register_receipt", boom)
     response = client.post(
         "/receipts",
-        data={"code": "9999", "name": "Крем", "qty": "2", "cost": "", "sale": "", "catalog": ""},
+        data={"code": "9999", "name": "Крем", "qty": "2", "cost": "", "sale": ""},
     )
     assert response.status_code == 422
     assert "Не удалось сохранить. Проверьте данные и попробуйте ещё раз." in response.text
@@ -489,7 +487,6 @@ def test_web_receipt_survives_unexpected_error(client, session, product, warehou
             "qty": "2",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -549,7 +546,6 @@ def test_web_recent_receipts_lists_saved_receipt(client, warehouse):
             "qty": "7",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -574,7 +570,6 @@ def test_web_recent_receipts_oob_row_in_post_response(client, warehouse):
             "qty": "2",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -797,7 +792,7 @@ def test_web_lookup_product_fills_name_and_prices(client, session, product):
 
     response = client.get(
         "/receipts/lookup",
-        params={"code": "TEST-001", "name": "", "cost": "", "sale": "", "catalog": ""},
+        params={"code": "TEST-001", "name": "", "cost": "", "sale": ""},
     )
     assert response.status_code == 200
     assert 'id="name-wrap"' in response.text
@@ -815,12 +810,11 @@ def test_web_lookup_product_skips_typed_price_fields(client, session, product):
 
     response = client.get(
         "/receipts/lookup",
-        params={"code": "TEST-001", "name": "", "cost": "9", "sale": "", "catalog": ""},
+        params={"code": "TEST-001", "name": "", "cost": "9", "sale": ""},
     )
     assert response.status_code == 200
     assert 'id="name-wrap"' in response.text
     assert 'id="sale-wrap"' in response.text
-    assert 'id="catalog-wrap"' in response.text
     assert 'id="cost-wrap"' not in response.text
 
 
@@ -837,9 +831,10 @@ def test_web_lookup_dictionary_fallback_name_only(client, session):
 
 
 def test_web_lookup_catalog_source_price_only_fills_cost_catalog_and_sale(client, session):
-    """Unknown-to-Product code with a CatalogPrice match only: cost/catalog/sale
-    OOB fragments carry the real consultant/consumer cents display values —
-    sale is filled from the consumer price (ПЦ), same as catalog (D-02 superseded)."""
+    """Unknown-to-Product code with a CatalogPrice match only: cost/sale OOB
+    fragments carry the real consultant/consumer cents display values — sale
+    is filled from the consumer price (ПЦ) (D-02 superseded). The receipt
+    catalog price field itself is removed from the form (Pitfall 1)."""
     session.add(
         CatalogPrice(
             id=new_id(),
@@ -854,14 +849,13 @@ def test_web_lookup_catalog_source_price_only_fills_cost_catalog_and_sale(client
 
     response = client.get(
         "/receipts/lookup",
-        params={"code": "5555", "name": "", "cost": "", "sale": "", "catalog": ""},
+        params={"code": "5555", "name": "", "cost": "", "sale": ""},
     )
     assert response.status_code == 200
     assert 'id="cost-wrap"' in response.text
     assert 'value="9,00"' in response.text
-    assert 'id="catalog-wrap"' in response.text
-    assert 'value="15,00"' in response.text
     assert 'id="sale-wrap"' in response.text
+    assert 'value="15,00"' in response.text
 
 
 def test_web_lookup_catalog_source_combines_dictionary_and_price(client, session):
@@ -882,12 +876,12 @@ def test_web_lookup_catalog_source_combines_dictionary_and_price(client, session
 
     response = client.get(
         "/receipts/lookup",
-        params={"code": "6666", "name": "", "cost": "", "sale": "", "catalog": ""},
+        params={"code": "6666", "name": "", "cost": "", "sale": ""},
     )
     assert response.status_code == 200
     assert "Помада" in response.text
     assert 'id="cost-wrap"' in response.text
-    assert 'id="catalog-wrap"' in response.text
+    assert 'id="sale-wrap"' in response.text
 
 
 def test_web_lookup_catalog_source_skips_typed_cost(client, session):
@@ -908,11 +902,11 @@ def test_web_lookup_catalog_source_skips_typed_cost(client, session):
 
     response = client.get(
         "/receipts/lookup",
-        params={"code": "5555", "name": "", "cost": "9", "sale": "", "catalog": ""},
+        params={"code": "5555", "name": "", "cost": "9", "sale": ""},
     )
     assert response.status_code == 200
     assert 'id="cost-wrap"' not in response.text
-    assert 'id="catalog-wrap"' in response.text
+    assert 'id="sale-wrap"' in response.text
 
 
 def test_web_lookup_204_for_unknown_code(client):
