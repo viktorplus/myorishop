@@ -45,7 +45,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Transfers
 
-- [ ] **XFER-01**: Transferring part of a batch whose moved portion has a different expiry date or condition (e.g. damaged packaging, opened sample) from the remaining source batch creates a new destination batch and moves only that portion into it, leaving the source batch's remaining quantity and attributes unchanged
+- [x] **XFER-01**: Transferring part of a batch whose moved portion has a different expiry date or condition (e.g. damaged packaging, opened sample) from the remaining source batch creates a new destination batch and moves only that portion into it, leaving the source batch's remaining quantity and attributes unchanged
 
 ### Sales
 
@@ -117,7 +117,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WH-01 | Phase 20 | Pending |
 | WH-02 | Phase 20 | Pending |
 | WH-03 | Phase 20 | Pending |
-| XFER-01 | Phase 20 | Pending |
+| XFER-01 | Phase 20 | Complete |
 | CUST-01 | Phase 21 | Pending |
 | CUST-02 | Phase 21 | Pending |
 | CUST-03 | Phase 21 | Pending |
