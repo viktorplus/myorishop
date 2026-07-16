@@ -45,7 +45,8 @@ def register_transfer(
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one stock transfer atomically; returns (result, errors).
 
-    Success: ({"product": ..., "source": ..., "dest": ...}, {}). Validation
+    Success: ({"product": ..., "source": ..., "dest": ..., "qty": ...}, {}) where
+    `qty` is the actual transferred integer quantity (D-11). Validation
     failure: (None, errors) with RU messages — nothing is staged on any
     error. The oversell warn-but-allow step returns
     ({"oversell": {...}}, {}) with ZERO writes when `confirm != "1"` and the
@@ -161,7 +162,7 @@ def register_transfer(
         session.rollback()
         return None, {"form": SAVE_FAILED_ERROR}
 
-    return {"product": product, "source": source, "dest": dest}, {}
+    return {"product": product, "source": source, "dest": dest, "qty": qty}, {}
 
 
 def recent_transfers(session: Session, limit: int = 10) -> list[dict]:
