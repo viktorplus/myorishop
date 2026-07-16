@@ -99,7 +99,7 @@ def test_web_step_batch_existing_product_forwards_cost_price(
     mobile_client_factory, session, product, warehouse
 ):
     """D-06: an existing Product's cost pre-fills as a hidden field; unset
-    sale/catalog render empty (PD-8 shape, not literal "None")."""
+    sale renders empty (PD-8 shape, not literal "None")."""
     product.cost_cents = 1250
     session.commit()
 
@@ -110,15 +110,15 @@ def test_web_step_batch_existing_product_forwards_cost_price(
     assert response.status_code == 200
     assert '<input type="hidden" name="cost" value="12,50">' in response.text
     assert '<input type="hidden" name="sale" value="">' in response.text
-    assert '<input type="hidden" name="catalog" value="">' in response.text
 
 
-def test_web_step_batch_catalog_source_forwards_cost_catalog_and_sale(
+def test_web_step_batch_catalog_source_forwards_cost_and_sale(
     mobile_client_factory, session, warehouse
 ):
     """D-01: a code unknown to Product but present in CatalogPrice forwards
-    cost/catalog/sale from the catalog source — sale is filled from the
-    consumer price (ПЦ), same as catalog (D-02 superseded, mobile layer)."""
+    cost/sale from the catalog source — sale is filled from the consumer
+    price (ПЦ) (D-02 superseded, mobile layer). The catalog price field
+    itself is removed from the receipt slice (Pitfall 1)."""
     session.add(
         CatalogPrice(
             id=new_id(),
@@ -137,14 +137,13 @@ def test_web_step_batch_catalog_source_forwards_cost_catalog_and_sale(
     )
     assert response.status_code == 200
     assert '<input type="hidden" name="cost" value="9,00">' in response.text
-    assert '<input type="hidden" name="catalog" value="15,00">' in response.text
     assert '<input type="hidden" name="sale" value="15,00">' in response.text
 
 
 def test_web_step_batch_unknown_code_forwards_empty_prices(
     mobile_client_factory, session, warehouse
 ):
-    """Code unknown everywhere -> all three hidden price inputs render empty."""
+    """Code unknown everywhere -> both hidden price inputs render empty."""
     client = mobile_client_factory(mobile_receipts.router)
     response = client.post(
         "/m/receipts/step/batch", data={"code": "no-such-code", "warehouse_id": warehouse.id}
@@ -152,7 +151,6 @@ def test_web_step_batch_unknown_code_forwards_empty_prices(
     assert response.status_code == 200
     assert '<input type="hidden" name="cost" value="">' in response.text
     assert '<input type="hidden" name="sale" value="">' in response.text
-    assert '<input type="hidden" name="catalog" value="">' in response.text
 
 
 # --- Task 2: steps 3-4 (Количество/Цены, Подтверждение) + final write ---
@@ -234,7 +232,6 @@ def test_web_step_confirm_renders_summary(mobile_client_factory, session):
             "qty": "5",
             "cost": "",
             "sale": "",
-            "catalog": "",
         },
     )
     assert response.status_code == 200
@@ -255,7 +252,6 @@ def test_web_receipt_create_new_batch_happy_path(mobile_client_factory, session,
             "qty": "5",
             "cost": "10",
             "sale": "12,50",
-            "catalog": "15",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },
@@ -292,7 +288,6 @@ def test_web_receipt_create_topup_happy_path(
             "qty": "3",
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": batch.id,
         },
@@ -388,7 +383,6 @@ def test_web_receipt_create_validation_error_writes_zero_rows(
             "qty": "0",  # invalid — must be a positive int
             "cost": "",
             "sale": "",
-            "catalog": "",
             "warehouse_id": warehouse.id,
             "batch_choice": "new",
         },

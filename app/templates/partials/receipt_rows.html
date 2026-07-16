@@ -16,7 +16,6 @@
         <th>Кол-во</th>
         <th>Закупочная</th>
         <th>Продажа</th>
-        <th>Каталог</th>
       </tr>
     </thead>
     <tbody>
@@ -28,7 +27,6 @@
         <td class="num">{{ r.op.qty_delta }}</td>
         <td class="num">{% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% endif %}</td>
         <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% endif %}</td>
-        <td class="num">{% if r.op.payload and r.op.payload.catalog_cents is not none %}{{ r.op.payload.catalog_cents | cents }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

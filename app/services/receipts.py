@@ -3,7 +3,9 @@
 D-01: one receipt entry = one product line = one receipt op, qty_delta > 0.
 D-05: an unknown code auto-creates the product card + product_created op in
 the SAME transaction. D-06: the receipt op snapshots unit_cost_cents and
-unit_price_cents; payload carries catalog_cents. D-07: for an EXISTING
+unit_price_cents. D-04: historical receipt payloads still carry
+catalog_cents, but new receipts no longer write it — the catalog price is
+being retired from the receipt slice (PROD-05). D-07: for an EXISTING
 product the entered prices update the card via one price_change op per
 CHANGED field (CAT-04 machinery). PD-8: prices are optional (empty string
 -> NULL) and an empty field never clears a card price — receipts are
@@ -71,7 +73,6 @@ def register_receipt(
     qty_raw: str,
     cost_raw: str,
     sale_raw: str,
-    catalog_raw: str,
     warehouse_id: str,
     batch_choice: str,
     expiry_raw: str = "",
@@ -113,7 +114,6 @@ def register_receipt(
 
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
-    catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
 
     # D-02 / T-09-05: server-side active-warehouse re-check. Zero active
     # warehouses is a blocking state (Phase 8 D-07 carried forward); a stale
@@ -154,7 +154,6 @@ def register_receipt(
             category=None,
             cost_cents=cost_cents,
             sale_cents=sale_cents,
-            catalog_cents=catalog_cents,
             quantity=0,
         )
         session.add(product)
@@ -174,7 +173,6 @@ def register_receipt(
         entered = {
             "cost_cents": cost_cents,
             "sale_cents": sale_cents,
-            "catalog_cents": catalog_cents,
         }
         # PD-8: a receipt has no min_sale input, so this loop iterates the
         # fields a receipt CAN set (not the full app.services.catalog
@@ -236,6 +234,9 @@ def register_receipt(
 
     # D-06: snapshot the entered prices on the immutable receipt op; D-11: the
     # batch_id threads the ledger line to its lot (dual quantity projection).
+    # D-04: new receipts no longer write payload.catalog_cents to the ledger —
+    # the 8 historical receipt payloads that already carry it are untouched
+    # (the ledger is append-only/trigger-enforced immutable).
     op = record_operation(
         session,
         type_="receipt",
@@ -243,7 +244,6 @@ def register_receipt(
         qty_delta=qty,
         unit_cost_cents=cost_cents,
         unit_price_cents=sale_cents,
-        payload={"catalog_cents": catalog_cents},
         batch_id=batch.id,
         commit=False,
     )
@@ -282,7 +282,6 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
             "prices": {
                 "cost": product.cost_cents,
                 "sale": product.sale_cents,
-                "catalog": product.catalog_cents,
             },
         }
     entry = dictionary_lookup(session, code)

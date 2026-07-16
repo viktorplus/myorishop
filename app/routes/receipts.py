@@ -110,7 +110,6 @@ def receipt_lookup(
     name: str = "",
     cost: str = "",
     sale: str = "",
-    catalog: str = "",
     warehouse_id: str = "",
     session: Session = Depends(get_session),
 ):
@@ -123,8 +122,10 @@ def receipt_lookup(
     if result is None:
         return Response(status_code=204)
     if result["source"] == "product":
-        typed = {"cost": cost, "sale": sale, "catalog": catalog}
-        fill_fields = [f for f in ("cost", "sale", "catalog") if not typed[f].strip()]
+        # Pitfall 1 / D-01: catalog field removed from the receipt slice —
+        # only cost/sale are ever fillable now.
+        typed = {"cost": cost, "sale": sale}
+        fill_fields = [f for f in ("cost", "sale") if not typed[f].strip()]
         hint = CARD_FILL_HINT
         # D-01: an existing product has open batches to top up — oob-refresh the
         # chooser so the operator sees them without touching the warehouse select.
@@ -140,9 +141,10 @@ def receipt_lookup(
         # Dictionary and/or CatalogPrice. Pitfall 1: reuse the exact same
         # "still empty after strip" computation as the product branch above.
         # D-02 superseded: the catalog consumer price (ПЦ) is this shop's
-        # default sale price, so "sale" now fills the same as cost/catalog.
-        typed = {"cost": cost, "sale": sale, "catalog": catalog}
-        fill_fields = [f for f in ("cost", "sale", "catalog") if not typed[f].strip()]
+        # default sale price, so "sale" fills the same as cost. Catalog field
+        # removed from the receipt slice — only cost/sale are ever fillable.
+        typed = {"cost": cost, "sale": sale}
+        fill_fields = [f for f in ("cost", "sale") if not typed[f].strip()]
         hint = CATALOG_FILL_HINT
         # D-05: the batch chooser is untouched by this branch — same empty
         # state as the dictionary-only fallback used previously.
@@ -171,7 +173,6 @@ def receipt_create(
     qty: str = Form(""),
     cost: str = Form(""),
     sale: str = Form(""),
-    catalog: str = Form(""),
     warehouse_id: str = Form(""),
     batch_choice: str = Form("new"),
     expiry: str = Form(""),
@@ -187,7 +188,6 @@ def receipt_create(
         "qty": qty,
         "cost": cost,
         "sale": sale,
-        "catalog": catalog,
         "warehouse_id": warehouse_id,
         "batch_choice": batch_choice,
         "expiry": expiry,
@@ -202,7 +202,6 @@ def receipt_create(
             qty_raw=qty,
             cost_raw=cost,
             sale_raw=sale,
-            catalog_raw=catalog,
             warehouse_id=warehouse_id,
             batch_choice=batch_choice,
             expiry_raw=expiry,

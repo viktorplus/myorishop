@@ -21,10 +21,6 @@
   <label for="receipt-sale">Цена продажи <span class="muted">(необязательно)</span></label>
   <input type="text" id="receipt-sale" name="sale" inputmode="decimal" value="{{ sale }}">
 </div>
-<div class="field">
-  <label for="receipt-catalog">Цена по каталогу <span class="muted">(необязательно)</span></label>
-  <input type="text" id="receipt-catalog" name="catalog" inputmode="decimal" value="{{ catalog }}">
-</div>
 {% if is_new_batch %}
 <div class="field">
   <label for="receipt-expiry">Срок годности <span class="muted">(необязательно)</span></label>
