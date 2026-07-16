@@ -19,6 +19,8 @@
   <h2>Куда и количество</h2>
 
   {% if errors is defined and errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
+  {% if errors is defined and errors.code %}<p class="error">{{ errors.code }}</p>{% endif %}
+  {% if errors is defined and errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
   {% if oversell %}
   {% include "mobile_partials/transfers_warning.html" %}
   {% endif %}
