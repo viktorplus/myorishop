@@ -24,10 +24,10 @@ SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте 
 
 
 def _dest_warehouses(session: Session, source: Batch | None) -> list:
-    """Active warehouses minus the source batch's own warehouse (D-02)."""
+    """Active warehouses, including the source batch's own warehouse (D-09)."""
     if source is None:
         return []
-    return [w for w in active_warehouses(session) if w.id != source.warehouse_id]
+    return list(active_warehouses(session))
 
 
 @router.get("/transfers")
@@ -100,8 +100,9 @@ def transfers_batch_pick(
         "selected_batch_id": picked.id if picked else None,
         "batch_id_value": picked.id if picked else "",
         "show_empty": product is not None and not batches,
-        # T-10-07: destination options = active warehouses minus the picked
-        # source's own warehouse; empty (no select) until a source is picked.
+        # T-10-07/D-09: destination options = all active warehouses (including
+        # the picked source's own warehouse, for same-warehouse splits); empty
+        # (no select) until a source is picked.
         "warehouses": _dest_warehouses(session, picked),
     }
     return templates.TemplateResponse(request, "partials/transfer_batch_wrap.html", context)
@@ -115,6 +116,8 @@ def transfers_create(
     qty: str = Form(""),
     batch_id: str = Form(""),
     dest_warehouse_id: str = Form(""),
+    new_expiry: str = Form(""),
+    new_comment: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -124,10 +127,23 @@ def transfers_create(
         "code": code,
         "name": name,
         "qty": qty,
+        "new_expiry": new_expiry,
+        "new_comment": new_comment,
     }
-    # WH-03: resolve the picked batch (if any) for the re-echoed picker + dest
-    # select on a 422/warn re-render so the operator's selection survives.
-    selected_batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
+    # WH-03/D-10: resolve the picked batch (if any) for the re-echoed picker +
+    # dest select on a 422/warn re-render — re-validate ownership the same
+    # way transfers_batch_pick does, a client-submitted batch_id naming
+    # another product's batch must never be echoed back.
+    code_clean = code.strip()
+    lookup_product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    selected_batch: Batch | None = None
+    batch_id_clean = batch_id.strip()
+    if batch_id_clean and lookup_product is not None:
+        candidate = session.get(Batch, batch_id_clean)
+        if candidate is not None and candidate.product_id == lookup_product.id:
+            selected_batch = candidate
     try:
         result, errors = register_transfer(
             session,
@@ -136,6 +152,8 @@ def transfers_create(
             qty_raw=qty,
             batch_id=batch_id,
             dest_warehouse_id=dest_warehouse_id,
+            new_expiry=new_expiry,
+            new_comment=new_comment,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500
@@ -187,7 +205,7 @@ def transfers_create(
     context = {
         "errors": {},
         "form": {},
-        "saved": {"name": result["product"].name, "qty": qty},
+        "saved": {"name": result["product"].name, "qty": result["qty"]},
         "focus_code": True,
         "transfers": recent_transfers(session),
         "include_oob_rows": True,
