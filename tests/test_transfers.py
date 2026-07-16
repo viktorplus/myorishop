@@ -468,7 +468,9 @@ def test_transfer_lookup_fills(client, session, stocked_product):
     assert f'value="{source.id}"' in response.text
 
 
-def test_transfer_batch_pick_dest_excludes_source(client, session, stocked_product):
+def test_transfer_batch_pick_dest_includes_source_warehouse(client, session, stocked_product):
+    """D-09: the source batch's own warehouse is now a selectable destination
+    (same-warehouse split), alongside any other active warehouse."""
     source = _source_batch(session, stocked_product, qty=8)
     dest_wh = _second_warehouse(session)
 
@@ -480,7 +482,7 @@ def test_transfer_batch_pick_dest_excludes_source(client, session, stocked_produ
     assert response.status_code == 200
     assert f'value="{source.id}"' in response.text
     assert f'value="{dest_wh.id}"' in response.text
-    assert f'value="{source.warehouse_id}"' not in response.text
+    assert f'value="{source.warehouse_id}"' in response.text
 
 
 def test_transfer_post_moves_stock(client, session, stocked_product):
@@ -568,3 +570,117 @@ def test_transfer_in_history(client, session, stocked_product):
     assert "Перемещение" in response.text
     assert "-3" in response.text
     assert "+3" in response.text
+
+
+def test_transfer_create_ownership_guard_does_not_echo_foreign_batch(
+    client, session, stocked_product, product
+):
+    """D-10: a client-submitted batch_id naming another product's batch is
+    never echoed back into the picker on POST /transfers' error branch."""
+    dest_wh = _second_warehouse(session)
+
+    foreign_batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=dest_wh.id,
+        quantity=0,
+    )
+    session.add(foreign_batch)
+    session.commit()
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": foreign_batch.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert foreign_batch.id not in response.text
+
+
+def test_transfer_post_success_qty_echo_matches_parsed_int(client, session, stocked_product):
+    """D-11 regression guard: the success message uses the actual transferred
+    integer quantity (result["qty"]) rather than the raw form string."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "3 шт." in response.text
+
+
+def test_transfer_post_same_warehouse_with_expiry_override_succeeds(
+    client, session, stocked_product
+):
+    """D-05/D-07/D-09 end-to-end: a same-warehouse split reachable via a raw
+    form POST, ahead of the template UI (Plan 20-07)."""
+    source = _source_batch(session, stocked_product, qty=8)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": source.warehouse_id,
+            "new_expiry": "2027-01-01",
+            "new_comment": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+
+    session.expire_all()
+    dest_batches = [
+        b
+        for b in open_batches(session, stocked_product.id, source.warehouse_id)
+        if b.id != source.id
+    ]
+    assert len(dest_batches) == 1
+    assert dest_batches[0].quantity == 3
+    assert dest_batches[0].expiry == "2027-01-01"
+
+
+def test_transfer_post_same_warehouse_blank_overrides_shows_form_error(
+    client, session, stocked_product
+):
+    from sqlalchemy import select
+
+    from app.models import Operation
+    from app.services.transfers import SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR
+
+    source = _source_batch(session, stocked_product, qty=8)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": source.warehouse_id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR in response.text
+
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
