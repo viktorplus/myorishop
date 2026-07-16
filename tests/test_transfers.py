@@ -106,6 +106,24 @@ def test_transfer_writes_two_rows(session, stocked_product):
     assert batch_ids == {source.id, result["dest"].id}
 
 
+def test_transfer_qty_echo_is_int_not_raw_string(session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+    )
+
+    assert errors == {}
+    assert result["qty"] == 3
+    assert isinstance(result["qty"], int)
+
+
 def test_transfer_projections(session, stocked_product):
     source = _source_batch(session, stocked_product, qty=8)
     dest_wh = _second_warehouse(session)
