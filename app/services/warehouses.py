@@ -64,6 +64,20 @@ def list_warehouses(
         rows = sorted(rows, key=lambda w: (w.deleted_at is not None, w.name))
 
     page_rows, total, total_pages = paginate(rows, page)
+
+    warehouse_ids = [w.id for w in page_rows]
+    if warehouse_ids:
+        item_count_rows = session.execute(
+            select(Batch.warehouse_id, func.count(func.distinct(Batch.product_id)))
+            .where(Batch.warehouse_id.in_(warehouse_ids), Batch.quantity > 0)
+            .group_by(Batch.warehouse_id)
+        ).all()
+        item_counts = dict(item_count_rows)
+    else:
+        item_counts = {}
+    for w in page_rows:
+        w.item_count = item_counts.get(w.id, 0)
+
     return {
         "warehouses": page_rows,
         "total": total,
