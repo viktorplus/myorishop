@@ -143,3 +143,8 @@ None - the two threats this plan's `<threat_model>` assigned `mitigate` (T-18-CS
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All claimed files (7 app files, 3 primary test files, this SUMMARY.md) and all
+three task/docs commits (`a424333`, `ff3bcca`, `d3279eb`) verified present.
