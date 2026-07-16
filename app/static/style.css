@@ -1,6 +1,7 @@
 /* Minimal readable defaults — no framework, no build step.
    Normalized to the Phase 2 UI-SPEC scale: 4/8/16/24/32/48px spacing,
-   16/14/20/24px type at weights 400/600, accent #2563eb, destructive #b91c1c. */
+   16/14/20/24px type at weights 400/600, accent #2563eb, destructive #b91c1c,
+   price-cue amber #b45309 (Phase 18, D-14 — the 4th global colour role). */
 body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   margin: 0;
@@ -284,6 +285,16 @@ mark {
 .name-search-list { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid #d9d9d9; background: #ffffff; }
 .name-search-list li button { display: block; width: 100%; padding: 8px; text-align: left; }
 .name-search-list li button:hover, .name-search-list li button:focus-visible { background: #e8effd; }
+
+/* Price cue (PROD-06 / D-14): reference-deviation hint on ДЦ/ПЦ inputs.
+   Border + tint + text badge — colour alone fails WCAG 1.4.1 (Use of Color),
+   and yellow-on-white is too low-contrast to read as a border by itself.
+   The blue fill is #eff6ff and deliberately NOT #e8effd — that tint is the
+   established search-match/selection token (mark, .selected-batch,
+   .name-search-list hover, .mobile-card.selected). #2563eb is the existing
+   accent token, reused here — no new colour role for the border. */
+.price-below { border-color: #b45309; background: #fef9e7; }
+.price-above { border-color: #2563eb; background: #eff6ff; }
 
 /* Mobile flow (Phase 11): home tile grid, wizard shell, batch/basket cards.
    All values reuse the existing token scale; the only new number is the
