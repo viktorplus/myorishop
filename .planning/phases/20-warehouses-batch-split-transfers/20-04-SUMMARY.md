@@ -95,3 +95,14 @@ None - no external service configuration required.
 ---
 *Phase: 20-warehouses-batch-split-transfers*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: app/services/transfers.py
+- FOUND: tests/test_transfers.py
+- FOUND: .planning/phases/20-warehouses-batch-split-transfers/20-04-SUMMARY.md
+- FOUND commit: 00c3188 (test RED Task 1)
+- FOUND commit: 5424b0a (feat GREEN Task 1)
+- FOUND commit: 7065689 (test RED Task 2)
+- FOUND commit: a651235 (feat GREEN Task 2)
+- FOUND commit: 4bb0909 (docs SUMMARY)
