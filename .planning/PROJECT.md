@@ -113,6 +113,7 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - ✓ Manual cash movements: withdrawal with mandatory category + comment, manual deposit, warn-but-allow negative balance, paginated/filterable history (desktop `/finance` + mobile `/m/finance`) — Phase 16 (FIN-03, FIN-04, FIN-05, FIN-07)
 - ✓ Period cash-flow report (income vs. expense by category) and CSV export of cash movements — Phase 17 (FIN-08, FIN-09)
 - ✓ Финансы dashboard: gross profit, net profit, and stock valuation (at cost and at sale price) for a selected period — Phase 17 (FIN-10, FIN-11, FIN-12)
+- ✓ Products page groups rows by product code with a total-quantity column, batches broken out per code (expiry/name) in a collapsed expander; "Добавить товар" removed, delete is a text link; category display/filter unchanged — Phase 19 (PROD-01, PROD-02, PROD-03, PROD-04, PROD-08)
 
 ### Active
 
@@ -200,4 +201,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-15 — v1.3 Финансы / Касса shipped (3/3 phases); v2.0 not yet scoped, run `/gsd-new-milestone`*
+*Last updated: 2026-07-16 — v2.0 in progress: Phase 19 (Products Page Rebuild) shipped; Phase 20 (Warehouses & Batch-Split Transfers) next*
