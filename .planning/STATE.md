@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: executing
 stopped_at: Phase 18 context gathered
-last_updated: "2026-07-16T08:29:06.706Z"
-last_activity: 2026-07-16 -- Phase 18 planning complete
+last_updated: "2026-07-16T08:54:51.505Z"
+last_activity: 2026-07-16 -- Phase 18 execution started
 progress:
   total_phases: 7
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 18 — Two-Price Model Consolidation (ДЦ/ПЦ)
+**Current focus:** Phase 18 — two-price-model-consolidation
 
 ## Current Position
 
-Phase: 18 of 24 (Two-Price Model Consolidation) — first phase of v2.0
-Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-07-16 -- Phase 18 planning complete
+Phase: 18 (two-price-model-consolidation) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 18
+Last activity: 2026-07-16 -- Phase 18 execution started
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 
