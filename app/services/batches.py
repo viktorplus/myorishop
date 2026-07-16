@@ -6,6 +6,8 @@ receipt chooser. Read-only, session-first, RU-free (display strings live in
 templates), mirroring the warehouses service shape.
 """
 
+from collections import defaultdict
+
 from sqlalchemy import nullslast, select
 from sqlalchemy.orm import Session
 
@@ -30,6 +32,25 @@ def open_batches(
             stmt.order_by(nullslast(Batch.expiry.asc()), Batch.created_at.asc())
         )
     )
+
+
+def batches_for_products(session: Session, product_ids: list[str]) -> dict[str, list[Batch]]:
+    """Open batches (quantity > 0) for a PAGE of products, grouped by product_id.
+
+    Same ordering as open_batches (earliest expiry first, NULL last, then
+    oldest receipt) but ONE query for the whole page instead of N+1.
+    """
+    if not product_ids:
+        return {}
+    rows = session.scalars(
+        select(Batch)
+        .where(Batch.product_id.in_(product_ids), Batch.quantity > 0)
+        .order_by(nullslast(Batch.expiry.asc()), Batch.created_at.asc())
+    )
+    grouped: dict[str, list[Batch]] = defaultdict(list)
+    for batch in rows:
+        grouped[batch.product_id].append(batch)
+    return dict(grouped)
 
 
 def legacy_batch(session: Session, product_id: str) -> Batch | None:

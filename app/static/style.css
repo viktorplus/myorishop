@@ -299,6 +299,17 @@ mark {
 .price-below { border-color: #b45309; background: #fef9e7; }
 .price-above { border-color: #2563eb; background: #eff6ff; }
 
+/* Text-link delete action (Phase 19, PROD-02): reuses the destructive token
+   (#b91c1c) already named at button.danger above — no new color role. Keeps
+   the browser's default underline (no text-decoration:none) so the link
+   reads as interactive by shape, not color alone (WCAG 1.4.1). */
+a.link-danger {
+  color: #b91c1c;
+}
+a.link-danger:hover {
+  color: #7f1414;
+}
+
 /* Mobile flow (Phase 11): home tile grid, wizard shell, batch/basket cards.
    All values reuse the existing token scale; the only new number is the
    44px touch-target minimum (spacing exception, see UI-SPEC). */

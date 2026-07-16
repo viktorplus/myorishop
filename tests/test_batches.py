@@ -23,6 +23,7 @@ from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import (
     active_warehouses,
+    batches_for_products,
     expiring_batches,
     legacy_batch,
     open_batches,
@@ -155,6 +156,51 @@ def test_open_batches_optional_warehouse_filter(session, product):
 
     ordered = open_batches(session, product.id, warehouse_id=wh_a.id)
     assert [b.id for b in ordered] == [in_a.id]
+
+
+def test_batches_for_products_empty_list_returns_empty_dict(session):
+    """No product_ids -> {} with no query issued."""
+    assert batches_for_products(session, []) == {}
+
+
+def test_batches_for_products_groups_by_product_excludes_zero_quantity(session, product):
+    """Grouped by product_id; a quantity-0 batch never appears in any list."""
+    warehouse = _make_warehouse(session)
+    other = Product(id=new_id(), code="TEST-002", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+
+    p1_live = _make_batch(
+        session, product_id=product.id, warehouse_id=warehouse.id, expiry="2026-01-01", quantity=3
+    )
+    _make_batch(
+        session, product_id=product.id, warehouse_id=warehouse.id, expiry="2026-02-01", quantity=0
+    )
+    p2_live = _make_batch(
+        session, product_id=other.id, warehouse_id=warehouse.id, expiry="2026-03-01", quantity=5
+    )
+
+    grouped = batches_for_products(session, [product.id, other.id])
+    assert [b.id for b in grouped[product.id]] == [p1_live.id]
+    assert [b.id for b in grouped[other.id]] == [p2_live.id]
+
+
+def test_batches_for_products_ordering_matches_open_batches(session, product):
+    """Ordering within each product's list matches open_batches: earliest expiry
+    first, NULL expiry last, tie-broken by oldest created_at."""
+    warehouse = _make_warehouse(session)
+    _make_batch(
+        session, product_id=product.id, warehouse_id=warehouse.id, expiry="2026-01-01", quantity=3
+    )
+    _make_batch(
+        session, product_id=product.id, warehouse_id=warehouse.id, expiry=None, quantity=4
+    )
+    _make_batch(
+        session, product_id=product.id, warehouse_id=warehouse.id, expiry="2025-06-01", quantity=2
+    )
+
+    grouped = batches_for_products(session, [product.id])
+    assert [b.expiry for b in grouped[product.id]] == ["2025-06-01", "2026-01-01", None]
 
 
 def test_legacy_batch_lookup(session, product):

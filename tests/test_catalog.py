@@ -1218,3 +1218,49 @@ def test_web_products_page_has_no_standalone_search_input(client):
     page = client.get("/products")
     assert page.status_code == 200
     assert 'hx-get="/products/search"' not in page.text
+
+
+def test_web_products_list_shows_quantity_column(client, stocked_product):
+    """PROD-03: the Кол-во column renders product.quantity in a class="num" cell."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert '<td class="num">8</td>' in page.text
+
+
+def test_web_products_list_shows_batch_breakdown_when_batches_exist(client, stocked_product):
+    """PROD-04: a product with an open batch renders a collapsed breakout, legacy
+    NULL expiry/name shown as "—" (never blank)."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Партии (1)" in page.text
+
+
+def test_web_products_list_no_batch_breakdown_when_no_batches(client, product):
+    """Pitfall 5 regression guard: a zero-batch product renders no expand affordance."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Партии" not in page.text
+
+
+def test_web_products_list_has_no_add_button(client):
+    """PROD-01: "Добавить товар" is gone from both the page CTA and empty state."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Добавить товар" not in page.text
+
+
+def test_web_products_new_still_reachable_after_button_removal(client):
+    """PROD-01 scope-boundary regression guard: /products/new stays live."""
+    page = client.get("/products/new")
+    assert page.status_code == 200
+
+
+def test_web_products_delete_control_is_link_not_button(client, product):
+    """PROD-02: delete is an <a hx-post=...>, never a <button> with the same target."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert (
+        f'<a href="#" class="link-danger" hx-post="/products/{product.id}/quick-delete'
+        in page.text
+    )
+    assert '<button type="button" class="danger"' not in page.text
