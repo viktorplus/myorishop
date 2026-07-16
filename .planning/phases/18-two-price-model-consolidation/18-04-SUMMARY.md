@@ -142,3 +142,9 @@ None — this plan only removes existing schema/ORM surface (a column and its ma
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All claimed files verified present (`alembic/versions/0014_drop_product_catalog_cents.py`,
+this SUMMARY.md) and all three task/docs commit hashes (`a53596c`, `3dd865d`, `45e2b6b`)
+verified present in `git log --oneline --all`.
