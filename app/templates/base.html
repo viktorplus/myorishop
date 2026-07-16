@@ -20,6 +20,10 @@
   <title>MyOriShop</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js" defer></script>
+  {# PROD-06 / D-10: delegated price-cue listener — advisory only, never
+     parses money for submission (D-13). Standalone file, mirrors the htmx
+     vendored-script line above. #}
+  <script src="/static/price-cue.js" defer></script>
 </head>
 <body>
   <main class="container">

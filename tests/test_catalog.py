@@ -817,6 +817,26 @@ def test_web_edit_unknown_id_404(client):
     assert response.status_code == 404
 
 
+def test_web_edit_page_shows_no_catalog_hint_when_code_unknown_to_catalog(client, session):
+    """D-07: a code with no CatalogPrice row shows the muted no-reference hint
+    and no data-ref-cents on the price inputs — the MAIN path (6 of 7 live
+    products have no catalog row), not a silently absent cue."""
+    product, errors = create_product(
+        session,
+        code="9999-NOCAT",
+        name="Без Каталога",
+        category="",
+        cost_raw="10",
+        sale_raw="20",
+    )
+    assert errors == {}
+
+    page = client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    assert "нет справочной цены" in page.text
+    assert "data-ref-cents" not in page.text
+
+
 # --- Plan 07-01: /categories page (CAT-01) ---
 
 
