@@ -73,7 +73,6 @@ def create_product(
     category: str,
     cost_raw: str,
     sale_raw: str,
-    catalog_raw: str,
     min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
@@ -103,7 +102,6 @@ def create_product(
 
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
-    catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
     min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
@@ -122,7 +120,8 @@ def create_product(
         category=category or None,
         cost_cents=cost_cents,
         sale_cents=sale_cents,
-        catalog_cents=catalog_cents,
+        # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price is no
+        # longer parsed or written here — PROD-05 collapses pricing to ДЦ/ПЦ only.
         min_sale_cents=min_sale_cents,
         low_stock_threshold=low_stock_threshold,
         stale_days=stale_days,
@@ -153,7 +152,11 @@ def get_product(session: Session, product_id: str) -> Product | None:
     return session.get(Product, product_id)
 
 
-_PRICE_FIELDS = ("cost_cents", "sale_cents", "catalog_cents", "min_sale_cents")
+# D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price field was
+# dropped from this tuple — it drives the price-change audit getattr loop
+# below, so leaving a removed field here would AttributeError once plan
+# 18-04 drops the model attribute it names.
+_PRICE_FIELDS = ("cost_cents", "sale_cents", "min_sale_cents")
 
 
 def update_product(
@@ -165,7 +168,6 @@ def update_product(
     category: str,
     cost_raw: str,
     sale_raw: str,
-    catalog_raw: str,
     min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
@@ -208,7 +210,6 @@ def update_product(
 
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
-    catalog_cents = parse_optional_cents(catalog_raw, errors, "catalog")
     min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
@@ -233,7 +234,6 @@ def update_product(
     new_prices = {
         "cost_cents": cost_cents,
         "sale_cents": sale_cents,
-        "catalog_cents": catalog_cents,
         "min_sale_cents": min_sale_cents,
     }
     new_fields = {
@@ -258,7 +258,6 @@ def update_product(
     product.category = category or None
     product.cost_cents = cost_cents
     product.sale_cents = sale_cents
-    product.catalog_cents = catalog_cents
     product.min_sale_cents = min_sale_cents
     product.low_stock_threshold = low_stock_threshold
     product.stale_days = stale_days

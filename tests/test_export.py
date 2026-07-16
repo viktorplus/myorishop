@@ -221,16 +221,18 @@ def test_products_csv_roundtrip(client, product):
     text = response.content.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
+    # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price column is
+    # gone from the export header — PROD-05 collapses pricing to ДЦ/ПЦ only.
     assert rows[0] == [
         "Код",
         "Название",
         "Категория",
         "Закупка",
         "Продажа",
-        "Каталог",
         "Остаток",
         "Удалён",
     ]
+    assert "Каталог" not in rows[0]
     # Exactly one seeded product from the `product` fixture.
     assert len(rows) == 2
     assert rows[1][0] == product.code

@@ -190,6 +190,9 @@ def product_create(
 ):
     # Money fields arrive as strings on purpose: Pydantic v2 rejects ""
     # for int | None, and to_cents in the service gives the RU error.
+    # D-01/Pitfall 4 (Phase 18 plan 02): create_product no longer accepts a
+    # catalog_raw kwarg — the `catalog` Form field is still accepted here
+    # (harmless, unused) since the form input is deleted from product_form.html.
     product, errors = create_product(
         session,
         code=code,
@@ -197,7 +200,6 @@ def product_create(
         category=category,
         cost_raw=cost,
         sale_raw=sale,
-        catalog_raw=catalog,
         min_sale_raw=min_sale,
         low_stock_threshold_raw=low_stock_threshold,
         stale_days_raw=stale_days,
@@ -261,6 +263,8 @@ def product_update(
     stale_days: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # D-01/Pitfall 4 (Phase 18 plan 02): update_product no longer accepts a
+    # catalog_raw kwarg — see product_create's comment above.
     product, errors = update_product(
         session,
         product_id,
@@ -269,7 +273,6 @@ def product_update(
         category=category,
         cost_raw=cost,
         sale_raw=sale,
-        catalog_raw=catalog,
         min_sale_raw=min_sale,
         low_stock_threshold_raw=low_stock_threshold,
         stale_days_raw=stale_days,

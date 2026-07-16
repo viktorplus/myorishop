@@ -22,3 +22,12 @@ changes).
 
 Both are out of scope for 18-06 (wording-only plan for sale prefill hints); revisit if
 `mobile_sales.py` is touched again for an unrelated reason.
+
+## Plan 18-02
+
+- **app/routes/products.py:127** — `ruff` E501 (line too long, 106 > 100), on the
+  `# Formalized under Phase 12 (PRICE-02) ...` comment above `product_price_lookup`.
+  Pre-existing, not touched by 18-02's edits (confirmed via `git show
+  HEAD:app/routes/products.py` before this plan's changes — the comment predates
+  the catalog-autofill removal). Out of scope; revisit if this comment line is
+  next touched.
