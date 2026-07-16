@@ -25,6 +25,7 @@
         <th>Код</th>
         <th>Название</th>
         <th>Категория</th>
+        <th class="num">Кол-во</th>
         <th class="num">Закупочная</th>
         <th class="num">Продажа</th>
         <th>Действия</th>
@@ -45,6 +46,7 @@
         <th></th>
         <th></th>
         <th></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -53,6 +55,7 @@
         <td>{{ product.code }}</td>
         <td>{{ product.name }}</td>
         <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{{ product.quantity }}</td>
         <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
@@ -65,7 +68,35 @@
       </tr>
       {% if blocked_id == product.id %}
       <tr>
-        <td colspan="6"><p class="error">Нельзя удалить: на остатке {{ blocked_qty }} шт. Спишите остаток, чтобы удалить товар.</p></td>
+        <td colspan="7"><p class="error">Нельзя удалить: на остатке {{ blocked_qty }} шт. Спишите остаток, чтобы удалить товар.</p></td>
+      </tr>
+      {% endif %}
+      {% set product_batches = batches_by_id.get(product.id, []) %}
+      {% if product_batches %}
+      <tr>
+        <td colspan="7">
+          <details>
+            <summary>Партии ({{ product_batches | length }})</summary>
+            <table class="batch-picker">
+              <thead>
+                <tr>
+                  <th>Срок годности</th>
+                  <th>Партия</th>
+                  <th class="num">Остаток</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for b in product_batches %}
+                <tr>
+                  <td>{% if b.expiry %}{{ b.expiry | ru_date }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                  <td>{% if b.name %}{{ b.name }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                  <td class="num">{{ b.quantity }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        </td>
       </tr>
       {% endif %}
       {% endfor %}
