@@ -124,9 +124,11 @@ def test_transfers_step_batch_empty_batches_blocks_forward(mobile_client_factory
     assert 'class="mobile-card"' not in response.text
 
 
-def test_transfers_batch_pick_dest_exclu_source_warehouse(
+def test_transfers_batch_pick_dest_includes_source_warehouse(
     mobile_client_factory, session, stocked_product
 ):
+    """D-09: the source warehouse is now a selectable destination radio
+    option — a same-warehouse split is reachable from the mobile wizard."""
     source = _source_batch(session, stocked_product)
     dest_wh = _second_warehouse(session)
     client = mobile_client_factory(mobile_transfers.router)
@@ -138,7 +140,7 @@ def test_transfers_batch_pick_dest_exclu_source_warehouse(
 
     assert response.status_code == 200
     assert f'value="{dest_wh.id}"' in response.text
-    assert f'value="{source.warehouse_id}"' not in response.text
+    assert f'value="{source.warehouse_id}"' in response.text
     assert f'value="{source.id}"' in response.text  # batch_id echoed forward
 
 
@@ -214,9 +216,11 @@ def test_transfers_happy_path_writes_two_rows_and_preserves_history(
     assert dest_batch.location == source.location
 
 
-def test_transfers_dest_list_excludes_source_even_with_two_warehouses(
+def test_transfers_dest_list_includes_source_even_with_two_warehouses(
     mobile_client_factory, session, stocked_product
 ):
+    """D-09: even with a second warehouse available, the source warehouse
+    stays in the destination list (no exclusion filter)."""
     source = _source_batch(session, stocked_product)
     dest_wh = _second_warehouse(session)
     client = mobile_client_factory(mobile_transfers.router)
@@ -228,7 +232,93 @@ def test_transfers_dest_list_excludes_source_even_with_two_warehouses(
 
     assert response.status_code == 200
     assert f'value="{dest_wh.id}"' in response.text
-    assert f'value="{source.warehouse_id}"' not in response.text
+    assert f'value="{source.warehouse_id}"' in response.text
+
+
+def test_transfers_create_same_warehouse_with_override_succeeds(
+    mobile_client_factory, session, stocked_product
+):
+    """D-05/D-07/D-09: a same-warehouse split reaches register_transfer from
+    the mobile wizard when an override (new_expiry here) is supplied."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": source.warehouse_id,
+            "new_expiry": "2027-01-01",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+
+    from app.services.batches import open_batches
+
+    dest_batches = [
+        b
+        for b in open_batches(session, stocked_product.id, source.warehouse_id)
+        if b.id != source.id
+    ]
+    assert len(dest_batches) == 1
+    assert dest_batches[0].quantity == 3
+
+
+def test_transfers_create_same_warehouse_blank_overrides_shows_form_error(
+    mobile_client_factory, session, stocked_product
+):
+    """D-06: same warehouse with both overrides blank -> 422, error text
+    shown, zero new transfer Operation rows written."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": source.warehouse_id,
+        },
+    )
+
+    assert response.status_code == 422
+    from app.services.transfers import SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR
+
+    assert SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR in response.text
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
+
+
+def test_transfers_create_qty_saved_matches_parsed_int(
+    mobile_client_factory, session, stocked_product
+):
+    """D-11 regression guard: the mobile success message shows the actual
+    transferred integer quantity from the service result, not the raw form
+    string."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "3 шт." in response.text
 
 
 def test_transfers_oversell_then_confirm_zero_writes_until_confirmed(

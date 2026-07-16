@@ -34,10 +34,12 @@ SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте 
 
 
 def _dest_warehouses(session: Session, source: Batch | None) -> list[Warehouse]:
-    """Active warehouses minus the source batch's own warehouse (D-02, mirrors desktop)."""
+    """Active warehouses, including the source batch's own warehouse (D-09,
+    mirrors desktop) — a same-warehouse destination is now a valid split,
+    gated by D-06's override-required check inside register_transfer."""
     if source is None:
         return []
-    return [w for w in active_warehouses(session) if w.id != source.warehouse_id]
+    return list(active_warehouses(session))
 
 
 def _warehouse_names(session: Session) -> dict[str, str]:
@@ -91,6 +93,8 @@ def _render_dest_step(
     picked: Batch | None,
     name: str = "",
     qty: str = "",
+    new_expiry: str = "",
+    new_comment: str = "",
     errors: dict | None = None,
     oversell: dict | None = None,
     saved: dict | None = None,
@@ -103,6 +107,8 @@ def _render_dest_step(
         "batch_id": picked.id if picked else "",
         "warehouses": _dest_warehouses(session, picked),
         "qty": qty,
+        "new_expiry": new_expiry,
+        "new_comment": new_comment,
         "errors": errors or {},
         "oversell": oversell,
         "saved": saved,
@@ -171,6 +177,8 @@ def transfers_step_dest(
     code: str = Form(""),
     batch_id: str = Form(""),
     name: str = Form(""),
+    new_expiry: str = Form(""),
+    new_comment: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -178,7 +186,15 @@ def transfers_step_dest(
     picked = _pick_batch(session, product, batch_id)
     if picked is None:
         return _render_batch_step(request, session, code_clean, name=name)
-    return _render_dest_step(request, session, code=code_clean, picked=picked, name=name)
+    return _render_dest_step(
+        request,
+        session,
+        code=code_clean,
+        picked=picked,
+        name=name,
+        new_expiry=new_expiry,
+        new_comment=new_comment,
+    )
 
 
 @router.post("/m/transfers")
@@ -189,6 +205,8 @@ def transfers_create(
     qty: str = Form(""),
     batch_id: str = Form(""),
     dest_warehouse_id: str = Form(""),
+    new_expiry: str = Form(""),
+    new_comment: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -203,6 +221,8 @@ def transfers_create(
             qty_raw=qty,
             batch_id=batch_id,
             dest_warehouse_id=dest_warehouse_id,
+            new_expiry=new_expiry,
+            new_comment=new_comment,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500
@@ -216,6 +236,8 @@ def transfers_create(
             picked=picked,
             name=name,
             qty=qty,
+            new_expiry=new_expiry,
+            new_comment=new_comment,
             errors={"form": SAVE_FAILED_ERROR},
             status_code=422,
         )
@@ -230,6 +252,8 @@ def transfers_create(
             picked=picked,
             name=name,
             qty=qty,
+            new_expiry=new_expiry,
+            new_comment=new_comment,
             oversell=result["oversell"],
         )
 
@@ -241,12 +265,17 @@ def transfers_create(
             picked=picked,
             name=name,
             qty=qty,
+            new_expiry=new_expiry,
+            new_comment=new_comment,
             errors=errors,
             status_code=422,
         )
 
     # D-05: mobile adds an explicit post-success confirmation screen instead
     # of desktop's silent form reset.
+    # D-11: echo the actual transferred integer quantity from the service
+    # result, not the raw form string (a mobile-only instance of the same
+    # bug pattern, independent of desktop's fix).
     return _render_dest_step(
         request,
         session,
@@ -254,5 +283,5 @@ def transfers_create(
         picked=picked,
         name=name,
         qty=qty,
-        saved={"name": result["product"].name, "qty": qty},
+        saved={"name": result["product"].name, "qty": result["qty"]},
     )
