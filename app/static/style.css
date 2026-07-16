@@ -287,8 +287,11 @@ mark {
 .name-search-list li button:hover, .name-search-list li button:focus-visible { background: #e8effd; }
 
 /* Price cue (PROD-06 / D-14): reference-deviation hint on ДЦ/ПЦ inputs.
-   Border + tint + text badge — colour alone fails WCAG 1.4.1 (Use of Color),
-   and yellow-on-white is too low-contrast to read as a border by itself.
+   Border + tint only — colour alone fails WCAG 1.4.1 (Use of Color); no
+   text/icon badge is rendered alongside the class toggle (price-cue.js
+   only sets classList), so this cue is NOT WCAG 1.4.1 compliant as shipped.
+   18-REVIEW WR-03: if compliance is required, add a visible text/icon cue
+   driven by the same price-below/price-above class toggle.
    The blue fill is #eff6ff and deliberately NOT #e8effd — that tint is the
    established search-match/selection token (mark, .selected-batch,
    .name-search-list hover, .mobile-card.selected). #2563eb is the existing
