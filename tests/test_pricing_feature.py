@@ -8,6 +8,7 @@ from app.services.pricing import (
     latest_price_for_code,
     price_history_for_code,
     prices_for_catalog,
+    reference_prices_for_code,
 )
 
 
@@ -32,6 +33,9 @@ def priced(session):
             _price("100", 2026, 1, consumer=1200, consultant=700),  # newest
             _price("100", 2025, 12, consumer=1100, consultant=650),
             _price("200", 2026, 1, consumer=500),  # no consultant price
+            # D-08/D-22: consultant-only row (ДЦ present, ПЦ NULL) — the 1 live
+            # starved code the old consumer_cents filter used to hide entirely.
+            _price("300", 2026, 1, consultant=700),
         ]
     )
     session.commit()
@@ -60,8 +64,35 @@ def test_price_history_newest_first(priced):
 
 def test_prices_for_catalog_maps_by_code(priced):
     prices = prices_for_catalog(priced, 2026, 1)
-    assert set(prices) == {"100", "200"}
+    assert set(prices) == {"100", "200", "300"}
     assert prices["200"].consumer_cents == 500
+
+
+def test_latest_price_unfiltered_returns_dc_only_row(priced):
+    """D-08/D-22: latest_price_for_code no longer filters on consumer_cents —
+    a consultant-only (ДЦ, no ПЦ) row is returned, not None."""
+    latest = latest_price_for_code(priced, "300")
+    assert latest is not None
+    assert latest.consultant_cents == 700
+    assert latest.consumer_cents is None
+
+
+def test_reference_prices_returns_dc_when_pc_null(priced):
+    """D-08/D-22: reference_prices_for_code returns (ДЦ, ПЦ) independently —
+    a code with ДЦ but no ПЦ still yields its ДЦ (the 1 live starved code)."""
+    assert reference_prices_for_code(priced, "300") == (700, None)
+
+
+def test_reference_prices_pairs_consultant_dc_consumer_pc(priced):
+    """D-05: reference_prices_for_code pairs consultant_cents->ДЦ,
+    consumer_cents->ПЦ for a code carrying both."""
+    assert reference_prices_for_code(priced, "100") == (700, 1200)
+
+
+def test_reference_prices_unknown_code_returns_none_none(priced):
+    """D-07: an unknown code returns (None, None) — the no-catalog path is a
+    first-class result, not an error."""
+    assert reference_prices_for_code(priced, "NOPE") == (None, None)
 
 
 # --- autofill route --------------------------------------------------------
