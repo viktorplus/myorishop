@@ -20,7 +20,13 @@
    the main <tr> swap. Do not remove. #}
 <template>
 <td id="{{ price_wrap_id }}" hx-swap-oob="true">
-  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00" value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
+  {# PROD-06/D-13 (Phase 18 plan 08): ref_pc_cents (the code's consumer_cents
+     reference, reference_prices_for_code 18-01) is threaded independently
+     of fill_price_cents (D-08/D-22) — hx-swap-oob REPLACES this element, so
+     it must re-stamp data-ref-cents itself (Pitfall 2). #}
+  <input type="text" name="price[]" inputmode="decimal" placeholder="0,00"
+         {% if ref_pc_cents is not none and ref_pc_cents %}data-ref-cents="{{ ref_pc_cents }}"{% endif %}
+         value="{{ (fill_price_cents | cents) if fill_price_cents is not none else '' }}">
   <p class="muted">{{ fill_price_hint }}</p>
 </td>
 </template>

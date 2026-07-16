@@ -49,12 +49,12 @@
       <tbody id="basket-rows">
         {% if lines %}
         {% for line in lines %}
-        {% with row_id = line.row_id, code = line.code, name = line.name, qty = line.qty, price = line.price, batch_id = line.batch_id, selected_batch = line.selected_batch, error_code = line.error_code, error_qty = line.error_qty, error_price = line.error_price, error_batch = line.error_batch, autofocus = (loop.index0 == 0), focus_new = False %}
+        {% with row_id = line.row_id, code = line.code, name = line.name, qty = line.qty, price = line.price, batch_id = line.batch_id, selected_batch = line.selected_batch, error_code = line.error_code, error_qty = line.error_qty, error_price = line.error_price, error_batch = line.error_batch, ref_pc_cents = line.ref_pc_cents, autofocus = (loop.index0 == 0), focus_new = False %}
         {% include "partials/sale_row.html" %}
         {% endwith %}
         {% endfor %}
         {% else %}
-        {% with row_id = "", code = "", name = "", qty = "", price = "", batch_id = "", selected_batch = None, error_code = None, error_qty = None, error_price = None, error_batch = None, autofocus = True, focus_new = False %}
+        {% with row_id = "", code = "", name = "", qty = "", price = "", batch_id = "", selected_batch = None, error_code = None, error_qty = None, error_price = None, error_batch = None, ref_pc_cents = None, autofocus = True, focus_new = False %}
         {% include "partials/sale_row.html" %}
         {% endwith %}
         {% endif %}

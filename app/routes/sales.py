@@ -14,6 +14,7 @@ from app.routes import templates
 from app.services.batches import open_batches
 from app.services.catalog import search_products, split_match
 from app.services.customers import create_customer, customer_search_view
+from app.services.pricing import reference_prices_for_code
 from app.services.sales import (
     SALE_BATCH_FILL_HINT,
     SALE_CARD_FILL_HINT,
@@ -68,6 +69,12 @@ def _build_lines(
     for i, (code, qty, price, batch_id) in enumerate(non_blank):
         picked = batch_id.strip()
         batch = session.get(Batch, picked) if picked else None
+        # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's ПЦ
+        # (consumer_cents) reference (reference_prices_for_code, 18-01),
+        # resolved per basket row independently of the fill/error values —
+        # a 422/warn re-render must not lose the colour cue on the echoed
+        # basket (D-08/D-22).
+        _, ref_pc_cents = reference_prices_for_code(session, code)
         lines.append(
             {
                 "row_id": "" if i == 0 else new_id(),
@@ -77,6 +84,7 @@ def _build_lines(
                 "price": price,
                 "batch_id": batch.id if batch is not None else "",
                 "selected_batch": batch,
+                "ref_pc_cents": ref_pc_cents,
                 "error_code": errors.get(f"code-{i}"),
                 "error_qty": errors.get(f"qty-{i}"),
                 "error_price": errors.get(f"price-{i}"),
@@ -133,6 +141,11 @@ def sale_lookup(
     fill_price = result["source"] == "product" and not price.strip()
     fill_price_cents = result["prices"]["sale"] if result["prices"] else None
     fill_price_hint = SALE_CARD_FILL_HINT
+    # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
+    # reference (D-05/D-08/D-22), resolved independently of `source`/
+    # fill_price_cents — a "product" match's own card price is NOT the same
+    # thing as the catalog reference the cue compares against.
+    _, ref_pc_cents = reference_prices_for_code(session, code_clean)
 
     if result["source"] == "product":
         product = session.scalars(
@@ -169,6 +182,7 @@ def sale_lookup(
         "fill_price": fill_price,
         "fill_price_cents": fill_price_cents,
         "fill_price_hint": fill_price_hint,
+        "ref_pc_cents": ref_pc_cents,
         "batches": batches,
         "selected_batch_id": selected_batch.id if selected_batch else None,
         "batch_id_value": selected_batch.id if selected_batch else "",
@@ -259,6 +273,12 @@ def sale_batch_pick(
             fill_price_cents = product.sale_cents
             fill_price_hint = SALE_CARD_FILL_HINT
 
+    # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
+    # reference (D-05/D-08/D-22), resolved independently of fill_price_cents
+    # — the batch/card fill value is not the same thing as the catalog
+    # reference the cue compares against.
+    _, ref_pc_cents = reference_prices_for_code(session, code_clean)
+
     context = {
         "row": row,
         "code": code_clean,
@@ -268,6 +288,7 @@ def sale_batch_pick(
         "fill_price": fill_price,
         "fill_price_cents": fill_price_cents,
         "fill_price_hint": fill_price_hint,
+        "ref_pc_cents": ref_pc_cents,
     }
     return templates.TemplateResponse(request, "partials/sale_batch_pick.html", context)
 
