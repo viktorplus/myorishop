@@ -118,9 +118,20 @@ def writeoff_create(
         "reason_code": reason_code,
         "note": note,
     }
-    # LOT-05: resolve the picked batch (if any) for the re-echoed picker on a
-    # 422/warn re-render so the operator's selection survives.
-    selected_batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
+    # LOT-05/D-10: resolve the picked batch (if any) for the re-echoed picker
+    # on a 422/warn re-render — re-validate ownership the same way
+    # writeoff_batch_pick does, a client-submitted batch_id naming another
+    # product's batch must never be echoed back.
+    code_clean = code.strip()
+    lookup_product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    selected_batch: Batch | None = None
+    batch_id_clean = batch_id.strip()
+    if batch_id_clean and lookup_product is not None:
+        candidate = session.get(Batch, batch_id_clean)
+        if candidate is not None and candidate.product_id == lookup_product.id:
+            selected_batch = candidate
     try:
         result, errors = register_writeoff(
             session,

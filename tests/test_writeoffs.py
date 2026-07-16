@@ -254,6 +254,35 @@ def test_web_writeoff_lookup_emits_batch_picker(client, session, stocked_product
     assert "Выберите партию" in response.text
 
 
+def test_web_writeoff_create_ownership_guard_does_not_echo_foreign_batch(
+    client, session, stocked_product, product
+):
+    """D-10: a client-submitted batch_id naming another product's batch is
+    never echoed back into the picker on POST /writeoff's error branch."""
+    foreign_batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=_only_batch(session, stocked_product).warehouse_id,
+        quantity=0,
+    )
+    session.add(foreign_batch)
+    session.commit()
+
+    response = client.post(
+        "/writeoff",
+        data={
+            "code": stocked_product.code,
+            "qty": "3",
+            "reason_code": "expired",
+            "note": "",
+            "batch_id": foreign_batch.id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert foreign_batch.id not in response.text
+
+
 def test_web_writeoff_reachable_from_nav(client, product):
     """Gap-closure guard: 05-VERIFICATION.md's Gap #1 (unreachable /writeoff
     — no nav entry point anywhere in the rendered UI) must never silently
