@@ -448,7 +448,7 @@ Stack: zero new packages).
 | A2 | The existing free-text category filter (already implemented) satisfies PROD-08's "can be filtered by category" as written, and only needs a UX polish (e.g. `datalist`), not a redesign into a `<select>` | Standard Stack, Alternatives Considered | If the operator/planner reads PROD-08 as requiring a *dropdown of known categories* (not free-text substring), the plan should add `list="cat-options"` sourced from the already-existing `category_options()` — low risk either way since both variants reuse existing functions. |
 | A3 | Removing "Добавить товар" applies only to the `/products` list page, not the `/categories` page's own (separate) empty-state CTA at `categories.html:9` | Phase Requirements table (PROD-01) | `/categories` is not in this phase's requirement scope (PROD-01 says "product list", and the roadmap's phase boundary is `/products` specifically) — but an operator doing a visual pass after this phase ships might expect both removed for consistency. Low risk: leaving `/categories` unchanged doesn't break anything, just an inconsistency to flag. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the batch breakdown be collapsed or expanded by default?**
    - What we know: PROD-04 only requires the batches to be "visible" (reachable), not
@@ -461,6 +461,7 @@ Stack: zero new packages).
      20-row page with N batches each would be visually heavy and defeats the "scan by code"
      goal stated in the phase description itself ("reads as a stock list the operator can scan
      by code"). Flag as a planner discretion call, not a blocker.
+   - **RESOLVED:** collapsed by default, per `19-UI-SPEC.md` Interaction & Layout Decision 1.
 
 2. **Does PROD-08's category filter need to become a `<select>`/`datalist` in this phase, or is the existing substring `<input>` sufficient?**
    - What we know: the substring filter is already implemented, tested, and functionally
@@ -471,6 +472,9 @@ Stack: zero new packages).
    - Recommendation: low-cost polish — add `list="cat-options"` to the existing category filter
      `<input>` (one attribute, reuses `category_options()` already imported into
      `products.py:16`), rather than converting to a strict `<select>` (see Anti-Patterns).
+   - **RESOLVED:** no redesign — keep the existing free-text `<input>` unchanged, `datalist`
+     polish left as planner's discretion (non-blocking), per `19-UI-SPEC.md` Interaction &
+     Layout Decision 3.
 
 3. **Should quantity be sortable?**
    - What we know: success criterion 5 only requires *existing* sort/filter/pagination to keep
@@ -480,6 +484,8 @@ Stack: zero new packages).
      worth a one-line callout since "scan by code" pages often want a low-stock-first sort.
    - Recommendation: do not add in this phase (no requirement covers it); note as a candidate
      follow-up.
+   - **RESOLVED:** not in scope — no requirement covers it; not added in `19-01-PLAN.md`, noted
+     as a possible future follow-up only.
 
 ## Environment Availability
 
