@@ -1039,3 +1039,96 @@ def test_web_receipt_name_input_has_autofill_markers(client, session, product):
     assert form.status_code == 200
     assert 'autocomplete="off"' in form.text
     assert 'data-autofilled="true"' not in form.text
+
+
+# --- Plan 18-08: data-ref-cents colour-cue wiring (PROD-06) -----------------
+
+
+def test_web_receipt_lookup_oob_carries_data_ref_cents(client, session):
+    """Pitfall 2: the /receipts/lookup OOB fragment stamps data-ref-cents on
+    both cost/sale, sourced from reference_prices_for_code (D-05/D-08/D-22)
+    — independent of the product/catalog fill values."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "5555", "name": "", "cost": "", "sale": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="cost"' in response.text and 'data-ref-cents="900"' in response.text
+    assert 'id="sale"' in response.text and 'data-ref-cents="1500"' in response.text
+
+
+def test_web_receipt_lookup_dc_only_still_cues_dc(client, session):
+    """D-08/D-22: a ДЦ-without-ПЦ catalog row still cues the ДЦ field alone."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="300",
+            year=2026,
+            number=1,
+            consultant_cents=700,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "300", "name": "", "cost": "", "sale": ""},
+    )
+    assert response.status_code == 200
+    assert 'data-ref-cents="700"' in response.text
+
+
+def test_web_receipt_form_static_render_carries_data_ref_cents(
+    client, session, warehouse
+):
+    """The static receipt_form.html render path (a 422 re-render echoing a
+    typed code) also carries data-ref-cents on cost/sale — receipt_price_
+    inputs.html's ref_cents param covers both the static and OOB paths at
+    once (Pitfall 2)."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            code="5555",
+            year=2026,
+            number=1,
+            consumer_cents=1500,
+            consultant_cents=900,
+        )
+    )
+    session.commit()
+
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "5555",
+            "name": "Тушь",
+            "qty": "",  # invalid -> 422 re-render, code echoed
+            "cost": "",
+            "sale": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 422
+    assert 'id="cost"' in response.text and 'data-ref-cents="900"' in response.text
+    assert 'id="sale"' in response.text and 'data-ref-cents="1500"' in response.text
+
+
+def test_web_receipt_new_page_no_code_shows_no_cue(client):
+    """No code typed yet -> (None, None) first-class result (D-07): no
+    data-ref-cents on the fresh /receipts/new form."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert "data-ref-cents" not in response.text

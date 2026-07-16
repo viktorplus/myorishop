@@ -13,13 +13,22 @@
   <label for="receipt-qty">Количество</label>
   <input type="text" id="receipt-qty" name="qty" inputmode="numeric" value="{{ qty }}" required>
 </div>
+{# PROD-06 (Phase 18 plan 08): data-ref-cents pairs ref_cost_cents->ДЦ,
+   ref_sale_cents->ПЦ (reference_prices_for_code, 18-01), read by
+   price-cue.js (plan 18-07) — the codebase's only two mobile price
+   surfaces are this receipt wizard step and the sale wizard's qty/price
+   step (D-20; no mobile product card exists). #}
 <div class="field">
   <label for="receipt-cost">Закупочная цена <span class="muted">(необязательно)</span></label>
-  <input type="text" id="receipt-cost" name="cost" inputmode="decimal" value="{{ cost }}">
+  <input type="text" id="receipt-cost" name="cost" inputmode="decimal"
+         {% if ref_cost_cents is not none and ref_cost_cents %}data-ref-cents="{{ ref_cost_cents }}"{% endif %}
+         value="{{ cost }}">
 </div>
 <div class="field">
   <label for="receipt-sale">Цена продажи <span class="muted">(необязательно)</span></label>
-  <input type="text" id="receipt-sale" name="sale" inputmode="decimal" value="{{ sale }}">
+  <input type="text" id="receipt-sale" name="sale" inputmode="decimal"
+         {% if ref_sale_cents is not none and ref_sale_cents %}data-ref-cents="{{ ref_sale_cents }}"{% endif %}
+         value="{{ sale }}">
 </div>
 {% if is_new_batch %}
 <div class="field">

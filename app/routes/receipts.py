@@ -10,6 +10,7 @@ from app.db import get_session
 from app.models import Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
+from app.services.pricing import reference_prices_for_code
 from app.services.receipts import lookup_prefill, recent_receipts, register_receipt
 
 logger = logging.getLogger(__name__)
@@ -65,12 +66,23 @@ def _chooser_context(session: Session, code: str, warehouse_id: str, actives: li
 
 def _form_extras(session: Session, *, code: str = "", warehouse_id: str = "") -> dict:
     """Shared receipt-form context: active warehouses, the preselected warehouse,
-    and the chooser state — merged into every receipt_form.html render path."""
+    the chooser state, and the ДЦ/ПЦ colour-cue reference — merged into every
+    receipt_form.html render path.
+
+    PROD-06 (Phase 18 plan 08): ref_cost_cents/ref_sale_cents come from
+    reference_prices_for_code (18-01), resolved independently of one another
+    (D-08/D-22: a ДЦ-only code still cues its ДЦ). code="" (the new-form GET,
+    the post-success fresh form) yields (None, None) — D-07's no-reference
+    first-class result, so no cue renders until a code is looked up.
+    """
     actives = active_warehouses(session)
     selected = _preselect_warehouse_id(actives, warehouse_id)
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
     return {
         "active_warehouses": actives,
         "selected_warehouse_id": selected,
+        "ref_cost_cents": ref_cost_cents,
+        "ref_sale_cents": ref_sale_cents,
         **_chooser_context(session, code, selected, actives),
     }
 
@@ -121,6 +133,11 @@ def receipt_lookup(
     result = lookup_prefill(session, code)
     if result is None:
         return Response(status_code=204)
+    # PROD-06 (Phase 18 plan 08): the colour-cue reference is the code's
+    # CATALOG price (D-05/D-08/D-22), resolved independently of `source` —
+    # a "product" match's own card price is NOT the same thing as the
+    # catalog reference the cue compares against.
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
     if result["source"] == "product":
         # Pitfall 1 / D-01: catalog field removed from the receipt slice —
         # only cost/sale are ever fillable now.
@@ -159,6 +176,8 @@ def receipt_lookup(
         "source": result["source"],
         "fill_fields": fill_fields,
         "prices": result["prices"],
+        "ref_cost_cents": ref_cost_cents,
+        "ref_sale_cents": ref_sale_cents,
         "include_chooser": include_chooser,
         **chooser,
     }

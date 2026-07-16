@@ -67,11 +67,15 @@
       {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
     </div>
 
-    {% with field = "cost", label = "Закупочная цена", value = form.cost or "", error = errors.cost %}
+    {# PROD-06 (Phase 18 plan 08): ref_cost_cents/ref_sale_cents come from
+       reference_prices_for_code (18-01), resolved independently for the
+       code echoed in `form`/re-rendered here — D-08/D-22: a ДЦ-only code
+       still cues its ДЦ. #}
+    {% with field = "cost", label = "Закупочная цена", value = form.cost or "", error = errors.cost, ref_cents = ref_cost_cents %}
     {% include "partials/receipt_price_inputs.html" %}
     {% endwith %}
 
-    {% with field = "sale", label = "Цена продажи", value = form.sale or "", error = errors.sale %}
+    {% with field = "sale", label = "Цена продажи", value = form.sale or "", error = errors.sale, ref_cents = ref_sale_cents %}
     {% include "partials/receipt_price_inputs.html" %}
     {% endwith %}
 

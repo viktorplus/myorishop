@@ -22,6 +22,7 @@ from app.db import get_session
 from app.models import Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
+from app.services.pricing import reference_prices_for_code
 from app.services.receipts import lookup_prefill, register_receipt
 
 logger = logging.getLogger(__name__)
@@ -158,11 +159,18 @@ def mobile_receipt_step_details(
     expiry: str = Form(""),
     location: str = Form(""),
     comment: str = Form(""),
+    session: Session = Depends(get_session),
 ):
     # Also serves as the "Назад" target from step 4 — re-rendering step 3
     # with whatever qty/cost/sale/... the operator already typed, instead of
     # discarding them (RESEARCH Pattern 1: the server just re-renders from
     # posted state, no separate "back" endpoint needed).
+    # PROD-06 (Phase 18 plan 08): ref_cost_cents/ref_sale_cents come from
+    # reference_prices_for_code (18-01), resolved independently of one
+    # another (D-08/D-22) — the code's CATALOG reference, not the wizard's
+    # own cost/sale values, so the cue compares against the right thing on
+    # every re-render of this step (initial arrival AND the "Назад" bounce).
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
     context = {
         "code": code,
         "warehouse_id": warehouse_id,
@@ -172,6 +180,8 @@ def mobile_receipt_step_details(
         "qty": qty,
         "cost": cost,
         "sale": sale,
+        "ref_cost_cents": ref_cost_cents,
+        "ref_sale_cents": ref_sale_cents,
         "expiry": expiry,
         "location": location,
         "comment": comment,
