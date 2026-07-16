@@ -10,7 +10,7 @@ prefixed test_web_.
 
 from app.services.catalog import create_product
 
-EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}  # D-01/Pitfall 4 (Phase 18 plan 02)
 
 
 def _make(session, code, name):

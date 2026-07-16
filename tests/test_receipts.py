@@ -35,10 +35,12 @@ from app.services.receipts import (
     register_receipt,
 )
 
-EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
-# D-04 (Plan 18-03): register_receipt no longer accepts catalog_raw — a
-# receipt-scoped twin of EMPTY_MONEY without it. EMPTY_MONEY itself stays
-# unchanged: app.services.catalog.create_product still requires catalog_raw.
+# D-01/Pitfall 4 (Phase 18 plan 02): app.services.catalog.create_product no
+# longer accepts catalog_raw either, so EMPTY_MONEY and RECEIPT_EMPTY_MONEY
+# are now identical shape — both kept as separate names since callers use
+# each for a different service (create_product vs register_receipt).
+EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}
+# D-04 (Plan 18-03): register_receipt never accepted catalog_raw.
 RECEIPT_EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}
 # Plan 09-02: the default new-batch path used by every previously batch-less
 # service-level receipt test (warehouse_id supplied per test via the fixture).

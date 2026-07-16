@@ -19,7 +19,6 @@
       <th class="num">Остаток</th>
       <th class="num">Закупочная</th>
       <th class="num">Продажа</th>
-      <th class="num">Каталог</th>
       <th>Действия</th>
     </tr>
   </thead>
@@ -31,7 +30,6 @@
       <td class="num">{{ product.quantity }}</td>
       <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="num">{% if product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td><a href="/products/{{ product.id }}/edit">Изменить</a></td>
     </tr>
     {% endfor %}

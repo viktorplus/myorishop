@@ -1,11 +1,9 @@
 {# CAT-05: out-of-band price inputs returned by /products/lookup-price. Each
    input mirrors the static field markup in product_form.html and replaces the
    live input by id (hx-swap-oob), filling it with the latest catalog price.
-   Only the fields that should be filled are emitted; the rest stay untouched. #}
-{% if fill_catalog %}
-<input type="text" id="catalog" name="catalog" inputmode="decimal" placeholder="0,00"
-       value="{{ catalog_cents | cents }}" hx-swap-oob="true">
-{% endif %}
+   Only the fields that should be filled are emitted; the rest stay untouched.
+   D-01/Pitfall 6 (Phase 18 plan 02): the catalog reference field is gone —
+   only #cost/#sale remain (PROD-05 two-price collapse). #}
 {% if fill_cost %}
 <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
        value="{{ cost_cents | cents }}" hx-swap-oob="true">

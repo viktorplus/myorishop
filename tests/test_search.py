@@ -11,7 +11,7 @@ Naming convention: route/e2e tests are prefixed test_web_.
 from app.core import utcnow_iso
 from app.services.catalog import create_product, search_products, search_view, split_match
 
-EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}  # D-01/Pitfall 4 (Phase 18 plan 02)
 
 
 def _make(session, code, name):

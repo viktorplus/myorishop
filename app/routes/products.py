@@ -130,29 +130,27 @@ def product_price_lookup(
     request: Request,
     code: str = "",
     cost: str = "",
-    catalog: str = "",
     sale: str = "",
     session: Session = Depends(get_session),
 ):
-    """CAT-05 autofill: fill the catalog/purchase/sale price from the latest catalog.
+    """CAT-05 autofill: fill the purchase/sale price from the latest catalog.
 
     Triggered by the code field on the product form. Fills a price ONLY when
     it is currently empty (the operator's own value is never overwritten) and
     the code has a known price; empty response (204) when there is nothing to
-    fill. The three inputs are returned as out-of-band swaps (hx-swap-oob).
+    fill. The two inputs are returned as out-of-band swaps (hx-swap-oob).
 
-    The catalog's consumer price (ПЦ) is this shop's default sale price, so
-    it fills both #catalog (reference) and #sale (default) when empty.
+    D-01/Pitfall 6 (Phase 18 plan 02): the catalog reference price is no
+    longer echoed into an editable field here — PROD-05 collapses product
+    pricing to ДЦ/ПЦ only. The catalog's consumer price (ПЦ) is still this
+    shop's default sale price, so it fills #sale when empty.
     """
     latest = latest_price_for_code(session, code)
-    fill_catalog = latest is not None and latest.consumer_cents is not None and not catalog.strip()
     fill_cost = latest is not None and latest.consultant_cents is not None and not cost.strip()
     fill_sale = latest is not None and latest.consumer_cents is not None and not sale.strip()
-    if not fill_catalog and not fill_cost and not fill_sale:
+    if not fill_cost and not fill_sale:
         return Response(status_code=204)
     context = {
-        "fill_catalog": fill_catalog,
-        "catalog_cents": latest.consumer_cents if latest else None,
         "fill_cost": fill_cost,
         "cost_cents": latest.consultant_cents if latest else None,
         "fill_sale": fill_sale,
