@@ -766,32 +766,31 @@ No framework install needed — pytest and httpx are already dev dependencies.
 
 **All 19 CONTEXT.md decisions are VERIFIED, not assumed** — every falsifiable claim reproduced against the live DB and the code (§Live-DB Verification). The assumptions above are **mine**, arising from gaps CONTEXT.md did not cover. A1–A5 are genuine judgement calls the planner (or the operator) should confirm; A6–A7 are low-risk.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **All five resolved 2026-07-16** — Q2/Q4/Q1 by operator decision, Q3/Q5 on this document's recommendation. Recorded as **D-20..D-24 in `18-CONTEXT.md`** and encoded in the plans. Resolution noted inline per question below.
 
 1. **Fix `latest_price_for_code` in place, or add a new function?** (Claude's Discretion per CONTEXT.md)
+   - **✅ RESOLVED → D-22: fix in place** (operator-confirmed). Drop the `consumer_cents.is_not(None)` filter; update `tests/test_pricing_feature.py:45,52,53`; add the ДЦ-without-ПЦ test; rewrite the now-false docstring. Encoded in plan **18-01**.
    - **What we know:** the `consumer_cents.is_not(None)` filter starves ДЦ in **3 live production callers** (`products.py:147`, `products.py:244`, `receipts.py:289`), not just the cue. All callers already null-check fields independently. Blast radius: exactly **1 code** (verified). Strictly additive.
    - **What's unclear:** whether repairing 3 pre-existing bugs is in scope for a consolidation phase.
    - **Recommendation:** **fix in place**; update `tests/test_pricing_feature.py:45,52,53`; add the ДЦ-without-ПЦ test; fix the `pricing.py:3-5` docstring while there (closes a Deferred item at zero cost). Note the autofill improvement in the phase summary so it is not a surprise.
 
 2. **How is criterion 1's "desktop and mobile" satisfied where the surface does not exist?**
+   - **✅ RESOLVED → D-20** (operator-decided): interpret as *"every price surface that EXISTS on each platform shows exactly two prices."* Do NOT build a mobile product card (Phase 19 territory). Interpretation stated in plan **18-08** `must_haves` so `/gsd-verify-work` does not fail criterion 1 literally.
    - **What we know:** **mobile has no product card and no dictionary page** (verified: no `mobile_products.py`, no `mobile_pages/product_form.html`). Mobile price surfaces are exactly two: receipt wizard, sale wizard.
-   - **What's unclear:** whether the criterion expects a mobile product card to be built.
-   - **Recommendation:** interpret as *"every price surface that exists on each platform shows exactly two prices"* and **state this in the plan**, so `/gsd-verify-work` does not fail the phase literally. Building a mobile product card is Phase 19 territory and is not in PROD-05/06/07.
 
 3. **Does the batch-source prefill hint also get D-17's scope clause?**
+   - **✅ RESOLVED → D-23: yes, both hint families** (on recommendation). Extract to 2 named constants mirroring `receipts.py:23`'s `CARD_FILL_HINT`; 6 sites. Encoded in plan **18-06**.
    - **What we know:** *"Цена подставлена из партии"* fires at `sales.py:154`, `sales.py:249`, `mobile_sales.py:223`. A batch price is equally sale-scoped (D-15: `Batch.price_cents` frozen, no write-back).
-   - **What's unclear:** D-17 names only the card hint.
-   - **Recommendation:** **apply to both** (6 sites → 2 named constants mirroring `receipts.py:23`'s `CARD_FILL_HINT`). Silence on the batch hint implies write-back — the confusion D-17 exists to kill.
 
 4. **May `min_sale_cents`'s label change, given PROD-05 exempts the field?**
+   - **✅ RESOLVED → D-21: label/placement only** (operator-decided). Regroup as a guardrail setting beside the low-stock threshold; **zero logic change, no cue, no `data-ref-cents`**; PRICE-01 untouched. Encoded in plan **18-05** (relabel) + **18-07/18-08** (no-cue guards).
    - **What we know:** the field, its logic, and PRICE-01 are frozen (criterion 5). But *«Минимальная цена продажи»* sits directly under ДЦ/ПЦ on the card and **reads as a third price** — the exact confusion the 2026-07-14 report documented. D-19 makes criterion 1 a labelling criterion.
-   - **What's unclear:** whether the exemption covers presentation as well as schema.
-   - **Recommendation:** allow **label/placement-only** change (e.g. group it with the existing «Порог "мало на складе"» threshold at `product_form.html:84` — same kind of setting). **Zero logic change**; criterion 5 untouched. If in doubt, leave it and note it — this is the one spot where the exemption and criterion 1 genuinely rub.
 
 5. **Does the operator need the 6 `catalog_cents` values recorded anywhere before the drop?**
+   - **✅ RESOLVED → D-24** (on recommendation): a fresh `VACUUM INTO` snapshot must exist immediately before the first `0014` run, and the 6 `(code, catalog_cents)` pairs go into the phase summary. Encoded as the `[BLOCKING]` pre-migration task in plan **18-04**.
    - **What we know:** D-01 discards them deliberately; `backups/` holds `VACUUM INTO` snapshots (17 exist), so they are recoverable from a snapshot but not from the migration.
-   - **What's unclear:** nothing blocking — D-01 is explicit.
-   - **Recommendation:** confirm a **fresh snapshot exists immediately before** the first `0014` run, and paste the 6 `(code, catalog_cents)` pairs into the phase summary. Costs one query; makes an irreversible step auditable without weakening D-01.
 
 ## Security Domain
 
