@@ -14,7 +14,14 @@ from app.routes import templates
 from app.services.batches import open_batches
 from app.services.catalog import search_products, split_match
 from app.services.customers import create_customer, customer_search_view
-from app.services.sales import lookup_prefill, non_blank_lines, recent_sales, register_sale
+from app.services.sales import (
+    SALE_BATCH_FILL_HINT,
+    SALE_CARD_FILL_HINT,
+    lookup_prefill,
+    non_blank_lines,
+    recent_sales,
+    register_sale,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -125,7 +132,7 @@ def sale_lookup(
     # prices). The batch rules below may override this.
     fill_price = result["source"] == "product" and not price.strip()
     fill_price_cents = result["prices"]["sale"] if result["prices"] else None
-    fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+    fill_price_hint = SALE_CARD_FILL_HINT
 
     if result["source"] == "product":
         product = session.scalars(
@@ -151,7 +158,7 @@ def sale_lookup(
                         fill_price = True
                         if selected_batch.price_cents is not None:
                             fill_price_cents = selected_batch.price_cents
-                            fill_price_hint = "Цена подставлена из партии — можно изменить."
+                            fill_price_hint = SALE_BATCH_FILL_HINT
                         else:
                             fill_price_cents = product.sale_cents
 
@@ -246,11 +253,11 @@ def sale_batch_pick(
     if picked is not None:
         if picked.price_cents is not None:
             fill_price_cents = picked.price_cents
-            fill_price_hint = "Цена подставлена из партии — можно изменить."
+            fill_price_hint = SALE_BATCH_FILL_HINT
         else:
             # D-14: a legacy NULL-price batch falls back to the card sale_cents.
             fill_price_cents = product.sale_cents
-            fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+            fill_price_hint = SALE_CARD_FILL_HINT
 
     context = {
         "row": row,

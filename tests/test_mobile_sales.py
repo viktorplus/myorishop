@@ -390,6 +390,53 @@ def test_qty_price_step_prefills_price_from_batch(
     assert f"<strong>{product.code}</strong> — {product.name}" in resp.text
 
 
+def test_qty_price_step_batch_hint_states_sale_only_scope(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-17/D-23: mobile batch-sourced hint states the sale-only scope."""
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    batch.price_cents = 1234
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=6,
+        unit_cost_cents=500,
+        unit_price_cents=1234,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id})
+    assert resp.status_code == 200
+    assert "Цена подставлена из партии" in resp.text
+    assert "сохранится только в этой продаже" in resp.text
+
+
+def test_qty_price_step_card_hint_states_sale_only_scope(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-17/D-23: mobile card-sourced hint (NULL-price batch falls back to
+    the card, D-14) states the sale-only scope."""
+    product.sale_cents = 4200
+    session.commit()
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=500,
+        unit_price_cents=None,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id})
+    assert resp.status_code == 200
+    assert "Цена подставлена из карточки товара" in resp.text
+    assert "сохранится только в этой продаже" in resp.text
+
+
 # ---------------------------------------------------------------------------
 # Basket assembly + final write (register_sale parity + guardrails)
 # ---------------------------------------------------------------------------

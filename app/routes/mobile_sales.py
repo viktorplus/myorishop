@@ -15,7 +15,13 @@ from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
-from app.services.sales import PRODUCT_NOT_FOUND_TMPL, lookup_prefill, register_sale
+from app.services.sales import (
+    PRODUCT_NOT_FOUND_TMPL,
+    SALE_BATCH_FILL_HINT,
+    SALE_CARD_FILL_HINT,
+    lookup_prefill,
+    register_sale,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -220,10 +226,10 @@ def mobile_sale_step_qty_price(
     if picked is not None:
         if picked.price_cents is not None:
             fill_price_cents = picked.price_cents
-            fill_price_hint = "Цена подставлена из партии — можно изменить."
+            fill_price_hint = SALE_BATCH_FILL_HINT
         else:
             fill_price_cents = product.sale_cents if product is not None else None
-            fill_price_hint = "Цена подставлена из карточки товара — можно изменить."
+            fill_price_hint = SALE_CARD_FILL_HINT
 
     context = {
         "code": code_clean,
