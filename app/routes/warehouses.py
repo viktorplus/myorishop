@@ -1,22 +1,25 @@
 """Warehouse management page (WH-01): thin routes, all writes in app/services/warehouses.py.
 
-D-08: this backs a single settings-style page (/warehouses) — every write
-response re-renders `partials/warehouse_rows.html` in place, there is no
-separate `/warehouses/new` or `/warehouses/{id}/edit` page, unlike Products.
-
 Phase 14 (LIST-01..04): GET /warehouses gains name/address/status/sort/page
 query params and an is_hx dual-response branch (mirrors app/routes/history.py).
-No new route was added — POST /warehouses/{id}/delete stays the single
-quick-delete endpoint, now carrying both the existing last-active warning
-and the new D-11 stock-guard block in the same context.
+
+Phase 20 plan 02 (WH-02, D-01/D-02): add/edit/delete moved off the list's
+inline row rendering onto dedicated `GET /warehouses/new` /
+`GET /warehouses/{id}/edit` pages, mirroring `app/routes/products.py`'s
+`/new`/`/{id}/edit` shape — redirect-after-POST on success, 422-re-render on
+the SAME form page on validation error. `partials/warehouse_rows.html` (this
+page's list) is untouched by this plan; only its former inline
+add/edit/delete controls moved away from it.
 """
 
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import Warehouse
 from app.routes import templates
 from app.services.pagination import page_window
 from app.services.warehouses import (
@@ -108,6 +111,12 @@ def warehouses_page(
     return templates.TemplateResponse(request, "pages/warehouses.html", context)
 
 
+@router.get("/warehouses/new")
+def warehouse_new(request: Request):
+    context = {"warehouse": None, "errors": {}, "form": {}}
+    return templates.TemplateResponse(request, "pages/warehouse_form.html", context)
+
+
 @router.post("/warehouses")
 def warehouse_add(
     request: Request,
@@ -116,17 +125,27 @@ def warehouse_add(
     session: Session = Depends(get_session),
 ):
     _, errors = add_warehouse(session, name=name, address=address)
-    context = _warehouses_context(
-        session,
-        errors=errors,
-        form={"name": name, "address": address} if errors else {},
-    )
-    return templates.TemplateResponse(
-        request,
-        "partials/warehouse_rows.html",
-        context,
-        status_code=422 if errors else 200,
-    )
+    if errors:
+        context = {
+            "warehouse": None,
+            "errors": errors,
+            "form": {"name": name, "address": address},
+        }
+        return templates.TemplateResponse(
+            request, "pages/warehouse_form.html", context, status_code=422
+        )
+    return RedirectResponse("/warehouses", status_code=303)
+
+
+@router.get("/warehouses/{warehouse_id}/edit")
+def warehouse_edit(
+    request: Request, warehouse_id: str, session: Session = Depends(get_session)
+):
+    warehouse = session.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise HTTPException(status_code=404, detail="unknown warehouse")
+    context = {"warehouse": warehouse, "errors": {}, "form": None}
+    return templates.TemplateResponse(request, "pages/warehouse_form.html", context)
 
 
 @router.post("/warehouses/{warehouse_id}")
@@ -135,38 +154,22 @@ def warehouse_update(
     warehouse_id: str,
     name: str = Form(""),
     address: str = Form(""),
-    # CR-01 fix: echo back the list state the operator was viewing (query
-    # params, populated from the current row's edit form action — see
-    # warehouse_rows.html) so a validation error stays visible even when the
-    # edited row is off the default page-0/no-filter view. Prefixed with
-    # list_ to avoid colliding with the name/address Form fields above.
-    list_name: str = "",
-    list_address: str = "",
-    list_status: str = "",
-    list_sort: str = "",
-    list_page: int = 0,
     session: Session = Depends(get_session),
 ):
     _, errors = update_warehouse(session, warehouse_id, name=name, address=address)
     if "warehouse" in errors:
         raise HTTPException(status_code=404, detail="unknown warehouse")
-    context = _warehouses_context(
-        session,
-        name=list_name,
-        address=list_address,
-        status=list_status,
-        sort=list_sort,
-        page=list_page,
-        errors=errors,
-        error_entry_id=warehouse_id if errors else None,
-        error_form={"name": name, "address": address} if errors else None,
-    )
-    return templates.TemplateResponse(
-        request,
-        "partials/warehouse_rows.html",
-        context,
-        status_code=422 if errors else 200,
-    )
+    if errors:
+        existing = session.get(Warehouse, warehouse_id)
+        context = {
+            "warehouse": existing,
+            "errors": errors,
+            "form": {"name": name, "address": address},
+        }
+        return templates.TemplateResponse(
+            request, "pages/warehouse_form.html", context, status_code=422
+        )
+    return RedirectResponse("/warehouses", status_code=303)
 
 
 @router.post("/warehouses/{warehouse_id}/delete")
@@ -174,33 +177,27 @@ def warehouse_delete(
     request: Request,
     warehouse_id: str,
     confirm: str = Form(""),
-    # CR-01 fix: same list-state echo as warehouse_update (see comment
-    # there); this route has no Form fields named name/address/status/sort
-    # but the list_ prefix is kept for consistency with the edit form.
-    list_name: str = "",
-    list_address: str = "",
-    list_status: str = "",
-    list_sort: str = "",
-    list_page: int = 0,
     session: Session = Depends(get_session),
 ):
     # D-11 stock guard runs first inside soft_delete_warehouse and is
     # non-overridable; the existing warn-but-allow last-active-warehouse
     # guard (D-06/D-07) is only reached once the stock guard has passed.
-    # Both are plain 200 warn states, not validation errors or redirects.
-    _, warning = soft_delete_warehouse(session, warehouse_id, confirm=confirm == "1")
-    context = _warehouses_context(
-        session,
-        name=list_name,
-        address=list_address,
-        status=list_status,
-        sort=list_sort,
-        page=list_page,
-        warning_id=warehouse_id if warning.get("warehouse") else None,
-        stock_blocked_id=warehouse_id if warning.get("stock") else None,
-        stock_blocked_qty=warning.get("stock"),
-    )
-    return templates.TemplateResponse(request, "partials/warehouse_rows.html", context)
+    warehouse = session.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise HTTPException(status_code=404, detail="unknown warehouse")
+    deleted, warning = soft_delete_warehouse(session, warehouse_id, confirm=confirm == "1")
+    if deleted:
+        # Terminal success — mirrors product_delete exactly.
+        return Response(status_code=200, headers={"HX-Redirect": "/warehouses"})
+    # Non-terminal warn states (stock-blocked or last-active-warning) swap
+    # the delete wrap in place — status 200, these are warn states, not
+    # validation errors.
+    context = {
+        "warehouse": warehouse,
+        "stock_blocked": warning.get("stock"),
+        "warning": warning.get("warehouse"),
+    }
+    return templates.TemplateResponse(request, "partials/warehouse_delete_wrap.html", context)
 
 
 @router.post("/warehouses/{warehouse_id}/restore")

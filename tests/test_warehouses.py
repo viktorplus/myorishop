@@ -519,3 +519,97 @@ def test_web_nav_has_warehouses_link(client):
     assert response.status_code == 200
     assert 'href="/warehouses"' in response.text
     assert "Склады" in response.text
+
+
+# --- Dedicated add/edit/delete pages (Plan 20-02, WH-02/WH-03/D-01/D-02) ---
+
+
+def test_web_warehouse_new_renders_add_form(client):
+    response = client.get("/warehouses/new")
+
+    assert response.status_code == 200
+    assert "Новый склад" in response.text
+
+
+def test_web_warehouse_edit_renders_existing_values(client, session):
+    warehouse, _ = add_warehouse(session, name="Склад для правки", address="ул. Тестовая, 1")
+
+    response = client.get(f"/warehouses/{warehouse.id}/edit")
+
+    assert response.status_code == 200
+    assert "Редактирование склада" in response.text
+    assert "Склад для правки" in response.text
+    assert "ул. Тестовая, 1" in response.text
+
+
+def test_web_warehouse_edit_unknown_id_404s(client):
+    response = client.get("/warehouses/00000000-0000-4000-8000-000000000099/edit")
+
+    assert response.status_code == 404
+
+
+def test_web_warehouse_create_redirects_to_list(client):
+    response = client.post(
+        "/warehouses", data={"name": "Новый склад X", "address": ""}, follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/warehouses"
+
+
+def test_web_warehouse_add_invalid_returns_422_form(client):
+    response = client.post("/warehouses", data={"name": "  ", "address": ""})
+
+    assert response.status_code == 422
+    assert "Укажите название склада." in response.text
+    assert "Новый склад" in response.text
+
+
+def test_web_warehouse_update_redirects_to_list(client, session):
+    warehouse, _ = add_warehouse(session, name="Старое имя", address="")
+
+    response = client.post(
+        f"/warehouses/{warehouse.id}",
+        data={"name": "Новое имя", "address": "Новый адрес"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/warehouses"
+
+
+def test_web_warehouse_delete_success_redirects(client, session):
+    add_warehouse(session, name="Склад А", address="")
+    target, _ = add_warehouse(session, name="Склад на удаление", address="")
+
+    response = client.post(f"/warehouses/{target.id}/delete")
+
+    assert response.status_code == 200
+    assert response.headers["HX-Redirect"] == "/warehouses"
+
+
+def test_web_warehouse_delete_stock_blocked_renders_in_wrap(client, session, batch):
+    batch.quantity = 5
+    session.commit()
+
+    response = client.post(f"/warehouses/{batch.warehouse_id}/delete")
+
+    assert response.status_code == 200
+    assert "Нельзя удалить: на складе есть остаток" in response.text
+    assert "HX-Redirect" not in response.headers
+    assert "Удалить склад" in response.text
+
+
+def test_web_warehouse_delete_last_active_warns_then_confirm_redirects(client, session):
+    only, _ = add_warehouse(session, name="Единственный склад", address="")
+
+    response = client.post(f"/warehouses/{only.id}/delete")
+
+    assert response.status_code == 200
+    assert "Это последний активный склад" in response.text
+    assert "HX-Redirect" not in response.headers
+
+    confirm_response = client.post(f"/warehouses/{only.id}/delete", data={"confirm": "1"})
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.headers["HX-Redirect"] == "/warehouses"

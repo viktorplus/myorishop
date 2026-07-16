@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+{% if warehouse %}
+<h1>Редактирование склада</h1>
+{% else %}
+<h1>Новый склад</h1>
+{% endif %}
+
+{% if errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
+
+<form method="post" action="{% if warehouse %}/warehouses/{{ warehouse.id }}{% else %}/warehouses{% endif %}" class="stacked-form">
+  <div class="field">
+    <label for="name">Название</label>
+    <input type="text" id="name" name="name" required autofocus
+           value="{% if form %}{{ form.name or '' }}{% elif warehouse %}{{ warehouse.name or '' }}{% endif %}">
+    {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="address">Адрес <span class="muted">(необязательно)</span></label>
+    <input type="text" id="address" name="address"
+           value="{% if form %}{{ form.address or '' }}{% elif warehouse %}{{ warehouse.address or '' }}{% endif %}">
+    {% if errors.address %}<p class="error">{{ errors.address }}</p>{% endif %}
+  </div>
+
+  <div class="form-actions">
+    <button type="submit">Сохранить склад</button>
+    <a href="/warehouses">Отмена</a>
+  </div>
+</form>
+
+{% if warehouse %}
+{# Destructive zone, visually separated (24px, UI-SPEC lg) — relocated here
+   from the list per D-02; logic lives in warehouse_delete_wrap.html. #}
+<div class="form-actions">
+  {% include "partials/warehouse_delete_wrap.html" %}
+</div>
+{% endif %}
+{% endblock %}
