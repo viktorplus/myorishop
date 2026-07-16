@@ -78,13 +78,16 @@ def _encode_once(text_chunks) -> Generator[bytes]:
 def stream_products_csv(session: Session) -> StreamingResponse:
     """Full product catalog dump, including soft-deleted (BCK-02 full dump)."""
     products = session.scalars(select(Product).order_by(Product.name_lc)).all()
+    # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price column is
+    # dropped from this export — PROD-05 collapses product pricing to ДЦ/ПЦ
+    # only (T-18-CSV: this REDUCES the exported surface; every remaining cell
+    # stays _csv_safe-wrapped).
     header = [
         "Код",
         "Название",
         "Категория",
         "Закупка",
         "Продажа",
-        "Каталог",
         "Остаток",
         "Удалён",
     ]
@@ -95,7 +98,6 @@ def stream_products_csv(session: Session) -> StreamingResponse:
             _csv_safe(product.category or ""),
             format_cents(product.cost_cents) if product.cost_cents is not None else "",
             format_cents(product.sale_cents) if product.sale_cents is not None else "",
-            format_cents(product.catalog_cents) if product.catalog_cents is not None else "",
             product.quantity,
             "Да" if product.deleted_at else "",
         ]

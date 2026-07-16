@@ -101,34 +101,36 @@ def test_reference_prices_unknown_code_returns_none_none(priced):
 def test_price_autofill_fills_empty_fields(priced, client):
     r = client.get(
         "/products/lookup-price",
-        params={"code": "100", "cost": "", "catalog": "", "sale": ""},
+        params={"code": "100", "cost": "", "sale": ""},
     )
     assert r.status_code == 200
-    # catalog price 1200 cents -> "12,00"; consultant 700 -> "7,00"
-    assert 'id="catalog"' in r.text and "12,00" in r.text
+    # D-01/Pitfall 6 (Phase 18 plan 02): the catalog reference field is gone —
+    # only #cost/#sale are ever filled now (PROD-05 two-price collapse).
+    assert 'id="catalog"' not in r.text
     assert 'id="cost"' in r.text and "7,00" in r.text
-    # sale defaults to the catalog's consumer price (ПЦ), same as catalog
-    assert 'id="sale"' in r.text and r.text.count("12,00") == 2
+    # sale defaults to the catalog's consumer price (ПЦ): 1200 cents -> "12,00"
+    assert 'id="sale"' in r.text and r.text.count("12,00") == 1
     assert 'hx-swap-oob="true"' in r.text
 
 
 def test_price_autofill_never_overwrites_filled_fields(priced, client):
     r = client.get(
         "/products/lookup-price",
-        params={"code": "100", "cost": "5", "catalog": "9", "sale": "9"},
+        params={"code": "100", "cost": "5", "sale": "9"},
     )
     assert r.status_code == 204
 
 
 def test_price_autofill_partial_when_no_consultant(priced, client):
-    r = client.get("/products/lookup-price", params={"code": "200", "cost": "", "catalog": ""})
+    r = client.get("/products/lookup-price", params={"code": "200", "cost": ""})
     assert r.status_code == 200
-    assert 'id="catalog"' in r.text
+    assert 'id="catalog"' not in r.text
     assert 'id="cost"' not in r.text  # code 200 has no consultant price
+    assert 'id="sale"' in r.text  # code 200 has a consumer price, sale still empty
 
 
 def test_price_autofill_unknown_code_is_noop(priced, client):
-    r = client.get("/products/lookup-price", params={"code": "999", "cost": "", "catalog": ""})
+    r = client.get("/products/lookup-price", params={"code": "999", "cost": ""})
     assert r.status_code == 204
 
 

@@ -27,7 +27,6 @@
         <th>Категория</th>
         <th class="num">Закупочная</th>
         <th class="num">Продажа</th>
-        <th class="num">Каталог</th>
         <th>Действия</th>
       </tr>
       <tr class="filter-row">
@@ -46,7 +45,6 @@
         <th></th>
         <th></th>
         <th></th>
-        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -57,7 +55,6 @@
         <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="num">{% if product.catalog_cents is not none %}{{ product.catalog_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           <a href="/products/{{ product.id }}/edit">Изменить</a>
           <button type="button" class="danger"
@@ -68,7 +65,7 @@
       </tr>
       {% if blocked_id == product.id %}
       <tr>
-        <td colspan="7"><p class="error">Нельзя удалить: на остатке {{ blocked_qty }} шт. Спишите остаток, чтобы удалить товар.</p></td>
+        <td colspan="6"><p class="error">Нельзя удалить: на остатке {{ blocked_qty }} шт. Спишите остаток, чтобы удалить товар.</p></td>
       </tr>
       {% endif %}
       {% endfor %}

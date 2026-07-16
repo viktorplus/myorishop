@@ -34,7 +34,7 @@ from app.services.catalog import (
 )
 from app.services.ledger import record_operation
 
-EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}
 
 
 def test_create_product_persists_all_fields_and_name_lc(session):
@@ -46,7 +46,6 @@ def test_create_product_persists_all_fields_and_name_lc(session):
         category="Макияж",
         cost_raw="100",
         sale_raw="150,50",
-        catalog_raw="",
     )
     assert errors == {}
     assert product is not None
@@ -55,7 +54,6 @@ def test_create_product_persists_all_fields_and_name_lc(session):
     assert product.category == "Макияж"
     assert product.cost_cents == 10000
     assert product.sale_cents == 15050
-    assert product.catalog_cents is None
     assert product.quantity == 0
     # D-27: Python str.lower folds Cyrillic (SQL lower() cannot).
     assert product.name_lc == "губная помада"
@@ -104,7 +102,6 @@ def test_create_product_rejects_negative_price(session):
         category="",
         cost_raw="-12,50",
         sale_raw="",
-        catalog_raw="",
     )
     assert product is None
     assert "cost" in errors
@@ -463,7 +460,6 @@ def test_update_price_records_price_change_with_old_and_new(session):
         category="",
         cost_raw="",
         sale_raw="150,50",
-        catalog_raw="",
     )
     assert errors == {}
     updated, errors = update_product(
@@ -474,7 +470,6 @@ def test_update_price_records_price_change_with_old_and_new(session):
         category="",
         cost_raw="",
         sale_raw="200",
-        catalog_raw="",
     )
     assert errors == {}
     assert updated is not None
@@ -489,7 +484,12 @@ def test_update_price_records_price_change_with_old_and_new(session):
 
 
 def test_update_two_prices_emits_two_ops(session):
-    """PD-3: one price_change op PER changed field; None -> value keeps old_cents None."""
+    """PD-3: one price_change op PER changed field; None -> value keeps old_cents None.
+
+    D-01/Pitfall 4 (Phase 18 plan 02): catalog_cents dropped out of _PRICE_FIELDS,
+    so the second changed field here is min_sale_cents (still tracked, exempt
+    from PROD-05) instead of the removed catalog_cents.
+    """
     product, errors = create_product(
         session,
         code="1234",
@@ -497,7 +497,6 @@ def test_update_two_prices_emits_two_ops(session):
         category="",
         cost_raw="100",
         sale_raw="",
-        catalog_raw="",
     )
     assert errors == {}
     updated, errors = update_product(
@@ -508,7 +507,7 @@ def test_update_two_prices_emits_two_ops(session):
         category="",
         cost_raw="120",
         sale_raw="",
-        catalog_raw="80",
+        min_sale_raw="80",
     )
     assert errors == {}
     assert updated is not None
@@ -517,8 +516,8 @@ def test_update_two_prices_emits_two_ops(session):
     by_field = {op.payload["field"]: op.payload for op in ops}
     assert by_field["cost_cents"] == {"field": "cost_cents", "old_cents": 10000, "new_cents": 12000}
     # Initial fill (None -> value) is still history: old_cents is None.
-    expected = {"field": "catalog_cents", "old_cents": None, "new_cents": 8000}
-    assert by_field["catalog_cents"] == expected
+    expected = {"field": "min_sale_cents", "old_cents": None, "new_cents": 8000}
+    assert by_field["min_sale_cents"] == expected
 
 
 def test_update_unchanged_values_writes_no_ops(session):
@@ -530,7 +529,6 @@ def test_update_unchanged_values_writes_no_ops(session):
         category="Макияж",
         cost_raw="100",
         sale_raw="150,50",
-        catalog_raw="",
     )
     assert errors == {}
     before = session.scalar(text("SELECT COUNT(*) FROM operations"))
@@ -542,7 +540,6 @@ def test_update_unchanged_values_writes_no_ops(session):
         category="Макияж",
         cost_raw="100",
         sale_raw="150,50",
-        catalog_raw="",
     )
     assert errors == {}
     assert updated is not None
@@ -563,7 +560,6 @@ def test_update_non_price_fields_records_product_edited(session):
         category="Глаза",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
     )
     assert errors == {}
     assert updated is not None
@@ -589,7 +585,6 @@ def test_update_product_threshold_change_writes_product_edited_op(session):
         category="",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         low_stock_threshold_raw="",
         stale_days_raw="7",
     )
@@ -619,7 +614,6 @@ def test_update_rejects_duplicate_active_code_excluding_self(session):
         category="",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
     )
     assert result is None
     assert "code" in errors
@@ -633,7 +627,6 @@ def test_update_rejects_duplicate_active_code_excluding_self(session):
         category="",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
     )
     assert errors == {}
     assert ok is not None
@@ -652,7 +645,6 @@ def test_update_rejects_soft_deleted_product(session, product):
         category="",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
     )
     assert result is None
     assert errors
@@ -692,7 +684,6 @@ def test_price_history_returns_only_price_changes_newest_first(session):
         category="",
         cost_raw="",
         sale_raw="100",
-        catalog_raw="",
     )
     assert errors == {}
     # product_edited op (must NOT appear in history)
@@ -704,7 +695,6 @@ def test_price_history_returns_only_price_changes_newest_first(session):
         category="",
         cost_raw="",
         sale_raw="100",
-        catalog_raw="",
     )
     # two price_change ops
     update_product(
@@ -715,7 +705,6 @@ def test_price_history_returns_only_price_changes_newest_first(session):
         category="",
         cost_raw="",
         sale_raw="150",
-        catalog_raw="",
     )
     update_product(
         session,
@@ -725,7 +714,6 @@ def test_price_history_returns_only_price_changes_newest_first(session):
         category="",
         cost_raw="",
         sale_raw="200",
-        catalog_raw="",
     )
 
     history = price_history(session, product.id)
@@ -745,7 +733,6 @@ def test_web_edit_page_shows_form_and_empty_history(client, session):
         category="Уход",
         cost_raw="",
         sale_raw="99,90",
-        catalog_raw="",
     )
     assert errors == {}
 
@@ -769,7 +756,6 @@ def test_web_edit_price_then_history_rendered(client, session):
         category="",
         cost_raw="",
         sale_raw="150,50",
-        catalog_raw="",
     )
     assert errors == {}
 
@@ -977,7 +963,6 @@ def test_update_min_sale_price_change_records_price_change_op(session):
         category="",
         cost_raw="",
         sale_raw="",
-        catalog_raw="",
         min_sale_raw="99,90",
     )
     assert errors == {}

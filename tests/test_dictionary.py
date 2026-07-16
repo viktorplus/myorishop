@@ -22,7 +22,7 @@ from app.models import Dictionary, Operation
 from app.services.catalog import create_product
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
 
-EMPTY_MONEY = {"cost_raw": "", "sale_raw": "", "catalog_raw": ""}
+EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}  # D-01/Pitfall 4 (Phase 18 plan 02)
 
 
 # --- Service level (D-22 / D-24) ---
