@@ -91,7 +91,15 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
   3. Typing a ДЦ or ПЦ below the dictionary's reference price shows the field in yellow; above the reference shows blue; matching the reference shows neither.
   4. Stock, sales, and profit figures recorded before the consolidation still display the prices they were recorded at — no historical money data is lost or re-interpreted.
   5. Selling below a product's configured minimum sale price still shows the existing warn-but-allow warning (PRICE-01 regression guard).
-**Plans**: TBD
+**Plans**: 8 plans (4 waves)
+- [ ] 18-01-PLAN.md — Reference lookup fix in place (D-22) + reference_prices_for_code contract for the cue
+- [ ] 18-02-PLAN.md — Service + product-list/export catalog_cents reference removal (model attr stays)
+- [ ] 18-03-PLAN.md — Receipt catalog-field removal, desktop + mobile wizard (Pitfall 1); stop ledger payload write (D-04)
+- [ ] 18-04-PLAN.md — Drop the column: 0014 native migration + model removal + D-24 pre-drop backup (irreversible, human-gated)
+- [ ] 18-05-PLAN.md — Label unification (D-19), min_sale regroup (D-21), catalog-detail «изменить цену» → product card (D-18)
+- [ ] 18-06-PLAN.md — Sale write-back wording: two hint constants with the sale-only scope clause (D-17/D-23)
+- [ ] 18-07-PLAN.md — Colour cue foundation (price-cue.js, CSS tokens) + product-card data-ref-cents wiring
+- [ ] 18-08-PLAN.md — Cue wiring on receipt + sale surfaces (desktop + mobile) + criterion-3 visual sign-off
 **UI hint**: yes
 
 ### Phase 19: Products Page Rebuild
@@ -194,7 +202,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 15. Cash Ledger Foundation | v1.3 | 4/4 | Complete   | 2026-07-14 |
 | 16. Manual Cash Movements & History | v1.3 | 4/4 | Complete    | 2026-07-15 |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
-| 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 0/TBD | Not started | - |
+| 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 0/8 | Not started | - |
 | 19. Products Page Rebuild | v2.0 | 0/TBD | Not started | - |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 0/TBD | Not started | - |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 0/TBD | Not started | - |
