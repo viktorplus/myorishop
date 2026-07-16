@@ -4,10 +4,12 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_session
+from app.models import Product
 from app.routes import templates
 from app.services.catalog import (
     category_options,
@@ -160,12 +162,25 @@ def product_price_lookup(
 
 
 @router.get("/products/new")
-def product_new(request: Request, session: Session = Depends(get_session)):
+def product_new(request: Request, code: str = "", session: Session = Depends(get_session)):
+    """D-18: also the redirect target from catalog_detail's «изменить цену».
+
+    If `code` already names a live product, redirect straight to its editable
+    card (never an inline edit on the read-only catalog page). Otherwise
+    prefill the new-product form's code field so the operator can create it.
+    """
+    code_clean = code.strip()
+    if code_clean:
+        existing = session.scalars(
+            select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+        ).first()
+        if existing is not None:
+            return RedirectResponse(f"/products/{existing.id}/edit")
     context = {
         "product": None,
         "categories": category_options(session),
         "errors": {},
-        "form": {},
+        "form": {"code": code_clean} if code_clean else {},
         "low_stock_default": settings.low_stock_threshold,
         "stale_days_default": settings.stale_days,
     }

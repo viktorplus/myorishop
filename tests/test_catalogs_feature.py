@@ -8,7 +8,7 @@ import pytest
 
 from app.config import settings
 from app.core import new_id
-from app.models import Dictionary
+from app.models import Dictionary, Product
 from app.services import catalogs as svc
 
 
@@ -232,3 +232,56 @@ def test_web_catalogs_table_tags_balanced_on_paginated_page(tmp_path, monkeypatc
     r = client.get("/catalogs")
     assert r.status_code == 200
     assert r.text.count("<table") == r.text.count("</table>")
+
+
+# --- D-18/D-19: catalog-detail ДЦ/ПЦ labels + «изменить цену» ----------------
+
+
+def test_catalog_detail_shows_izmenit_tsenu_link_to_product_new(
+    tmp_path, monkeypatch, session, client
+):
+    folder = _make_catalog_dir(tmp_path, ["2026-03.pdf"])
+    monkeypatch.setattr(settings, "catalogs_dir", str(folder))
+    session.add(
+        Dictionary(id=new_id(), code="500", name="Крем для рук", catalogs=["03_26"])
+    )
+    session.commit()
+
+    r = client.get("/catalogs/2026-03")
+    assert r.status_code == 200
+    # D-19: the two prices are named identically to the product card (ДЦ/ПЦ).
+    assert "ПЦ" in r.text
+    assert "ДЦ" in r.text
+    # D-18: the link goes to the product card for this code, not an inline edit.
+    assert "изменить цену" in r.text
+    assert "products/new?code=500" in r.text
+
+
+def test_product_new_redirects_to_edit_when_code_exists(session, client):
+    product = Product(
+        id=new_id(),
+        code="777",
+        name="Существующий товар",
+        name_lc="существующий товар",
+        quantity=0,
+    )
+    session.add(product)
+    session.commit()
+
+    r = client.get("/products/new?code=777", follow_redirects=False)
+    assert r.status_code in (302, 303, 307, 308)
+    assert r.headers["location"] == f"/products/{product.id}/edit"
+
+
+def test_product_new_prefills_code_when_no_existing_product(client):
+    r = client.get("/products/new?code=999")
+    assert r.status_code == 200
+    assert 'value="999"' in r.text
+
+
+def test_product_new_no_code_still_serves_plain_form(client):
+    # The fallback branch this task introduces: no `code` query param at all
+    # must still render the ordinary blank new-product form (not a redirect).
+    r = client.get("/products/new")
+    assert r.status_code == 200
+    assert "Новый товар" in r.text
