@@ -91,7 +91,7 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
   3. Typing a ДЦ or ПЦ below the dictionary's reference price shows the field in yellow; above the reference shows blue; matching the reference shows neither.
   4. Stock, sales, and profit figures recorded before the consolidation still display the prices they were recorded at — no historical money data is lost or re-interpreted.
   5. Selling below a product's configured minimum sale price still shows the existing warn-but-allow warning (PRICE-01 regression guard).
-**Plans**: 8 plans (4 waves)
+**Plans**: 8 plans (5 waves)
 - [ ] 18-01-PLAN.md — Reference lookup fix in place (D-22) + reference_prices_for_code contract for the cue
 - [ ] 18-02-PLAN.md — Service + product-list/export catalog_cents reference removal (model attr stays)
 - [ ] 18-03-PLAN.md — Receipt catalog-field removal, desktop + mobile wizard (Pitfall 1); stop ledger payload write (D-04)
