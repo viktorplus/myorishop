@@ -70,7 +70,7 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 
 **Milestone Goal:** Rework navigation into nested/secondary menus, add an operational dashboard to the home page, unify the product price model to two fields (ДЦ/ПЦ), and rebuild the Products/Warehouses/Sales/History/Customers pages around the operator's real workflow instead of their original one-feature-at-a-time shape.
 
-- [x] **Phase 18: Two-Price Model Consolidation (ДЦ/ПЦ)** - Collapse every price field in the app to exactly two, editable anywhere, with reference-deviation color cues (completed 2026-07-16)
+- [x] **Phase 18: Two-Price Model Consolidation (ДЦ/ПЦ)** - Collapse every price field in the app to exactly two, editable anywhere, with reference-deviation color cues (completed 2026-07-16)
 - [ ] **Phase 19: Products Page Rebuild** - Group the product list by code with batch breakout, category filter, and receipt-first entry
 - [ ] **Phase 20: Warehouses & Batch-Split Transfers** - Form-driven warehouse management with stock-guarded delete, plus a correct partial-batch transfer
 - [ ] **Phase 21: Customer Profiles & Purchase Insights** - Multi-contact profiles with last-order date, period spend, and favorite products
@@ -112,7 +112,8 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
   3. Product list shows each product's category and can be filtered by category.
   4. The "Добавить товар" button is gone from the product list, and delete is a text link rather than a button.
   5. Existing pagination, filtering, and sorting on the product list keep working against the new grouped rows.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 19-01-PLAN.md — Quantity column + collapsed batch breakout, remove add-button, delete-as-text-link (PROD-01..04, PROD-08 regression)
 **UI hint**: yes
 
 ### Phase 20: Warehouses & Batch-Split Transfers
@@ -203,7 +204,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 16. Manual Cash Movements & History | v1.3 | 4/4 | Complete    | 2026-07-15 |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
 | 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 8/8 | Complete   | 2026-07-16 |
-| 19. Products Page Rebuild | v2.0 | 0/TBD | Not started | - |
+| 19. Products Page Rebuild | v2.0 | 0/1 | Not started | - |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 0/TBD | Not started | - |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 0/TBD | Not started | - |
 | 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |
