@@ -1240,3 +1240,27 @@ def test_web_products_list_no_batch_breakdown_when_no_batches(client, product):
     page = client.get("/products")
     assert page.status_code == 200
     assert "Партии" not in page.text
+
+
+def test_web_products_list_has_no_add_button(client):
+    """PROD-01: "Добавить товар" is gone from both the page CTA and empty state."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert "Добавить товар" not in page.text
+
+
+def test_web_products_new_still_reachable_after_button_removal(client):
+    """PROD-01 scope-boundary regression guard: /products/new stays live."""
+    page = client.get("/products/new")
+    assert page.status_code == 200
+
+
+def test_web_products_delete_control_is_link_not_button(client, product):
+    """PROD-02: delete is an <a hx-post=...>, never a <button> with the same target."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert (
+        f'<a href="#" class="link-danger" hx-post="/products/{product.id}/quick-delete'
+        in page.text
+    )
+    assert '<button type="button" class="danger"' not in page.text
