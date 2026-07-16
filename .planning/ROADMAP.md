@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 16. Manual Cash Movements & History | v1.3 | 4/4 | Complete    | 2026-07-15 |
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
 | 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 8/8 | Complete   | 2026-07-16 |
-| 19. Products Page Rebuild | v2.0 | 1/1 | Complete   | 2026-07-16 |
+| 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 0/TBD | Not started | - |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 0/TBD | Not started | - |
 | 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |

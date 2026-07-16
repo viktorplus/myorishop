@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: executing
-stopped_at: Phase 19 UI-SPEC approved
-last_updated: "2026-07-16T14:22:07.756Z"
-last_activity: 2026-07-16 -- Phase 19 execution started
+stopped_at: Phase 19 executed and verified
+last_updated: "2026-07-16T14:55:51.175Z"
+last_activity: 2026-07-16
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 8
-  percent: 14
+  completed_plans: 9
+  percent: 29
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 19 — products-page-rebuild
+**Current focus:** Phase 20 — warehouses-&-batch-split-transfers
 
 ## Current Position
 
-Phase: 19 (products-page-rebuild) — EXECUTING
-Plan: 1 of 1
-Status: Executing Phase 19
-Last activity: 2026-07-16 -- Phase 19 execution started
+Phase: 20
+Plan: Not started
+Status: Phase 19 complete — awaiting Phase 20 planning
+Last activity: 2026-07-16
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 
@@ -36,7 +36,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 
 **Velocity:**
 
-- Total plans completed: 59 (v1.0-v1.3)
+- Total plans completed: 60 (v1.0-v1.3)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -45,6 +45,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-17 | 59 | - | - |
+| 19 | 1 | - | - |
 
 **Recent Trend:**
 
@@ -120,10 +121,10 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-16T13:25:04.401Z
-Stopped at: Phase 19 UI-SPEC approved
-Resume file: .planning/phases/19-products-page-rebuild/19-UI-SPEC.md
+Stopped at: Phase 19 executed and verified (VERIFICATION.md passed, 5/5 must-haves)
+Resume file: .planning/phases/19-products-page-rebuild/19-VERIFICATION.md
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 18` to plan Phase 18: Two-Price Model Consolidation (ДЦ/ПЦ)
-- Every v2.0 phase is UI-bearing — `/gsd-ui-phase 18` is available before planning (config `ui_phase: true`)
+- Run `/gsd-plan-phase 20` to plan Phase 20: Warehouses & Batch-Split Transfers (WH-01..03, XFER-01)
+- Every v2.0 phase is UI-bearing — `/gsd-ui-phase 20` is available before planning (config `ui_phase: true`)
