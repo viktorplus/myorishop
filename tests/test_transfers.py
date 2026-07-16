@@ -216,7 +216,12 @@ def test_over_qty_confirm_gate(session, stocked_product):
     assert len(ops2) == 2
 
 
-def test_reject_same_warehouse(session, stocked_product):
+def test_same_warehouse_blank_overrides_blocked(session, stocked_product):
+    from sqlalchemy import select
+
+    from app.models import Operation
+    from app.services.transfers import SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR
+
     source = _source_batch(session, stocked_product, qty=8)
 
     result, errors = register_transfer(
@@ -228,11 +233,118 @@ def test_reject_same_warehouse(session, stocked_product):
         dest_warehouse_id=source.warehouse_id,
     )
     assert result is None
-    assert "warehouse" in errors
+    assert errors == {"form": SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR}
+
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
+
+
+def test_same_warehouse_with_expiry_override_creates_split_batch(session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8, comment="исходный комментарий")
+    before_source_qty = source.quantity
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=source.warehouse_id,
+        new_expiry="2027-01-01",
+    )
+
+    assert errors == {}
+    dest = result["dest"]
+    assert dest.warehouse_id == source.warehouse_id
+    assert dest.expiry == "2027-01-01"
+    assert dest.comment == source.comment
+    assert dest.id != source.id
+    assert source.quantity == before_source_qty - 3
+    assert dest.quantity == 3
+
+
+def test_same_warehouse_with_comment_override_creates_split_batch(session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8, expiry="2026-06-01")
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=source.warehouse_id,
+        new_comment="вскрыт образец",
+    )
+
+    assert errors == {}
+    dest = result["dest"]
+    assert dest.comment == "вскрыт образец"
+    assert dest.expiry == source.expiry
+
+
+def test_cross_warehouse_override_wins_over_source(session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8, expiry="2026-06-01", comment="старый")
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+        new_expiry="2027-01-01",
+        new_comment="вскрыт образец",
+    )
+
+    assert errors == {}
+    dest = result["dest"]
+    assert dest.expiry == "2027-01-01"
+    assert dest.comment == "вскрыт образец"
+
+
+def test_cross_warehouse_blank_overrides_still_inherits_unchanged(session, stocked_product):
+    source = _source_batch(session, stocked_product, qty=8, expiry="2026-06-01", comment="старый")
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+    )
+
+    assert errors == {}
+    dest = result["dest"]
+    assert dest.expiry == source.expiry
+    assert dest.comment == source.comment
+
+
+def test_same_warehouse_override_field_with_only_whitespace_treated_as_blank(
+    session, stocked_product
+):
     from sqlalchemy import select
 
     from app.models import Operation
+    from app.services.transfers import SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR
 
+    source = _source_batch(session, stocked_product, qty=8)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=source.warehouse_id,
+        new_expiry="   ",
+        new_comment="",
+    )
+
+    assert result is None
+    assert errors == {"form": SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR}
     ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
     assert ops == []
 
