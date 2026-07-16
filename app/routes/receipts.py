@@ -138,6 +138,17 @@ def receipt_lookup(
     # a "product" match's own card price is NOT the same thing as the
     # catalog reference the cue compares against.
     ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
+    # 18-REVIEW WR-02 (accepted limitation): fill_fields below only covers
+    # price fields that arrived empty, and receipt_lookup.html only renders
+    # an OOB fragment (which is what carries data-ref-cents) for fields in
+    # fill_fields. So if the operator types a value into cost/sale BEFORE the
+    # code lookup resolves, that field's DOM node never receives
+    # data-ref-cents on this live-typing (AJAX) path — the colour cue simply
+    # doesn't activate for it. The full-page/static render (receipt_form.html)
+    # and every mobile wizard step are unaffected; they always thread
+    # ref_cost_cents/ref_sale_cents unconditionally. Purely advisory/cosmetic
+    # (no data-integrity impact) — not fixed to avoid touching the
+    # oob-before-swap race guard that protects operator-typed money values.
     if result["source"] == "product":
         # Pitfall 1 / D-01: catalog field removed from the receipt slice —
         # only cost/sale are ever fillable now.

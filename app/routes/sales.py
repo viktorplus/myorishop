@@ -145,6 +145,14 @@ def sale_lookup(
     # reference (D-05/D-08/D-22), resolved independently of `source`/
     # fill_price_cents — a "product" match's own card price is NOT the same
     # thing as the catalog reference the cue compares against.
+    # 18-REVIEW WR-02 (accepted limitation): sale_lookup.html only renders the
+    # OOB price <td> (which carries data-ref-cents) when fill_price is True.
+    # If the operator typed a price BEFORE the code lookup resolved, this
+    # live-typing (AJAX) path never stamps data-ref-cents for that field —
+    # the colour cue simply doesn't activate. The full basket row render
+    # (sale_row.html) and the mobile wizard step are unaffected. Purely
+    # advisory/cosmetic — not fixed to avoid touching the oob-before-swap
+    # race guard (sale_form.html) that protects operator-typed money values.
     _, ref_pc_cents = reference_prices_for_code(session, code_clean)
 
     if result["source"] == "product":
@@ -277,6 +285,14 @@ def sale_batch_pick(
     # reference (D-05/D-08/D-22), resolved independently of fill_price_cents
     # — the batch/card fill value is not the same thing as the catalog
     # reference the cue compares against.
+    # 18-REVIEW WR-02 (accepted limitation): unlike sale_lookup, fill_price
+    # here is gated on a batch being picked, not on the price field being
+    # empty — but sale_form.html's oob-before-swap guard still blocks the
+    # whole OOB <td> swap (value + data-ref-cents together) whenever the
+    # operator has already typed a price. So if a price was typed before the
+    # batch pick resolves, that field never gets the colour cue on this
+    # AJAX path either. Purely advisory/cosmetic — not fixed to avoid
+    # touching the race guard that protects operator-typed money values.
     _, ref_pc_cents = reference_prices_for_code(session, code_clean)
 
     context = {

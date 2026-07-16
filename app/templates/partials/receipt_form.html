@@ -9,7 +9,17 @@
   {# Swap-time guards (RESEARCH Pitfall 7, evaluated when the lookup response
      lands): the main #name-wrap swap and every oob price fill are discarded
      if the operator typed into that field while the request was in flight —
-     an in-flight response never destroys operator input. #}
+     an in-flight response never destroys operator input.
+     18-REVIEW WR-02 (accepted limitation): because value-fill and the
+     data-ref-cents colour-cue stamp both live on the same OOB fragment
+     (receipt_price_inputs.html), this guard blocks BOTH at once — a price
+     field the operator already typed into never gets its colour cue on
+     this live-typing (AJAX) path, even though its value legitimately
+     deviates from the catalog reference. Not split apart: doing so would
+     mean re-rendering the OOB fragment (and re-running this guard's value
+     check) on every keystroke, widening the race window this guard exists
+     to close. The cue still renders correctly on full-page loads and every
+     mobile wizard step. #}
   <form class="stacked-form"
         hx-post="/receipts"
         hx-target="#receipt-form-wrap"

@@ -28,7 +28,15 @@
   {# Swap-time guards (mirrors receipt_form.html Pitfall 7): a lookup
      response never clobbers a value the operator already typed. Row ids
      are dynamic ("name-wrap"/"name-{row}", "price-wrap"/"price-{row}"), so
-     the guard matches by prefix rather than one fixed id. #}
+     the guard matches by prefix rather than one fixed id.
+     18-REVIEW WR-02 (accepted limitation): the oob-before-swap guard blocks
+     the whole OOB price <td> (value + data-ref-cents together, see
+     sale_lookup.html/sale_batch_pick.html), so a price field the operator
+     already typed into never gets its colour cue on this live-typing (AJAX)
+     path. Not split apart: doing so would mean re-running this guard's
+     value check on every keystroke, widening the race window it exists to
+     close. The cue still renders correctly on full basket-row loads and
+     the mobile wizard step. #}
   <form id="sale-form"
         hx-post="/sales"
         hx-target="#sale-form-wrap"
