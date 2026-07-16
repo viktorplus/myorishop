@@ -138,7 +138,17 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
   3. Deleting a warehouse that still holds stock is refused; deleting one holding zero stock succeeds.
   4. Transferring part of a batch under a different expiry date or condition creates a new destination batch holding only the moved portion, leaving the source batch's remaining quantity and attributes unchanged.
 
-**Plans**: TBD
+**Plans**: 7 plans (3 waves)
+
+Plans:
+- [ ] 20-01-PLAN.md — Warehouse item-count & last-receipt aggregate queries (WH-01, D-03/D-04)
+- [ ] 20-02-PLAN.md — Warehouse dedicated add/edit/delete routes + templates (WH-02/WH-03, D-01/D-02)
+- [ ] 20-03-PLAN.md — Warehouse list restructure: item-count/last-receipt columns, filter/sort/status preserved (WH-01/02/03)
+- [ ] 20-04-PLAN.md — Transfer service: same-warehouse split + override-or-inherit + qty echo (XFER-01, D-05/D-06/D-07/D-08/D-11)
+- [ ] 20-05-PLAN.md — Desktop transfer routes: dest-filter fix, ownership guard, qty echo, override wiring (XFER-01, D-09/D-10/D-11)
+- [ ] 20-06-PLAN.md — Mobile transfer parity: dest-filter fix, override wiring, qty echo (XFER-01, D-09 mirrored)
+- [ ] 20-07-PLAN.md — Desktop override-field UI + web-level test coverage (XFER-01)
+
 **UI hint**: yes
 
 ### Phase 21: Customer Profiles & Purchase Insights
