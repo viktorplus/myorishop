@@ -321,6 +321,33 @@ def test_transfers_create_qty_saved_matches_parsed_int(
     assert "3 шт." in response.text
 
 
+def test_transfers_step_dest_shows_override_fields(
+    mobile_client_factory, session, stocked_product
+):
+    """UI-SPEC decision 12: step 3 shows the same two override fields as
+    desktop, placed after Количество and before the Назад/Переместить
+    buttons."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers/step/dest",
+        data={"code": stocked_product.code, "batch_id": source.id},
+    )
+
+    assert response.status_code == 200
+    assert 'name="new_expiry"' in response.text
+    assert 'name="new_comment"' in response.text
+
+    text = response.text
+    qty_index = text.index('name="qty"')
+    new_expiry_index = text.index('name="new_expiry"')
+    new_comment_index = text.index('name="new_comment"')
+    actions_index = text.index('class="mobile-actions"')
+
+    assert qty_index < new_expiry_index < new_comment_index < actions_index
+
+
 def test_transfers_oversell_then_confirm_zero_writes_until_confirmed(
     mobile_client_factory, session, stocked_product
 ):

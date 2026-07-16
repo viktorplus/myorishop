@@ -53,6 +53,16 @@
       {% if errors is defined and errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
     </div>
 
+    <div class="field">
+      <label for="new_expiry">Новый срок годности <span class="muted">(если отличается от партии-источника)</span></label>
+      <input type="date" id="new_expiry" name="new_expiry" value="{{ new_expiry | default('') }}">
+    </div>
+
+    <div class="field">
+      <label for="new_comment">Новое состояние или комментарий <span class="muted">(например: повреждена упаковка, вскрыт образец)</span></label>
+      <input type="text" id="new_comment" name="new_comment" value="{{ new_comment | default('') }}">
+    </div>
+
     <div class="mobile-actions">
       {# WR-02: tojson correctly escapes a double quote inside code for both
          JSON and this HTML attribute. #}
