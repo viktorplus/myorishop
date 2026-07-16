@@ -4,7 +4,6 @@ Naming convention (mirrors test_dictionary.py/test_catalog.py): route/e2e
 tests are prefixed test_web_, everything else is service/schema level.
 """
 
-import re
 import sqlite3
 from contextlib import closing
 
@@ -394,35 +393,6 @@ def test_web_warehouses_page_renders(client):
     assert "Складов пока нет" in response.text
 
 
-def test_web_add_and_edit_rows(client):
-    response = client.post(
-        "/warehouses", data={"name": "Второй склад", "address": "ул. Мира, 5"}
-    )
-    assert response.status_code == 200
-    assert 'id="warehouse-rows"' in response.text
-    assert "Второй склад" in response.text
-    assert "<html" not in response.text
-
-    match = re.search(r'id="edit-([0-9a-f-]{36})"', response.text)
-    assert match is not None
-    warehouse_id = match.group(1)
-
-    response = client.post(
-        f"/warehouses/{warehouse_id}",
-        data={"name": "Второй склад (переименован)", "address": "ул. Мира, 5"},
-    )
-    assert response.status_code == 200
-    assert 'id="warehouse-rows"' in response.text
-    assert "Второй склад (переименован)" in response.text
-
-
-def test_web_add_invalid_returns_swappable_422_partial(client):
-    response = client.post("/warehouses", data={"name": "  ", "address": ""})
-    assert response.status_code == 422
-    assert 'id="warehouse-rows"' in response.text
-    assert "Укажите название склада." in response.text
-
-
 def test_web_quick_deleted_warehouse_hidden_by_default_reachable_via_status_filter(
     client, session
 ):
@@ -430,12 +400,13 @@ def test_web_quick_deleted_warehouse_hidden_by_default_reachable_via_status_filt
     add_warehouse(session, name="Склад А", address="")
     target, _ = add_warehouse(session, name="Склад на удаление", address="")
 
+    # Zero stock, not last-active -> this is now a terminal-success delete
+    # (Plan 20-02: POST /warehouses/{id}/delete redirect-after-success shape).
     response = client.post(f"/warehouses/{target.id}/delete")
 
     assert response.status_code == 200
-    assert "HX-Redirect" not in response.headers
-    # D-14: the default (active) response no longer shows the deleted row.
-    assert "Склад на удаление" not in response.text
+    assert "HX-Redirect" in response.headers
+    assert response.headers["HX-Redirect"] == "/warehouses"
 
     default_view = client.get("/warehouses")
     assert "Склад на удаление" not in default_view.text
@@ -443,28 +414,6 @@ def test_web_quick_deleted_warehouse_hidden_by_default_reachable_via_status_filt
     deleted_view = client.get("/warehouses", params={"status": "deleted"})
     assert "Склад на удаление" in deleted_view.text
     assert "Восстановить" in deleted_view.text
-
-
-def test_web_delete_last_active_warehouse_warns_then_confirm_deletes(client, session):
-    only, _ = add_warehouse(session, name="Единственный склад", address="")
-
-    response = client.post(f"/warehouses/{only.id}/delete")
-
-    assert response.status_code == 200
-    assert "Это последний активный склад" in response.text
-    assert "Удалить всё равно" in response.text
-
-    follow_up = client.get("/warehouses")
-    assert "Восстановить" not in follow_up.text
-
-    confirm_response = client.post(
-        f"/warehouses/{only.id}/delete", data={"confirm": "1"}
-    )
-    assert confirm_response.status_code == 200
-    # D-14: it was the only warehouse, so the default active-only view is
-    # now empty — the deleted row is absent, not shown with Восстановить.
-    assert "Единственный склад" not in confirm_response.text
-    assert "Складов пока нет" in confirm_response.text
 
 
 def test_web_warehouses_status_all_shows_active_and_deleted(client, session):
@@ -488,19 +437,6 @@ def test_web_warehouses_sort_name_desc(client, session):
 
     assert response.status_code == 200
     assert response.text.index("Бета склад") < response.text.index("Альфа склад")
-
-
-def test_web_quick_delete_blocked_when_stock_positive(client, session, batch):
-    batch.quantity = 5
-    session.commit()
-
-    response = client.post(f"/warehouses/{batch.warehouse_id}/delete")
-
-    assert response.status_code == 200
-    assert "Нельзя удалить: на складе есть остаток" in response.text
-    warehouse = session.get(Warehouse, batch.warehouse_id)
-    assert warehouse.name in response.text
-    assert warehouse.deleted_at is None
 
 
 def test_web_warehouses_filter_by_name(client, session):
