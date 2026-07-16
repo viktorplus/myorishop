@@ -291,6 +291,34 @@ def test_snapshot_frozen_after_price_change(session, stocked_product):
     assert op.unit_price_cents == frozen_price
 
 
+def test_sale_does_not_write_back_to_product_or_batch(session, stocked_product):
+    """D-15/D-16: an edited ПЦ entered during a sale never persists to the
+    card or the batch (T-18-WRITEBACK) — Product.sale_cents and
+    Batch.price_cents stay exactly as they were before the sale, regardless
+    of what price the operator typed for that one sale."""
+    stocked_product.sale_cents = 1500
+    bid = _only_batch(session, stocked_product)
+    batch = session.get(Batch, bid)
+    batch.price_cents = 1600
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["9,99"],  # differs from both sale_cents (1500) and batch price (1600)
+        batch_ids=[bid],
+    )
+    assert errors == {}
+    assert result is not None
+
+    session.refresh(stocked_product)
+    session.refresh(batch)
+    assert stocked_product.sale_cents == 1500
+    assert batch.price_cents == 1600
+
+
 def test_null_cost_allowed_sale_succeeds(session, product, warehouse):
     """SAL-05/D-12: NULL card cost -> op cost NULL, sale is NOT blocked."""
     batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
@@ -835,6 +863,34 @@ def test_web_sale_batch_pick_legacy_null_price_falls_back_to_card(
     text = response.text
     assert "42,00" in text
     assert "Цена подставлена из карточки товара" in text
+
+
+def test_web_sale_card_hint_states_sale_only_scope(client, session, product):
+    """D-17/D-23: the card-sourced prefill hint states the price change is
+    saved to THIS sale only, not written back to the card."""
+    product.sale_cents = 999
+    session.commit()
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert "Цена подставлена из карточки товара" in response.text
+    assert "сохранится только в этой продаже" in response.text
+
+
+def test_web_sale_batch_hint_states_sale_only_scope(client, session, product, warehouse):
+    """D-17/D-23: the batch-sourced prefill hint states the price change is
+    saved to THIS sale only, not written back to the batch (D-15/D-16 —
+    Batch.price_cents stays frozen)."""
+    b = _batch(session, product, warehouse, qty=3, price=1234)
+
+    response = client.get(
+        "/sales/batch-pick", params={"row": "", "batch_id": b.id, "code": product.code}
+    )
+    assert response.status_code == 200
+    assert "Цена подставлена из партии" in response.text
+    assert "сохранится только в этой продаже" in response.text
 
 
 def test_web_sale_batch_drift_attribution_holds(client, session, warehouse):
