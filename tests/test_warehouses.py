@@ -12,7 +12,9 @@ from alembic.config import Config
 
 from alembic import command
 from app.config import settings
-from app.models import Warehouse
+from app.core import new_id
+from app.models import Batch, Operation, Product, Warehouse
+from app.services.ledger import next_seq
 from app.services.warehouses import (
     NAME_REQUIRED_ERROR,
     WAREHOUSE_NOT_FOUND_ERROR,
@@ -220,6 +222,157 @@ def test_restore_warehouse_is_idempotent_when_already_active(session):
     restore_warehouse(session, warehouse.id)
 
     assert warehouse.deleted_at is None
+
+
+# --- D-03: item_count (distinct products with stock > 0) ---
+
+
+def test_list_warehouses_item_count_counts_distinct_products_with_stock(session, warehouse):
+    product_a = Product(id=new_id(), code="A-001", name="Товар A", quantity=0)
+    product_b = Product(id=new_id(), code="B-001", name="Товар B", quantity=0)
+    product_c = Product(id=new_id(), code="C-001", name="Товар C", quantity=0)
+    session.add_all([product_a, product_b, product_c])
+    session.add_all(
+        [
+            Batch(
+                id=new_id(),
+                product_id=product_a.id,
+                warehouse_id=warehouse.id,
+                quantity=3,
+            ),
+            Batch(
+                id=new_id(),
+                product_id=product_b.id,
+                warehouse_id=warehouse.id,
+                quantity=2,
+            ),
+            Batch(
+                id=new_id(),
+                product_id=product_c.id,
+                warehouse_id=warehouse.id,
+                quantity=0,
+            ),
+        ]
+    )
+    session.commit()
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.item_count == 2
+
+
+def test_list_warehouses_item_count_two_batches_same_product_counts_once(session, warehouse):
+    product = Product(id=new_id(), code="A-002", name="Товар A2", quantity=0)
+    session.add(product)
+    session.add_all(
+        [
+            Batch(
+                id=new_id(),
+                product_id=product.id,
+                warehouse_id=warehouse.id,
+                quantity=5,
+                expiry="2026-08-01",
+            ),
+            Batch(
+                id=new_id(),
+                product_id=product.id,
+                warehouse_id=warehouse.id,
+                quantity=1,
+                expiry="2026-12-01",
+            ),
+        ]
+    )
+    session.commit()
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.item_count == 1
+
+
+def test_list_warehouses_item_count_zero_for_warehouse_with_no_batches(session):
+    warehouse, _ = add_warehouse(session, name="Пустой склад", address="")
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.item_count == 0
+
+
+# --- D-04: last_receipt (grouped outerjoin, receipt-type only) ---
+
+
+def test_list_warehouses_last_receipt_date_uses_grouped_outerjoin(session, product, warehouse):
+    batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
+    session.add(batch)
+    session.commit()
+
+    earlier = Operation(
+        id=new_id(),
+        type="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        batch_id=batch.id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at="2026-01-01T00:00:00Z",
+        created_by=settings.operator_name,
+    )
+    session.add(earlier)
+    session.commit()
+    later = Operation(
+        id=new_id(),
+        type="receipt",
+        product_id=product.id,
+        qty_delta=6,
+        batch_id=batch.id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at="2026-02-01T00:00:00Z",
+        created_by=settings.operator_name,
+    )
+    session.add(later)
+    session.commit()
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.last_receipt == "2026-02-01T00:00:00Z"
+
+
+def test_list_warehouses_last_receipt_none_when_never_received(session):
+    warehouse, _ = add_warehouse(session, name="Никогда не получавший склад", address="")
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.last_receipt is None
+
+
+def test_list_warehouses_last_receipt_ignores_transfer_only_stock(session, product, warehouse):
+    batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=3)
+    session.add(batch)
+    session.commit()
+
+    transfer_op = Operation(
+        id=new_id(),
+        type="transfer",
+        product_id=product.id,
+        qty_delta=3,
+        batch_id=batch.id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at="2026-03-01T00:00:00Z",
+        created_by=settings.operator_name,
+    )
+    session.add(transfer_op)
+    session.commit()
+
+    rows = list_warehouses(session)["warehouses"]
+
+    row = next(w for w in rows if w.id == warehouse.id)
+    assert row.last_receipt is None
 
 
 # --- Web slice (routes + templates, Plan 08-02) ---

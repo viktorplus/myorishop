@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import new_id, utcnow_iso
-from app.models import Batch, Warehouse
+from app.models import Batch, Operation, Warehouse
 from app.services.pagination import paginate
 
 NAME_REQUIRED_ERROR = "Укажите название склада."
@@ -64,6 +64,36 @@ def list_warehouses(
         rows = sorted(rows, key=lambda w: (w.deleted_at is not None, w.name))
 
     page_rows, total, total_pages = paginate(rows, page)
+
+    warehouse_ids = [w.id for w in page_rows]
+    if warehouse_ids:
+        item_count_rows = session.execute(
+            select(Batch.warehouse_id, func.count(func.distinct(Batch.product_id)))
+            .where(Batch.warehouse_id.in_(warehouse_ids), Batch.quantity > 0)
+            .group_by(Batch.warehouse_id)
+        ).all()
+        item_counts = dict(item_count_rows)
+    else:
+        item_counts = {}
+    for w in page_rows:
+        w.item_count = item_counts.get(w.id, 0)
+
+    if warehouse_ids:
+        last_receipt_rows = session.execute(
+            select(Batch.warehouse_id, func.max(Operation.created_at))
+            .outerjoin(
+                Operation,
+                (Operation.batch_id == Batch.id) & (Operation.type == "receipt"),
+            )
+            .where(Batch.warehouse_id.in_(warehouse_ids))
+            .group_by(Batch.warehouse_id)
+        ).all()
+        last_receipts = dict(last_receipt_rows)
+    else:
+        last_receipts = {}
+    for w in page_rows:
+        w.last_receipt = last_receipts.get(w.id)
+
     return {
         "warehouses": page_rows,
         "total": total,
