@@ -1,15 +1,7 @@
-{# Swap target for add/edit/delete/restore posts — stable id, partial-only
-   responses (D-08: no HX-Redirect anywhere in this flow). #}
+{# Swap target for restore posts — stable id, partial-only responses
+   (D-08: no HX-Redirect anywhere in this flow). Add/edit/delete now live on
+   dedicated pages (Plan 20-02); this partial is a plain picker (D-01). #}
 <div id="warehouse-rows">
-  {% if errors and not error_entry_id %}
-  <div class="error-block">
-    {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
-    {% if form and (form.name or form.address) %}
-    <p class="muted">Не сохранено: {{ form.name }} — {{ form.address }}</p>
-    {% endif %}
-  </div>
-  {% endif %}
-
   {# Sort control (Phase 14, LIST-03, D-06/D-07): default order stays
      active-first-then-name, matching the EXISTING behavior unchanged. #}
   <div class="filter-bar">
@@ -32,6 +24,8 @@
       <tr>
         <th>Название</th>
         <th>Адрес</th>
+        <th>Товаров</th>
+        <th>Последняя приёмка</th>
         <th>Действия</th>
       </tr>
       {# Per-column header-row filters (Phase 14, LIST-02, D-04/D-05). The
@@ -50,6 +44,8 @@
                  hx-include="#warehouse-rows input, #warehouse-rows select"
                  hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
         </th>
+        <th></th>
+        <th></th>
         <th>
           <select name="status"
                   hx-get="/warehouses" hx-trigger="change"
@@ -65,67 +61,25 @@
     <tbody>
       {% for w in warehouses %}
       <tr{% if w.deleted_at %} class="muted"{% endif %}>
-        {% if error_entry_id == w.id and error_form %}
-        {% set row = error_form %}
-        {% else %}
-        {% set row = {"name": w.name, "address": w.address} %}
-        {% endif %}
-        <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ w.id }}"></td>
-        <td><input type="text" name="address" value="{{ row.address or '' }}" form="edit-{{ w.id }}"></td>
+        <td>{{ w.name }}</td>
+        <td>{{ w.address or '' }}</td>
+        <td class="num">{{ w.item_count }}</td>
+        {# w.last_receipt is Operation.created_at (full ISO timestamp, not a
+           date-only string like batch.expiry) — the `local_dt` filter,
+           not `ru_date`, is the established display filter for it
+           (e.g. history_rows.html:79, ledger_rows.html:23). #}
+        <td>{% if w.last_receipt %}{{ w.last_receipt | local_dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
-          <form id="edit-{{ w.id }}"
-                hx-post="/warehouses/{{ w.id }}?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
-                hx-target="#warehouse-rows"
-                hx-swap="outerHTML"
-                hx-disabled-elt="find button">
-            <button type="submit" class="secondary">Сохранить склад</button>
-          </form>
           {% if not w.deleted_at %}
-          <button type="button" class="danger"
-                  hx-post="/warehouses/{{ w.id }}/delete?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
-                  hx-confirm="Удалить склад «{{ w.name }}»? Он будет скрыт из списка выбора, история операций сохранится."
-                  hx-target="#warehouse-rows"
-                  hx-swap="outerHTML">Удалить</button>
+          <a href="/warehouses/{{ w.id }}/edit">Изменить</a>
           {% else %}
           <button type="button" class="secondary"
                   hx-post="/warehouses/{{ w.id }}/restore"
                   hx-target="#warehouse-rows"
                   hx-swap="outerHTML">Восстановить</button>
           {% endif %}
-          {% if error_entry_id == w.id %}
-          {% for message in errors.values() %}<p class="error">{{ message }}</p>{% endfor %}
-          {% endif %}
         </td>
       </tr>
-      {% if stock_blocked_id == w.id %}
-      <tr>
-        <td colspan="3">
-          <p class="error">Нельзя удалить: на складе есть остаток. Переместите или спишите товар, чтобы удалить склад.</p>
-        </td>
-      </tr>
-      {% endif %}
-      {% if warning_id == w.id %}
-      <tr>
-        <td colspan="3">
-          <div class="error-block">
-            <p><strong>Это последний активный склад</strong></p>
-            <p>Удалить «{{ w.name }}» всё равно? Он будет скрыт из списка выбора, история операций сохранится, но в системе временно не останется ни одного активного склада.</p>
-            <div class="form-actions">
-              {# No native hx-confirm stacked on top of this custom warning
-                 (UI-SPEC Interaction Contract) — confirm=1 re-POSTs directly. #}
-              <button type="button" class="danger"
-                      hx-post="/warehouses/{{ w.id }}/delete?list_name={{ name|urlencode }}&list_address={{ address|urlencode }}&list_status={{ status|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
-                      hx-vals='{"confirm": "1"}'
-                      hx-target="#warehouse-rows"
-                      hx-swap="outerHTML">Удалить всё равно</button>
-              {# Client-side dismiss only — no server call, no write. #}
-              <button type="button" class="secondary"
-                      hx-on:click="this.closest('tr').remove()">Отмена</button>
-            </div>
-          </div>
-        </td>
-      </tr>
-      {% endif %}
       {% endfor %}
     </tbody>
   </table>
@@ -134,7 +88,7 @@
     {% if name or address or status %}
     <p class="empty-state muted">Ничего не найдено по заданным фильтрам.</p>
     {% else %}
-    <p class="empty-state">Складов пока нет. Добавьте первый склад выше.</p>
+    <p class="empty-state">Складов пока нет. Добавьте первый склад. <a href="/warehouses/new">Добавить склад</a></p>
     {% endif %}
   {% endif %}
 </div>
