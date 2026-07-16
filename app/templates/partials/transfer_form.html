@@ -59,6 +59,7 @@
             selected_batch_id = _sb.id if _sb else none,
             batch_id_value = _sb.id if _sb else "",
             warehouses = warehouses | default([]),
+            dest_warehouse_id_value = form.dest_warehouse_id or '',
             new_expiry_value = form.new_expiry or '',
             new_comment_value = form.new_comment or '' %}
     {% include "partials/transfer_batch_wrap.html" %}

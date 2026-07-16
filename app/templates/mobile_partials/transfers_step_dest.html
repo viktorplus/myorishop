@@ -37,7 +37,8 @@
       {% if warehouses %}
       {% for w in warehouses %}
       <label class="mobile-card">
-        <input type="radio" name="dest_warehouse_id" value="{{ w.id }}" required>
+        <input type="radio" name="dest_warehouse_id" value="{{ w.id }}"
+               {% if w.id == dest_warehouse_id %}checked{% endif %} required>
         {{ w.name }}
       </label>
       {% endfor %}

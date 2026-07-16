@@ -127,6 +127,7 @@ def transfers_create(
         "code": code,
         "name": name,
         "qty": qty,
+        "dest_warehouse_id": dest_warehouse_id,
         "new_expiry": new_expiry,
         "new_comment": new_comment,
     }

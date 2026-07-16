@@ -26,13 +26,14 @@
   {% if errors is defined and errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
 
   {% set _wh_list = warehouses | default([]) %}
+  {% set _dest_value = dest_warehouse_id_value | default('') %}
   {% if selected_batch_id and _wh_list %}
   <div class="field">
     <label for="dest_warehouse_id">Склад назначения</label>
     <select id="dest_warehouse_id" name="dest_warehouse_id">
       <option value=""></option>
       {% for w in _wh_list %}
-      <option value="{{ w.id }}">{{ w.name }}</option>
+      <option value="{{ w.id }}"{% if w.id == _dest_value %} selected{% endif %}>{{ w.name }}</option>
       {% endfor %}
     </select>
     {% if errors is defined and errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
