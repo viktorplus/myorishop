@@ -684,3 +684,72 @@ def test_transfer_post_same_warehouse_blank_overrides_shows_form_error(
 
     ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
     assert ops == []
+
+
+def test_transfer_batch_pick_shows_override_fields(client, session, stocked_product):
+    """Plan 20-07/UI-SPEC decision 9: the override fields render as soon as a
+    source batch is picked, with the UI-SPEC-locked Russian copy."""
+    source = _source_batch(session, stocked_product, qty=8)
+
+    response = client.get(
+        "/transfers/batch-pick",
+        params={"batch_id": source.id, "code": stocked_product.code},
+    )
+
+    assert response.status_code == 200
+    assert 'name="new_expiry"' in response.text
+    assert 'name="new_comment"' in response.text
+    assert "Новый срок годности" in response.text
+    assert "Новое состояние или комментарий" in response.text
+
+
+def test_transfer_post_same_warehouse_blank_overrides_error_visible_in_form(
+    client, session, stocked_product
+):
+    """Template-level proof that errors.form correctly reaches
+    transfer_form.html's existing error-block slot (complements the
+    route-level assertion in test_transfer_post_same_warehouse_blank_overrides_
+    shows_form_error, which doesn't check the rendering container)."""
+    from app.services.transfers import SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR
+
+    source = _source_batch(session, stocked_product, qty=8)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": source.warehouse_id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'class="error-block"' in response.text
+    assert SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR in response.text
+
+
+def test_transfer_post_422_echoes_typed_override_values(client, session, stocked_product):
+    """The override fields' typed values survive a 422 re-render triggered by
+    an unrelated validation error (invalid qty), not just a successful round
+    trip."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "abc",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+            "new_expiry": "2027-01-01",
+            "new_comment": "повреждена упаковка",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'value="2027-01-01"' in response.text
+    assert 'value="повреждена упаковка"' in response.text
