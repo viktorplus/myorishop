@@ -593,3 +593,17 @@ def test_web_warehouses_row_action_is_edit_link_not_inline_buttons(client, sessi
     assert 'name="name"' not in row
     assert ">Удалить<" not in row
     assert ">Сохранить<" not in row
+
+
+def test_web_warehouses_page_preserves_filter_sort_status_bar_after_restructure(client, session):
+    """RESEARCH Pitfall 1: D-01's restructure must not strip Phase 14's list chrome."""
+    add_warehouse(session, name="Склад для проверки чекбоксов", address="")
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    assert 'class="filter-bar"' in response.text
+    assert 'name="sort"' in response.text
+    assert 'name="name"' in response.text
+    assert 'name="address"' in response.text
+    assert 'name="status"' in response.text
