@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: planning
-last_updated: "2026-07-15T19:18:37.854Z"
-last_activity: 2026-07-15
+stopped_at: Phase 18 context gathered
+last_updated: "2026-07-16T06:27:48.200Z"
+last_activity: 2026-07-15 — v2.0 roadmap created (7 phases, 18-24; 46/46 requirements mapped)
 progress:
   total_phases: 7
   completed_phases: 0
@@ -87,10 +88,12 @@ None yet.
   warning (PRICE-01, shipped v1.1) must keep working unchanged. PROD-05 and the
   Phase 18 roadmap entry both carry this exemption; Phase 18 success criterion 5
   is the PRICE-01 regression guard.
+
 - ℹ️ [Phase 16] Advisory (cosmetic, desktop only): a movement saved with an empty
   comment renders literal `None` in the `/finance` «Комментарий» column (mobile
   cards handle it correctly). Guard the desktop template cell with
   `{{ movement.note or "" }}` when next touching finance templates. Non-blocking.
+
 - ℹ️ [v1.3 close] No `17-SECURITY.md` threat verification or `/gsd-audit-milestone`
   was run before v1.3 shipped (operator chose to skip both). v2.0 touches the same
   money paths; consider restoring the gate at this milestone's close.
@@ -116,9 +119,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15
-Stopped at: v2.0 roadmap created — 7 phases (18-24), 46/46 requirements mapped
-Resume file: None
+Last session: 2026-07-16T06:27:48.186Z
+Stopped at: Phase 18 context gathered
+Resume file: .planning/phases/18-two-price-model-consolidation/18-CONTEXT.md
 
 ## Operator Next Steps
 
