@@ -56,11 +56,21 @@ Every price the operator sees or edits anywhere in the app is one of exactly two
 
 - **D-19: Unify the price labels on ДЦ/ПЦ across every surface.** The same field is currently labelled inconsistently: `catalog_detail.html:21` says "Цена консультанта" while `product_form.html:110` says just "консультант" for the identical `CatalogPrice.consultant_cents`. Criterion 1 ("no third or fourth price field appears anywhere") is a *labelling* criterion as much as a schema one — two prices, two names, everywhere, desktop and mobile.
 
+### Post-research resolutions (added 2026-07-16 after 18-RESEARCH.md)
+
+These five resolve the Open Questions raised by research. Q2/Q4/Q1 were decided by the operator; Q3/Q5 were taken on the research's recommendation. All are binding.
+
+- **D-20: Criterion 1's "desktop and mobile" means "every price surface that *exists* on each platform shows exactly two prices."** (resolves research Q2; operator-decided) Verified: mobile has **no product card and no dictionary page** — there is no `app/routes/mobile_products.py` and no `app/templates/mobile_pages/product_form.html`. Mobile's price surfaces are exactly two: the receipt wizard and the sale wizard. **Do NOT build a mobile product card** — nothing in PROD-05/06/07 asks for it; that is Phase 19 territory. This interpretation must be stated explicitly in the plan so `/gsd-verify-work` does not read criterion 1 literally and fail the phase for a page that never existed.
+- **D-21: `min_sale_cents` may have its label and placement changed — never its field, logic, or PRICE-01 behaviour.** (resolves research Q4; operator-decided) PROD-05's exemption covers the *field*; it does not force the misleading *presentation*. «Минимальная цена продажи» currently sits directly under ДЦ/ПЦ on the card and reads as a third price — the exact confusion the 2026-07-14 report documented, and D-19 makes criterion 1 a labelling criterion. Reword/regroup it as a guardrail setting (e.g. beside the existing «Порог "мало на складе"» threshold at `product_form.html:84`, which is the same *kind* of setting). **Zero logic change. It gets no `data-ref-cents` and no cue** (research Pitfall 8). Criterion 5 untouched.
+- **D-22: Fix `latest_price_for_code` in place — drop the `consumer_cents.is_not(None)` filter.** (resolves research Q1 — CONTEXT.md's discretion item; operator-confirmed) Research verified the filter starves ДЦ in **3 live production callers today**, not just the cue: `app/routes/products.py:147` (card autofill — `fill_cost` at `:149` guards `consultant_cents is not None` but is unreachable because `latest` is already `None`), `app/routes/products.py:244` (the card's reference block silently vanishes), and `app/services/receipts.py:289` (receipt ДЦ prefill starved). Every caller already null-checks each field independently — they were written for the unfiltered contract. Blast radius: **exactly 1 code** (verified), strictly additive — it can only *add* a missing autofill, never remove or alter an existing one. Consequences: update `tests/test_pricing_feature.py:45,52,53`, add a ДЦ-without-ПЦ test, rewrite the now-false docstring ("the returned row always has consumer_cents set") — which also closes the `pricing.py:3-5` Deferred docstring item at zero cost. **Note the autofill improvement in the phase summary** so it is not a surprise.
+- **D-23: The batch-source prefill hint gets D-17's scope clause too.** (resolves research Q3; taken on recommendation) A batch-sourced price is equally sale-scoped (D-15: `Batch.price_cents` stays frozen, nothing writes back), so leaving *«Цена подставлена из партии — можно изменить.»* silent implies its price *might* write back — the exact confusion D-17 exists to kill. **Extract both hint families to named constants** mirroring `app/routes/receipts.py:23`'s existing `CARD_FILL_HINT`. Research verified each string is hard-coded inline at **3 sites**, not 1: card hint at `sales.py:128`, `sales.py:253`, `mobile_sales.py:226`; batch hint at `sales.py:154`, `sales.py:249`, `mobile_sales.py:223`. (CONTEXT.md's cited `sales.py:152-157` range sets **no hint at all** at `:156` — editing only that range would miss all six real sites.) Two constants, six call sites.
+- **D-24: A fresh backup snapshot must exist immediately before the first `0014` run, and the 6 discarded `(code, catalog_cents)` pairs go into the phase summary.** (resolves research Q5; taken on recommendation) D-01's drop is irreversible and `app/services/backup.py`'s `VACUUM INTO` snapshot is its only recovery path. Costs one query; makes an irreversible step auditable without weakening D-01.
+
 ### Claude's Discretion
 
 - Exact Russian wording of the cue badges and the muted "нет справочной цены" hint.
-- Whether the ДЦ/ПЦ reference lookup lands as a new function in `app/services/pricing.py` or a fix to the existing one (D-08 only fixes the *behaviour*, not the location).
-- Whether to correct the two misleading docstrings noted in Deferred while already editing those files.
+- ~~Whether the ДЦ/ПЦ reference lookup lands as a new function or a fix to the existing one~~ — **resolved by D-22: fix in place.**
+- Whether to correct the two misleading docstrings noted in Deferred while already editing those files. (`pricing.py:3-5` is now resolved by D-22; `models.py:260-263` remains discretionary.)
 
 </decisions>
 
@@ -109,6 +119,14 @@ Every price the operator sees or edits anywhere in the app is one of exactly two
 - Alembic with `render_as_batch=True` for SQLite — but see D-03 for why this migration goes native.
 
 ### Integration Points
+
+> ⚠️ **SUPERSEDED — do NOT plan from this list.** `18-RESEARCH.md` §"Authoritative `catalog_cents` Removal Surface" is the authoritative inventory: **36 sites across 17 files**, not the ~12 below. Three concrete corrections you must honour:
+> 1. **The entire mobile receipt wizard is missing below** — `app/routes/mobile_receipts.py` threads `catalog` through 5 endpoints, plus 3 hidden/visible inputs across the wizard steps. `app/routes/receipts.py` (desktop, 8 sites) and `receipt_form.html`'s `hx-include` are missing too. A plan built from the list below ships a mobile wizard that `TypeError`s.
+> 2. **`product_form.html:104-111` must NOT be deleted** (the line below claiming it "goes away" is wrong). That block renders `latest_price` (a `CatalogPrice` row), never `catalog_cents` — and D-19 names line 110 as a relabel target, `products.py:244` already supplies it, and it is the cue's natural `data-ref-cents` source. **Delete only the input at `:77-81`.**
+> 3. **The native-drop precedent is `alembic/versions/0002_catalog_dictionary.py:75`** — it already contains `op.drop_column("products", "catalog_cents")` verbatim, on the exact column. (D-03's cited `0008:121` is a different column in a downgrade; keep it as secondary.) Also: the SQLite runtime is **3.50.4**, not 3.45.1 — D-03 holds either way.
+>
+> The list below remains useful as the *correctly identified* subset. Kept for provenance.
+
 Full `catalog_cents` removal surface (~12 files, verify before editing):
 - `app/models.py:153` (column definition; D-19 comment says "three optional prices" — update to two + the min guardrail)
 - `app/services/catalog.py:106,125,156,211,236,261` (parse / create / update / audit tuple)
