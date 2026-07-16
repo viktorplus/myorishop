@@ -1,0 +1,37 @@
+{# Swap target for the delete button + its warn-then-confirm/stock-blocked
+   states — relocated here from warehouse_rows.html per D-02 (WH-03 guard
+   UI now lives on the edit page, not the list). All hx-post buttons below
+   target this same div with hx-swap="outerHTML" (UI-SPEC decision 7). #}
+<div id="warehouse-delete-wrap">
+  {% if stock_blocked %}
+  <p class="error">Нельзя удалить: на складе есть остаток. Переместите или спишите товар, чтобы удалить склад.</p>
+  <button type="button" class="danger"
+          hx-post="/warehouses/{{ warehouse.id }}/delete"
+          hx-confirm="Удалить склад «{{ warehouse.name }}»? Он будет скрыт из списка выбора, история операций сохранится."
+          hx-target="#warehouse-delete-wrap"
+          hx-swap="outerHTML">Удалить склад</button>
+  {% elif warning %}
+  <div class="error-block">
+    <p><strong>Это последний активный склад</strong></p>
+    <p>Удалить «{{ warehouse.name }}» всё равно? Он будет скрыт из списка выбора, история операций сохранится, но в системе временно не останется ни одного активного склада.</p>
+    <div class="form-actions">
+      {# No native hx-confirm stacked on top of this custom warning
+         (UI-SPEC Interaction Contract) — confirm=1 re-POSTs directly. #}
+      <button type="button" class="danger"
+              hx-post="/warehouses/{{ warehouse.id }}/delete"
+              hx-vals='{"confirm": "1"}'
+              hx-target="#warehouse-delete-wrap"
+              hx-swap="outerHTML">Удалить всё равно</button>
+      {# Client-side dismiss only — no server call, no write. #}
+      <button type="button" class="secondary"
+              hx-on:click="this.closest('.error-block').remove()">Отмена</button>
+    </div>
+  </div>
+  {% else %}
+  <button type="button" class="danger"
+          hx-post="/warehouses/{{ warehouse.id }}/delete"
+          hx-confirm="Удалить склад «{{ warehouse.name }}»? Он будет скрыт из списка выбора, история операций сохранится."
+          hx-target="#warehouse-delete-wrap"
+          hx-swap="outerHTML">Удалить склад</button>
+  {% endif %}
+</div>
