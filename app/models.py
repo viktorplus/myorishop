@@ -147,10 +147,13 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(200))
     # D-19: optional free-text category (datalist suggestions in UI).
     category: Mapped[str | None] = mapped_column(String(100))
-    # D-19: three optional prices, integer cents only (conventions test).
+    # D-19/D-01 (Phase 18, PROD-05): two optional prices (ДЦ cost_cents /
+    # ПЦ sale_cents) + the min_sale_cents guardrail, integer cents only
+    # (conventions test). The third stored price field (dropped via
+    # migration 0014, Pitfall 4) was a write-once stale copy of the
+    # Oriflame list price, superseded by the live catalog_prices reference.
     cost_cents: Mapped[int | None] = mapped_column(Integer)
     sale_cents: Mapped[int | None] = mapped_column(Integer)
-    catalog_cents: Mapped[int | None] = mapped_column(Integer)
     # D-06 (Phase 7): optional minimum sale price guardrail; NULL = no floor
     # set (NO global-settings fallback, unlike low_stock_threshold/stale_days).
     # Checked with is not None, never a bare "or".

@@ -600,7 +600,6 @@ def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
     """D-07: one price_change op per CHANGED field, old snapshotted BEFORE mutation."""
     product.cost_cents = 100
     product.sale_cents = None
-    product.catalog_cents = 300
     session.commit()
 
     result, errors = register_receipt(
@@ -618,12 +617,9 @@ def test_price_sync_updates_card_and_writes_ops(session, product, warehouse):
 
     assert product.cost_cents == 200
     assert product.sale_cents == 500
-    assert product.catalog_cents == 300
 
     ops = session.scalars(select(Operation)).all()
     price_ops = {op.payload["field"]: op for op in ops if op.type == "price_change"}
-    # D-04: receipts no longer sync catalog_cents at all — no price_change op
-    # for it regardless of the card's value.
     assert set(price_ops) == {"cost_cents", "sale_cents"}
     assert price_ops["cost_cents"].payload == {
         "field": "cost_cents",
@@ -645,7 +641,6 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product, warehous
     """PD-8: empty inputs never clear card prices; receipt op still written."""
     product.cost_cents = 100
     product.sale_cents = 250
-    product.catalog_cents = 300
     session.commit()
 
     result, errors = register_receipt(
@@ -663,7 +658,6 @@ def test_price_sync_empty_fields_leave_card_untouched(session, product, warehous
 
     assert product.cost_cents == 100
     assert product.sale_cents == 250
-    assert product.catalog_cents == 300
 
     ops = session.scalars(select(Operation)).all()
     assert [op.type for op in ops] == ["receipt"]
