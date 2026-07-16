@@ -122,3 +122,8 @@ None — `data-ref-cents` renders an `int` from `CatalogPrice` through Jinja2's 
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All 9 claimed created/modified files and this SUMMARY.md verified present on
+disk; both task commits (`8c6f1e5`, `a3ebbf2`) verified present in `git log`.
