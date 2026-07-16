@@ -28,14 +28,14 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Product Pricing & List
 
-- [ ] **PROD-01**: The "Добавить товар" button is removed from the product list (goods receipt already creates new products)
-- [ ] **PROD-02**: Product-list delete action is a text link, not a button
-- [ ] **PROD-03**: Product list groups rows by product code, showing the total quantity summed across all of that code's batches
-- [ ] **PROD-04**: Within a grouped code, individual batches remain visible with their own expiry date and batch name
+- [x] **PROD-01**: The "Добавить товар" button is removed from the product list (goods receipt already creates new products)
+- [x] **PROD-02**: Product-list delete action is a text link, not a button
+- [x] **PROD-03**: Product list groups rows by product code, showing the total quantity summed across all of that code's batches
+- [x] **PROD-04**: Within a grouped code, individual batches remain visible with their own expiry date and batch name
 - [ ] **PROD-05**: Product pricing is reduced to exactly two fields — ДЦ (cost/distributor price) and ПЦ (sale/catalog price); every other product price field is removed or consolidated into one of these two. Explicitly exempt: `Product.min_sale_cents` — it is a guardrail threshold (like the low-stock threshold), not a price the operator reads off the card, and the Phase 7 below-minimum sale warning (PRICE-01, shipped v1.1) must keep working unchanged (operator decision, 2026-07-15)
 - [x] **PROD-06**: Entering a ДЦ or ПЦ that differs from the dictionary's reference price — at any entry point (product card, dictionary, receipt, sale) — shows a color cue: below reference = yellow, above reference = blue
 - [ ] **PROD-07**: ДЦ/ПЦ can be edited at any stage — product card, dictionary, goods receipt, or sale — and the change is saved from wherever it was made
-- [ ] **PROD-08**: Product list shows each product's category and can be filtered by category
+- [x] **PROD-08**: Product list shows each product's category and can be filtered by category
 
 ### Warehouses
 
@@ -109,11 +109,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROD-05 | Phase 18 | Pending |
 | PROD-06 | Phase 18 | Complete |
 | PROD-07 | Phase 18 | Pending |
-| PROD-01 | Phase 19 | Pending |
-| PROD-02 | Phase 19 | Pending |
-| PROD-03 | Phase 19 | Pending |
-| PROD-04 | Phase 19 | Pending |
-| PROD-08 | Phase 19 | Pending |
+| PROD-01 | Phase 19 | Complete |
+| PROD-02 | Phase 19 | Complete |
+| PROD-03 | Phase 19 | Complete |
+| PROD-04 | Phase 19 | Complete |
+| PROD-08 | Phase 19 | Complete |
 | WH-01 | Phase 20 | Pending |
 | WH-02 | Phase 20 | Pending |
 | WH-03 | Phase 20 | Pending |
