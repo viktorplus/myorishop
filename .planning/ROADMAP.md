@@ -148,9 +148,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 20-02-PLAN.md — Warehouse dedicated add/edit/delete routes + templates (WH-02/WH-03, D-01/D-02)
-- [ ] 20-05-PLAN.md — Desktop transfer routes: dest-filter fix, ownership guard, qty echo, override wiring (XFER-01, D-09/D-10/D-11)
-- [ ] 20-06-PLAN.md — Mobile transfer parity: dest-filter fix, override wiring, qty echo (XFER-01, D-09 mirrored)
+- [x] 20-02-PLAN.md — Warehouse dedicated add/edit/delete routes + templates (WH-02/WH-03, D-01/D-02)
+- [x] 20-05-PLAN.md — Desktop transfer routes: dest-filter fix, ownership guard, qty echo, override wiring (XFER-01, D-09/D-10/D-11)
+- [x] 20-06-PLAN.md — Mobile transfer parity: dest-filter fix, override wiring, qty echo (XFER-01, D-09 mirrored)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -248,7 +248,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
 | 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 8/8 | Complete   | 2026-07-16 |
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
-| 20. Warehouses & Batch-Split Transfers | v2.0 | 2/7 | In Progress|  |
+| 20. Warehouses & Batch-Split Transfers | v2.0 | 5/7 | In Progress|  |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 0/TBD | Not started | - |
 | 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
