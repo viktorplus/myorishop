@@ -137,3 +137,8 @@ None — this plan only shrinks existing trust-boundary surface (fewer Form para
 ---
 *Phase: 18-two-price-model-consolidation*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; all task commit hashes
+(`da44efd`, `4117d43`, `133b67b`) verified present in `git log --oneline`.
