@@ -97,3 +97,9 @@ None - no external service configuration required.
 ---
 *Phase: 20-warehouses-batch-split-transfers*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+All files (app/routes/transfers.py, app/routes/writeoffs.py, tests/test_transfers.py,
+tests/test_writeoffs.py, this SUMMARY.md) confirmed present on disk. All task commits
+(ff3fb72, b2f5d2b) and this summary's commit (f23f97b) confirmed present in git log.
