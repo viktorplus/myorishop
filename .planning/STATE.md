@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: executing
 stopped_at: Phase 20 UI-SPEC approved
-last_updated: "2026-07-16T16:06:41.261Z"
-last_activity: 2026-07-16 -- Phase 20 planning complete
+last_updated: "2026-07-16T16:11:26.667Z"
+last_activity: 2026-07-16 -- Phase 20 execution started
 progress:
   total_phases: 7
   completed_phases: 2
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 20 — warehouses-&-batch-split-transfers
+**Current focus:** Phase 20 — warehouses-batch-split-transfers
 
 ## Current Position
 
-Phase: 20
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-16 -- Phase 20 planning complete
+Phase: 20 (warehouses-batch-split-transfers) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 20
+Last activity: 2026-07-16 -- Phase 20 execution started
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 

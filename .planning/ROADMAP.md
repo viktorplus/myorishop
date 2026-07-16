@@ -143,8 +143,8 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 Plans:
 **Wave 1**
 
-- [ ] 20-01-PLAN.md — Warehouse item-count & last-receipt aggregate queries (WH-01, D-03/D-04)
-- [ ] 20-04-PLAN.md — Transfer service: same-warehouse split + override-or-inherit + qty echo (XFER-01, D-05/D-06/D-07/D-08/D-11)
+- [x] 20-01-PLAN.md — Warehouse item-count & last-receipt aggregate queries (WH-01, D-03/D-04)
+- [x] 20-04-PLAN.md — Transfer service: same-warehouse split + override-or-inherit + qty echo (XFER-01, D-05/D-06/D-07/D-08/D-11)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -248,7 +248,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 17. Financial Reports, Export & Dashboard Analytics | v1.3 | 5/5 | Complete   | 2026-07-15 |
 | 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 8/8 | Complete   | 2026-07-16 |
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
-| 20. Warehouses & Batch-Split Transfers | v2.0 | 0/TBD | Not started | - |
+| 20. Warehouses & Batch-Split Transfers | v2.0 | 2/7 | In Progress|  |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 0/TBD | Not started | - |
 | 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
