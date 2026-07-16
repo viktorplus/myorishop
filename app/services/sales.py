@@ -42,6 +42,22 @@ EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чт
 PRODUCT_NOT_FOUND_TMPL = "Товар с кодом „{code}“ не найден. Сначала оприходуйте товар."
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 SAVE_ROLLBACK = "Не удалось сохранить продажу. Попробуйте ещё раз."
+# PROD-07/D-17/D-23: both sale prefill-hint families (card-sourced and
+# batch-sourced) must state the sale-only scope — a sale is a negotiation
+# with one customer, so an edited ПЦ/batch price here is saved to THIS sale
+# only. D-15/D-16 reject any sale->card write-back (it would erode PRICE-01's
+# below-minimum guardrail via the shared confirm=1 bypass), so a silent hint
+# would wrongly imply the price persists. Mirrors receipts.py:23's
+# CARD_FILL_HINT precedent; imported by both app/routes/sales.py and
+# app/routes/mobile_sales.py (the sanctioned public-constant cross-import).
+SALE_CARD_FILL_HINT = (
+    "Цена подставлена из карточки товара — можно изменить; "
+    "изменение сохранится только в этой продаже."
+)
+SALE_BATCH_FILL_HINT = (
+    "Цена подставлена из партии — можно изменить; "
+    "изменение сохранится только в этой продаже."
+)
 # LOT-02/D-04: service-level enforcement that every line has a picked, owned
 # batch. This is the primary guard (the record_operation D-12 guard is only a
 # Plan 05 backstop).
