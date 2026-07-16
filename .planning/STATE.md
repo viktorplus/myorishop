@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
-status: planning
-stopped_at: Phase 20 context gathered
-last_updated: "2026-07-16T15:19:52.861Z"
-last_activity: 2026-07-16
+status: executing
+stopped_at: Phase 20 UI-SPEC approved
+last_updated: "2026-07-16T16:06:41.261Z"
+last_activity: 2026-07-16 -- Phase 20 planning complete
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 9
+  total_plans: 16
   completed_plans: 9
   percent: 29
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 20
 Plan: Not started
-Status: Phase 19 complete — awaiting Phase 20 planning
-Last activity: 2026-07-16
+Status: Ready to execute
+Last activity: 2026-07-16 -- Phase 20 planning complete
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 
@@ -120,9 +120,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-16T15:19:52.835Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-warehouses-batch-split-transfers/20-CONTEXT.md
+Last session: 2026-07-16T15:36:42.643Z
+Stopped at: Phase 20 UI-SPEC approved
+Resume file: .planning/phases/20-warehouses-batch-split-transfers/20-UI-SPEC.md
 
 ## Operator Next Steps
 

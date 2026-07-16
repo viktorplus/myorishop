@@ -141,12 +141,20 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 **Plans**: 7 plans (3 waves)
 
 Plans:
+**Wave 1**
+
 - [ ] 20-01-PLAN.md — Warehouse item-count & last-receipt aggregate queries (WH-01, D-03/D-04)
-- [ ] 20-02-PLAN.md — Warehouse dedicated add/edit/delete routes + templates (WH-02/WH-03, D-01/D-02)
-- [ ] 20-03-PLAN.md — Warehouse list restructure: item-count/last-receipt columns, filter/sort/status preserved (WH-01/02/03)
 - [ ] 20-04-PLAN.md — Transfer service: same-warehouse split + override-or-inherit + qty echo (XFER-01, D-05/D-06/D-07/D-08/D-11)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 20-02-PLAN.md — Warehouse dedicated add/edit/delete routes + templates (WH-02/WH-03, D-01/D-02)
 - [ ] 20-05-PLAN.md — Desktop transfer routes: dest-filter fix, ownership guard, qty echo, override wiring (XFER-01, D-09/D-10/D-11)
 - [ ] 20-06-PLAN.md — Mobile transfer parity: dest-filter fix, override wiring, qty echo (XFER-01, D-09 mirrored)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 20-03-PLAN.md — Warehouse list restructure: item-count/last-receipt columns, filter/sort/status preserved (WH-01/02/03)
 - [ ] 20-07-PLAN.md — Desktop override-field UI + web-level test coverage (XFER-01)
 
 **UI hint**: yes
