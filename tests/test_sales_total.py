@@ -1,18 +1,15 @@
-"""SALE-02/D-08/D-09: red-side coverage for the live running total.
+"""SALE-02/D-08/D-09: coverage for the live running total.
 
 This suite asserts MARKUP and WIRING only — never arithmetic. The project's
 test stack has no JS runtime (no jsdom/Playwright; CLAUDE.md forbids an npm
 toolchain), so `sale-total.js`'s actual sum can only be checked by hand; see
 `.planning/phases/22-sales-page-rebuild/22-VALIDATION.md` §Manual-Only
-Verifications for that checklist. Every test here is strict xfail until
-22-04 lands `app/static/sale-total.js` and the `#sale-total` markup — do NOT
-"fix" the coverage gap by adding a browser test runner; that is an explicit
-CLAUDE.md scope deviation (see this plan's threat register, T-22-SC).
+Verifications for that checklist. Do NOT "fix" the coverage gap by adding a
+browser test runner; that is an explicit CLAUDE.md scope deviation (see this
+plan's threat register, T-22-SC).
 """
 
 import re
-
-import pytest
 
 from app.services.batches import open_batches
 
@@ -22,7 +19,6 @@ def _only_batch(session, product):
     return open_batches(session, product.id)[0].id
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_total_element_renders_under_basket(client):
     """SALE-02: #sale-total renders under the basket with the empty-basket
     defaults and the advisory copy, directly above the existing basket hint."""
@@ -43,7 +39,6 @@ def test_sale_total_element_renders_under_basket(client):
     assert total_index < hint_index
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_total_has_no_name_attribute(client):
     """T-22-03 (security, not style): the browser's advisory money math must
     be structurally incapable of reaching the server. register_sale
@@ -59,7 +54,6 @@ def test_sale_total_has_no_name_attribute(client):
     assert "<textarea" not in element
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_total_script_loaded_on_both_shells(client, mobile_client_factory):
     """22-PATTERNS.md Shared Pattern 7: mobile_base.html does not inherit
     from base.html, so the script tag must be duplicated verbatim on both."""
@@ -75,7 +69,6 @@ def test_sale_total_script_loaded_on_both_shells(client, mobile_client_factory):
     assert '<script src="/static/sale-total.js" defer>' in mobile.text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_total_survives_422_rerender(client, session, stocked_product):
     """Pitfall 2a: a 422 re-render fires no `input` event, so if the element
     were dropped or the listener not re-triggered the total would go stale."""
@@ -96,7 +89,6 @@ def test_sale_total_survives_422_rerender(client, session, stocked_product):
     assert 'id="sale-total"' in response.text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_row_delete_hook_present(client):
     """Pitfall 2b: a plain DOM `.remove()` fires neither an `input` nor an
     htmx event, so the guarded window.recalcSaleTotal() call is the only
@@ -109,7 +101,6 @@ def test_sale_row_delete_hook_present(client):
     assert "window.recalcSaleTotal" in button_html
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-02: live total lands in 22-04")
 def test_sale_total_warning_hidden_by_default(client):
     """D-09: an incomplete total is a typing-in-progress state, not a fault —
     the marker is `.muted` and `hidden`, never `.error` (22-UI-SPEC.md Color

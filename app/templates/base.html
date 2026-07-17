@@ -24,6 +24,10 @@
      parses money for submission (D-13). Standalone file, mirrors the htmx
      vendored-script line above. #}
   <script src="/static/price-cue.js" defer></script>
+  {# SALE-02 / D-08 / D-09: delegated live-total listener — advisory only,
+     the server (register_sale) stays the sole authority on the charged
+     amount. Standalone file, mirrors the price-cue.js line above. #}
+  <script src="/static/sale-total.js" defer></script>
 </head>
 <body>
   <main class="container">

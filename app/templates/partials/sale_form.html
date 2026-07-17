@@ -68,6 +68,20 @@
         {% endif %}
       </tbody>
     </table>
+    {# SALE-02/D-08/D-09: advisory live total, directly under the basket
+       table and INSIDE <form id="sale-form"> so it travels with the
+       #sale-form-wrap outerHTML swap on every POST. No name= and no form
+       control (T-22-03): the browser's money math cannot reach the server —
+       register_sale (services/sales.py:282) recomputes from price[] alone.
+       «Предварительный итог», not «Итого» — the number is advisory and the
+       server can still refuse the whole basket (oversell/below-minimum/
+       missing batch). The warning span is .muted, never .error — an
+       incomplete total is a typing-in-progress state, not a fault. #}
+    <p id="sale-total" class="num">
+      Предварительный итог: <strong id="sale-total-amount">0,00</strong> ·
+      <span id="sale-total-units">0</span> шт.
+      <span id="sale-total-warning" class="muted" hidden>· итог неполный: проверьте кол-во и цену</span>
+    </p>
     <p class="muted">Если товара с таким кодом ещё нет — сначала оприходуйте его.</p>
 
     <div class="form-actions">

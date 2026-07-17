@@ -19,6 +19,12 @@
      not inherit from base.html), so this tag must be duplicated here
      verbatim, same as the htmx line above. #}
   <script src="/static/price-cue.js" defer></script>
+  {# SALE-02 / D-08 / D-09: delegated live-total listener — advisory only,
+     the server (register_sale) stays the sole authority on the charged
+     amount. mobile_base.html is standalone (does not inherit from
+     base.html), so this tag must be duplicated here verbatim, same as the
+     htmx and price-cue lines above. #}
+  <script src="/static/sale-total.js" defer></script>
 </head>
 <body>
   <main class="mobile-shell">

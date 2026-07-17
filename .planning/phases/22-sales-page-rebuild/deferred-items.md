@@ -57,3 +57,22 @@ regression from 22-02. This plan's own 3 files
 
 Not fixed here (out of scope for 22-02, whose `<files>` frontmatter is scoped to those 3
 files). Revisit with a dedicated formatting/lint pass if this debt starts blocking CI.
+
+## 22-04: Repo-wide ruff debt (pre-existing, not introduced by 22-04)
+
+`uv run ruff check .` reports the same 9 pre-existing findings noted under 22-01/22-02
+(E501 line-too-long in `app/routes/dictionary.py`, `app/routes/products.py`,
+`scripts/import_master_pricelist.py` x3, `tests/test_catalog.py`,
+`tests/test_catalogs_feature.py`, `tests/test_export.py`; plus one F401 unused-import in
+`tests/test_mobile_receipts.py`) — none in any file this plan's `files_modified` declares.
+
+This plan's only Python file, `tests/test_sales_total.py`, passes both `uv run ruff check
+tests/test_sales_total.py` and `uv run ruff format --check tests/test_sales_total.py`
+cleanly (verified individually after removing the six xfail markers and the now-unused
+`import pytest`). `app/static/sale-total.js` and the three `.html` templates touched this
+plan are not Python and are outside ruff's scope.
+
+Full suite: `uv run pytest -q` → 834 passed, 15 xfailed, 0 failed (≥808 required).
+
+Not fixed here (out of scope for 22-04). Revisit with a dedicated formatting/lint pass if
+this debt starts blocking CI.
