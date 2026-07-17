@@ -717,3 +717,34 @@ def test_web_customers_page_has_no_standalone_search_input(client):
     assert response.status_code == 200
     assert 'hx-get="/customers/search"' not in response.text
     assert 'name="q"' not in response.text
+
+
+# --- Plan 04: /customers/contact-row (CUST-01..04) ---
+
+
+@pytest.mark.parametrize("kind", ["phone", "telegram", "email", "social"])
+def test_web_contact_row_returns_blank_row_for_each_kind(client, kind):
+    """T-21-02: GET /customers/contact-row?kind=<x> returns a blank .contact-row."""
+    response = client.get("/customers/contact-row", params={"kind": kind})
+    assert response.status_code == 200
+    assert f'name="{kind}[]"' in response.text
+    assert 'class="contact-row"' in response.text
+
+
+def test_web_contact_row_rejects_unknown_kind(client):
+    """T-21-02: an unknown/malicious kind is rejected with 404 before rendering."""
+    response = client.get("/customers/contact-row", params={"kind": "fax"})
+    assert response.status_code == 404
+    assert "fax" not in response.text
+
+    response = client.get("/customers/contact-row", params={"kind": "<script>alert(1)</script>"})
+    assert response.status_code == 404
+    assert "<script" not in response.text
+
+
+def test_web_contact_row_route_declared_before_customer_detail(client):
+    """T-21-20: the literal /customers/contact-row route wins over the
+    parameterized /customers/{customer_id} route."""
+    response = client.get("/customers/contact-row", params={"kind": "phone"})
+    assert response.status_code == 200
+    assert "contact-row" in response.text

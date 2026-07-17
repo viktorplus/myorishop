@@ -1,0 +1,14 @@
+{# ONE customer contact row (D-01/D-03 form-array resolution — 21-04-PLAN.md
+   "Locked-decision reinterpretation"): rows become DB rows only on final
+   submit; row removal is client-side only, no server round-trip — there is
+   no POST /customers/{id}/contacts endpoint this phase. Array-named input
+   ({{ kind }}[]) maps onto list[str] = Form([], alias="...[]") on
+   customer_create/customer_update, mirroring sale_row.html's code[]/qty[]
+   contract. No per-row id: unlike sale_row.html, a contact row has no
+   lookup, no focus hook and no swap target (21-UI-SPEC.md Interaction 4).
+   Autoescape is on by default and is the only HTML-escaping mechanism used
+   here — no escape-bypassing Jinja2 filter is ever applied to `value`. #}
+<div class="contact-row">
+  <input type="text" name="{{ kind }}[]" value="{{ value or '' }}">
+  <button type="button" class="secondary" hx-on:click="this.closest('.contact-row').remove()">Удалить</button>
+</div>

@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import CONTACT_KINDS
 from app.routes import templates
 from app.services.customers import (
     create_customer,
@@ -19,10 +20,11 @@ from app.services.pagination import page_window
 
 router = APIRouter()
 
-# Route order: literal paths (/customers/new) MUST stay declared before the
-# parameterized /customers/{customer_id} routes below. /customers/search was
-# retired (LIST-02/D-04, Pitfall 6) — its filtering folded into /customers'
-# header-row filters; the sale-picker's own /sales/customer-search is separate.
+# Route order: literal paths (/customers/new, /customers/contact-row) MUST
+# stay declared before the parameterized /customers/{customer_id} routes
+# below. /customers/search was retired (LIST-02/D-04, Pitfall 6) — its
+# filtering folded into /customers' header-row filters; the sale-picker's
+# own /sales/customer-search is separate.
 
 
 def _customers_context(
@@ -99,6 +101,20 @@ def customers_list(
 def customer_new(request: Request):
     context = {"customer": None, "errors": {}, "form": {}}
     return templates.TemplateResponse(request, "pages/customer_form.html", context)
+
+
+@router.get("/customers/contact-row")
+def contact_row(request: Request, kind: str = ""):
+    # T-21-02 (CR-01 rule /sales/row already follows with _ROW_ID_RE):
+    # `kind` is interpolated into the rendered input's `name` attribute, so
+    # it is untrusted input and must be validated against the CONTACT_KINDS
+    # allow-list BEFORE rendering. Unlike sale_row's fallback-to-a-fresh-id,
+    # `kind` has no sensible fallback, so an unknown kind is a 404 — nothing
+    # is rendered, matching this file's own unknown-resource convention.
+    if kind not in CONTACT_KINDS:
+        raise HTTPException(status_code=404, detail="unknown contact kind")
+    context = {"kind": kind, "value": ""}
+    return templates.TemplateResponse(request, "partials/contact_row.html", context)
 
 
 @router.post("/customers")
