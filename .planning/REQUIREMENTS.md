@@ -59,14 +59,14 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Customers
 
-- [ ] **CUST-01**: Customer profile supports multiple phone numbers
-- [ ] **CUST-02**: Customer profile supports multiple Telegram handles
-- [ ] **CUST-03**: Customer profile supports multiple email addresses
-- [ ] **CUST-04**: Customer profile supports other social-network profile links (free-form, multiple)
-- [ ] **CUST-05**: Customer profile supports a physical address field
-- [ ] **CUST-06**: Customer profile shows the date of the customer's most recent order
-- [ ] **CUST-07**: Customer profile shows the customer's spend totals for the last month, quarter, and year
-- [ ] **CUST-08**: Customer profile shows the customer's favorite products, ranked by purchase frequency and quantity
+- [x] **CUST-01**: Customer profile supports multiple phone numbers
+- [x] **CUST-02**: Customer profile supports multiple Telegram handles
+- [x] **CUST-03**: Customer profile supports multiple email addresses
+- [x] **CUST-04**: Customer profile supports other social-network profile links (free-form, multiple)
+- [x] **CUST-05**: Customer profile supports a physical address field
+- [x] **CUST-06**: Customer profile shows the date of the customer's most recent order
+- [x] **CUST-07**: Customer profile shows the customer's spend totals for the last month, quarter, and year
+- [x] **CUST-08**: Customer profile shows the customer's favorite products, ranked by purchase frequency and quantity
 
 ### History
 
@@ -118,14 +118,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WH-02 | Phase 20 | Pending |
 | WH-03 | Phase 20 | Pending |
 | XFER-01 | Phase 20 | Complete |
-| CUST-01 | Phase 21 | Pending |
-| CUST-02 | Phase 21 | Pending |
-| CUST-03 | Phase 21 | Pending |
-| CUST-04 | Phase 21 | Pending |
-| CUST-05 | Phase 21 | Pending |
-| CUST-06 | Phase 21 | Pending |
-| CUST-07 | Phase 21 | Pending |
-| CUST-08 | Phase 21 | Pending |
+| CUST-01 | Phase 21 | Complete |
+| CUST-02 | Phase 21 | Complete |
+| CUST-03 | Phase 21 | Complete |
+| CUST-04 | Phase 21 | Complete |
+| CUST-05 | Phase 21 | Complete |
+| CUST-06 | Phase 21 | Complete |
+| CUST-07 | Phase 21 | Complete |
+| CUST-08 | Phase 21 | Complete |
 | SALE-01 | Phase 22 | Pending |
 | SALE-02 | Phase 22 | Pending |
 | SALE-03 | Phase 22 | Pending |
