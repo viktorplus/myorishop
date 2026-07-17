@@ -1,10 +1,11 @@
 ---
 phase: 21
 slug: customer-profiles-purchase-insights
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-17
+reviewed_at: 2026-07-17
 ---
 
 # Phase 21 — UI Design Contract
