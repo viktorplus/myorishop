@@ -582,8 +582,9 @@ def test_web_recent_receipts_oob_row_in_post_response(client, warehouse):
 
 
 def test_web_nav_has_receipts_link(client):
-    """Nav gains the receipts entry: Приход -> /receipts/new."""
-    response = client.get("/")
+    """Phase 24: Приход -> /receipts/new moved from the top nav into the
+    Товары page toolbar (D-01/D-04); verify reachability there instead."""
+    response = client.get("/products")
     assert response.status_code == 200
     assert 'href="/receipts/new"' in response.text
     assert "Приход" in response.text

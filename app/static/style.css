@@ -35,6 +35,21 @@ nav a.active {
   font-weight: 600;
 }
 
+/* Товары toolbar (Phase 24, D-01/D-04/D-05): always-visible two-group
+   action toolbar reusing .form-actions/.button/.muted verbatim. */
+.toolbar {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 a {
   color: #2563eb;
 }

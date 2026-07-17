@@ -286,7 +286,8 @@ def test_web_writeoff_create_ownership_guard_does_not_echo_foreign_batch(
 def test_web_writeoff_reachable_from_nav(client, product):
     """Gap-closure guard: 05-VERIFICATION.md's Gap #1 (unreachable /writeoff
     — no nav entry point anywhere in the rendered UI) must never silently
-    regress; the home page must always link to /writeoff."""
-    response = client.get("/")
+    regress. Phase 24 moved this entry point from the top nav into the
+    Товары page toolbar (D-01/D-04); verify reachability there instead."""
+    response = client.get("/products")
     assert response.status_code == 200
     assert 'href="/writeoff"' in response.text
