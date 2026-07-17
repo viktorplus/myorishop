@@ -404,6 +404,11 @@ def sale_customer_create(
             session, name=name, surname=surname, consultant_number=consultant_number
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-01: rollback FIRST — an unexpected failure may have left the
+        # session needing rollback (e.g. a failed flush/commit); a following
+        # query would otherwise raise an unhandled PendingRollbackError
+        # instead of this graceful 422.
+        session.rollback()
         # WR-02: log so a real bug isn't silently reduced to a generic
         # user-facing message with no server-side trace.
         logger.exception("create_customer failed")
@@ -481,6 +486,11 @@ def sale_customer_mode(
             "errors": {},
         }
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-01: rollback FIRST — an unexpected failure may have left the
+        # session needing rollback (e.g. a failed flush/commit); a following
+        # query would otherwise raise an unhandled PendingRollbackError
+        # instead of this graceful 422.
+        session.rollback()
         # WR-02: log so a real bug isn't silently reduced to a generic
         # user-facing message with no server-side trace.
         logger.exception("customer mode render failed")
@@ -544,6 +554,11 @@ def sale_create(
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-01: rollback FIRST — an unexpected failure may have left the
+        # session needing rollback (e.g. a failed flush/commit); a following
+        # query would otherwise raise an unhandled PendingRollbackError
+        # instead of this graceful 422.
+        session.rollback()
         # WR-02: log so a real bug isn't silently reduced to a generic
         # user-facing message with no server-side trace.
         logger.exception("register_sale failed")
