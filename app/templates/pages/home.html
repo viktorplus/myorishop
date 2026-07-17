@@ -1,17 +1,104 @@
 {% extends "base.html" %}
+{# Главная (DASH-01..05, 23-UI-SPEC.md Interaction 1-4): date/weekday/time,
+   active-catalog countdown (or its empty-state link), the 4-tile metric
+   grid, and a 10-column recent-operations feed. Fed entirely by
+   app.services.dashboard.dashboard_context — no route-side computation.
+   Autoescape only — product/customer names and the catalog number are
+   untrusted-at-rest text (T-23-16); NEVER |safe. #}
 {% block content %}
-<h1>MyOriShop — склад</h1>
+<h1>Главная</h1>
+<p class="muted">{{ weekday }}, {{ date }} · {{ time }}</p>
 
-{% if product %}
-{# D-12/D-17: the walking-skeleton correction form is retired — the
-   authoritative correction path is /corrections and the authoritative
-   full audit trail is /history. Write-off link closes the OPS-01 UI gap
-   (05-VERIFICATION.md Gap #1 / 05-REVIEW.md CR-01): /writeoff had no
-   navigation entry point anywhere in the rendered UI. #}
-<p><a href="/writeoff">Списание</a> · <a href="/corrections">Корректировка остатка</a> · <a href="/history">История операций</a></p>
-
-{% include "partials/ledger_rows.html" %}
+{% if not catalog %}
+<p class="muted">Активный каталог не задан. <a href="/catalogs">Указать номер и дату закрытия</a>.</p>
+{% elif catalog.closed %}
+<p>Каталог <strong>{{ catalog.number }}</strong> — <span class="muted">закрыт</span></p>
+{% elif catalog.close_date %}
+<p>Каталог <strong>{{ catalog.number }}</strong> — осталось дней: <strong>{{ catalog.days_left }}</strong></p>
 {% else %}
-<p>Нет товаров</p>
+<p>Каталог <strong>{{ catalog.number }}</strong></p>
 {% endif %}
+
+{% include "partials/dashboard_tiles.html" %}
+
+<h2>Последние операции</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Когда</th>
+      <th>Тип</th>
+      <th>Код</th>
+      <th>Товар</th>
+      <th>Срок</th>
+      <th class="num">Кол-во</th>
+      <th class="num">Себестоимость</th>
+      <th class="num">Прибыль</th>
+      <th>Покупатель</th>
+      <th>Действие</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if not feed %}
+    <tr>
+      <td colspan="10" class="empty-state muted">Операций пока нет.</td>
+    </tr>
+    {% else %}
+    {% for r in feed %}
+    <tr>
+      <td>{{ r.op.created_at | local_dt }}</td>
+      <td>{{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</td>
+      <td>{{ r.product.code }}</td>
+      <td>{{ r.product.name }}</td>
+      {# Срок: every stock-affecting type except correction (a recount has
+         no batch-shape relevance, 23-UI-SPEC.md Interaction 4). #}
+      <td>
+        {%- if r.op.type != "correction" -%}
+          {%- if r.batch and r.batch.expiry -%}
+          {{ r.batch.expiry | ru_date }}
+          {%- elif r.batch -%}
+          <span class="muted">без срока</span>
+          {%- else -%}
+          <span class="muted">—</span>
+          {%- endif -%}
+        {%- else -%}
+        <span class="muted">—</span>
+        {%- endif -%}
+      </td>
+      {# Кол-во: universal across every type. #}
+      <td class="num">{% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}</td>
+      {# Себестоимость: receipt/sale/return/writeoff only — never correction/transfer. #}
+      <td class="num">
+        {%- if r.op.type in ("receipt", "sale", "return", "writeoff") and r.op.unit_cost_cents is not none -%}
+        {{ r.op.unit_cost_cents | cents }}
+        {%- else -%}
+        <span class="muted">—</span>
+        {%- endif -%}
+      </td>
+      {# Прибыль: sale/return only. #}
+      <td class="num">
+        {%- if r.op.type in ("sale", "return") and r.op.unit_price_cents is not none and r.op.unit_cost_cents is not none -%}
+        {{ ((r.op.unit_price_cents - r.op.unit_cost_cents) * -r.op.qty_delta) | cents }}
+        {%- else -%}
+        <span class="muted">—</span>
+        {%- endif -%}
+      </td>
+      {# Покупатель: sale/return only, «Розница» fallback for walk-in (recent_sales.html idiom). #}
+      <td>
+        {%- if r.op.type in ("sale", "return") -%}
+          {%- if r.customer -%}
+          {{ r.customer.name }} {{ r.customer.surname or '' }}
+          {%- else -%}
+          <span class="muted">Розница</span>
+          {%- endif -%}
+        {%- else -%}
+        <span class="muted">—</span>
+        {%- endif -%}
+      </td>
+      {# Действие: always «Подробнее», linking into /history pre-filtered to this row's type + product (DASH-05 -> HIST-01 handoff). #}
+      <td><a href="/history?type={{ r.op.type }}&product={{ r.product.id }}">Подробнее</a></td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+  </tbody>
+</table>
 {% endblock %}

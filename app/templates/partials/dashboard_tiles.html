@@ -1,0 +1,48 @@
+{# dashboard_tiles.html (DASH-03/DASH-04): the Главная 4-tile metric grid —
+   Сегодня/Неделя/Месяц (period revenue/profit/expense) + Склад (stock
+   valuation). Reuses .metric-grid/.metric-tile/.tile-label verbatim from
+   finance_tiles.html (zero new CSS, 23-UI-SPEC.md). Money is NEVER
+   sign-colored — plain `| cents` in default text color, including a
+   negative net-profit figure (Color rule 1). Expects: metrics (dict with
+   today/week/month, each {revenue_cents, profit_cents, expense_cents}),
+   stock (dict: product_count, cost_value_cents, sale_value_cents,
+   cost_unknown_count, sale_unknown_count) — both always present
+   (dashboard_context never omits them, DASH-02's empty-catalog state does
+   not gate this include). #}
+<div class="metric-grid">
+  <div class="metric-tile">
+    <p class="tile-label">Сегодня</p>
+    <p class="num">Выручка: <strong>{{ metrics.today.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.today.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.today.expense_cents | cents }}</strong></p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Неделя</p>
+    <p class="num">Выручка: <strong>{{ metrics.week.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.week.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.week.expense_cents | cents }}</strong></p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Месяц</p>
+    <p class="num">Выручка: <strong>{{ metrics.month.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.month.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.month.expense_cents | cents }}</strong></p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Склад</p>
+    <p class="num">Товаров в наличии: <strong>{{ stock.product_count }}</strong></p>
+    <p class="num">Стоимость по закупке: <strong>{{ stock.cost_value_cents | cents }}</strong></p>
+    <p class="num">Стоимость по продаже: <strong>{{ stock.sale_value_cents | cents }}</strong></p>
+    {# D-04b (finance_tiles.html precedent): point-in-time cue — this tile ignores the period selector. #}
+    <p class="muted">на текущий момент</p>
+    {% if stock.cost_unknown_count > 0 %}
+    <p class="muted">{{ stock.cost_unknown_count }} товаров без цены закупки — не учтены.</p>
+    {% endif %}
+    {% if stock.sale_unknown_count > 0 %}
+    <p class="muted">{{ stock.sale_unknown_count }} товаров без цены продажи — не учтены.</p>
+    {% endif %}
+  </div>
+</div>
