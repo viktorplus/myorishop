@@ -322,6 +322,36 @@ def test_web_nav_has_reports_link(client):
     assert 'href="/reports"' in response.text
 
 
+def test_web_reports_sales_has_back_link(client):
+    response = client.get("/reports/sales")
+    assert response.status_code == 200
+    assert '<p><a href="/reports">← Назад к отчётам</a></p>' in response.text
+
+
+def test_web_reports_writeoffs_has_back_link(client):
+    response = client.get("/reports/writeoffs")
+    assert response.status_code == 200
+    assert '<p><a href="/reports">← Назад к отчётам</a></p>' in response.text
+
+
+def test_web_reports_stock_has_back_link(client):
+    response = client.get("/reports/stock")
+    assert response.status_code == 200
+    assert '<p><a href="/reports">← Назад к отчётам</a></p>' in response.text
+
+
+def test_web_reports_expiry_has_back_link(client):
+    response = client.get("/reports/expiry")
+    assert response.status_code == 200
+    assert '<p><a href="/reports">← Назад к отчётам</a></p>' in response.text
+
+
+def test_web_reports_products_has_back_link(client):
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+    assert '<p><a href="/reports">← Назад к отчётам</a></p>' in response.text
+
+
 def test_effective_threshold_zero_not_fallback(session, product):
     """RESEARCH/Pitfall 3: an explicit 0 threshold never falls back to global default."""
     product.low_stock_threshold = 0
