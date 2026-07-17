@@ -98,11 +98,14 @@ def test_mobile_home_receipt_feed_card_omits_profit_and_customer(
     response = client.get("/m/")
 
     assert response.status_code == 200
-    body = response.text
-    assert "Прибыль" not in body
-    assert "Покупатель" not in body
-    assert "Кол-во" in body
-    assert "Себестоимость" in body
+    # Scoped to the feed section — the metric tiles above it legitimately
+    # render their own «Прибыль» (Сегодня/Неделя/Месяц), so a whole-body
+    # check would false-negative regardless of the feed card's content.
+    feed_section = response.text.split("<h2>Последние операции</h2>", 1)[1]
+    assert "Прибыль" not in feed_section
+    assert "Покупатель" not in feed_section
+    assert "Кол-во" in feed_section
+    assert "Себестоимость" in feed_section
 
 
 def test_mobile_home_sale_feed_card_shows_profit_and_customer(
@@ -123,6 +126,6 @@ def test_mobile_home_sale_feed_card_shows_profit_and_customer(
     response = client.get("/m/")
 
     assert response.status_code == 200
-    body = response.text
-    assert "Прибыль" in body
-    assert "Покупатель: <span class=\"muted\">Розница</span>" in body
+    feed_section = response.text.split("<h2>Последние операции</h2>", 1)[1]
+    assert "Прибыль" in feed_section
+    assert 'Покупатель: <span class="muted">Розница</span>' in feed_section
