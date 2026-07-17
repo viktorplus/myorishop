@@ -174,11 +174,23 @@ Plans:
 **Plans**: 5 plans in 5 waves (0-4)
 
 Plans:
+**Wave 1**
+
 - [ ] 21-01-PLAN.md — Wave 0: CustomerContact + Customer.address schema, migration 0015, past-dated-sale test fixture
 - [ ] 21-02-PLAN.md — Wave 1: contacts + address service (validation, full-replace, contacts_by_kind)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 21-03-PLAN.md — Wave 2: purchase-insights service (spend windows, favorites ranking, last order date, portability guard)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 21-04-PLAN.md — Wave 3: customer form UI (4 repeatable contact sections, address, /customers/contact-row)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 21-05-PLAN.md — Wave 4: customer detail UI (Контакты, Покупки, Любимые товары) + zero-order and XSS guards
+
 **UI hint**: yes
 
 ### Phase 22: Sales Page Rebuild

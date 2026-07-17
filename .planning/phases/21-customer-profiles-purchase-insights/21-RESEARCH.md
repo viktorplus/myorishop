@@ -608,21 +608,27 @@ class CustomerContact(Base):
 
 **Everything else in this document is `[VERIFIED]`** — read from the codebase, compiled against both dialects, or executed in-session. This is an unusually high-confidence research phase precisely because the answers were all *in the repo*, not on the web.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three were resolved during planning (2026-07-17). Each recommendation below was
+> accepted; see the `RESOLVED:` line under each for where the decision now lives.
 
 1. **Should `CustomerContact.label` ship in this phase?**
    - What we know: CONTEXT lists this as explicitly Claude's discretion. CUST-01..04 ask only for *multiple values per kind*, never for labeled ones.
    - What's unclear: whether the operator wants «рабочий»/«личный» sub-labels.
    - Recommendation: **include the nullable column in the migration, but do not surface it in the UI.** Adding a nullable column later to SQLite is cheap, but a *second* migration for a field we already know might be wanted is churn. Zero UI cost, keeps the form simple, and the column costs nothing if unused. This is the one place where speculative schema is justified — the requirement's own shape (a value that may want a name) predicts it.
+   - **RESOLVED:** recommendation accepted — nullable `label` column ships in migration 0015, no UI surface. Decided in `21-01-PLAN.md` (objective).
 
 2. **Do the CSV export and the `customers.csv` contract need updating for `address`?**
    - What we know: `app/services/export.py:152-169` `stream_customers_csv` hardcodes `header = ["Имя", "Фамилия", "Номер консультанта", "Создан"]` and is described as a *"Full customer profile dump."* `tests/test_export.py:296` round-trips it.
    - What's unclear: Phase 21 has no export requirement, but the docstring's promise ("full profile dump") becomes false the moment address/contacts exist.
    - Recommendation: **out of scope — do not change the export in this phase.** Flag it for the planner to note as a known documentation/behaviour drift. If the planner wants a cheap win, adding `"Адрес"` to the header + `_csv_safe(customer.address or "")` to the row is a 2-line change with one test update — but contacts (a 1-to-many) genuinely do not fit the flat CSV shape and must not be forced in here.
+   - **RESOLVED:** recommendation accepted — export is out of scope and written into `21-01-PLAN.md` / `21-02-PLAN.md` as an explicit do-not-touch. The stale *"full customer profile dump"* docstring is **accepted debt**, recorded in STATE.md Deferred Items for a future phase.
 
 3. **Is `/customers/contact-row` the right route name?**
    - What we know: the precedent is `GET /sales/row` (`routes/sales.py:312`). Route order matters: `routes/customers.py:22-25` warns that literal paths **must** be declared before `/customers/{customer_id}`.
    - Recommendation: `GET /customers/contact-row?kind=phone`, declared **above** `customer_detail`. Otherwise `/customers/{customer_id}` swallows it and the operator gets a 404-shaped surprise. Validate `kind` against `CONTACT_KINDS` and reject unknown values — the kind is interpolated into the rendered input's `name`, so it is untrusted input (the CR-01 rule from `/sales/row`).
+   - **RESOLVED:** recommendation accepted — `GET /customers/contact-row`, declared above `customer_detail`, `kind` allow-listed → 404. Decided in `21-04-PLAN.md` (Task 1), with a line-number acceptance criterion plus `test_web_contact_row_route_declared_before_customer_detail`.
 
 ## Environment Availability
 

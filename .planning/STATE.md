@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-07-17T06:24:18.211Z"
-last_activity: 2026-07-16 -- Phase 20 execution started
+stopped_at: Phase 21 UI-SPEC approved
+last_updated: "2026-07-17T07:22:22.329Z"
+last_activity: 2026-07-17 -- Phase 21 planning complete
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 16
+  total_plans: 21
   completed_plans: 16
   percent: 43
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 20 (warehouses-batch-split-transfers) — EXECUTING
 Plan: 1 of 7
-Status: Executing Phase 20
-Last activity: 2026-07-16 -- Phase 20 execution started
+Status: Ready to execute
+Last activity: 2026-07-17 -- Phase 21 planning complete
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 
@@ -117,12 +117,13 @@ Items acknowledged and carried forward from previous milestone close:
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
 | code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) — **Phase 20 touches transfers.py; close them there** |
 | verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | confirmed_working | 2026-07-14 (phase 15 execution), confirmed by operator 2026-07-15 |
+| doc_drift | `export.py`: `stream_customers_csv` docstring claims a *"Full customer profile dump"* — becomes false once Phase 21 ships address + contacts. Out of scope by design (contacts are 1-to-many and don't fit the flat CSV shape). If `address` is ever added it must go through the existing `_csv_safe`. | acknowledged | 2026-07-17 (phase 21 planning) — accepted debt, close in a future phase |
 
 ## Session Continuity
 
-Last session: 2026-07-17T06:24:18.190Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-customer-profiles-purchase-insights/21-CONTEXT.md
+Last session: 2026-07-17T06:50:04.594Z
+Stopped at: Phase 21 UI-SPEC approved
+Resume file: .planning/phases/21-customer-profiles-purchase-insights/21-UI-SPEC.md
 
 ## Operator Next Steps
 
