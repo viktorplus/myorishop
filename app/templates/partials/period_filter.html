@@ -8,19 +8,23 @@
   <a href="{{ period_action }}?from={{ presets.today.from }}&amp;to={{ presets.today.to }}"
      hx-get="{{ period_action }}?from={{ presets.today.from }}&amp;to={{ presets.today.to }}"
      hx-target="{{ period_target }}" hx-push-url="true"
+     hx-include="{{ period_target }} input, {{ period_target }} select"
      {% if active_preset != "today" %}class="secondary"{% endif %}>Сегодня</a>
   <a href="{{ period_action }}?from={{ presets.week.from }}&amp;to={{ presets.week.to }}"
      hx-get="{{ period_action }}?from={{ presets.week.from }}&amp;to={{ presets.week.to }}"
      hx-target="{{ period_target }}" hx-push-url="true"
+     hx-include="{{ period_target }} input, {{ period_target }} select"
      {% if active_preset != "week" %}class="secondary"{% endif %}>Неделя</a>
   <a href="{{ period_action }}?from={{ presets.month.from }}&amp;to={{ presets.month.to }}"
      hx-get="{{ period_action }}?from={{ presets.month.from }}&amp;to={{ presets.month.to }}"
      hx-target="{{ period_target }}" hx-push-url="true"
+     hx-include="{{ period_target }} input, {{ period_target }} select"
      {% if active_preset != "month" %}class="secondary"{% endif %}>Месяц</a>
 </div>
 
 <form method="get" action="{{ period_action }}"
       hx-get="{{ period_action }}" hx-target="{{ period_target }}" hx-push-url="true"
+      hx-include="{{ period_target }} input, {{ period_target }} select"
       class="filter-bar">
   <div class="field">
     <label for="from">с</label>
