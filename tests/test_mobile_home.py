@@ -1,9 +1,10 @@
-"""Phase 11 Plan 02: /m/ home tile grid (D-03).
+"""Phase 11 Plan 02: /m/ home page (D-03).
 
-Extended Phase 23 Plan 07 (DASH-01..05): the same 10-tile nav grid stays
-FIRST and UNTOUCHED (Pitfall 1 regression guard — see the structural
-ordering test below), with the dashboard_context() content appended below
-it in mobile's own card/2-column layout (D-10).
+Extended Phase 23 Plan 07 (DASH-01..05): dashboard_context() content renders
+below the page heading (D-10). Phase 24 Plan 05 (D-09/D-10/MOB-01) removed
+the old 10-tile nav grid entirely — navigation is now provided by the
+persistent top-docked tab bar in mobile_base.html, inherited by every /m/*
+page including this one.
 """
 
 from sqlalchemy import select
@@ -13,19 +14,18 @@ from app.models import Batch, Warehouse
 from app.routes import mobile_home
 from app.services.ledger import record_operation
 
-EXPECTED_HREFS = [
+EXPECTED_TABBAR_HREFS = [
+    "/m/",
+    "/m/products",
     "/m/sales",
-    "/m/receipts",
-    "/m/search",
-    "/m/writeoff",
-    "/m/corrections",
-    "/m/transfers",
+    "/m/customers",
     "/m/history",
     "/m/reports/expiry",
+    "/m/finance",
 ]
 
 
-def test_mobile_home_renders_all_tiles_in_order(mobile_client_factory):
+def test_mobile_home_renders_tabbar_hrefs_in_order(mobile_client_factory):
     client = mobile_client_factory(mobile_home.router)
     response = client.get("/m/")
 
@@ -34,20 +34,22 @@ def test_mobile_home_renders_all_tiles_in_order(mobile_client_factory):
     assert "<h1>MyOriShop</h1>" in body
     assert "<nav>" not in body
 
-    positions = [body.index(f'href="{href}"') for href in EXPECTED_HREFS]
+    positions = [body.index(f'href="{href}"') for href in EXPECTED_TABBAR_HREFS]
     assert positions == sorted(positions)
 
 
-def test_mobile_home_dashboard_content_is_below_the_untouched_nav_grid(mobile_client_factory):
-    """Pitfall 1 structural regression guard: the 10th nav tile («Экспорт
-    кассы») must textually precede the new «Показатели» heading — dashboard
-    content is provably BELOW the grid, never replacing it."""
+def test_mobile_home_dashboard_content_renders_below_tabbar(mobile_client_factory):
+    """D-09/D-10/D-12 regression guard: the tab bar renders above the
+    «Показатели» heading, the old tile grid is gone, and the removed
+    Экспорт кассы CTA never reappears."""
     client = mobile_client_factory(mobile_home.router)
     response = client.get("/m/")
 
     assert response.status_code == 200
     body = response.text
-    assert body.index('href="/m/finance/report"') < body.index("<h2>Показатели</h2>")
+    assert body.index("mobile-tabbar") < body.index("<h2>Показатели</h2>")
+    assert "mobile-tile-grid" not in body
+    assert "/m/finance/report" not in body
 
 
 def test_mobile_home_empty_catalog_state_renders_link_and_tiles_still_render(mobile_client_factory):
