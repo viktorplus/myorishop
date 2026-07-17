@@ -484,6 +484,31 @@ def test_web_warehouse_edit_unknown_id_404s(client):
     assert response.status_code == 404
 
 
+def test_web_warehouse_edit_soft_deleted_id_404s(client, session):
+    add_warehouse(session, name="Склад А", address="")
+    target, _ = add_warehouse(session, name="Склад на удаление", address="")
+    soft_delete_warehouse(session, target.id, confirm=True)
+
+    response = client.get(f"/warehouses/{target.id}/edit")
+
+    assert response.status_code == 404
+
+
+def test_web_warehouse_update_soft_deleted_id_rejected(client, session):
+    add_warehouse(session, name="Склад А", address="")
+    target, _ = add_warehouse(session, name="Склад на удаление", address="")
+    soft_delete_warehouse(session, target.id, confirm=True)
+
+    response = client.post(
+        f"/warehouses/{target.id}",
+        data={"name": "Переименован после удаления", "address": ""},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+    assert target.name == "Склад на удаление"
+
+
 def test_web_warehouse_create_redirects_to_list(client):
     response = client.post(
         "/warehouses", data={"name": "Новый склад X", "address": ""}, follow_redirects=False
