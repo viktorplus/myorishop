@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
+
+# mobile_finance.py:26 (`from app.routes.reports import _resolve_period`) is
+# the in-repo precedent for a mobile route module importing a private
+# helper from a desktop route module — it licenses this import too.
+from app.routes.sales import _CUSTOMER_MODES
 from app.services.batches import active_warehouses, open_batches
+from app.services.customers import create_customer, customer_search_view, get_customer
 from app.services.pricing import reference_prices_for_code
 from app.services.sales import (
     PRODUCT_NOT_FOUND_TMPL,
@@ -45,6 +51,160 @@ def _acc_context(
 def _warehouse_names(session: Session) -> dict[str, str]:
     """id -> name map so a wizard step can show its own «Склад:» line."""
     return {w.id: w.name for w in active_warehouses(session)}
+
+
+def _m_customer_context(
+    session: Session, mode: str, customer_id: str, form: dict[str, str]
+) -> dict:
+    """Mobile twin of app.routes.sales._customer_context.
+
+    Mirrors that builder's LOGIC only — allow-list `mode` against the
+    imported `_CUSTOMER_MODES` (default "existing"), resolve `selected`
+    via `get_customer` only when mode is "existing" and the id is
+    non-empty, degrade an unresolvable id to "nothing selected" (mirrors
+    `_build_lines`'/`_customer_context`'s batch/customer rule), and
+    return `mode`, `customer_id`, `selected`, `form`.
+
+    Deliberately NOT a direct import of `_customer_context` itself: that
+    builder is bound to the desktop template's echo-field shape, and this
+    partial's echo fields differ (D-04 is full parity, not a shared
+    object). Do not "de-duplicate" the two into one shared helper — it
+    would then have to serve two different templates and would break the
+    moment either one's echo shape changes independently.
+
+    Returns NO "errors" key on purpose (mirrors `_customer_context`):
+    callers own their own errors dict; returning one here would clobber a
+    caller's real errors on merge.
+    """
+    mode = mode if mode in _CUSTOMER_MODES else "existing"
+    selected = None
+    if mode == "existing" and customer_id:
+        selected = get_customer(session, customer_id)
+    return {
+        "mode": mode,
+        "customer_id": selected.id if selected else "",
+        "selected": selected,
+        "form": form,
+    }
+
+
+# Route order: the three literal /m/sales/customer* paths below are
+# declared as literal paths (no {...} segment), matching the desktop
+# module's convention that literal paths precede any parameterized route.
+
+
+@router.get("/m/sales/customer-mode")
+def mobile_sale_customer_mode(
+    request: Request,
+    customer_mode: str = "existing",
+    customer_id: str = "",
+    customer_id_keep: str = "",
+    customer_q: str = "",
+    name: str = "",
+    surname: str = "",
+    consultant_number: str = "",
+    session: Session = Depends(get_session),
+):
+    # SALE-03/D-03: the mode radio's hx-get lands here on every switch.
+    # Coalesce customer_id/customer_id_keep — whichever mode is LEAVING
+    # supplies one of them (the visible hidden input, or the inactive
+    # echo).
+    raw_id = customer_id or customer_id_keep
+    context = {
+        **_m_customer_context(
+            session,
+            customer_mode,
+            raw_id,
+            {
+                "customer_q": customer_q,
+                "name": name,
+                "surname": surname,
+                "consultant_number": consultant_number,
+            },
+        ),
+        "customer_id_keep": raw_id,
+        "errors": {},
+    }
+    return templates.TemplateResponse(request, "mobile_partials/sale_customer.html", context)
+
+
+@router.get("/m/sales/customer-search")
+def mobile_sale_customer_search(
+    request: Request, q: str = "", session: Session = Depends(get_session)
+):
+    # D-05: rows-only partial for the mobile selector's autocomplete
+    # picker. The search backend needs ZERO changes — search_customers
+    # already matches name, surname AND consultant number via the
+    # search_lc shadow column, and Cyrillic folding cannot happen in
+    # SQLite (customers.py:5-7), so it is never reimplemented in SQL here.
+    context = customer_search_view(session, q)
+    return templates.TemplateResponse(request, "mobile_partials/customer_picker.html", context)
+
+
+@router.post("/m/sales/customer")
+def mobile_sale_customer_create(
+    request: Request,
+    name: str = Form(""),
+    surname: str = Form(""),
+    consultant_number: str = Form(""),
+    customer_q: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    # D-05 mirror: inline quick-create from the mobile selector. Reuses
+    # the same create_customer service call as desktop's /sales/customer
+    # — never a raw ORM insert built by hand here, which would skip the
+    # search_lc maintenance and make the new customer permanently
+    # invisible to the autocomplete.
+    try:
+        customer, errors = create_customer(
+            session, name=name, surname=surname, consultant_number=consultant_number
+        )
+    except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-01 (mobile-specific): rollback FIRST — an unexpected failure
+        # may have left the session needing rollback (e.g. a failed
+        # flush/commit); a following query would otherwise raise an
+        # unhandled PendingRollbackError instead of this graceful 422.
+        session.rollback()
+        logger.exception("create_customer failed")
+        context = {
+            **_m_customer_context(
+                session,
+                "new",
+                "",
+                {
+                    "name": name,
+                    "surname": surname,
+                    "consultant_number": consultant_number,
+                    "customer_q": customer_q,
+                },
+            ),
+            "errors": {"quick_create": SAVE_FAILED_ERROR},
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/sale_customer.html", context, status_code=422
+        )
+
+    if errors:
+        context = {
+            **_m_customer_context(
+                session,
+                "new",
+                "",
+                {
+                    "name": name,
+                    "surname": surname,
+                    "consultant_number": consultant_number,
+                    "customer_q": customer_q,
+                },
+            ),
+            "errors": errors,
+        }
+        return templates.TemplateResponse(
+            request, "mobile_partials/sale_customer.html", context, status_code=422
+        )
+
+    context = {**_m_customer_context(session, "existing", customer.id, {}), "errors": {}}
+    return templates.TemplateResponse(request, "mobile_partials/sale_customer.html", context)
 
 
 @router.get("/m/sales")
