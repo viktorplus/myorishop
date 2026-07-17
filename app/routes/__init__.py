@@ -7,6 +7,7 @@ from app.core import format_cents, format_ru_date, iso_to_local
 from app.models import (
     CASH_BUCKET_LABELS,
     CASH_CATEGORIES,
+    CONTACT_KINDS,
     OPERATION_TYPE_LABELS,
     WRITEOFF_REASONS,
 )
@@ -26,3 +27,6 @@ templates.env.globals["OPERATION_TYPE_LABELS"] = OPERATION_TYPE_LABELS
 # or blank-renders. CASH_BUCKETS stays server-side only (never rendered).
 templates.env.globals["CASH_CATEGORIES"] = CASH_CATEGORIES
 templates.env.globals["CASH_BUCKET_LABELS"] = CASH_BUCKET_LABELS
+# Phase 21 (CUST-01..04): expose the RU contact-kind labels for
+# customer_contacts.html the same established way as the constants above.
+templates.env.globals["CONTACT_KINDS"] = CONTACT_KINDS

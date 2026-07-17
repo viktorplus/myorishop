@@ -16,7 +16,9 @@ contacts_* (CUST-01..05), spend_* (CUST-07), favorites_* / last_order
 (CUST-06/08), and portable (the PostgreSQL portability guard).
 """
 
-from datetime import date
+import re
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -924,4 +926,172 @@ def test_web_customer_create_contact_too_long_shows_kind_error(client, session):
     assert response.status_code == 422
     assert "Значение слишком длинное — не больше 300 символов." in response.text
     assert session.scalars(select(Customer).where(Customer.name == "Светлана")).first() is None
+
+
+def test_web_customer_detail_contacts_renders_all_kinds(client, session):
+    """CUST-01..05: every recorded contact + address renders as plain text."""
+    customer, errors = create_customer(
+        session,
+        name="Ирина",
+        surname="",
+        consultant_number="",
+        address="ул. Мира, 5",
+        contacts={
+            "phone": ["+7900111", "+7900222"],
+            "telegram": ["@irina"],
+            "email": ["irina@example.com"],
+            "social": ["vk.com/irina"],
+        },
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "+7900111" in response.text
+    assert "+7900222" in response.text
+    assert "@irina" in response.text
+    assert "irina@example.com" in response.text
+    assert "vk.com/irina" in response.text
+    assert "ул. Мира, 5" in response.text
+    assert "Телефон" in response.text
+    assert "Telegram" in response.text
+    assert "Email" in response.text
+    assert "Соцсеть" in response.text
+
+
+def test_web_customer_detail_contacts_omits_empty_kinds(client, session):
+    """CUST-01..05: a phone-only customer shows no Telegram/Email/Соцсеть labels."""
+    customer, errors = create_customer(
+        session,
+        name="Пётр",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7911000"], "telegram": [], "email": [], "social": []},
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "+7911000" in response.text
+    assert "Telegram:" not in response.text
+    assert "Email:" not in response.text
+    assert "Соцсеть:" not in response.text
+
+
+def test_web_customer_detail_contacts_empty_state(client, session, customer):
+    """CUST-01..05: a bare customer (no contacts, no address) shows the RU empty state."""
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "Контакты не указаны." in response.text
     assert session.scalars(select(CustomerContact)).first() is None
+
+
+def test_web_customer_detail_insights_renders_all_blocks(
+    client, session, customer, product, past_sale
+):
+    """CUST-06..08: a customer with a real order renders every insight block."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso, qty=2, unit_price_cents=1500)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "Последний заказ:" in response.text
+    assert "Потрачено за месяц" in response.text
+    assert "Потрачено за квартал" in response.text
+    assert "Потрачено за год" in response.text
+    assert "С учётом возвратов." in response.text
+    assert "Любимые товары" in response.text
+    assert "Покупок, раз" in response.text
+    assert "Куплено, шт." in response.text
+    assert product.name in response.text
+
+
+def test_web_customer_detail_insights_section_order(client, session, customer, product, past_sale):
+    """CUST-06..08: sections render in the order contacts -> insights -> favorites -> history."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    body = response.text
+    contacts_idx = body.index('id="customer-contacts"')
+    insights_idx = body.index('id="customer-insights"')
+    favorites_idx = body.index('id="customer-favorites"')
+    history_idx = body.index('id="customer-history"')
+    assert contacts_idx < insights_idx < favorites_idx < history_idx
+
+
+def test_web_customer_detail_insights_ru_date_captions_render(
+    client, session, customer, product, past_sale
+):
+    """T-21-24: spend.<period>.start_iso is a str, so | ru_date never TypeErrors."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert re.search(r"с \d{2}\.\d{2}\.\d{4}", response.text)
+
+
+def test_web_customer_detail_empty_profile_renders_zeros(client, customer):
+    """RESEARCH Pitfall 4 / UI-SPEC Interaction 19: a zero-order profile is a
+    first-class state — no section is hidden, no `None` ever reaches the body."""
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    body = response.text
+    assert 'Последний заказ: <span class="muted">—</span>' in body
+    assert body.count("0,00") >= 3
+    assert "С учётом возвратов." in body
+    assert body.count("Покупок пока нет.") >= 2
+    assert 'id="customer-contacts"' in body
+    assert 'id="customer-insights"' in body
+    assert 'id="customer-favorites"' in body
+    assert 'id="customer-history"' in body
+    assert "None" not in body
+
+
+def test_web_contacts_social_renders_escaped_not_as_href(client, session):
+    """T-21-01/T-21-XSS: a stored <script>/javascript: social value renders as
+    escaped, non-clickable plain text on both the detail page and the edit form."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Ксения",
+            "phone[]": [""],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": ["<script>alert(1)</script>", "javascript:alert(document.cookie)"],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    customer = session.scalars(select(Customer).where(Customer.name == "Ксения")).first()
+    assert customer is not None
+
+    detail = client.get(f"/customers/{customer.id}")
+    assert detail.status_code == 200
+    assert "&lt;script&gt;" in detail.text
+    assert "<script>alert(1)</script>" not in detail.text
+    assert 'href="javascript:' not in detail.text
+    assert "javascript:alert(document.cookie)" in detail.text
+
+    edit = client.get(f"/customers/{customer.id}/edit")
+    assert edit.status_code == 200
+    assert "<script>alert(1)</script>" not in edit.text
+
+
+def test_customer_templates_never_use_safe_filter():
+    """T-21-22: mechanical, repo-wide `| safe` ban across every Phase 21 template."""
+    files = [
+        "app/templates/partials/contact_row.html",
+        "app/templates/partials/customer_contacts.html",
+        "app/templates/partials/customer_insights.html",
+        "app/templates/partials/favorite_products.html",
+        "app/templates/pages/customer_form.html",
+        "app/templates/pages/customer_detail.html",
+    ]
+    for path in files:
+        text = Path(path).read_text(encoding="utf-8")
+        assert "| safe" not in text
+        assert "|safe" not in text

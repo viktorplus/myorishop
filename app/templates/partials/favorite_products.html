@@ -1,0 +1,29 @@
+{# Любимые товары ranked table (CUST-08/D-04/D-04a): top-10 favorites,
+   ranked by distinct-order frequency then quantity (app/services/customers.py
+   favorite_products). Capped at 10 by definition — the full list is always
+   shown in one page, no further-navigation chrome of any kind. Product
+   names are NOT links, matching the existing top-selling report.
+   Soft-deleted products get no special treatment: this is a historical
+   ranking, not a list-management surface. #}
+{% if not favorites %}
+<p class="empty-state muted">Покупок пока нет.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Товар</th>
+      <th class="num">Покупок, раз</th>
+      <th class="num">Куплено, шт.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in favorites %}
+    <tr>
+      <td>{{ row.product.name }} ({{ row.product.code }})</td>
+      <td class="num">{{ row.freq }}</td>
+      <td class="num">{{ row.qty }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

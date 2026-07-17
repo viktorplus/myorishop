@@ -12,9 +12,12 @@ from app.routes import templates
 from app.services.customers import (
     contacts_by_kind,
     create_customer,
+    favorite_products,
     get_customer,
+    last_order_date,
     list_customers_view,
     purchase_history,
+    spend_view,
     update_customer,
 )
 from app.services.pagination import page_window
@@ -187,7 +190,17 @@ def customer_detail(request: Request, customer_id: str, session: Session = Depen
     customer = get_customer(session, customer_id)
     if customer is None:
         raise HTTPException(status_code=404, detail="unknown customer")
-    context = {"customer": customer, "history": purchase_history(session, customer_id)}
+    history = purchase_history(session, customer_id)
+    context = {
+        "customer": customer,
+        "history": history,
+        "contacts": contacts_by_kind(session, customer_id),
+        # last_order_date(history) reuses the already-loaded history — never
+        # a seventh query (RESEARCH Pitfall 6).
+        "last_order_iso": last_order_date(history),
+        "spend": spend_view(session, customer_id),
+        "favorites": favorite_products(session, customer_id),
+    }
     return templates.TemplateResponse(request, "pages/customer_detail.html", context)
 
 

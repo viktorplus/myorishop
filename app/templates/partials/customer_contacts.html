@@ -1,0 +1,22 @@
+{# Контакты section body (CUST-01..05, D-01/D-02): a short label -> values
+   list, not a table — no requirement asks for per-contact columns, sorting
+   or actions. Every value is rendered as plain autoescaped text; this is a
+   security control (21-UI-SPEC.md "Security Decision: Contact Values Are
+   NOT Clickable"), not a cosmetic choice — no clickable anchor of any kind
+   wraps a contact value, and no escape-bypassing Jinja2 filter is ever
+   applied to one. Iterates CONTACT_KINDS.items() (the Jinja global) so the
+   order is always phone -> telegram -> email -> social; a kind with zero
+   values is omitted entirely. #}
+{% set has_any = customer.address or (contacts.values() | map('length') | sum > 0) %}
+{% if not has_any %}
+<p class="muted">Контакты не указаны.</p>
+{% else %}
+{% for kind, label in CONTACT_KINDS.items() %}
+{% if contacts[kind] %}
+<p>{{ label }}: {{ contacts[kind] | map(attribute='value') | join(', ') }}</p>
+{% endif %}
+{% endfor %}
+{% if customer.address %}
+<p>Адрес: {{ customer.address }}</p>
+{% endif %}
+{% endif %}
