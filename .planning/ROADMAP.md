@@ -253,9 +253,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 23-03-PLAN.md — dashboard.py service: date/time, catalog countdown, period metrics, stock summary, recent-operations feed (DASH-01/03/04/05, D-07/D-08/D-09)
-- [ ] 23-04-PLAN.md — Desktop /history: top filter-bar relocation, per-type column narrowing, category/customer/date filters (HIST-01..04)
-- [ ] 23-05-PLAN.md — Mobile /m/history: full filter parity + numbered pagination migration (HIST-01..04, D-10)
+- [x] 23-03-PLAN.md — dashboard.py service: date/time, catalog countdown, period metrics, stock summary, recent-operations feed (DASH-01/03/04/05, D-07/D-08/D-09)
+- [x] 23-04-PLAN.md — Desktop /history: top filter-bar relocation, per-type column narrowing, category/customer/date filters (HIST-01..04)
+- [x] 23-05-PLAN.md — Mobile /m/history: full filter parity + numbered pagination migration (HIST-01..04, D-10)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -309,5 +309,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 23. Dashboard & History Rebuild | v2.0 | 2/7 | In Progress|  |
+| 23. Dashboard & History Rebuild | v2.0 | 5/7 | In Progress|  |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
