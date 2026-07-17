@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.models import Customer
 from app.services.batches import open_batches
 from app.services.customers import (
+    ADDRESS_TOO_LONG_ERROR,
     create_customer,
     get_customer,
     list_customers_view,
@@ -185,6 +186,55 @@ def test_past_sale_fixture_seeds_backdated_op(session, past_sale, customer, stoc
 
     rows = purchase_history(session, customer.id)
     assert any(r["op"].id == op.id for r in rows)
+
+
+def test_create_customer_stores_address(session):
+    """CUST-05: create with an address, assert customer.address reads back exactly."""
+    customer, errors = create_customer(
+        session, name="Анна", surname="", consultant_number="", address="ул. Ленина, 10"
+    )
+    assert errors == {}
+    assert customer.address == "ул. Ленина, 10"
+
+
+def test_update_customer_changes_address(session, customer):
+    """CUST-05: update_customer changes an existing customer's address."""
+    updated, errors = update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        address="ул. Мира, 5",
+    )
+    assert errors == {}
+    assert updated.address == "ул. Мира, 5"
+
+
+def test_customer_address_blank_stores_none(session):
+    """CUST-05: address="" and address="   " both store None, not ""."""
+    empty, errors = create_customer(
+        session, name="Анна", surname="", consultant_number="", address=""
+    )
+    assert errors == {}
+    assert empty.address is None
+
+    whitespace, errors = create_customer(
+        session, name="Ольга", surname="", consultant_number="", address="   "
+    )
+    assert errors == {}
+    assert whitespace.address is None
+
+
+def test_customer_address_too_long_rejected(session):
+    """WR-05: a 301-char address is rejected, nothing is written."""
+    before = len(session.scalars(select(Customer)).all())
+    customer, errors = create_customer(
+        session, name="Анна", surname="", consultant_number="", address="a" * 301
+    )
+    assert customer is None
+    assert errors == {"address": ADDRESS_TOO_LONG_ERROR}
+    assert len(session.scalars(select(Customer)).all()) == before
 
 
 # --- Web slice (routes + templates) ---

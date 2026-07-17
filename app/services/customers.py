@@ -19,14 +19,18 @@ NAME_REQUIRED_ERROR = "Укажите имя покупателя."
 NAME_TOO_LONG_ERROR = "Слишком длинное имя."
 SURNAME_TOO_LONG_ERROR = "Слишком длинная фамилия."
 CONSULTANT_NUMBER_TOO_LONG_ERROR = "Слишком длинный номер консультанта."
+# Phase 21 (D-02/CUST-05): copy taken verbatim from 21-UI-SPEC.md.
+ADDRESS_TOO_LONG_ERROR = "Адрес слишком длинный — не больше 300 символов."
 
 # WR-05: mirror the declared column lengths (app/models.py Customer) here so
 # an overlong value is rejected in the service layer instead of silently
 # truncated by SQLite today and hard-erroring after a future PostgreSQL
 # migration (CLAUDE.md: "same models will run on PostgreSQL later").
+# Phase 21: _ADDRESS_MAX_LEN mirrors Customer.address's declared String(300).
 _NAME_MAX_LEN = 200
 _SURNAME_MAX_LEN = 200
 _CONSULTANT_NUMBER_MAX_LEN = 50
+_ADDRESS_MAX_LEN = 300
 
 
 def _search_lc(name: str, surname: str | None, consultant_number: str | None) -> str:
@@ -34,7 +38,7 @@ def _search_lc(name: str, surname: str | None, consultant_number: str | None) ->
 
 
 def _validate_lengths(
-    name: str, surname: str, consultant_number: str, errors: dict[str, str]
+    name: str, surname: str, consultant_number: str, address: str, errors: dict[str, str]
 ) -> None:
     """WR-05: shared max-length guard for create_customer/update_customer."""
     if len(name) > _NAME_MAX_LEN:
@@ -43,6 +47,8 @@ def _validate_lengths(
         errors["surname"] = SURNAME_TOO_LONG_ERROR
     if len(consultant_number) > _CONSULTANT_NUMBER_MAX_LEN:
         errors["consultant_number"] = CONSULTANT_NUMBER_TOO_LONG_ERROR
+    if len(address) > _ADDRESS_MAX_LEN:
+        errors["address"] = ADDRESS_TOO_LONG_ERROR
 
 
 def create_customer(
@@ -51,18 +57,24 @@ def create_customer(
     name: str,
     surname: str,
     consultant_number: str,
+    address: str = "",
 ) -> tuple[Customer | None, dict[str, str]]:
-    """Create a customer; returns (customer, {}) or (None, RU errors)."""
+    """Create a customer; returns (customer, {}) or (None, RU errors).
+
+    address (D-02/CUST-05) defaults to "" so app/routes/sales.py's quick-create
+    call (the sale form's inline new-customer flow) keeps working unchanged.
+    """
     errors: dict[str, str] = {}
     name = name.strip()
     surname = surname.strip()
     consultant_number = consultant_number.strip()
+    address = address.strip()
 
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
         return None, errors
 
-    _validate_lengths(name, surname, consultant_number, errors)
+    _validate_lengths(name, surname, consultant_number, address, errors)
     if errors:
         return None, errors
 
@@ -71,6 +83,7 @@ def create_customer(
         name=name,
         surname=surname or None,
         consultant_number=consultant_number or None,
+        address=address or None,
     )
     customer.search_lc = _search_lc(name, surname, consultant_number)
     session.add(customer)
@@ -85,8 +98,13 @@ def update_customer(
     name: str,
     surname: str,
     consultant_number: str,
+    address: str = "",
 ) -> tuple[Customer | None, dict[str, str]]:
-    """Update a customer's fields and refresh search_lc."""
+    """Update a customer's fields and refresh search_lc.
+
+    address (D-02/CUST-05) defaults to "" — see create_customer's docstring
+    for why the default is load-bearing.
+    """
     customer = session.get(Customer, customer_id)
     if customer is None:
         return None, {"customer": "Покупатель не найден."}
@@ -95,18 +113,20 @@ def update_customer(
     name = name.strip()
     surname = surname.strip()
     consultant_number = consultant_number.strip()
+    address = address.strip()
 
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
         return None, errors
 
-    _validate_lengths(name, surname, consultant_number, errors)
+    _validate_lengths(name, surname, consultant_number, address, errors)
     if errors:
         return None, errors
 
     customer.name = name
     customer.surname = surname or None
     customer.consultant_number = consultant_number or None
+    customer.address = address or None
     customer.search_lc = _search_lc(name, surname, consultant_number)
     session.commit()
     return customer, {}
