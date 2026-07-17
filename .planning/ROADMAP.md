@@ -209,12 +209,23 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 22-01-PLAN.md — Wave 1: desktop red-side tests (SALE-03/04/05/06/07 + SALE-01 regression guard)
 - [ ] 22-02-PLAN.md — Wave 1: live-total, mobile and to_cents parity tests
-- [ ] 22-03-PLAN.md — Wave 2: recent-sales customer column via portable outerjoin (SALE-07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 22-04-PLAN.md — Wave 2: live running total, sale-total.js + both shells (SALE-02)
 - [ ] 22-05-PLAN.md — Wave 2: desktop 3-way customer header + D-10 guard + D-12 chip fix (SALE-03..06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 22-03-PLAN.md — Wave 3: recent-sales customer column via portable outerjoin (SALE-07)
 - [ ] 22-06-PLAN.md — Wave 3: mobile customer selector partials + endpoints (D-04 parity)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 22-07-PLAN.md — Wave 4: mobile basket wiring, customer_id write path, D-11 batch-card fix
 
 **UI hint**: yes

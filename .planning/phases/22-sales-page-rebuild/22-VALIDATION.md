@@ -122,7 +122,7 @@ Zero xfail / zero xpass across the suite is the phase gate, asserted in **22-07-
 ## Wave 0 Requirements
 
 - [ ] `tests/test_sales_total.py` — **new file** (22-02-T1); SALE-02 markup/wiring stubs (`#sale-total` present, script tag on both shells, 422 re-render carries it, delete hook present)
-- [ ] `tests/test_sales.py` — extend (22-01-T1/T2/T3): SALE-03 (4 tests incl. the D-03 round-trip), SALE-04 (chip-survives-422 + picker attrs), SALE-05 (field-set + D-10 422 guard), SALE-07 (3 tests)
+- [ ] `tests/test_sales.py` — extend (22-01-T1/T2/T3), **13 strict-xfail tests total** (matches the retirement ledger above): SALE-03 (5 tests incl. the D-03 round-trip), SALE-04 (2 — chip-survives-422 + picker attrs), SALE-05 (3 — field-set + both sides of the D-10 422 guard), SALE-07 (3 tests). Plus one **non-xfail** extension of the shipped `test_web_sale_page_renders_form` (:570) as the SALE-01 regression guard — an extension, not a new test, and never marked xfail.
 - [ ] `tests/test_mobile_sales.py` — extend (22-02-T2): D-04 (4 tests) + D-11 (batch-card basket preservation)
 - [ ] `tests/test_core.py` — extend `to_cents` coverage (22-02-T3) to pin the accept-set boundaries the JS mirrors (`'1 000'` and `'12abc'` → ValueError; `'12.505'` → 1251)
 - [ ] Framework install: **none needed** — pytest/httpx/TestClient already present and green

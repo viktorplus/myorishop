@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
-status: planning
+status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-07-17T10:22:04.991Z"
-last_activity: 2026-07-17
+last_updated: "2026-07-17T12:06:50.268Z"
+last_activity: 2026-07-17 -- Phase 22 planning complete
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 21
+  total_plans: 28
   completed_plans: 21
   percent: 57
 ---
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 22
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-07-17
+Status: Ready to execute
+Last activity: 2026-07-17 -- Phase 22 planning complete
 
-Progress: [░░░░░░░░░░] 0% (v2.0)
+Progress: [██████░░░░] 57% (v2.0 — 21/28 plans; Phase 22's 7 plans are planned, not yet executed)
 
 ## Performance Metrics
 
@@ -123,10 +123,15 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-17T10:22:04.964Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-sales-page-rebuild/22-CONTEXT.md
+Stopped at: Phase 22 planned — 7 plans in 4 waves, plan-checker passed
+Resume file: .planning/phases/22-sales-page-rebuild/22-01-PLAN.md
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 20` to plan Phase 20: Warehouses & Batch-Split Transfers (WH-01..03, XFER-01)
-- Every v2.0 phase is UI-bearing — `/gsd-ui-phase 20` is available before planning (config `ui_phase: true`)
+- Run `/gsd-execute-phase 22` to execute Phase 22: Sales Page Rebuild (7 plans, 4 waves, SALE-01..07)
+- Phase 22 artifacts complete: RESEARCH, UI-SPEC (approved 6/6), PATTERNS, VALIDATION (nyquist_compliant), 7 PLANs
+- Known gate defect (found 2026-07-17, affects future phases too): `check.decision-coverage-plan` silently reports
+  "no trackable decisions" on this project's CONTEXT.md authoring format (`- **D-01: title**` — title inside the
+  bold; the parser expects `- **D-01:** text`). Phase 21 has the same format and the same vacuous pass, so that
+  gate has been a false green since at least Phase 21. Verify decision coverage by reading `(D-NN)` citations in
+  each plan's `must_haves.truths` — for Phase 22 that check is 12/12 by hand.
