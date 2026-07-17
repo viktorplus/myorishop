@@ -32,6 +32,7 @@ from app.routes import (
     reports,
     returns,
     sales,
+    settings,
     transfers,
     warehouses,
     writeoffs,
@@ -70,6 +71,7 @@ app.include_router(history.router)
 app.include_router(reports.router)
 app.include_router(export.router)
 app.include_router(finance.router)
+app.include_router(settings.router)
 app.include_router(mobile_home.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)

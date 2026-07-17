@@ -265,7 +265,7 @@ def test_web_backup_ignores_client_params(client, tmp_path, monkeypatch):
 
 
 def test_web_nav_has_backup_link(client):
-    response = client.get("/")
+    response = client.get("/settings")
     assert response.status_code == 200
     assert 'href="/backup"' in response.text
     assert "Резервные копии" in response.text

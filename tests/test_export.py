@@ -327,8 +327,8 @@ def test_web_export_ignores_client_params(client, product):
     assert "evil" not in response.text
 
 
-def test_web_nav_has_export_link(client):
-    response = client.get("/")
+def test_web_export_links_embedded_in_backup_page(client):
+    response = client.get("/backup")
     assert response.status_code == 200
-    assert 'href="/export"' in response.text
+    assert 'href="/export/products.csv"' in response.text
     assert "Экспорт" in response.text

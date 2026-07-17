@@ -567,22 +567,23 @@ def test_web_mobile_finance_tiles_net_caveat(client):
 # --- web: navigation entry points to /finance/report (17-05, UAT gap closure) -
 
 
-def test_web_home_nav_links_to_finance_report(client):
-    """GET / (desktop main page) contains the new top-nav item linking
+def test_web_settings_links_to_finance_report(client):
+    """GET /settings (Настройки hub) contains the entry point linking
     straight to /finance/report with export/CSV wording — proving one-hop
-    reachability from the main page (closes 17-UAT.md Test 2)."""
-    response = client.get("/")
+    reachability from Настройки, which is where this entry point moved to
+    (D-08), still closing the original 17-UAT.md Test 2 gap."""
+    response = client.get("/settings")
     assert response.status_code == 200
     assert 'href="/finance/report"' in response.text
     assert "Экспорт кассы" in response.text
 
 
-def test_web_finance_report_nav_item_marks_active(client):
-    """GET /finance/report marks the new nav item active, and NOT the
-    sibling Финансы item (mutually exclusive active state)."""
+def test_web_finance_report_still_reachable_directly(client):
+    """GET /finance/report is still directly reachable — the "active nav
+    item" concept no longer applies since /finance/report left the top
+    nav entirely (D-08)."""
     response = client.get("/finance/report")
     assert response.status_code == 200
-    assert '<a href="/finance/report" class="active">Экспорт кассы</a>' in response.text
 
 
 def test_web_finance_page_report_link_is_button_styled(client):
