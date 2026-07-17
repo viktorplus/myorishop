@@ -604,20 +604,19 @@ def test_web_reports_landing_finance_link_uses_csv_wording(client):
     assert "CSV" in response.text
 
 
-def test_web_mobile_home_tile_links_to_finance_report(client):
-    """GET /m/ (mobile main page) contains a new tile linking straight to
-    /m/finance/report with export/CSV wording — proving one-hop reachability
-    from the mobile main page (closes 17-UAT.md Test 2, mobile side)."""
+def test_web_mobile_home_has_no_finance_report_link(client):
+    """GET /m/ (mobile main page) no longer links to /m/finance/report —
+    Phase 24 Plan 05 (D-12) removed the tile grid this CTA lived in;
+    Экспорт кассы is unreachable from every /m/* page."""
     response = client.get("/m/")
     assert response.status_code == 200
-    assert 'href="/m/finance/report"' in response.text
-    assert "Экспорт кассы" in response.text
+    assert 'href="/m/finance/report"' not in response.text
 
 
-def test_web_mobile_finance_page_report_link_is_button_styled(client):
-    """GET /m/finance's in-page report link is now a .button-styled CTA with
-    CSV wording, not the old bare unstyled inline text link."""
+def test_web_mobile_finance_page_has_no_report_link(client):
+    """GET /m/finance no longer contains the in-page report/CSV-export CTA
+    — Phase 24 Plan 05 (D-12) removed it; the route itself stays registered
+    but unreachable from any /m/* page."""
     response = client.get("/m/finance")
     assert response.status_code == 200
-    assert '<a class="button" href="/m/finance/report">' in response.text
-    assert "CSV" in response.text
+    assert 'href="/m/finance/report"' not in response.text

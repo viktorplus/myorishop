@@ -18,6 +18,16 @@ MOBILE_TILE_PATHS = [
     "/m/reports/expiry",
 ]
 
+MOBILE_TABBAR_PATHS = [
+    "/m/",
+    "/m/products",
+    "/m/sales",
+    "/m/customers",
+    "/m/history",
+    "/m/reports/expiry",
+    "/m/finance",
+]
+
 DESKTOP_NAV_PATHS = [
     "/products",
     "/categories",
@@ -35,11 +45,12 @@ DESKTOP_NAV_PATHS = [
 ]
 
 
-def test_mobile_home_lists_all_eight_tile_hrefs(client):
+def test_mobile_home_lists_seven_tabbar_hrefs(client):
     response = client.get("/m/")
     assert response.status_code == 200
-    for path in MOBILE_TILE_PATHS:
+    for path in MOBILE_TABBAR_PATHS:
         assert path in response.text
+    assert "Настройки" not in response.text
 
 
 def test_mobile_home_itself_is_reachable(client):
