@@ -70,9 +70,9 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### History
 
-- [ ] **HIST-01**: History page has a nested menu to select an operation type first, then shows that type's relevant columns only
-- [ ] **HIST-02**: History supports filtering by product code, date range, customer, and category
-- [ ] **HIST-03**: History supports sorting by its relevant columns
+- [x] **HIST-01**: History page has a nested menu to select an operation type first, then shows that type's relevant columns only
+- [x] **HIST-02**: History supports filtering by product code, date range, customer, and category
+- [x] **HIST-03**: History supports sorting by its relevant columns
 - [ ] **HIST-04**: History results are paginated
 
 ### Reports
@@ -138,9 +138,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-03 | Phase 23 | Pending |
 | DASH-04 | Phase 23 | Pending |
 | DASH-05 | Phase 23 | Pending |
-| HIST-01 | Phase 23 | Pending |
-| HIST-02 | Phase 23 | Pending |
-| HIST-03 | Phase 23 | Pending |
+| HIST-01 | Phase 23 | Complete |
+| HIST-02 | Phase 23 | Complete |
+| HIST-03 | Phase 23 | Complete |
 | HIST-04 | Phase 23 | Pending |
 | NAV-01 | Phase 24 | Pending |
 | NAV-02 | Phase 24 | Pending |

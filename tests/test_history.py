@@ -12,12 +12,15 @@ Requirements -> Test Map): route/e2e tests are prefixed test_web_;
 everything else is service level. Selectors: rows, filters, pagination.
 """
 
+from sqlalchemy import select
+
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import Operation, Product
+from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services.batches import open_batches
 from app.services.ledger import next_seq, record_operation
-from app.services.operations import history_view  # noqa: F401
+from app.services.operations import HISTORY_TYPE_COLUMNS, history_view  # noqa: F401
+from app.services.transfers import register_transfer
 
 
 def _batch_id(session, product):
@@ -301,3 +304,171 @@ def test_web_history_has_code_column_and_return_link(client, session, stocked_pr
     assert "origin_op_id=" in response.text
     assert ">Вернуть<" in response.text
     assert 'id="return-slot"' in response.text
+
+
+# --- HIST-02: customer/category/date-range filters (Plan 02 Task 1) ---
+
+
+def test_history_category_filter_matches_cyrillic_substring(session, stocked_product):
+    """D-27 mirror: a case-insensitive Cyrillic substring match against
+    category_options() narrows rows to that category only."""
+    stocked_product.category = "Уход за лицом"
+    session.commit()
+
+    other_warehouse = Warehouse(id=new_id(), name="Склад 2")
+    session.add(other_warehouse)
+    session.commit()
+    other_product = Product(
+        id=new_id(), code="OTH-001", name="Другой товар", category="Волосы", quantity=0
+    )
+    session.add(other_product)
+    session.commit()
+    other_batch = Batch(
+        id=new_id(), product_id=other_product.id, warehouse_id=other_warehouse.id, quantity=0
+    )
+    session.add(other_batch)
+    session.commit()
+    record_operation(
+        session, type_="receipt", product_id=other_product.id, qty_delta=3, batch_id=other_batch.id
+    )
+
+    result = history_view(session, category="ЛИЦОМ")
+    rows = result["rows"]
+    assert rows
+    assert all(r["product"].id == stocked_product.id for r in rows)
+
+
+def test_history_customer_filter_noop_when_type_not_sale_or_return(
+    session, stocked_product, customer, past_sale
+):
+    """D-05: a customer filter is IGNORED (not applied) for any type other
+    than sale/return, even when a customer string is supplied."""
+    past_sale(customer, stocked_product, created_at=utcnow_iso())
+    batch_id = _batch_id(session, stocked_product)
+    record_operation(
+        session, type_="correction", product_id=stocked_product.id, qty_delta=1, batch_id=batch_id
+    )
+
+    unfiltered = history_view(session, type_filter="correction")
+    with_customer = history_view(
+        session, type_filter="correction", customer="совершенно-неизвестный-покупатель"
+    )
+    assert len(with_customer["rows"]) == len(unfiltered["rows"])
+    assert len(unfiltered["rows"]) > 0
+
+
+def test_history_customer_filter_narrows_sale_type(session, stocked_product, customer, past_sale):
+    """D-05: for type_filter="sale", a customer filter narrows rows to that
+    customer's sale ops only."""
+    other_customer = Customer(id=new_id(), name="Борис", surname="Петров", search_lc="борис петров")
+    session.add(other_customer)
+    session.commit()
+
+    past_sale(customer, stocked_product, created_at=utcnow_iso())
+    past_sale(other_customer, stocked_product, created_at=utcnow_iso())
+
+    result = history_view(session, type_filter="sale", customer="Иванова")
+    rows = result["rows"]
+    assert rows
+    for row in rows:
+        sale_id = row["op"].sale_id
+        assert sale_id is not None
+        sale_customer_id = session.execute(
+            select(Sale.customer_id).where(Sale.id == sale_id)
+        ).scalar_one()
+        assert sale_customer_id == customer.id
+
+
+def test_history_date_range_excludes_outside_half_open_window(session, stocked_product):
+    """Mirrors test_expense_total_half_open_bounds: a row at start_iso is
+    INCLUDED, a row at end_iso is EXCLUDED."""
+    batch_id = _batch_id(session, stocked_product)
+    start_iso = "2026-07-10T00:00:00+00:00"
+    end_iso = "2026-07-11T00:00:00+00:00"
+
+    op_at_start = Operation(
+        id=new_id(),
+        type="correction",
+        product_id=stocked_product.id,
+        qty_delta=1,
+        batch_id=batch_id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at=start_iso,
+        created_by=settings.operator_name,
+    )
+    session.add(op_at_start)
+    op_at_end = Operation(
+        id=new_id(),
+        type="correction",
+        product_id=stocked_product.id,
+        qty_delta=1,
+        batch_id=batch_id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at=end_iso,
+        created_by=settings.operator_name,
+    )
+    session.add(op_at_end)
+    session.commit()
+
+    result = history_view(session, start_iso=start_iso, end_iso=end_iso)
+    ids = {r["op"].id for r in result["rows"]}
+    assert op_at_start.id in ids
+    assert op_at_end.id not in ids
+
+
+# --- HIST-01: HISTORY_TYPE_COLUMNS + Warehouse join + columns key (Plan 02 Task 2) ---
+
+
+def test_history_view_columns_key_for_sale_type(session, stocked_product):
+    """HIST-01: the "columns" key exposes the per-type column tuple for a
+    STOCK_AFFECTING_TYPES member."""
+    result = history_view(session, type_filter="sale")
+    assert result["columns"] == HISTORY_TYPE_COLUMNS["sale"]
+
+
+def test_history_view_columns_key_none_for_no_type_and_audit_type(session, stocked_product):
+    """D-04/Pitfall 5: "columns" is None for no type filter AND for any of
+    the 3 audit types (they fall back to the generic view)."""
+    assert history_view(session)["columns"] is None
+    assert history_view(session, type_filter="price_change")["columns"] is None
+
+
+def test_history_view_rows_carry_warehouse_key(session, stocked_product):
+    """Every row dict gains a "warehouse" key (present, possibly None)."""
+    result = history_view(session)
+    rows = result["rows"]
+    assert rows
+    assert all("warehouse" in r for r in rows)
+
+
+def test_history_view_transfer_rows_carry_own_warehouse(session, product, batch, warehouse):
+    """Pitfall 6 regression: a transfer's two sibling rows are NEVER merged
+    into one "from -> to" record — each row independently carries its OWN
+    batch/warehouse (the side it belongs to)."""
+    dest_warehouse = Warehouse(id=new_id(), name="Склад назначения")
+    session.add(dest_warehouse)
+    session.commit()
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=5, batch_id=batch.id
+    )
+
+    result, errors = register_transfer(
+        session,
+        code=product.code,
+        name=product.name,
+        qty_raw="3",
+        batch_id=batch.id,
+        dest_warehouse_id=dest_warehouse.id,
+    )
+    assert errors == {}
+    assert result is not None
+
+    view = history_view(session, type_filter="transfer")
+    rows = view["rows"]
+    assert len(rows) == 2
+    for row in rows:
+        assert row["batch"] is not None
+        assert row["warehouse"] is not None
+        assert row["warehouse"].id == row["batch"].warehouse_id
