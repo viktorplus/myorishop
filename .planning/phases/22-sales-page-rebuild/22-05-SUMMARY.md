@@ -130,6 +130,11 @@ None - no external service configuration required.
 - Mobile customer-header parity (D-04, `mobile_partials/sale_customer.html`) is explicitly out of this plan's scope (not in `files_modified`) — expected to land in a later wave-2/3 plan per the phase's plan split.
 - Repo-wide `ruff check .` / `ruff format --check .` pre-existing debt (9 lint errors, 47 unformatted files, none in this plan's 3 files) logged in `deferred-items.md`, consistent with 22-01/22-02's prior entries — not this plan's responsibility to fix.
 
+## Self-Check: PASSED
+
+All created/modified files confirmed present on disk; all 4 commit hashes
+(`f627d38`, `46260ae`, `677878a`, `84d1310`) confirmed present in `git log`.
+
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
