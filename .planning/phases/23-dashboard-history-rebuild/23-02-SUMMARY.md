@@ -109,3 +109,10 @@ None — no external service configuration required.
 ---
 *Phase: 23-dashboard-history-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: app/services/operations.py
+- FOUND: tests/test_history.py
+- FOUND: .planning/phases/23-dashboard-history-rebuild/23-02-SUMMARY.md
+- FOUND commits: 0ef283b, 4d9d3cd, eb54577, 292eba8, c4ccf47, a134dc6
