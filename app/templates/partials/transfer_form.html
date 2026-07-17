@@ -54,10 +54,12 @@
        destination-warehouse list via `warehouses`) so the operator's
        choice survives. #}
     {% set _sb = selected_batch if selected_batch is defined else none %}
+    {% set _prefill = prefill_batches | default([]) %}
     {% with code = form.code or "",
-            batches = [_sb] if _sb else [],
+            batches = [_sb] if _sb else _prefill,
             selected_batch_id = _sb.id if _sb else none,
             batch_id_value = _sb.id if _sb else "",
+            show_empty = (not _sb) and (prefill_show_empty | default(false)),
             warehouses = warehouses | default([]),
             dest_warehouse_id_value = form.dest_warehouse_id or '',
             new_expiry_value = form.new_expiry or '',
