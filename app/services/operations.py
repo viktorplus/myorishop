@@ -133,9 +133,7 @@ def history_view(
     stmt = stmt.limit(page_size).offset(page * page_size)
     rows = session.execute(stmt).all()
     return {
-        "rows": [
-            {"op": op, "product": p, "batch": b, "warehouse": w} for op, p, b, w in rows
-        ],
+        "rows": [{"op": op, "product": p, "batch": b, "warehouse": w} for op, p, b, w in rows],
         "page": page,
         "total": total,
         "total_pages": total_pages,

@@ -360,9 +360,7 @@ def test_history_customer_filter_noop_when_type_not_sale_or_return(
 def test_history_customer_filter_narrows_sale_type(session, stocked_product, customer, past_sale):
     """D-05: for type_filter="sale", a customer filter narrows rows to that
     customer's sale ops only."""
-    other_customer = Customer(
-        id=new_id(), name="Борис", surname="Петров", search_lc="борис петров"
-    )
+    other_customer = Customer(id=new_id(), name="Борис", surname="Петров", search_lc="борис петров")
     session.add(other_customer)
     session.commit()
 
