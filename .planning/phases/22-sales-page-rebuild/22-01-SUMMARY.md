@@ -126,3 +126,11 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: tests/test_sales.py
+- FOUND: .planning/phases/22-sales-page-rebuild/deferred-items.md
+- FOUND: .planning/phases/22-sales-page-rebuild/22-01-SUMMARY.md
+- FOUND: commit ef3eefe (test(22-01): add Wave-0 red-side coverage)
+- FOUND: commit f7c6356 (docs(22-01): add plan summary)
