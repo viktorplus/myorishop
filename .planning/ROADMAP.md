@@ -221,8 +221,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 22-03-PLAN.md — Wave 3: recent-sales customer column via portable outerjoin (SALE-07)
-- [ ] 22-06-PLAN.md — Wave 3: mobile customer selector partials + endpoints (D-04 parity)
+- [x] 22-03-PLAN.md — Wave 3: recent-sales customer column via portable outerjoin (SALE-07)
+- [x] 22-06-PLAN.md — Wave 3: mobile customer selector partials + endpoints (D-04 parity)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -290,6 +290,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
-| 22. Sales Page Rebuild | v2.0 | 4/7 | In Progress|  |
+| 22. Sales Page Rebuild | v2.0 | 6/7 | In Progress|  |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
