@@ -10,6 +10,7 @@ from app.db import get_session
 from app.models import CONTACT_KINDS
 from app.routes import templates
 from app.services.customers import (
+    contacts_by_kind,
     create_customer,
     get_customer,
     list_customers_view,
@@ -25,6 +26,19 @@ router = APIRouter()
 # below. /customers/search was retired (LIST-02/D-04, Pitfall 6) — its
 # filtering folded into /customers' header-row filters; the sale-picker's
 # own /sales/customer-search is separate.
+
+
+def _contact_rows(raw: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Pad a raw contacts dict so every CONTACT_KINDS key holds >=1 row.
+
+    UI-SPEC Interaction 6: /customers/new and an edit page for a kind with
+    zero stored/submitted values both render exactly ONE blank .contact-row
+    — a blank input IS the empty state, so customer_form.html never has to
+    special-case a missing/empty key. Shared by customer_new, customer_edit
+    and both POST handlers' 422 re-echo branches (the padding rule must be
+    identical everywhere a `contacts` context key is built).
+    """
+    return {kind: (raw.get(kind) or [""]) for kind in CONTACT_KINDS}
 
 
 def _customers_context(
@@ -99,7 +113,12 @@ def customers_list(
 
 @router.get("/customers/new")
 def customer_new(request: Request):
-    context = {"customer": None, "errors": {}, "form": {}}
+    context = {
+        "customer": None,
+        "errors": {},
+        "form": {},
+        "contacts": _contact_rows({}),
+    }
     return templates.TemplateResponse(request, "pages/customer_form.html", context)
 
 
@@ -154,7 +173,16 @@ def customer_edit(request: Request, customer_id: str, session: Session = Depends
     customer = get_customer(session, customer_id)
     if customer is None:
         raise HTTPException(status_code=404, detail="unknown customer")
-    context = {"customer": customer, "errors": {}, "form": None}
+    raw = {
+        kind: [row.value for row in rows]
+        for kind, rows in contacts_by_kind(session, customer_id).items()
+    }
+    context = {
+        "customer": customer,
+        "errors": {},
+        "form": None,
+        "contacts": _contact_rows(raw),
+    }
     return templates.TemplateResponse(request, "pages/customer_form.html", context)
 
 

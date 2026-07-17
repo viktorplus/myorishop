@@ -748,3 +748,58 @@ def test_web_contact_row_route_declared_before_customer_detail(client):
     response = client.get("/customers/contact-row", params={"kind": "phone"})
     assert response.status_code == 200
     assert "contact-row" in response.text
+
+
+# --- Plan 04: customer_form.html contact sections + address (CUST-01..05) ---
+
+
+def test_web_customer_new_form_renders_one_blank_row_per_kind(client):
+    """UI-SPEC Interaction 6: /customers/new renders one blank row per kind."""
+    response = client.get("/customers/new")
+    assert response.status_code == 200
+    assert 'id="contacts-phone"' in response.text
+    assert 'id="contacts-telegram"' in response.text
+    assert 'id="contacts-email"' in response.text
+    assert 'id="contacts-social"' in response.text
+    assert 'name="address"' in response.text
+    assert response.text.count('name="phone[]"') == 1
+
+
+def test_web_customer_edit_form_renders_stored_contacts(client, session):
+    """A saved customer's contacts/address round-trip onto the edit form."""
+    customer, errors = create_customer(
+        session,
+        name="Анна",
+        surname="",
+        consultant_number="",
+        address="Москва, ул. Ленина 1",
+        contacts={
+            "phone": ["+7900", "+7911"],
+            "telegram": [],
+            "email": [],
+            "social": [],
+        },
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}/edit")
+    assert response.status_code == 200
+    assert "+7900" in response.text
+    assert "+7911" in response.text
+    assert "Москва, ул. Ленина 1" in response.text
+
+
+def test_web_customer_edit_form_renders_blank_row_for_empty_kind(client, session):
+    """A customer with phones but no emails still renders one blank email row."""
+    customer, errors = create_customer(
+        session,
+        name="Ольга",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900"], "telegram": [], "email": [], "social": []},
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}/edit")
+    assert response.status_code == 200
+    assert response.text.count('name="email[]"') == 1
