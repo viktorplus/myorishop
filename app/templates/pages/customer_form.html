@@ -30,6 +30,73 @@
     {% if errors.consultant_number %}<p class="error">{{ errors.consultant_number }}</p>{% endif %}
   </div>
 
+  {# Phase 21 (CUST-01..04, D-01/D-03 form-array resolution): four
+     structurally identical repeatable contact sections. Rows become DB rows
+     only on final submit — no per-row server CRUD (21-04-PLAN.md "Locked-
+     decision reinterpretation"). #}
+  <div class="field">
+    <label>Телефоны <span class="muted">(необязательно)</span></label>
+    <div id="contacts-phone">
+      {% for value in contacts.phone %}
+      {% with kind = "phone", value = value %}{% include "partials/contact_row.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+    <button type="button" class="secondary"
+            hx-get="/customers/contact-row?kind=phone"
+            hx-target="#contacts-phone"
+            hx-swap="beforeend">Добавить телефон</button>
+    {% if errors.phone %}<p class="error">{{ errors.phone }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label>Telegram <span class="muted">(необязательно)</span></label>
+    <div id="contacts-telegram">
+      {% for value in contacts.telegram %}
+      {% with kind = "telegram", value = value %}{% include "partials/contact_row.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+    <button type="button" class="secondary"
+            hx-get="/customers/contact-row?kind=telegram"
+            hx-target="#contacts-telegram"
+            hx-swap="beforeend">Добавить Telegram</button>
+    {% if errors.telegram %}<p class="error">{{ errors.telegram }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label>Email <span class="muted">(необязательно)</span></label>
+    <div id="contacts-email">
+      {% for value in contacts.email %}
+      {% with kind = "email", value = value %}{% include "partials/contact_row.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+    <button type="button" class="secondary"
+            hx-get="/customers/contact-row?kind=email"
+            hx-target="#contacts-email"
+            hx-swap="beforeend">Добавить email</button>
+    {% if errors.email %}<p class="error">{{ errors.email }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label>Соцсети <span class="muted">(необязательно)</span></label>
+    <div id="contacts-social">
+      {% for value in contacts.social %}
+      {% with kind = "social", value = value %}{% include "partials/contact_row.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+    <button type="button" class="secondary"
+            hx-get="/customers/contact-row?kind=social"
+            hx-target="#contacts-social"
+            hx-swap="beforeend">Добавить ссылку</button>
+    {% if errors.social %}<p class="error">{{ errors.social }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="address">Адрес <span class="muted">(необязательно)</span></label>
+    <input type="text" id="address" name="address"
+           value="{% if form %}{{ form.address or '' }}{% elif customer %}{{ customer.address or '' }}{% endif %}">
+    {% if errors.address %}<p class="error">{{ errors.address }}</p>{% endif %}
+  </div>
+
   <div class="form-actions">
     <button type="submit">Сохранить покупателя</button>
     <a href="/customers">Отмена</a>

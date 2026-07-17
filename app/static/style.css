@@ -387,3 +387,19 @@ button.mobile-card.selected:hover { background: #e8effd; }
   padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/* Phase 21 (CUST-01..04): one repeatable contact row (contact_row.html)
+   inside form.stacked-form. .stacked-form input { width: 100% } (above)
+   would otherwise stretch the input to the container's full width and push
+   the remove button out of the row, so flex:1 is required here. Reuses only
+   the existing 8px (sm) spacing token — no new value introduced. */
+.contact-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.contact-row input {
+  flex: 1;
+}

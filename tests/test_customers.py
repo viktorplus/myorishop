@@ -717,3 +717,211 @@ def test_web_customers_page_has_no_standalone_search_input(client):
     assert response.status_code == 200
     assert 'hx-get="/customers/search"' not in response.text
     assert 'name="q"' not in response.text
+
+
+# --- Plan 04: /customers/contact-row (CUST-01..04) ---
+
+
+@pytest.mark.parametrize("kind", ["phone", "telegram", "email", "social"])
+def test_web_contact_row_returns_blank_row_for_each_kind(client, kind):
+    """T-21-02: GET /customers/contact-row?kind=<x> returns a blank .contact-row."""
+    response = client.get("/customers/contact-row", params={"kind": kind})
+    assert response.status_code == 200
+    assert f'name="{kind}[]"' in response.text
+    assert 'class="contact-row"' in response.text
+
+
+def test_web_contact_row_rejects_unknown_kind(client):
+    """T-21-02: an unknown/malicious kind is rejected with 404 before rendering."""
+    response = client.get("/customers/contact-row", params={"kind": "fax"})
+    assert response.status_code == 404
+    assert "fax" not in response.text
+
+    response = client.get("/customers/contact-row", params={"kind": "<script>alert(1)</script>"})
+    assert response.status_code == 404
+    assert "<script" not in response.text
+
+
+def test_web_contact_row_route_declared_before_customer_detail(client):
+    """T-21-20: the literal /customers/contact-row route wins over the
+    parameterized /customers/{customer_id} route."""
+    response = client.get("/customers/contact-row", params={"kind": "phone"})
+    assert response.status_code == 200
+    assert "contact-row" in response.text
+
+
+# --- Plan 04: customer_form.html contact sections + address (CUST-01..05) ---
+
+
+def test_web_customer_new_form_renders_one_blank_row_per_kind(client):
+    """UI-SPEC Interaction 6: /customers/new renders one blank row per kind."""
+    response = client.get("/customers/new")
+    assert response.status_code == 200
+    assert 'id="contacts-phone"' in response.text
+    assert 'id="contacts-telegram"' in response.text
+    assert 'id="contacts-email"' in response.text
+    assert 'id="contacts-social"' in response.text
+    assert 'name="address"' in response.text
+    assert response.text.count('name="phone[]"') == 1
+
+
+def test_web_customer_edit_form_renders_stored_contacts(client, session):
+    """A saved customer's contacts/address round-trip onto the edit form."""
+    customer, errors = create_customer(
+        session,
+        name="Анна",
+        surname="",
+        consultant_number="",
+        address="Москва, ул. Ленина 1",
+        contacts={
+            "phone": ["+7900", "+7911"],
+            "telegram": [],
+            "email": [],
+            "social": [],
+        },
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}/edit")
+    assert response.status_code == 200
+    assert "+7900" in response.text
+    assert "+7911" in response.text
+    assert "Москва, ул. Ленина 1" in response.text
+
+
+def test_web_customer_edit_form_renders_blank_row_for_empty_kind(client, session):
+    """A customer with phones but no emails still renders one blank email row."""
+    customer, errors = create_customer(
+        session,
+        name="Ольга",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900"], "telegram": [], "email": [], "social": []},
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}/edit")
+    assert response.status_code == 200
+    assert response.text.count('name="email[]"') == 1
+
+
+# --- Plan 04 Task 3: form-array binding on create/update (CUST-01..05 save path) ---
+
+
+def test_web_customer_create_with_contacts(client, session):
+    """Pitfall 2 guard: contacts + address survive the NEW-customer path,
+    where no customer.id exists at form-render time."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Мария",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": ["@maria"],
+            "email[]": ["maria@example.com"],
+            "social[]": ["https://vk.com/maria"],
+            "address": "Москва",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/customers"
+
+    created = session.scalars(select(Customer).where(Customer.name == "Мария")).one()
+    assert created.address == "Москва"
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 2
+    assert len(rows["telegram"]) == 1
+    assert len(rows["email"]) == 1
+    assert len(rows["social"]) == 1
+
+
+def test_web_customer_create_with_contacts_discards_blank_rows(client, session):
+    """The always-present blank row never becomes a CustomerContact."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Пётр",
+            "phone[]": ["+7900", "", "  "],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    created = session.scalars(select(Customer).where(Customer.name == "Пётр")).one()
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 1
+
+
+def test_web_customer_update_replaces_contacts(client, session):
+    """Full replace on re-save, not append."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Иван",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    created = session.scalars(select(Customer).where(Customer.name == "Иван")).one()
+    assert len(contacts_by_kind(session, created.id)["phone"]) == 2
+
+    response = client.post(
+        f"/customers/{created.id}",
+        data={
+            "name": "Иван",
+            "phone[]": ["+7922"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 1
+    assert rows["phone"][0].value == "+7922"
+
+
+def test_web_customer_create_invalid_re_echoes_contacts(client):
+    """A 422 never silently drops what the operator typed (UI-SPEC Interaction 9)."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+            "address": "Казань",
+        },
+    )
+    assert response.status_code == 422
+    assert "+7900" in response.text
+    assert "+7911" in response.text
+    assert "Казань" in response.text
+
+
+def test_web_customer_create_contact_too_long_shows_kind_error(client, session):
+    """T-21-04/WR-05: an overlong contact value is rejected, nothing written."""
+    long_value = "9" * 301
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Светлана",
+            "phone[]": [long_value],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+    )
+    assert response.status_code == 422
+    assert "Значение слишком длинное — не больше 300 символов." in response.text
+    assert session.scalars(select(Customer).where(Customer.name == "Светлана")).first() is None
+    assert session.scalars(select(CustomerContact)).first() is None

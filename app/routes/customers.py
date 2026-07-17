@@ -7,8 +7,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import CONTACT_KINDS
 from app.routes import templates
 from app.services.customers import (
+    contacts_by_kind,
     create_customer,
     get_customer,
     list_customers_view,
@@ -19,10 +21,24 @@ from app.services.pagination import page_window
 
 router = APIRouter()
 
-# Route order: literal paths (/customers/new) MUST stay declared before the
-# parameterized /customers/{customer_id} routes below. /customers/search was
-# retired (LIST-02/D-04, Pitfall 6) — its filtering folded into /customers'
-# header-row filters; the sale-picker's own /sales/customer-search is separate.
+# Route order: literal paths (/customers/new, /customers/contact-row) MUST
+# stay declared before the parameterized /customers/{customer_id} routes
+# below. /customers/search was retired (LIST-02/D-04, Pitfall 6) — its
+# filtering folded into /customers' header-row filters; the sale-picker's
+# own /sales/customer-search is separate.
+
+
+def _contact_rows(raw: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Pad a raw contacts dict so every CONTACT_KINDS key holds >=1 row.
+
+    UI-SPEC Interaction 6: /customers/new and an edit page for a kind with
+    zero stored/submitted values both render exactly ONE blank .contact-row
+    — a blank input IS the empty state, so customer_form.html never has to
+    special-case a missing/empty key. Shared by customer_new, customer_edit
+    and both POST handlers' 422 re-echo branches (the padding rule must be
+    identical everywhere a `contacts` context key is built).
+    """
+    return {kind: (raw.get(kind) or [""]) for kind in CONTACT_KINDS}
 
 
 def _customers_context(
@@ -97,8 +113,27 @@ def customers_list(
 
 @router.get("/customers/new")
 def customer_new(request: Request):
-    context = {"customer": None, "errors": {}, "form": {}}
+    context = {
+        "customer": None,
+        "errors": {},
+        "form": {},
+        "contacts": _contact_rows({}),
+    }
     return templates.TemplateResponse(request, "pages/customer_form.html", context)
+
+
+@router.get("/customers/contact-row")
+def contact_row(request: Request, kind: str = ""):
+    # T-21-02 (CR-01 rule /sales/row already follows with _ROW_ID_RE):
+    # `kind` is interpolated into the rendered input's `name` attribute, so
+    # it is untrusted input and must be validated against the CONTACT_KINDS
+    # allow-list BEFORE rendering. Unlike sale_row's fallback-to-a-fresh-id,
+    # `kind` has no sensible fallback, so an unknown kind is a 404 — nothing
+    # is rendered, matching this file's own unknown-resource convention.
+    if kind not in CONTACT_KINDS:
+        raise HTTPException(status_code=404, detail="unknown contact kind")
+    context = {"kind": kind, "value": ""}
+    return templates.TemplateResponse(request, "partials/contact_row.html", context)
 
 
 @router.post("/customers")
@@ -107,16 +142,39 @@ def customer_create(
     name: str = Form(""),
     surname: str = Form(""),
     consultant_number: str = Form(""),
+    address: str = Form(""),
+    phone: list[str] = Form([], alias="phone[]"),
+    telegram: list[str] = Form([], alias="telegram[]"),
+    email: list[str] = Form([], alias="email[]"),
+    social: list[str] = Form([], alias="social[]"),
     session: Session = Depends(get_session),
 ):
+    # D-03 form-array resolution: the form always posts all four keys, the
+    # full-replace shape create_customer's contacts contract expects. No
+    # filtering/stripping here — that lives in the service (thin-route rule,
+    # routes/customers.py:1); _validate_contacts already discards blanks.
+    contacts = {"phone": phone, "telegram": telegram, "email": email, "social": social}
     customer, errors = create_customer(
-        session, name=name, surname=surname, consultant_number=consultant_number
+        session,
+        name=name,
+        surname=surname,
+        consultant_number=consultant_number,
+        address=address,
+        contacts=contacts,
     )
     if errors:
         context = {
             "customer": None,
             "errors": errors,
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+            "form": {
+                "name": name,
+                "surname": surname,
+                "consultant_number": consultant_number,
+                "address": address,
+            },
+            # UI-SPEC Interaction 9: re-echo what the operator typed, one
+            # .contact-row per submitted value — never reset to a blank row.
+            "contacts": _contact_rows(contacts),
         }
         return templates.TemplateResponse(
             request, "pages/customer_form.html", context, status_code=422
@@ -138,7 +196,16 @@ def customer_edit(request: Request, customer_id: str, session: Session = Depends
     customer = get_customer(session, customer_id)
     if customer is None:
         raise HTTPException(status_code=404, detail="unknown customer")
-    context = {"customer": customer, "errors": {}, "form": None}
+    raw = {
+        kind: [row.value for row in rows]
+        for kind, rows in contacts_by_kind(session, customer_id).items()
+    }
+    context = {
+        "customer": customer,
+        "errors": {},
+        "form": None,
+        "contacts": _contact_rows(raw),
+    }
     return templates.TemplateResponse(request, "pages/customer_form.html", context)
 
 
@@ -149,23 +216,39 @@ def customer_update(
     name: str = Form(""),
     surname: str = Form(""),
     consultant_number: str = Form(""),
+    address: str = Form(""),
+    phone: list[str] = Form([], alias="phone[]"),
+    telegram: list[str] = Form([], alias="telegram[]"),
+    email: list[str] = Form([], alias="email[]"),
+    social: list[str] = Form([], alias="social[]"),
     session: Session = Depends(get_session),
 ):
+    contacts = {"phone": phone, "telegram": telegram, "email": email, "social": social}
     customer, errors = update_customer(
         session,
         customer_id,
         name=name,
         surname=surname,
         consultant_number=consultant_number,
+        address=address,
+        contacts=contacts,
     )
     if errors:
         existing = get_customer(session, customer_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="unknown customer")
+        # The submitted arrays win over contacts_by_kind's stored values —
+        # the operator's unsaved edits must not be silently discarded.
         context = {
             "customer": existing,
             "errors": errors,
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+            "form": {
+                "name": name,
+                "surname": surname,
+                "consultant_number": consultant_number,
+                "address": address,
+            },
+            "contacts": _contact_rows(contacts),
         }
         return templates.TemplateResponse(
             request, "pages/customer_form.html", context, status_code=422
