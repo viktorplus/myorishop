@@ -17,7 +17,6 @@ test_web_; everything else is service level.
 
 import re
 
-import pytest
 from sqlalchemy import select
 
 from app.core import new_id
@@ -1431,7 +1430,6 @@ def test_web_sale_new_customer_blank_fields_still_walks_in(client, session, stoc
 # --- Phase 22 Wave 0 (22-01): SALE-07 recent-sales customer column tests ---
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
 def test_web_recent_sales_customer_column(client, session, stocked_product, customer):
     """SALE-07: recent sales renders a «Покупатель» column with the buyer's name."""
     bid = _only_batch(session, stocked_product)
@@ -1454,7 +1452,6 @@ def test_web_recent_sales_customer_column(client, session, stocked_product, cust
     assert "Анна Иванова" in page.text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
 def test_web_recent_sales_retail_label_for_walkin(client, session, stocked_product):
     """D-06: a walk-in row renders muted «Розница» — never blank, never `None`."""
     bid = _only_batch(session, stocked_product)
