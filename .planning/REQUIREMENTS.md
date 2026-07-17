@@ -9,14 +9,14 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Navigation Restructure
 
-- [ ] **NAV-01**: Operator reaches goods receipt (Приход) as a nested action from the Товары page, not a top-level nav item
-- [ ] **NAV-02**: Operator reaches write-off (Списание) as a nested action from the Товары page, not a top-level nav item
-- [ ] **NAV-03**: Operator reaches the reference dictionary (Справочник) from a secondary menu on the Товары page
-- [ ] **NAV-04**: Operator reaches CSV export (Экспорт) from the Резервные копии page
-- [ ] **NAV-05**: Operator reaches Склады from a secondary menu on a new Настройки page
-- [ ] **NAV-06**: Operator reaches Резервные копии from a secondary menu on the Настройки page
-- [ ] **NAV-07**: Operator reaches stock transfer (Перемещение) as a nested action from the product context (Товар)
-- [ ] **NAV-08**: Top-level nav is reduced to the pages that remain first-class (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы, Настройки)
+- [x] **NAV-01**: Operator reaches goods receipt (Приход) as a nested action from the Товары page, not a top-level nav item
+- [x] **NAV-02**: Operator reaches write-off (Списание) as a nested action from the Товары page, not a top-level nav item
+- [x] **NAV-03**: Operator reaches the reference dictionary (Справочник) from a secondary menu on the Товары page
+- [x] **NAV-04**: Operator reaches CSV export (Экспорт) from the Резервные копии page
+- [x] **NAV-05**: Operator reaches Склады from a secondary menu on a new Настройки page
+- [x] **NAV-06**: Operator reaches Резервные копии from a secondary menu on the Настройки page
+- [x] **NAV-07**: Operator reaches stock transfer (Перемещение) as a nested action from the product context (Товар)
+- [x] **NAV-08**: Top-level nav is reduced to the pages that remain first-class (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы, Настройки)
 
 ### Dashboard
 
@@ -77,7 +77,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Reports
 
-- [ ] **RPT-01**: Every report detail page has a "Назад к отчётам" link back to /reports
+- [x] **RPT-01**: Every report detail page has a "Назад к отчётам" link back to /reports
 
 ### Mobile
 
@@ -142,15 +142,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HIST-02 | Phase 23 | Complete |
 | HIST-03 | Phase 23 | Complete |
 | HIST-04 | Phase 23 | Complete |
-| NAV-01 | Phase 24 | Pending |
-| NAV-02 | Phase 24 | Pending |
-| NAV-03 | Phase 24 | Pending |
-| NAV-04 | Phase 24 | Pending |
-| NAV-05 | Phase 24 | Pending |
-| NAV-06 | Phase 24 | Pending |
-| NAV-07 | Phase 24 | Pending |
-| NAV-08 | Phase 24 | Pending |
-| RPT-01 | Phase 24 | Pending |
+| NAV-01 | Phase 24 | Complete |
+| NAV-02 | Phase 24 | Complete |
+| NAV-03 | Phase 24 | Complete |
+| NAV-04 | Phase 24 | Complete |
+| NAV-05 | Phase 24 | Complete |
+| NAV-06 | Phase 24 | Complete |
+| NAV-07 | Phase 24 | Complete |
+| NAV-08 | Phase 24 | Complete |
+| RPT-01 | Phase 24 | Complete |
 | MOB-01 | Phase 24 | Complete |
 
 **Coverage:**
