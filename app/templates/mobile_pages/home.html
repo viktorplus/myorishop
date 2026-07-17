@@ -14,4 +14,106 @@
   <a class="mobile-tile" href="/m/finance">Финансы</a>
   <a class="mobile-tile" href="/m/finance/report">Экспорт кассы</a>
 </div>
+
+{# DASH-01..05 (23-UI-SPEC.md Interaction 5, Pitfall 1): dashboard content is
+   ADDED below the nav grid above, never replacing it — the nav grid stays
+   the only way to reach /m/sales, /m/receipts, etc. until Phase 24's tab
+   bar ships. Same dashboard_context(session, tz_name) data as desktop's
+   pages/home.html, mobile's own card/2-column layout (D-10). #}
+<h2>Показатели</h2>
+<p class="muted">{{ weekday }}, {{ date }} · {{ time }}</p>
+<p>
+  {%- if not catalog -%}
+  Активный каталог не задан. <a href="/catalogs">Указать номер и дату закрытия</a>.
+  {%- elif catalog.closed -%}
+  Каталог <strong>{{ catalog.number }}</strong> — <span class="muted">закрыт</span>
+  {%- elif catalog.close_date -%}
+  Каталог <strong>{{ catalog.number }}</strong> — осталось дней: <strong>{{ catalog.days_left }}</strong>
+  {%- else -%}
+  Каталог <strong>{{ catalog.number }}</strong>
+  {%- endif -%}
+</p>
+
+{# Same 4-tile composition as desktop's partials/dashboard_tiles.html
+   (Сегодня/Неделя/Месяц/Склад), inlined here rather than {% include %}'d —
+   mobile's "own layout" per D-10, not a shared partial. Reuses
+   .metric-grid/.metric-tile/.tile-label verbatim (zero new CSS); the
+   existing `.mobile-shell .metric-grid` override (Phase 17) makes this
+   2-column automatically. #}
+<div class="metric-grid">
+  <div class="metric-tile">
+    <p class="tile-label">Сегодня</p>
+    <p class="num">Выручка: <strong>{{ metrics.today.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.today.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.today.expense_cents | cents }}</strong></p>
+  </div>
+  <div class="metric-tile">
+    <p class="tile-label">Неделя</p>
+    <p class="num">Выручка: <strong>{{ metrics.week.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.week.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.week.expense_cents | cents }}</strong></p>
+  </div>
+  <div class="metric-tile">
+    <p class="tile-label">Месяц</p>
+    <p class="num">Выручка: <strong>{{ metrics.month.revenue_cents | cents }}</strong></p>
+    <p class="num">Прибыль: <strong>{{ metrics.month.profit_cents | cents }}</strong></p>
+    <p class="num">Расход: <strong>{{ metrics.month.expense_cents | cents }}</strong></p>
+  </div>
+  <div class="metric-tile">
+    <p class="tile-label">Склад</p>
+    <p class="num">Товаров в наличии: <strong>{{ stock.product_count }}</strong></p>
+    <p class="num">Стоимость по закупке: <strong>{{ stock.cost_value_cents | cents }}</strong></p>
+    <p class="num">Стоимость по продаже: <strong>{{ stock.sale_value_cents | cents }}</strong></p>
+    <p class="muted">на текущий момент</p>
+    {% if stock.cost_unknown_count > 0 %}
+    <p class="muted">{{ stock.cost_unknown_count }} товаров без цены закупки — не учтены.</p>
+    {% endif %}
+    {% if stock.sale_unknown_count > 0 %}
+    <p class="muted">{{ stock.sale_unknown_count }} товаров без цены продажи — не учтены.</p>
+    {% endif %}
+  </div>
+</div>
+
+<h2>Последние операции</h2>
+{# DASH-05: the 6-type feed, restacked as .mobile-card lines instead of
+   desktop's 10-column table (23-UI-SPEC.md Interaction 4's per-type column
+   list). Per-type field presence mirrors history_cards.html's own
+   `columns` narrowing (Plan 05) — a field's whole line is OMITTED for a
+   type it does not apply to (not rendered with a muted dash), which is how
+   a sale card shows «Прибыль»/«Покупатель» while a receipt card does not.
+   Autoescape only — product/customer names are untrusted-at-rest text
+   (T-23-18); NEVER |safe. #}
+{% set FEED_FIELDS = {
+  "receipt": ("expiry", "qty", "cost"),
+  "sale": ("expiry", "qty", "cost", "profit", "customer"),
+  "return": ("expiry", "qty", "cost", "profit", "customer"),
+  "writeoff": ("expiry", "qty", "cost"),
+  "correction": ("qty",),
+  "transfer": ("expiry", "qty"),
+} %}
+{% if not feed %}
+<p class="empty-state muted">Операций пока нет.</p>
+{% else %}
+{% for r in feed %}
+{% set fields = FEED_FIELDS.get(r.op.type, ()) %}
+<div class="mobile-card">
+  <p class="muted">{{ r.op.created_at | local_dt }} · {{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</p>
+  <p><strong>{{ r.product.name }} ({{ r.product.code }})</strong></p>
+  {%- if "expiry" in fields %}
+  <p class="muted">Срок: {% if r.batch and r.batch.expiry %}{{ r.batch.expiry | ru_date }}{% elif r.batch %}<span class="muted">без срока</span>{% else %}<span class="muted">—</span>{% endif %}</p>
+  {%- endif %}
+  <p class="num">
+    {%- if "qty" in fields -%}
+    Кол-во {% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}
+    {%- endif -%}
+    {%- if "cost" in fields %} · Себестоимость {% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}{% endif -%}
+    {%- if "profit" in fields %} · Прибыль {% if r.op.unit_price_cents is not none and r.op.unit_cost_cents is not none %}{{ ((r.op.unit_price_cents - r.op.unit_cost_cents) * -r.op.qty_delta) | cents }}{% else %}<span class="muted">—</span>{% endif %}{% endif -%}
+  </p>
+  {%- if "customer" in fields %}
+  <p class="muted">Покупатель: {% if r.customer %}{{ r.customer.name }} {{ r.customer.surname or '' }}{% else %}<span class="muted">Розница</span>{% endif %}</p>
+  {%- endif %}
+  <p><a href="/m/history?type={{ r.op.type }}&amp;product={{ r.product.id }}">Подробнее</a></p>
+</div>
+{% endfor %}
+{% endif %}
 {% endblock %}
