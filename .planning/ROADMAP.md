@@ -248,8 +248,8 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 23-01-PLAN.md — ActiveCatalog schema (migration 0016) + service + /catalogs save form (DASH-02, D-01/D-02)
-- [ ] 23-02-PLAN.md — history_view: category/customer/date-range filters + HISTORY_TYPE_COLUMNS + Warehouse join (HIST-01/02/03, D-03..D-06)
+- [x] 23-01-PLAN.md — ActiveCatalog schema (migration 0016) + service + /catalogs save form (DASH-02, D-01/D-02)
+- [x] 23-02-PLAN.md — history_view: category/customer/date-range filters + HISTORY_TYPE_COLUMNS + Warehouse join (HIST-01/02/03, D-03..D-06)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -309,5 +309,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 23. Dashboard & History Rebuild | v2.0 | 0/7 | Planned | - |
+| 23. Dashboard & History Rebuild | v2.0 | 2/7 | In Progress|  |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
