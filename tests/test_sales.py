@@ -17,12 +17,14 @@ test_web_; everything else is service level.
 
 import re
 
+import pytest
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, CatalogPrice, Operation, Product
+from app.models import Batch, CatalogPrice, Operation, Product, Sale
 from app.services import catalog
 from app.services.batches import open_batches
+from app.services.customers import create_customer
 from app.services.ledger import compute_stock, record_operation
 from app.services.sales import lookup_prefill, recent_sales, register_sale  # noqa: F401
 
@@ -43,12 +45,20 @@ def _two_batches(session, product, warehouse, qty_a, qty_b):
     session.add_all([a, b])
     session.commit()
     record_operation(
-        session, type_="receipt", product_id=product.id, qty_delta=qty_a,
-        unit_price_cents=1000, batch_id=a.id,
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=qty_a,
+        unit_price_cents=1000,
+        batch_id=a.id,
     )
     record_operation(
-        session, type_="receipt", product_id=product.id, qty_delta=qty_b,
-        unit_price_cents=1000, batch_id=b.id,
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=qty_b,
+        unit_price_cents=1000,
+        batch_id=b.id,
     )
     return a, b
 
@@ -67,10 +77,39 @@ def _batch(session, product, warehouse, qty, expiry=None, price=None, comment=No
     session.add(b)
     session.commit()
     record_operation(
-        session, type_="receipt", product_id=product.id, qty_delta=qty,
-        unit_price_cents=price if price is not None else 1000, batch_id=b.id,
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=qty,
+        unit_price_cents=price if price is not None else 1000,
+        batch_id=b.id,
     )
     return b
+
+
+def _input_tag(html: str, name: str) -> str | None:
+    """Return the full <input ...> tag whose name= attribute matches `name`.
+
+    Order-independent (unlike a fixed 'name="X" value="Y"' substring check):
+    the shipped markup does not guarantee attribute order.
+    """
+    match = re.search(rf'<input[^>]*\bname="{re.escape(name)}"[^>]*>', html)
+    return match.group(0) if match else None
+
+
+def _input_value(html: str, name: str) -> str | None:
+    """Return the value="..." of the <input name="..."> tag, or None if absent."""
+    tag = _input_tag(html, name)
+    if tag is None:
+        return None
+    value_match = re.search(r'value="([^"]*)"', tag)
+    return value_match.group(1) if value_match else None
+
+
+def _tag_by_id(html: str, element_id: str) -> str | None:
+    """Return the full opening tag whose id= attribute matches `element_id`."""
+    match = re.search(rf'<[a-zA-Z]+[^>]*\bid="{re.escape(element_id)}"[^>]*>', html)
+    return match.group(0) if match else None
 
 
 # --- Service level ---
@@ -118,8 +157,12 @@ def test_foreign_batch_id_rejected_zero_writes(session, stocked_product, product
     session.add(other)
     session.commit()
     record_operation(
-        session, type_="receipt", product_id=product.id, qty_delta=3,
-        unit_price_cents=1000, batch_id=other.id,
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_price_cents=1000,
+        batch_id=other.id,
     )
     result, errors = register_sale(
         session,
@@ -568,12 +611,23 @@ def test_oversell_and_below_minimum_both_reported_together(session, stocked_prod
 
 
 def test_web_sale_page_renders_form(client):
-    """/sales/new: RU title «Продажа» + the basket table."""
+    """/sales/new: RU title «Продажа» + the basket table.
+
+    SALE-01 regression guard (22-RESEARCH.md Pitfall 1): the basket table is
+    already shipped — this is an EXTENSION of the existing assertions, not a
+    rebuild. It must pass immediately and stay green through every later
+    Phase 22 wave; a well-meaning executor "rebuilding" this table (renaming
+    a header or an array-named input) breaks it on purpose.
+    """
     response = client.get("/sales/new")
     assert response.status_code == 200
     assert "Продажа" in response.text
     assert 'id="basket-rows"' in response.text
     assert "Оформить продажу" in response.text
+    for header in ("Код", "Название", "Кол-во", "Цена продажи"):
+        assert f"<th>{header}</th>" in response.text
+    for input_name in ("code[]", "qty[]", "price[]", "batch_id[]"):
+        assert f'name="{input_name}"' in response.text
 
 
 def test_web_sale_post_success_shows_confirmation(client, session, stocked_product):
@@ -1010,9 +1064,7 @@ def test_web_sale_batch_drift_attribution_holds(client, session, warehouse):
     assert ops[p2.id].batch_id == b2.id
 
 
-def test_web_sale_short_batch_array_degrades_to_missing_not_drift(
-    client, session, warehouse
-):
+def test_web_sale_short_batch_array_degrades_to_missing_not_drift(client, session, warehouse):
     """Pitfall 2: a short batch_id[] pads to «no batch» for the trailing line,
     never shifting an earlier pick onto it."""
     p1 = Product(id=new_id(), code="PAD-1", name="Товар один", quantity=0)
@@ -1096,9 +1148,7 @@ def test_web_sale_missing_batch_pick_returns_422(client, session, stocked_produc
     assert _sale_ops(session) == []
 
 
-def test_web_sale_lookup_oob_batch_row_is_template_wrapped(
-    client, session, product, warehouse
-):
+def test_web_sale_lookup_oob_batch_row_is_template_wrapped(client, session, product, warehouse):
     """UAT tests 4/5 regression: the /sales/lookup fragment must carry exactly ONE
     hidden batch_id[] input and enclose the OOB batch-wrap <tr> in a <template>.
 
@@ -1155,3 +1205,315 @@ def test_web_sale_three_line_basket_attributes_each_batch(client, session, wareh
     assert ops[p1.id].batch_id == b1.id
     assert ops[p2.id].batch_id == b2.id
     assert ops[p3.id].batch_id == b3.id
+
+
+# --- Phase 22 Wave 0 (22-01): SALE-03/06 customer mode-selector tests ------
+#
+# 22-VALIDATION.md: strict xfail keeps the suite green now; 22-05 removes
+# each marker as it turns the test green (an unremoved marker XPASSes and
+# FAILS the suite by design).
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
+def test_web_sale_customer_mode_default_renders_three_radios(client):
+    """D-01/D-02: GET /sales/new renders 3 customer_mode radios, «Существующий» pre-checked."""
+    response = client.get("/sales/new")
+    assert response.status_code == 200
+    text = response.text
+    assert text.count('name="customer_mode"') == 3
+    assert "Покупатель" in text
+    assert "Новый" in text
+    assert "Существующий" in text
+    assert "Без покупателя (розница)" in text
+
+    new_tag = re.search(r'<input[^>]*value="new"[^>]*>', text)
+    existing_tag = re.search(r'<input[^>]*value="existing"[^>]*>', text)
+    anon_tag = re.search(r'<input[^>]*value="anon"[^>]*>', text)
+    assert new_tag is not None and "checked" not in new_tag.group(0)
+    assert existing_tag is not None and "checked" in existing_tag.group(0)
+    assert anon_tag is not None and "checked" not in anon_tag.group(0)
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
+def test_web_sale_customer_mode_new_renders_three_fields(client):
+    """SALE-03: GET /sales/customer-mode?customer_mode=new renders the 3-field block."""
+    response = client.get("/sales/customer-mode", params={"customer_mode": "new"})
+    assert response.status_code == 200
+    text = response.text
+    assert 'name="name"' in text
+    assert 'name="surname"' in text
+    assert 'name="consultant_number"' in text
+    assert "Новый покупатель" in text
+    assert "Добавить покупателя" in text
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
+def test_web_sale_customer_mode_roundtrip_preserves_both_modes(client, customer):
+    """D-03: switching mode to «Новый» and back preserves both modes' typed values."""
+    step1 = client.get(
+        "/sales/customer-mode",
+        params={"customer_mode": "new", "customer_id": customer.id, "customer_q": "Анна"},
+    )
+    assert step1.status_code == 200
+    assert _input_value(step1.text, "customer_id_keep") == customer.id
+    assert _input_value(step1.text, "customer_q") == "Анна"
+
+    step2 = client.get(
+        "/sales/customer-mode",
+        params={
+            "customer_mode": "existing",
+            "customer_id_keep": customer.id,
+            "customer_q": "Анна",
+            "name": "Пётр",
+            "surname": "Петров",
+            "consultant_number": "999",
+        },
+    )
+    assert step2.status_code == 200
+    assert "Покупатель: Анна" in step2.text
+    assert _input_value(step2.text, "name") == "Пётр"
+    assert _input_value(step2.text, "surname") == "Петров"
+    assert _input_value(step2.text, "consultant_number") == "999"
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
+def test_web_sale_customer_mode_allowlist_rejects_unknown(client):
+    """T-22-01: an unknown customer_mode degrades to «Существующий», never echoed raw."""
+    response = client.get(
+        "/sales/customer-mode", params={"customer_mode": "<script>alert(1)</script>"}
+    )
+    assert response.status_code == 200
+    text = response.text
+    existing_tag = re.search(r'<input[^>]*value="existing"[^>]*>', text)
+    assert existing_tag is not None
+    assert "checked" in existing_tag.group(0)
+    assert "<script>alert(1)</script>" not in text
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
+def test_web_sale_customer_mode_anon_renders_no_inputs(client):
+    """SALE-06/D-05: «Без покупателя (розница)» renders zero visible input elements."""
+    response = client.get("/sales/customer-mode", params={"customer_mode": "anon"})
+    assert response.status_code == 200
+    text = response.text
+    assert "Продажа без покупателя." in text
+    for tag in re.findall(r"<input[^>]*>", text):
+        if 'type="hidden"' in tag:
+            continue
+        assert 'name="name"' not in tag
+        assert 'name="surname"' not in tag
+        assert 'name="consultant_number"' not in tag
+    id_tag = _tag_by_id(text, "customer-id-input")
+    assert id_tag is not None
+    assert 'value=""' in id_tag
+
+
+# --- Phase 22 Wave 0 (22-01): SALE-04/05 chip, picker, and D-10 guard tests -
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
+def test_web_sale_chip_survives_422_rerender(client, session, stocked_product, customer):
+    """D-12 (verified defect, 22-RESEARCH.md Pitfall 7): a 422 basket
+    re-render must keep the selected-customer chip visible — not just the
+    hidden customer_id input surviving underneath a re-shown search box."""
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["0"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": customer.id,
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert "Покупатель: Анна" in response.text
+    selected_tag = _tag_by_id(response.text, "customer-selected")
+    assert selected_tag is not None
+    assert "hidden" not in selected_tag
+
+
+def test_web_sale_picker_data_attrs(client, session):
+    """T-22-02: picker rows carry data-id/data-name/data-surname; a stored
+    name containing `<b>` is HTML-escaped, never rendered raw (no |safe).
+
+    Deviation from 22-01-PLAN.md (documented in 22-01-SUMMARY.md): the plan
+    marks this test strict-xfail alongside its Task 2 siblings, but
+    /sales/customer-search + customer_picker.html already implement the full
+    data-attribute + escaping contract today (the plan's own read_first note
+    flags this file as already shipping it). A strict-xfail on an
+    already-passing assertion XPASSes and fails the suite, violating this
+    plan's own top-level truth ("the full suite stays green"). Kept as a
+    plain regression guard instead — 22-05 needs no un-xfail step for it.
+    """
+    xss_customer, errors = create_customer(
+        session, name="<b>Игорь</b>", surname="Тестов", consultant_number=""
+    )
+    assert errors == {}
+    response = client.get("/sales/customer-search", params={"q": "Игорь"})
+    assert response.status_code == 200
+    text = response.text
+    assert "<b>Игорь</b>" not in text
+    assert "&lt;b&gt;" in text
+    row_tag = re.search(rf'<button[^>]*data-id="{re.escape(xss_customer.id)}"[^>]*>', text)
+    assert row_tag is not None
+    assert "data-name=" in row_tag.group(0)
+    assert "data-surname=" in row_tag.group(0)
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
+def test_web_sale_new_customer_field_set_is_exactly_three(client):
+    """D-07: the «Новый» block has exactly 3 fields — no Phase-21 profile fields."""
+    response = client.get("/sales/customer-mode", params={"customer_mode": "new"})
+    assert response.status_code == 200
+    text = response.text
+    assert 'name="name"' in text
+    assert 'name="surname"' in text
+    assert 'name="consultant_number"' in text
+    for forbidden in ("phone", "telegram", "email", "social", "address"):
+        assert f'name="{forbidden}"' not in text
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
+def test_web_sale_new_customer_requires_button_returns_422(client, session, stocked_product):
+    """D-10: «Новый» mode with filled fields and no created customer -> 422,
+    never a silent walk-in — the DB assertion is the real contract."""
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": "",
+            "customer_mode": "new",
+            "name": "Пётр",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert "Сначала нажмите «Добавить покупателя»" in response.text
+    assert session.scalars(select(Sale)).all() == []
+
+
+def test_web_sale_new_customer_blank_fields_still_walks_in(client, session, stocked_product):
+    """D-10 negative case: blank fields in «Новый» mode never block the
+    walk-in path — the guard fires only when a field is non-blank.
+
+    Deviation from 22-01-PLAN.md (documented in 22-01-SUMMARY.md): the plan's
+    own action text for this test predicts it "would pass for the wrong
+    reason" today (customer_mode is not yet a declared Form param, so
+    FastAPI silently ignores it) yet still instructs a strict-xfail marker.
+    Verified by running the test: it XPASSes today, because customer_id=""
+    already yields a walk-in sale regardless of customer_mode's presence —
+    exactly the behavior this test asserts. A strict-xfail here would XPASS
+    and fail the suite. Kept as a plain regression guard; 22-05 needs no
+    un-xfail step for it.
+    """
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": "",
+            "customer_mode": "new",
+            "name": "",
+            "surname": "",
+            "consultant_number": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "Продажа оформлена:" in response.text
+    sales = session.scalars(select(Sale)).all()
+    assert len(sales) == 1
+    assert sales[0].customer_id is None
+
+
+# --- Phase 22 Wave 0 (22-01): SALE-07 recent-sales customer column tests ---
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
+def test_web_recent_sales_customer_column(client, session, stocked_product, customer):
+    """SALE-07: recent sales renders a «Покупатель» column with the buyer's name."""
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": customer.id,
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+
+    page = client.get("/sales/new")
+    assert page.status_code == 200
+    assert "<th>Покупатель</th>" in page.text
+    assert "Анна Иванова" in page.text
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
+def test_web_recent_sales_retail_label_for_walkin(client, session, stocked_product):
+    """D-06: a walk-in row renders muted «Розница» — never blank, never `None`."""
+    bid = _only_batch(session, stocked_product)
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 200
+
+    page = client.get("/sales/new")
+    assert page.status_code == 200
+    text = page.text
+    idx = text.index('id="recent-sales"')
+    block = text[idx : idx + 3000]
+    assert 'class="muted">Розница' in block
+    assert "None" not in block
+
+
+@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
+def test_recent_sales_includes_walkin(session, stocked_product, customer):
+    """22-RESEARCH.md Anti-Patterns: the outerjoin must not drop the walk-in
+    row (an inner join would silently do exactly that)."""
+    bid = _only_batch(session, stocked_product)
+    register_sale(
+        session,
+        customer_id=customer.id,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[bid],
+    )
+    bid2 = _only_batch(session, stocked_product)
+    register_sale(
+        session,
+        customer_id="",
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[bid2],
+    )
+
+    rows = recent_sales(session)
+    assert len(rows) == 2
+    walkin_rows = [r for r in rows if r["customer"] is None]
+    linked_rows = [r for r in rows if r["customer"] is not None]
+    assert len(walkin_rows) == 1
+    assert len(linked_rows) == 1
