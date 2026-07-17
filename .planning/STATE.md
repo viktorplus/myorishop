@@ -1,11 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: Awaiting next milestone
-status: Awaiting next milestone
-stopped_at: v2.0 archived, REQUIREMENTS.md removed
-last_updated: "2026-07-18T00:00:00.000Z"
-last_activity: 2026-07-18 — Milestone v2.0 fully archived (audit + roadmap + requirements + PROJECT.md evolution)
+milestone: v3.0
+milestone_name: Multi-Operator Sync, Central Server & Roles
+status: planning
+last_updated: "2026-07-17T23:55:50.971Z"
+last_activity: 2026-07-17
 progress:
   total_phases: 0
   completed_phases: 0
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 ## Current Position
 
-Phase: Milestone v2.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-17 — Milestone v2.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-17 — Milestone v3.0 started
 
 ## Performance Metrics
 

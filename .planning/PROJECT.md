@@ -18,9 +18,21 @@ Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Current Milestone
+## Current Milestone: v3.0 Multi-Operator Sync, Central Server & Roles
 
-None yet — v2.0 shipped 2026-07-17. Run `/gsd-new-milestone` to scope the next milestone (multi-operator sync, multi-currency, and user roles are the leading candidates — see Future below).
+**Goal:** Turn the single-operator local app into a multi-operator system — local clients synchronize with a central server (online over the internet AND offline via USB flash drive), backed by user accounts with mandatory login and an administrator/operator permission split.
+
+**Target features:**
+- Central server on the user's own VPS/cloud running PostgreSQL (SQLite stays on the client; models port with a connection-string change + the same Alembic history)
+- Online sync — clients exchange data with the central server over the internet, merging the append-only operation ledger by UUID/device_id (the sync foundation seeded since v1.0)
+- Offline sync via USB — export/import an exchange file between clients and the server with no internet
+- User accounts with mandatory login/password and a user profile (name, login, role)
+- Two roles — administrator (users, warehouses, dictionaries, settings, reports) and operator (receipts, sales, write-offs, cash)
+
+**Scoping notes:**
+- Multi-currency is OUT of scope — deferred to a later milestone (single currency, as today)
+- Real authentication replaces the v1 "single local user, no auth" assumption — this milestone adds the first security boundary to the app
+- Both sync transports (online + USB) shipped together is the maximum-scope, highest-risk choice — this is the hardest architectural work in the project's history
 
 <details>
 <summary>Archived: v2.0 UX Overhaul & Navigation Restructure (SHIPPED 2026-07-17)</summary>
@@ -135,7 +147,7 @@ None yet — v2.0 shipped 2026-07-17. Run `/gsd-new-milestone` to scope the next
 
 ### Active
 
-None yet — v2.0 shipped 2026-07-17, next milestone not scoped. Run `/gsd-new-milestone` to define the next set of requirements.
+Milestone v3.0 (Multi-Operator Sync, Central Server & Roles) — requirements being defined in this cycle. See `.planning/REQUIREMENTS.md` once generated. Scope: central PostgreSQL server, online + offline-USB sync of the append-only ledger, mandatory login with user profiles, administrator/operator roles.
 
 ### Future (next milestone, deferred)
 
@@ -226,4 +238,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-18 — v2.0 milestone archived after v1.3*
+*Last updated: 2026-07-18 — v3.0 milestone scoped (Multi-Operator Sync, Central Server & Roles)*
