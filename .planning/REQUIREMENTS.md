@@ -55,7 +55,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 - [x] **SALE-04**: Selecting an existing customer offers autocomplete by consultant number, name, or surname; picking a match auto-fills the other identifying fields and hides the rest of the profile
 - [x] **SALE-05**: Selecting a new customer shows a form with optional profile fields to fill in inline
 - [x] **SALE-06**: Selecting anonymous records the sale against the existing anonymous/walk-in customer profile with no extra fields shown
-- [ ] **SALE-07**: Recent-sales list shows the customer's name (first + last) for each sale
+- [x] **SALE-07**: Recent-sales list shows the customer's name (first + last) for each sale
 
 ### Customers
 
@@ -132,7 +132,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SALE-04 | Phase 22 | Complete |
 | SALE-05 | Phase 22 | Complete |
 | SALE-06 | Phase 22 | Complete |
-| SALE-07 | Phase 22 | Pending |
+| SALE-07 | Phase 22 | Complete |
 | DASH-01 | Phase 23 | Pending |
 | DASH-02 | Phase 23 | Pending |
 | DASH-03 | Phase 23 | Pending |
