@@ -1,7 +1,7 @@
 ---
 phase: 24
 slug: navigation-restructure-settings
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-17
@@ -109,6 +109,16 @@ This is a navigation/IA-restructure phase — there is no new record-creation fl
 
 ---
 
+## Visual Hierarchy
+
+Primary visual anchors for this phase's key screens (added per UI-checker Dimension 2 recommendation):
+
+- **Товары page** — the always-visible toolbar (D-05) is the primary anchor below the page title: it never competes with the product list for attention since it's structurally separate (own `.toolbar` block) and always expanded, never a click-to-reveal element.
+- **Настройки hub** — the 3-row link list is a flat hierarchy by design (no single dominant row); each row's `a.button` is the visual anchor within its own row, with the `.muted` summary subordinate underneath.
+- **Mobile tab bar** — the active tab's `border-bottom: 3px solid #2563eb` + `font-weight: 600` is the sole navigational focal point on every mobile screen (sticky top, always visible), telling the operator where they are at a glance.
+
+---
+
 ## New Components (layout composition only — no new interactive JS/CSS component)
 
 ### Товары toolbar (D-01/D-02/D-03/D-04/D-05 — desktop `/products`, mirrored on mobile `/m/products` per D-11)
@@ -197,11 +207,11 @@ Not applicable — no shadcn, no component registry, no third-party UI package o
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (FLAG resolved — Visual Hierarchy section added)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-07-17
