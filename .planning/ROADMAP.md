@@ -268,7 +268,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 18. Two-Price Model Consolidation (ДЦ/ПЦ) | v2.0 | 8/8 | Complete   | 2026-07-16 |
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
-| 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete   | 2026-07-17 |
+| 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
