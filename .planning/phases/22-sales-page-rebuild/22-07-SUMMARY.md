@@ -117,3 +117,7 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All 4 modified files confirmed present on disk; all 4 commits (9617b5e, 62ee6e5, 76a1f08, a794bda) confirmed in git log.
