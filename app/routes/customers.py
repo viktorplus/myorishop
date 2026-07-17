@@ -142,16 +142,39 @@ def customer_create(
     name: str = Form(""),
     surname: str = Form(""),
     consultant_number: str = Form(""),
+    address: str = Form(""),
+    phone: list[str] = Form([], alias="phone[]"),
+    telegram: list[str] = Form([], alias="telegram[]"),
+    email: list[str] = Form([], alias="email[]"),
+    social: list[str] = Form([], alias="social[]"),
     session: Session = Depends(get_session),
 ):
+    # D-03 form-array resolution: the form always posts all four keys, the
+    # full-replace shape create_customer's contacts contract expects. No
+    # filtering/stripping here — that lives in the service (thin-route rule,
+    # routes/customers.py:1); _validate_contacts already discards blanks.
+    contacts = {"phone": phone, "telegram": telegram, "email": email, "social": social}
     customer, errors = create_customer(
-        session, name=name, surname=surname, consultant_number=consultant_number
+        session,
+        name=name,
+        surname=surname,
+        consultant_number=consultant_number,
+        address=address,
+        contacts=contacts,
     )
     if errors:
         context = {
             "customer": None,
             "errors": errors,
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+            "form": {
+                "name": name,
+                "surname": surname,
+                "consultant_number": consultant_number,
+                "address": address,
+            },
+            # UI-SPEC Interaction 9: re-echo what the operator typed, one
+            # .contact-row per submitted value — never reset to a blank row.
+            "contacts": _contact_rows(contacts),
         }
         return templates.TemplateResponse(
             request, "pages/customer_form.html", context, status_code=422
@@ -193,23 +216,39 @@ def customer_update(
     name: str = Form(""),
     surname: str = Form(""),
     consultant_number: str = Form(""),
+    address: str = Form(""),
+    phone: list[str] = Form([], alias="phone[]"),
+    telegram: list[str] = Form([], alias="telegram[]"),
+    email: list[str] = Form([], alias="email[]"),
+    social: list[str] = Form([], alias="social[]"),
     session: Session = Depends(get_session),
 ):
+    contacts = {"phone": phone, "telegram": telegram, "email": email, "social": social}
     customer, errors = update_customer(
         session,
         customer_id,
         name=name,
         surname=surname,
         consultant_number=consultant_number,
+        address=address,
+        contacts=contacts,
     )
     if errors:
         existing = get_customer(session, customer_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="unknown customer")
+        # The submitted arrays win over contacts_by_kind's stored values —
+        # the operator's unsaved edits must not be silently discarded.
         context = {
             "customer": existing,
             "errors": errors,
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
+            "form": {
+                "name": name,
+                "surname": surname,
+                "consultant_number": consultant_number,
+                "address": address,
+            },
+            "contacts": _contact_rows(contacts),
         }
         return templates.TemplateResponse(
             request, "pages/customer_form.html", context, status_code=422

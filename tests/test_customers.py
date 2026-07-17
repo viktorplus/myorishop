@@ -803,3 +803,125 @@ def test_web_customer_edit_form_renders_blank_row_for_empty_kind(client, session
     response = client.get(f"/customers/{customer.id}/edit")
     assert response.status_code == 200
     assert response.text.count('name="email[]"') == 1
+
+
+# --- Plan 04 Task 3: form-array binding on create/update (CUST-01..05 save path) ---
+
+
+def test_web_customer_create_with_contacts(client, session):
+    """Pitfall 2 guard: contacts + address survive the NEW-customer path,
+    where no customer.id exists at form-render time."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Мария",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": ["@maria"],
+            "email[]": ["maria@example.com"],
+            "social[]": ["https://vk.com/maria"],
+            "address": "Москва",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/customers"
+
+    created = session.scalars(select(Customer).where(Customer.name == "Мария")).one()
+    assert created.address == "Москва"
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 2
+    assert len(rows["telegram"]) == 1
+    assert len(rows["email"]) == 1
+    assert len(rows["social"]) == 1
+
+
+def test_web_customer_create_with_contacts_discards_blank_rows(client, session):
+    """The always-present blank row never becomes a CustomerContact."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Пётр",
+            "phone[]": ["+7900", "", "  "],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    created = session.scalars(select(Customer).where(Customer.name == "Пётр")).one()
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 1
+
+
+def test_web_customer_update_replaces_contacts(client, session):
+    """Full replace on re-save, not append."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Иван",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    created = session.scalars(select(Customer).where(Customer.name == "Иван")).one()
+    assert len(contacts_by_kind(session, created.id)["phone"]) == 2
+
+    response = client.post(
+        f"/customers/{created.id}",
+        data={
+            "name": "Иван",
+            "phone[]": ["+7922"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    rows = contacts_by_kind(session, created.id)
+    assert len(rows["phone"]) == 1
+    assert rows["phone"][0].value == "+7922"
+
+
+def test_web_customer_create_invalid_re_echoes_contacts(client):
+    """A 422 never silently drops what the operator typed (UI-SPEC Interaction 9)."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "",
+            "phone[]": ["+7900", "+7911"],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+            "address": "Казань",
+        },
+    )
+    assert response.status_code == 422
+    assert "+7900" in response.text
+    assert "+7911" in response.text
+    assert "Казань" in response.text
+
+
+def test_web_customer_create_contact_too_long_shows_kind_error(client, session):
+    """T-21-04/WR-05: an overlong contact value is rejected, nothing written."""
+    long_value = "9" * 301
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Светлана",
+            "phone[]": [long_value],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": [""],
+        },
+    )
+    assert response.status_code == 422
+    assert "Значение слишком длинное — не больше 300 символов." in response.text
+    assert session.scalars(select(Customer).where(Customer.name == "Светлана")).first() is None
+    assert session.scalars(select(CustomerContact)).first() is None
