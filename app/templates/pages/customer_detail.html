@@ -7,6 +7,11 @@
 
 <p class="page-actions"><a href="/customers/{{ customer.id }}/edit">Изменить</a></p>
 
+<section id="customer-contacts">
+  <h2>Контакты</h2>
+  {% include "partials/customer_contacts.html" %}
+</section>
+
 <section id="customer-history">
   <h2>История покупок</h2>
   {% include "partials/purchase_history.html" %}

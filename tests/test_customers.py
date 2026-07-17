@@ -924,4 +924,61 @@ def test_web_customer_create_contact_too_long_shows_kind_error(client, session):
     assert response.status_code == 422
     assert "Значение слишком длинное — не больше 300 символов." in response.text
     assert session.scalars(select(Customer).where(Customer.name == "Светлана")).first() is None
+
+
+def test_web_customer_detail_contacts_renders_all_kinds(client, session):
+    """CUST-01..05: every recorded contact + address renders as plain text."""
+    customer, errors = create_customer(
+        session,
+        name="Ирина",
+        surname="",
+        consultant_number="",
+        address="ул. Мира, 5",
+        contacts={
+            "phone": ["+7900111", "+7900222"],
+            "telegram": ["@irina"],
+            "email": ["irina@example.com"],
+            "social": ["vk.com/irina"],
+        },
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "+7900111" in response.text
+    assert "+7900222" in response.text
+    assert "@irina" in response.text
+    assert "irina@example.com" in response.text
+    assert "vk.com/irina" in response.text
+    assert "ул. Мира, 5" in response.text
+    assert "Телефон" in response.text
+    assert "Telegram" in response.text
+    assert "Email" in response.text
+    assert "Соцсеть" in response.text
+
+
+def test_web_customer_detail_contacts_omits_empty_kinds(client, session):
+    """CUST-01..05: a phone-only customer shows no Telegram/Email/Соцсеть labels."""
+    customer, errors = create_customer(
+        session,
+        name="Пётр",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7911000"], "telegram": [], "email": [], "social": []},
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "+7911000" in response.text
+    assert "Telegram:" not in response.text
+    assert "Email:" not in response.text
+    assert "Соцсеть:" not in response.text
+
+
+def test_web_customer_detail_contacts_empty_state(client, session, customer):
+    """CUST-01..05: a bare customer (no contacts, no address) shows the RU empty state."""
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "Контакты не указаны." in response.text
     assert session.scalars(select(CustomerContact)).first() is None
