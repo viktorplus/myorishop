@@ -10,6 +10,8 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ## Current State
 
+**v2.0 UX Overhaul & Navigation Restructure — all 7 phases complete (2026-07-18).** Phase 24 (Navigation Restructure & Settings) was the last phase: desktop top nav reduced to 8 first-class items, Приход/Списание/Справочник/Категории/Каталоги moved into an always-visible Товары toolbar, Перемещение reachable from the product context, a new Настройки hub hosts Склады/Резервные копии, CSV export moved onto the Резервные копии page, every report detail page got a back-link, and mobile navigation gained a persistent 7-tab bar with parity to desktop. A gap-closure pass (plan 24-07) fixed a mobile-reachability regression the code review and verifier both caught: removing the old mobile home tile grid had orphaned `/m/search`, `/m/corrections`, and `/m/transfers` with no rendered link; all three are now reachable from the mobile Товары toolbar, with a regression test guarding rendered-link presence (not just route-200). Milestone ready for `/gsd-complete-milestone`.
+
 **Shipped: v1.3 Финансы / Касса (2026-07-15)**
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
@@ -204,4 +206,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-17 — v2.0 in progress: Phase 23 (Dashboard & History Rebuild) shipped; Phase 24 (Navigation Restructure & Settings) next*
+*Last updated: 2026-07-18 — v2.0 complete: all 7 phases (18-24) shipped, ready for /gsd-complete-milestone*
