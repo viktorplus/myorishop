@@ -7,6 +7,8 @@ by this service via Python str.lower() — SQLite lower()/LIKE cannot fold
 Cyrillic (mirrors Product.name_lc / catalog.search_products, D-27).
 """
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -85,8 +87,17 @@ def _replace_contacts(session: Session, customer_id: str, contacts: dict[str, li
     customer_contacts is an ordinary mutable table (APPEND_ONLY_TRIGGERS
     cover only operations/cash_movements, app/db.py). label is always None
     this phase — the column ships unused (Plan 01, RESEARCH Open Question 1).
+
+    created_at is stamped explicitly with a monotonically increasing
+    microsecond offset (rather than the column's utcnow_iso() default, which
+    has one-second resolution) so contacts_by_kind's `ORDER BY (created_at,
+    id)` preserves the caller's submitted order even when every row of one
+    replace lands in the same second — id (a random UUID4) is not a
+    submission-order tie-break on its own.
     """
     session.execute(delete(CustomerContact).where(CustomerContact.customer_id == customer_id))
+    base = datetime.now(UTC)
+    offset = 0
     for kind, values in contacts.items():
         for value in values:
             value = value.strip()
@@ -99,8 +110,10 @@ def _replace_contacts(session: Session, customer_id: str, contacts: dict[str, li
                     kind=kind,
                     value=value,
                     label=None,
+                    created_at=(base + timedelta(microseconds=offset)).isoformat(),
                 )
             )
+            offset += 1
 
 
 def create_customer(
@@ -294,6 +307,34 @@ def list_customers_view(
         "consultant_number": consultant_number,
         "sort": sort,
     }
+
+
+def contacts_by_kind(session: Session, customer_id: str) -> dict[str, list[CustomerContact]]:
+    """All CustomerContact rows for one customer, bucketed by kind (CUST-01..04).
+
+    Every CONTACT_KINDS key is always present, mapping to a possibly-empty
+    list, in CONTACT_KINDS order (phone, telegram, email, social) — the form
+    (Plan 04) renders one blank row for an empty kind, the detail page
+    (Plan 05) omits an empty kind; neither should have to guard for a
+    missing key. Within each kind rows are ordered by (created_at, id):
+    created_at alone is not sufficient because utcnow_iso() has one-second
+    resolution and a full-replace inserts every row of a save inside the
+    same second, so id is the stable tie-break.
+
+    One query, not one per kind (no relationship()/lazy loader here, so
+    keeping it flat is entirely on this function — the N+1 shape this
+    codebase avoids elsewhere).
+    """
+    rows = session.scalars(
+        select(CustomerContact)
+        .where(CustomerContact.customer_id == customer_id)
+        .order_by(CustomerContact.created_at, CustomerContact.id)
+    ).all()
+
+    buckets: dict[str, list[CustomerContact]] = {kind: [] for kind in CONTACT_KINDS}
+    for row in rows:
+        buckets[row.kind].append(row)
+    return buckets
 
 
 def purchase_history(session: Session, customer_id: str) -> list[dict]:

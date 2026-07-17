@@ -22,6 +22,7 @@ from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
     CONTACT_VALUE_TOO_LONG_ERROR,
+    contacts_by_kind,
     create_customer,
     get_customer,
     list_customers_view,
@@ -330,6 +331,95 @@ def test_contacts_replace_none_leaves_contacts_untouched(session, customer):
         select(CustomerContact).where(CustomerContact.customer_id == customer.id)
     ).all()
     assert len(rows) == 2
+
+
+def test_contacts_phone_multiple_values_persist(session, customer):
+    """CUST-01: three phones save and read back in submitted order."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900", "+7901", "+7902"]},
+    )
+    result = contacts_by_kind(session, customer.id)
+    assert [row.value for row in result["phone"]] == ["+7900", "+7901", "+7902"]
+
+
+def test_contacts_telegram_multiple_values_persist(session, customer):
+    """CUST-02: two Telegram handles save and read back."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"telegram": ["@anna", "@anna_shop"]},
+    )
+    result = contacts_by_kind(session, customer.id)
+    assert [row.value for row in result["telegram"]] == ["@anna", "@anna_shop"]
+
+
+def test_contacts_email_multiple_values_persist(session, customer):
+    """CUST-03: two emails save and read back."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"email": ["anna@example.com", "shop@example.com"]},
+    )
+    result = contacts_by_kind(session, customer.id)
+    assert [row.value for row in result["email"]] == ["anna@example.com", "shop@example.com"]
+
+
+def test_contacts_social_multiple_values_persist(session, customer):
+    """CUST-04: two free-form social links, verbatim, no normalization."""
+    link_with_query = "https://vk.com/anna?utm_source=x&y=1"
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"social": ["https://instagram.com/anna", link_with_query]},
+    )
+    result = contacts_by_kind(session, customer.id)
+    assert [row.value for row in result["social"]] == [
+        "https://instagram.com/anna",
+        link_with_query,
+    ]
+
+
+def test_contacts_by_kind_returns_all_kinds_for_bare_customer(session, customer):
+    """A customer with zero contacts still gets all four keys, each []."""
+    result = contacts_by_kind(session, customer.id)
+    assert list(result.keys()) == ["phone", "telegram", "email", "social"]
+    assert result == {"phone": [], "telegram": [], "email": [], "social": []}
+
+
+def test_contacts_all_kinds_are_independent(session, customer):
+    """Saving all four kinds at once: each reads back only its own values."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={
+            "phone": ["+7900"],
+            "telegram": ["@anna"],
+            "email": ["anna@example.com"],
+            "social": ["https://vk.com/anna"],
+        },
+    )
+    result = contacts_by_kind(session, customer.id)
+    assert [row.value for row in result["phone"]] == ["+7900"]
+    assert [row.value for row in result["telegram"]] == ["@anna"]
+    assert [row.value for row in result["email"]] == ["anna@example.com"]
+    assert [row.value for row in result["social"]] == ["https://vk.com/anna"]
 
 
 # --- Web slice (routes + templates) ---
