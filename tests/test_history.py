@@ -19,7 +19,8 @@ from app.core import new_id, utcnow_iso
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services.batches import open_batches
 from app.services.ledger import next_seq, record_operation
-from app.services.operations import history_view  # noqa: F401
+from app.services.operations import HISTORY_TYPE_COLUMNS, history_view  # noqa: F401
+from app.services.transfers import register_transfer
 
 
 def _batch_id(session, product):
@@ -417,3 +418,59 @@ def test_history_date_range_excludes_outside_half_open_window(session, stocked_p
     ids = {r["op"].id for r in result["rows"]}
     assert op_at_start.id in ids
     assert op_at_end.id not in ids
+
+
+# --- HIST-01: HISTORY_TYPE_COLUMNS + Warehouse join + columns key (Plan 02 Task 2) ---
+
+
+def test_history_view_columns_key_for_sale_type(session, stocked_product):
+    """HIST-01: the "columns" key exposes the per-type column tuple for a
+    STOCK_AFFECTING_TYPES member."""
+    result = history_view(session, type_filter="sale")
+    assert result["columns"] == HISTORY_TYPE_COLUMNS["sale"]
+
+
+def test_history_view_columns_key_none_for_no_type_and_audit_type(session, stocked_product):
+    """D-04/Pitfall 5: "columns" is None for no type filter AND for any of
+    the 3 audit types (they fall back to the generic view)."""
+    assert history_view(session)["columns"] is None
+    assert history_view(session, type_filter="price_change")["columns"] is None
+
+
+def test_history_view_rows_carry_warehouse_key(session, stocked_product):
+    """Every row dict gains a "warehouse" key (present, possibly None)."""
+    result = history_view(session)
+    rows = result["rows"]
+    assert rows
+    assert all("warehouse" in r for r in rows)
+
+
+def test_history_view_transfer_rows_carry_own_warehouse(session, product, batch, warehouse):
+    """Pitfall 6 regression: a transfer's two sibling rows are NEVER merged
+    into one "from -> to" record — each row independently carries its OWN
+    batch/warehouse (the side it belongs to)."""
+    dest_warehouse = Warehouse(id=new_id(), name="Склад назначения")
+    session.add(dest_warehouse)
+    session.commit()
+    record_operation(
+        session, type_="receipt", product_id=product.id, qty_delta=5, batch_id=batch.id
+    )
+
+    result, errors = register_transfer(
+        session,
+        code=product.code,
+        name=product.name,
+        qty_raw="3",
+        batch_id=batch.id,
+        dest_warehouse_id=dest_warehouse.id,
+    )
+    assert errors == {}
+    assert result is not None
+
+    view = history_view(session, type_filter="transfer")
+    rows = view["rows"]
+    assert len(rows) == 2
+    for row in rows:
+        assert row["batch"] is not None
+        assert row["warehouse"] is not None
+        assert row["warehouse"].id == row["batch"].warehouse_id
