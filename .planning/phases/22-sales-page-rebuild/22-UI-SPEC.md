@@ -1,10 +1,12 @@
 ---
 phase: 22
 slug: sales-page-rebuild
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-17
+reviewed_at: 2026-07-17
+dimensions_passed: 6/6
 ---
 
 # Phase 22 — UI Design Contract
@@ -486,8 +488,12 @@ marker bucket. A false «итог неполный» on `1e3` is harmless (advis
 exponent into a price field); a **wrong number** would not be. Two consequences the executor must honor:
   - **Qty parity is exact** and must stay exact: server is `qty_text.isascii() and qty_text.isdigit()`
     then `> 0` (`services/sales.py:136-139`); JS `/^[0-9]+$/` + `> 0` is a byte-exact mirror. The
-    `isascii()` guard exists to reject `'²'` — do not widen the JS regex to `\d` (which matches Unicode
-    digits) or the mirror breaks.
+    `isascii()` guard exists to reject `'²'` and other non-ASCII digits that Python's `isdigit()` accepts.
+    Write the JS class as `[0-9]`, not `\d` — **not** because `\d` would behave differently (in JavaScript
+    `\d` is exactly `[0-9]`, with or without the `u` flag; the Unicode-wide behavior is Python's `re` on
+    `str`, not JS), but because `[0-9]` states the ASCII-only contract on its face. A reader comparing this
+    line against the server's `isascii()` guard should not have to recall a cross-language regex subtlety
+    to see that the mirror holds.
   - **The money regex omits the sign on purpose** — `services/sales.py:157` rejects a negative sale
     price outright, so a negative is correctly "incomplete", not a negative subtotal.
 
