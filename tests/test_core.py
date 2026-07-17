@@ -44,6 +44,67 @@ def test_format_cents_display():
     assert format_cents(0) == "0,00"
 
 
+# --- Phase 22 Plan 02 (SALE-02/D-08/D-09): pin the accept-set sale-total.js
+# must mirror. Characterization tests, NOT xfail — they assert already-
+# shipped behavior, so the untestable JS parser has a stable, frozen
+# contract to mirror (22-RESEARCH.md Pattern 2, verified by execution
+# 2026-07-17; 22-UI-SPEC.md Interaction 15).
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_cents"),
+    [
+        # Accepted by BOTH server and the JS mirror.
+        ("7", 700),
+        ("12,50", 1250),
+        ("12.50", 1250),
+        (".5", 50),
+        ("5.", 500),
+        (" 12,5 ", 1250),
+        # WR-03: ROUND_HALF_UP ties away from zero, not banker's rounding.
+        ("12.505", 1251),
+    ],
+)
+def test_to_cents_accept_set_boundaries(text, expected_cents):
+    assert to_cents(text) == expected_cents
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["1 000", "12abc", "", "inf", "nan", "Infinity", "12,5,0"],
+)
+def test_to_cents_accept_set_rejects_both(bad):
+    """Rejected by BOTH the server and the JS mirror."""
+    with pytest.raises(ValueError):
+        to_cents(bad)
+
+
+def test_to_cents_accepts_more_than_the_js_mirror():
+    """22-UI-SPEC.md Interaction 15: a deliberate, bounded divergence.
+
+    `to_cents` accepts more than D-08's "comma-decimal, no space-thousands"
+    characterisation implies — Decimal(str) also takes exponents, PEP-515
+    underscores, signs, and Unicode digit scripts. `sale-total.js`'s regex
+    deliberately rejects these into D-09's «итог неполный» marker bucket
+    instead. A false «итог неполный» on one of these is harmless (advisory
+    display only; no operator types an exponent into a price field) —
+    whereas a WRONG NUMBER would not be. Byte-exact JS parity is not
+    achievable in a regex and must not be attempted.
+    """
+    assert to_cents("1e3") == 100000
+    assert to_cents("1_000") == 100000
+    assert to_cents("+12.5") == 1250
+    assert to_cents("１２") == 1200  # fullwidth "12"
+
+
+def test_format_cents_mirror_contract():
+    """The exact display shape the JS `formatCents` must reproduce."""
+    assert format_cents(1250) == "12,50"
+    assert format_cents(0) == "0,00"
+    assert format_cents(5) == "0,05"
+    assert format_cents(-1250) == "-12,50"
+
+
 def test_local_day_bounds_utc_single_day_moscow():
     """D-02: single-day bounds are local midnight-to-midnight, converted to UTC.
 
@@ -51,9 +112,7 @@ def test_local_day_bounds_utc_single_day_moscow():
     2026-07-09T21:00:00+00:00, and the (half-open) upper bound is local
     midnight of the day AFTER, 2026-07-10T21:00:00+00:00.
     """
-    start_iso, end_iso = local_day_bounds_utc(
-        date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow"
-    )
+    start_iso, end_iso = local_day_bounds_utc(date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow")
     assert start_iso == "2026-07-09T21:00:00+00:00"
     assert end_iso == "2026-07-10T21:00:00+00:00"
 
@@ -67,18 +126,14 @@ def test_local_day_bounds_utc_evening_sale_within_local_day():
     UTC-rollover edge case it guards, even though Europe/Moscow does not
     currently observe DST).
     """
-    start_iso, end_iso = local_day_bounds_utc(
-        date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow"
-    )
+    start_iso, end_iso = local_day_bounds_utc(date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow")
     evening_sale_utc = "2026-07-10T20:30:00+00:00"
     assert start_iso <= evening_sale_utc < end_iso
 
 
 def test_local_day_bounds_utc_next_local_day_excluded():
     """D-02: 00:30 local on 2026-07-11 (21:30 UTC the 10th) belongs to July 11, NOT July 10."""
-    start_iso, end_iso = local_day_bounds_utc(
-        date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow"
-    )
+    start_iso, end_iso = local_day_bounds_utc(date(2026, 7, 10), date(2026, 7, 10), "Europe/Moscow")
     next_local_day_sale_utc = "2026-07-10T21:30:00+00:00"
     assert not (start_iso <= next_local_day_sale_utc < end_iso)
 
