@@ -66,3 +66,44 @@ def test_set_active_catalog_second_call_updates_same_row(session):
     fetched = get_active_catalog(session)
     assert fetched.number == "06"
     assert fetched.close_date == "2026-09-30"
+
+
+# --- Web slice (route + templates, Task 3) ---
+
+
+def test_web_catalogs_page_renders_empty_form_when_no_active_row(client):
+    response = client.get("/catalogs")
+
+    assert response.status_code == 200
+    assert "Активный каталог" in response.text
+    assert 'name="number" value=""' in response.text
+    assert 'name="close_date" value=""' in response.text
+
+
+def test_web_post_active_catalog_saves_and_prefills_on_next_get(client):
+    response = client.post(
+        "/catalogs/active", data={"number": "05", "close_date": "2026-08-31"}
+    )
+
+    assert response.status_code == 200
+    assert 'value="05"' in response.text
+    assert 'value="2026-08-31"' in response.text
+
+    follow_up = client.get("/catalogs")
+    assert 'value="05"' in follow_up.text
+    assert 'value="2026-08-31"' in follow_up.text
+
+
+def test_web_post_active_catalog_malformed_date_shows_error_and_does_not_write(client):
+    client.post("/catalogs/active", data={"number": "05", "close_date": "2026-08-31"})
+
+    response = client.post(
+        "/catalogs/active", data={"number": "05", "close_date": "not-a-date"}
+    )
+
+    assert response.status_code == 200
+    assert "Проверьте дату закрытия каталога." in response.text
+
+    follow_up = client.get("/catalogs")
+    assert 'value="2026-08-31"' in follow_up.text
+    assert 'value="not-a-date"' not in follow_up.text
