@@ -16,7 +16,8 @@ contacts_* (CUST-01..05), spend_* (CUST-07), favorites_* / last_order
 (CUST-06/08), and portable (the PostgreSQL portability guard).
 """
 
-from datetime import date
+import re
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import select
@@ -982,3 +983,50 @@ def test_web_customer_detail_contacts_empty_state(client, session, customer):
     assert response.status_code == 200
     assert "Контакты не указаны." in response.text
     assert session.scalars(select(CustomerContact)).first() is None
+
+
+def test_web_customer_detail_insights_renders_all_blocks(
+    client, session, customer, product, past_sale
+):
+    """CUST-06..08: a customer with a real order renders every insight block."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso, qty=2, unit_price_cents=1500)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert "Последний заказ:" in response.text
+    assert "Потрачено за месяц" in response.text
+    assert "Потрачено за квартал" in response.text
+    assert "Потрачено за год" in response.text
+    assert "С учётом возвратов." in response.text
+    assert "Любимые товары" in response.text
+    assert "Покупок, раз" in response.text
+    assert "Куплено, шт." in response.text
+    assert product.name in response.text
+
+
+def test_web_customer_detail_insights_section_order(client, session, customer, product, past_sale):
+    """CUST-06..08: sections render in the order contacts -> insights -> favorites -> history."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    body = response.text
+    contacts_idx = body.index('id="customer-contacts"')
+    insights_idx = body.index('id="customer-insights"')
+    favorites_idx = body.index('id="customer-favorites"')
+    history_idx = body.index('id="customer-history"')
+    assert contacts_idx < insights_idx < favorites_idx < history_idx
+
+
+def test_web_customer_detail_insights_ru_date_captions_render(
+    client, session, customer, product, past_sale
+):
+    """T-21-24: spend.<period>.start_iso is a str, so | ru_date never TypeErrors."""
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    past_sale(customer, product, created_at=now_iso)
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    assert re.search(r"с \d{2}\.\d{2}\.\d{4}", response.text)

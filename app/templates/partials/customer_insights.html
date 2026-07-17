@@ -1,0 +1,36 @@
+{# Покупки section body (CUST-06/CUST-07, D-05/D-06): last order date as one
+   fact above three calendar-period spend tiles, reusing .metric-grid /
+   .metric-tile / .tile-label / .num verbatim from finance_tiles.html — zero
+   new CSS. Money renders ONLY via the existing | cents filter — no other
+   arithmetic-to-string conversion is used in this file. A below-zero total
+   (a sale returned in a later period) is a fact, not a fault, and gets no
+   special text color, mirroring finance_tiles.html's own standing rule.
+
+   spend.<period>.start_iso is already a `str` (spend_view, app/services/
+   customers.py) — this is what keeps | ru_date from ever receiving a date
+   object and raising TypeError. #}
+<p>Последний заказ:
+  {% if last_order_iso %}{{ last_order_iso | local_dt }}{% else %}<span class="muted">—</span>{% endif %}
+</p>
+
+<div class="metric-grid">
+  <div class="metric-tile">
+    <p class="tile-label">Потрачено за месяц</p>
+    <p class="num"><strong>{{ spend.month.cents | cents }}</strong></p>
+    <p class="muted">с {{ spend.month.start_iso | ru_date }}</p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Потрачено за квартал</p>
+    <p class="num"><strong>{{ spend.quarter.cents | cents }}</strong></p>
+    <p class="muted">с {{ spend.quarter.start_iso | ru_date }}</p>
+  </div>
+
+  <div class="metric-tile">
+    <p class="tile-label">Потрачено за год</p>
+    <p class="num"><strong>{{ spend.year.cents | cents }}</strong></p>
+    <p class="muted">с {{ spend.year.start_iso | ru_date }}</p>
+  </div>
+</div>
+{# MANDATORY (D-01b precedent) — always visible plain text, never a hover-only hint. #}
+<p class="muted">С учётом возвратов.</p>
