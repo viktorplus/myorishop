@@ -115,6 +115,8 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - ✓ Финансы dashboard: gross profit, net profit, and stock valuation (at cost and at sale price) for a selected period — Phase 17 (FIN-10, FIN-11, FIN-12)
 - ✓ Products page groups rows by product code with a total-quantity column, batches broken out per code (expiry/name) in a collapsed expander; "Добавить товар" removed, delete is a text link; category display/filter unchanged — Phase 19 (PROD-01, PROD-02, PROD-03, PROD-04, PROD-08)
 - ✓ Sales page rebuilt as a code/name/qty/price table with a live running total shown directly under it, and a new/existing/anonymous customer flow (radio control, autocomplete on existing, inline optional fields on new) replacing the old free-text customer field; recent-sales list shows each sale's customer name — Phase 22 (SALE-01..07)
+- ✓ Home-page dashboard: date/weekday/time, active catalog number + days until close, day/week/month revenue/profit/expense totals, total stock codes + valuation, type-adaptive recent-operations feed with customer column — Phase 23 (DASH-01..05)
+- ✓ History page rebuilt: operation-type-first selection with type-specific columns, filters by code/date-range/customer/category, sort, pagination (desktop + mobile parity) — Phase 23 (HIST-01..04)
 
 ### Active
 
@@ -202,4 +204,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-17 — v2.0 in progress: Phase 22 (Sales Page Rebuild) shipped; Phase 23 (Dashboard & History Rebuild) next*
+*Last updated: 2026-07-17 — v2.0 in progress: Phase 23 (Dashboard & History Rebuild) shipped; Phase 24 (Navigation Restructure & Settings) next*
