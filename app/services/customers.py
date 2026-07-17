@@ -7,12 +7,14 @@ by this service via Python str.lower() — SQLite lower()/LIKE cannot fold
 Cyrillic (mirrors Product.name_lc / catalog.search_products, D-27).
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_day_bounds_utc, new_id
 from app.models import CONTACT_KINDS, Customer, CustomerContact, Operation, Product, Sale
 from app.services.catalog import split_match
 from app.services.pagination import paginate
@@ -350,3 +352,189 @@ def purchase_history(session: Session, customer_id: str) -> list[dict]:
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
     ).all()
     return [{"op": op, "product": product} for op, product in rows]
+
+
+def _period_starts(today: date) -> dict[str, date]:
+    """Calendar period starts (CUST-07/D-05) for the month/quarter/year containing `today`.
+
+    Stdlib date.replace only — zero new date-math dependencies (CLAUDE.md:
+    this phase installs nothing extra; the quarter expression below is one
+    verified line). Standard Jan-Mar/Apr-Jun/Jul-Sep/Oct-Dec calendar
+    quarters.
+    """
+    return {
+        "month": today.replace(day=1),
+        "quarter": today.replace(month=3 * ((today.month - 1) // 3) + 1, day=1),
+        "year": today.replace(month=1, day=1),
+    }
+
+
+def _spend_stmt(customer_id: str, start_iso: str, end_iso: str):
+    """Unexecuted net-spend Select for one customer over a half-open UTC window (CUST-07/D-06).
+
+    Returns the Select itself, NOT executed here, so the portability guard
+    (Task 3) can compile it without a session.
+
+    D-06, one formula for both op types, no branching: a `sale` op has
+    qty_delta<0 (positive revenue); a `return` op has qty_delta>0 at the
+    SAME frozen unit_price_cents (negative revenue, D-07 frozen copy —
+    returns.py). The sum nets returned revenue automatically. A return is
+    attributed to the window containing its OWN return date, not the origin
+    sale's date (RESEARCH Pitfall 8, cash-basis): a June sale returned in
+    July makes July's total negative. That is arithmetically correct and
+    matches how the Finance pages already book the debit (returns.py
+    register_return) — do not "fix" it by re-attributing to the origin sale.
+
+    Double coalesce (RESEARCH Pitfall 4, the likeliest first bug in this
+    phase): unit_price_cents is nullable, NULL * anything is NULL, and
+    SUM() over zero rows returns NULL. The inner coalesce saves a
+    price-less line from silently contributing nothing; the outer one
+    saves a zero-order customer from rendering None. Mirrors the shipped
+    returns.py `func.coalesce(func.sum(...), 0)` precedent.
+
+    Bounds are half-open [start_iso, end_iso) — >= and <, never <=. No
+    SQLite/PostgreSQL date-manipulation SQL function of any kind appears in
+    this statement (the class CLAUDE.md bans outright): created_at is a
+    String(32) holding utcnow_iso() output, and ISO-8601 UTC strings sort
+    lexicographically == chronologically (core.py). The window is computed
+    in PYTHON (local_day_bounds_utc) and passed as bound params — this is
+    the load-bearing portability rule; reverse it and the PostgreSQL
+    migration breaks (CLAUDE.md, explicit).
+    """
+    return (
+        select(
+            func.coalesce(
+                func.sum(-Operation.qty_delta * func.coalesce(Operation.unit_price_cents, 0)),
+                0,
+            )
+        )
+        .join(Sale, Operation.sale_id == Sale.id)
+        .where(
+            Sale.customer_id == customer_id,
+            Operation.type.in_(("sale", "return")),
+            Operation.created_at >= start_iso,
+            Operation.created_at < end_iso,
+        )
+    )
+
+
+def _spend_window(session: Session, customer_id: str, start_iso: str, end_iso: str) -> int:
+    """Execute `_spend_stmt` for one [start_iso, end_iso) window; always an int (never None)."""
+    return session.scalar(_spend_stmt(customer_id, start_iso, end_iso))
+
+
+def spend_totals(session: Session, customer_id: str, today: date | None = None) -> dict[str, int]:
+    """Net spend in cents for the current calendar month/quarter/year, period-to-date (CUST-07).
+
+    `today` is injectable and this function never reads the real calendar
+    internally (RESEARCH Pitfall 7: today is 2026-07-17 and July IS Q3's
+    first month, so month-to-date and quarter-to-date are currently
+    IDENTICAL — a test asserting they differ passes in July but would fail
+    in, say, February. Injection is also the only way to deterministically
+    test "a sale 13 months ago is excluded from the year window"). Mirrors
+    how stale_products isolates today_local (reports.py).
+
+    Three separate cheap aggregates, not one query fused with CASE WHEN
+    conditional sums (RESEARCH Pitfall 6) — that hurts readability and
+    saves nothing at single-operator scale. See `_spend_stmt`'s docstring
+    for the D-06 netting formula and the D-05/Pitfall-8 cash-basis rule.
+    """
+    if today is None:
+        today = datetime.now(ZoneInfo(settings.display_tz)).date()
+    totals: dict[str, int] = {}
+    for name, start in _period_starts(today).items():
+        start_iso, end_iso = local_day_bounds_utc(start, today, settings.display_tz)
+        totals[name] = _spend_window(session, customer_id, start_iso, end_iso)
+    return totals
+
+
+def spend_view(session: Session, customer_id: str, today: date | None = None) -> dict:
+    """`spend_totals` reshaped for the detail route template (Plan 05).
+
+    Returns {"month": {"cents": int, "start_iso": str}, "quarter": {...},
+    "year": {...}} where start_iso is start.isoformat() — a STRING, not a
+    date object. This is load-bearing and closes a real crash: the
+    `| ru_date` filter is format_ru_date (core.py), which calls
+    date.fromisoformat(iso) on a STRING; date.fromisoformat(date(...))
+    raises TypeError. UI-SPEC Interaction 15 renders
+    {{ period_start | ru_date }} for the tile captions, so the date-to-
+    string conversion must happen HERE, in the service — the date object
+    must never reach the template.
+    """
+    if today is None:
+        today = datetime.now(ZoneInfo(settings.display_tz)).date()
+    view: dict = {}
+    for name, start in _period_starts(today).items():
+        start_iso, end_iso = local_day_bounds_utc(start, today, settings.display_tz)
+        cents = _spend_window(session, customer_id, start_iso, end_iso)
+        view[name] = {"cents": cents, "start_iso": start.isoformat()}
+    return view
+
+
+def _favorites_stmt(customer_id: str, limit: int):
+    """Unexecuted favorite-products Select for one customer (CUST-08/D-04/D-04a).
+
+    Returns the Select itself, NOT executed here, so the portability guard
+    (Task 3) can compile it without a session.
+
+    Frequency is count(DISTINCT sale_id) — orders containing the product —
+    NOT count(lines). This resolves D-04's under-specification (RESEARCH
+    Pitfall 3, accepted by the developer). Nothing prevents two `sale` ops
+    for the same product in one sale: the batch picker writes one op per
+    batch, so a batch-split purchase is a ROUTINE occurrence in this app,
+    not an edge case. "How often does this person buy X" means how many
+    shopping trips included X; a two-batch split of one purchase is ONE
+    purchase. Total quantity is the secondary column, so per-line volume
+    is not lost.
+
+    Product.name is a mandatory third sort key — freq DESC, qty DESC alone
+    leaves ties on BOTH keys in DB-arbitrary order, which would make any
+    test asserting exact ordering of two equal-scoring products flaky.
+
+    Does NOT filter out soft-deleted products — this is a historical view
+    (reports.py sales_profit_report Pitfall 5 rule). A soft-deleted
+    product a customer genuinely loved still belongs in their ranking.
+
+    type == "sale" only, mirroring purchase_history: this ranks what was
+    BOUGHT, not net financial exposure — returns are spend_totals' concern
+    (a deliberate D-04 vs D-06 scope boundary, not an oversight).
+
+    `limit` is an int parameter bound by SQLAlchemy — never
+    string-interpolated (T-21-03).
+    """
+    freq = func.count(func.distinct(Operation.sale_id)).label("freq")
+    qty = func.coalesce(func.sum(-Operation.qty_delta), 0).label("qty")
+    return (
+        select(Product, freq, qty)
+        .join(Operation, Operation.product_id == Product.id)
+        .join(Sale, Operation.sale_id == Sale.id)
+        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+        .group_by(Product.id)
+        .order_by(freq.desc(), qty.desc(), Product.name)
+        .limit(limit)
+    )
+
+
+def favorite_products(session: Session, customer_id: str, limit: int = 10) -> list[dict]:
+    """This customer's top products, ranked by distinct orders then quantity (CUST-08/D-04a).
+
+    Default limit=10 per D-04a. See `_favorites_stmt`'s docstring for the
+    batch-split/soft-delete/type=="sale" semantics.
+    """
+    rows = session.execute(_favorites_stmt(customer_id, limit)).all()
+    return [{"product": product, "freq": freq, "qty": qty} for product, freq, qty in rows]
+
+
+def last_order_date(history: list[dict]) -> str | None:
+    """Most recent order's created_at (CUST-06), derived from an already-loaded purchase_history.
+
+    Pure: no session, no query. `purchase_history` is already ordered
+    created_at DESC, seq DESC, so history[0] IS the most recent order —
+    issuing a further query for data already in memory is exactly what
+    RESEARCH Pitfall 6 says not to do. Returns the raw ISO string (not a
+    date object): the detail page renders it with the existing | local_dt
+    filter, exactly as purchase_history.html already does.
+    """
+    if not history:
+        return None
+    return history[0]["op"].created_at

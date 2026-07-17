@@ -11,23 +11,36 @@ Naming convention (used by -k filters): route/e2e tests are prefixed
 test_web_; everything else is service level. Selectors mirror
 04-VALIDATION.md's Requirements -> Test Map (crud, search, history,
 history_frozen). 21-VALIDATION.md Wave 0 adds past_sale_fixture (the
-backdated-sale fixture smoke test).
+backdated-sale fixture smoke test). Phase 21 waves 1-2 add: address,
+contacts_* (CUST-01..05), spend_* (CUST-07), favorites_* / last_order
+(CUST-06/08), and portable (the PostgreSQL portability guard).
 """
+
+from datetime import date
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 
-from app.models import Customer, CustomerContact
+from app.core import format_ru_date, new_id
+from app.models import Customer, CustomerContact, Product
 from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
     CONTACT_VALUE_TOO_LONG_ERROR,
+    _favorites_stmt,
+    _period_starts,
+    _spend_stmt,
     contacts_by_kind,
     create_customer,
+    favorite_products,
     get_customer,
+    last_order_date,
     list_customers_view,
     purchase_history,
     search_customers,
+    spend_totals,
+    spend_view,
     update_customer,
 )
 from app.services.sales import register_sale  # noqa: F401 (used to seed linked sales)
@@ -420,6 +433,206 @@ def test_contacts_all_kinds_are_independent(session, customer):
     assert [row.value for row in result["telegram"]] == ["@anna"]
     assert [row.value for row in result["email"]] == ["anna@example.com"]
     assert [row.value for row in result["social"]] == ["https://vk.com/anna"]
+
+
+def test_spend_totals_month_quarter_year_with_injected_today(session, product, customer, past_sale):
+    """CUST-07: three genuinely different totals via an injected mid-quarter today (Pitfall 7)."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-05-10T10:00:00+00:00", qty=1, unit_price_cents=2000
+    )
+    past_sale(
+        customer, product, created_at="2026-04-15T10:00:00+00:00", qty=1, unit_price_cents=3000
+    )
+    past_sale(
+        customer, product, created_at="2026-02-10T10:00:00+00:00", qty=1, unit_price_cents=5000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals == {"month": 2000, "quarter": 5000, "year": 10000}
+
+
+def test_spend_totals_period_starts_boundary_table():
+    """CUST-07: `_period_starts` against the documented quarter-boundary table."""
+    assert _period_starts(date(2026, 7, 17))["quarter"] == date(2026, 7, 1)
+    assert _period_starts(date(2026, 3, 31))["quarter"] == date(2026, 1, 1)
+    assert _period_starts(date(2026, 12, 31))["quarter"] == date(2026, 10, 1)
+    assert _period_starts(date(2026, 1, 1))["quarter"] == date(2026, 1, 1)
+
+
+def test_spend_net_of_returns_subtracts(session, product, customer, past_sale):
+    """CUST-07/D-06: a return at the frozen price subtracts from the window total."""
+    today = date(2026, 5, 20)
+    sale, _ = past_sale(
+        customer, product, created_at="2026-05-10T10:00:00+00:00", qty=10, unit_price_cents=1000
+    )
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-12T10:00:00+00:00",
+        qty=4,
+        unit_price_cents=1000,
+        type_="return",
+        sale=sale,
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 6000
+
+
+def test_spend_window_excludes_sale_outside_period(session, product, customer, past_sale):
+    """CUST-07: a sale 2 months before `today` is excluded from month but present in year."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-03-15T10:00:00+00:00", qty=1, unit_price_cents=1000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 0
+    assert totals["year"] == 1000
+
+
+def test_spend_empty_customer_returns_zero_not_none(session, customer):
+    """CUST-07/Pitfall 4: a customer with zero orders returns 0, never None, in every window."""
+    totals = spend_totals(session, customer.id, today=date(2026, 5, 20))
+    assert totals["month"] is not None
+    assert totals["quarter"] is not None
+    assert totals["year"] is not None
+    assert totals == {"month": 0, "quarter": 0, "year": 0}
+
+
+def test_spend_null_price_line_does_not_crash_sum(session, product, customer, past_sale):
+    """CUST-07/Pitfall 4: a NULL unit_price_cents line contributes 0 and does not crash SUM()."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-05-05T10:00:00+00:00", qty=1, unit_price_cents=None
+    )
+    past_sale(
+        customer, product, created_at="2026-05-06T10:00:00+00:00", qty=1, unit_price_cents=2000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 2000
+    assert isinstance(totals["month"], int)
+
+
+def test_spend_view_start_iso_is_a_string(session, customer):
+    """The `| ru_date` TypeError guard: every `spend_view` start_iso is a string."""
+    view = spend_view(session, customer.id, today=date(2026, 7, 17))
+    for period in view.values():
+        assert isinstance(period["start_iso"], str)
+    assert format_ru_date(view["month"]["start_iso"]) == "01.07.2026"
+
+
+def test_favorite_products_ranked_by_frequency_then_qty(session, customer, past_sale):
+    """CUST-08/D-04: frequency (distinct orders) outranks total quantity."""
+    product_a = Product(id=new_id(), code="FAV-A", name="Товар A", quantity=0)
+    product_b = Product(id=new_id(), code="FAV-B", name="Товар B", quantity=0)
+    session.add_all([product_a, product_b])
+    session.commit()
+
+    past_sale(customer, product_a, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product_a, created_at="2026-05-05T10:00:00+00:00", qty=1)
+    past_sale(customer, product_b, created_at="2026-05-03T10:00:00+00:00", qty=50)
+
+    rows = favorite_products(session, customer.id)
+    assert rows[0]["product"].id == product_a.id
+    b_row = next(r for r in rows if r["product"].id == product_b.id)
+    assert b_row["qty"] == 50
+
+
+def test_favorites_batch_split_counts_once(session, customer, product, past_sale):
+    """CUST-08/Pitfall 3, the locked semantic: two lines in ONE Sale count as freq==1."""
+    sale, _ = past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=3)
+    past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=2, sale=sale)
+
+    rows = favorite_products(session, customer.id)
+    assert len(rows) == 1
+    assert rows[0]["freq"] == 1
+    assert rows[0]["qty"] == 5
+
+
+def test_favorites_limit_caps_at_ten(session, customer, past_sale):
+    """CUST-08/D-04a: default limit is 10 for 12 distinct products; an explicit limit is honored."""
+    for i in range(12):
+        p = Product(id=new_id(), code=f"FAV-{i:02d}", name=f"Товар {i}", quantity=0)
+        session.add(p)
+        session.commit()
+        past_sale(customer, p, created_at="2026-05-01T10:00:00+00:00", qty=1)
+
+    assert len(favorite_products(session, customer.id)) == 10
+    assert len(favorite_products(session, customer.id, limit=3)) == 3
+
+
+def test_favorites_scoped_to_this_customer(session, past_sale):
+    """CUST-08: one customer's ranking never contains another customer's products."""
+    customer_a = Customer(id=new_id(), name="Анна", search_lc="анна")
+    customer_b = Customer(id=new_id(), name="Ольга", search_lc="ольга")
+    session.add_all([customer_a, customer_b])
+    session.commit()
+
+    product_a = Product(id=new_id(), code="SCOPE-A", name="Товар A", quantity=0)
+    product_b = Product(id=new_id(), code="SCOPE-B", name="Товар B", quantity=0)
+    session.add_all([product_a, product_b])
+    session.commit()
+
+    past_sale(customer_a, product_a, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(customer_b, product_b, created_at="2026-05-01T10:00:00+00:00", qty=1)
+
+    rows_a = favorite_products(session, customer_a.id)
+    assert {r["product"].id for r in rows_a} == {product_a.id}
+
+
+def test_favorites_excludes_returns(session, customer, product, past_sale):
+    """CUST-08: a return op does not count toward freq (the type=="sale" boundary vs D-06)."""
+    sale, _ = past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-02T10:00:00+00:00",
+        qty=1,
+        type_="return",
+        sale=sale,
+    )
+
+    rows = favorite_products(session, customer.id)
+    assert len(rows) == 1
+    assert rows[0]["freq"] == 1
+
+
+def test_last_order_returns_most_recent_created_at(session, customer, product, past_sale):
+    """CUST-06: `last_order_date` returns the LATEST `created_at` string exactly."""
+    past_sale(customer, product, created_at="2026-01-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product, created_at="2026-03-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product, created_at="2026-02-01T10:00:00+00:00", qty=1)
+
+    history = purchase_history(session, customer.id)
+    assert last_order_date(history) == "2026-03-01T10:00:00+00:00"
+
+
+def test_last_order_empty_history_returns_none():
+    """CUST-06: `last_order_date([])` returns None and does not raise."""
+    assert last_order_date([]) is None
+
+
+# 21-VALIDATION.md's single highest-leverage test in this phase: mechanical
+# enforcement of CLAUDE.md's "PostgreSQL migration is a connection-string
+# change" promise. If it ever goes red, the fix is to move the date math
+# into Python (local_day_bounds_utc), never to relax this test.
+def test_spend_and_favorites_queries_are_portable():
+    """T-21-03/T-21-15: both new statements compile portably under both dialects."""
+    banned = ("strftime", "date_trunc", "extract(", "julianday", "datetime(")
+    stmts = [
+        _spend_stmt("cust-id", "2026-07-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00"),
+        _favorites_stmt("cust-id", 10),
+    ]
+    for stmt in stmts:
+        for dialect in (postgresql.dialect(), sqlite.dialect()):
+            compiled = str(stmt.compile(dialect=dialect))
+            compiled_lc = compiled.lower()
+            for token in banned:
+                assert token not in compiled_lc
+            assert "cust-id" not in compiled
 
 
 # --- Web slice (routes + templates) ---
