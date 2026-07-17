@@ -171,7 +171,14 @@ Plans:
   3. Customer profile shows the customer's spend totals for the last month, quarter, and year.
   4. Customer profile shows the customer's favorite products ranked by purchase frequency and quantity.
 
-**Plans**: TBD
+**Plans**: 5 plans in 5 waves (0-4)
+
+Plans:
+- [ ] 21-01-PLAN.md — Wave 0: CustomerContact + Customer.address schema, migration 0015, past-dated-sale test fixture
+- [ ] 21-02-PLAN.md — Wave 1: contacts + address service (validation, full-replace, contacts_by_kind)
+- [ ] 21-03-PLAN.md — Wave 2: purchase-insights service (spend windows, favorites ranking, last order date, portability guard)
+- [ ] 21-04-PLAN.md — Wave 3: customer form UI (4 repeatable contact sections, address, /customers/contact-row)
+- [ ] 21-05-PLAN.md — Wave 4: customer detail UI (Контакты, Покупки, Любимые товары) + zero-order and XSS guards
 **UI hint**: yes
 
 ### Phase 22: Sales Page Rebuild
