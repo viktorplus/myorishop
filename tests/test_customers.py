@@ -14,12 +14,14 @@ history_frozen). 21-VALIDATION.md Wave 0 adds past_sale_fixture (the
 backdated-sale fixture smoke test).
 """
 
+import pytest
 from sqlalchemy import select
 
-from app.models import Customer
+from app.models import Customer, CustomerContact
 from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
+    CONTACT_VALUE_TOO_LONG_ERROR,
     create_customer,
     get_customer,
     list_customers_view,
@@ -235,6 +237,99 @@ def test_customer_address_too_long_rejected(session):
     assert customer is None
     assert errors == {"address": ADDRESS_TOO_LONG_ERROR}
     assert len(session.scalars(select(Customer)).all()) == before
+
+
+def test_contacts_validation_discards_blank_rows(session):
+    """CUST-01..04: blank/whitespace-only values are discarded, never written."""
+    customer, errors = create_customer(
+        session,
+        name="Анна",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900", "", "   "]},
+    )
+    assert errors == {}
+    rows = session.scalars(
+        select(CustomerContact).where(CustomerContact.customer_id == customer.id)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].value == "+7900"
+
+
+def test_contacts_validation_rejects_unknown_kind(session):
+    """T-21-09: an unknown kind is a programmer error, not a form error."""
+    with pytest.raises(ValueError):
+        create_customer(
+            session,
+            name="Анна",
+            surname="",
+            consultant_number="",
+            contacts={"fax": ["123"]},
+        )
+
+
+def test_contacts_validation_value_too_long(session):
+    """WR-05: a 301-char value is rejected per-kind, writes zero rows."""
+    before = len(session.scalars(select(CustomerContact)).all())
+    customer, errors = create_customer(
+        session,
+        name="Анна",
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["a" * 301]},
+    )
+    assert customer is None
+    assert errors == {"phone": CONTACT_VALUE_TOO_LONG_ERROR}
+    assert len(session.scalars(select(CustomerContact)).all()) == before
+
+
+def test_contacts_replace_does_not_duplicate(session, customer):
+    """CUST-01..04: re-saving replaces contacts rather than duplicating them."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900", "+7901"]},
+    )
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900"]},
+    )
+    rows = session.scalars(
+        select(CustomerContact).where(CustomerContact.customer_id == customer.id)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].value == "+7900"
+
+
+def test_contacts_replace_none_leaves_contacts_untouched(session, customer):
+    """contacts=None -> existing rows survive untouched."""
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts={"phone": ["+7900", "+7901"]},
+    )
+    update_customer(
+        session,
+        customer.id,
+        name=customer.name,
+        surname="",
+        consultant_number="",
+        contacts=None,
+    )
+    rows = session.scalars(
+        select(CustomerContact).where(CustomerContact.customer_id == customer.id)
+    ).all()
+    assert len(rows) == 2
 
 
 # --- Web slice (routes + templates) ---

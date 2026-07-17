@@ -7,11 +7,11 @@ by this service via Python str.lower() — SQLite lower()/LIKE cannot fold
 Cyrillic (mirrors Product.name_lc / catalog.search_products, D-27).
 """
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core import new_id
-from app.models import Customer, Operation, Product, Sale
+from app.models import CONTACT_KINDS, Customer, CustomerContact, Operation, Product, Sale
 from app.services.catalog import split_match
 from app.services.pagination import paginate
 
@@ -21,16 +21,20 @@ SURNAME_TOO_LONG_ERROR = "Слишком длинная фамилия."
 CONSULTANT_NUMBER_TOO_LONG_ERROR = "Слишком длинный номер консультанта."
 # Phase 21 (D-02/CUST-05): copy taken verbatim from 21-UI-SPEC.md.
 ADDRESS_TOO_LONG_ERROR = "Адрес слишком длинный — не больше 300 символов."
+# Phase 21 (D-01/CUST-01..04): copy taken verbatim from 21-UI-SPEC.md.
+CONTACT_VALUE_TOO_LONG_ERROR = "Значение слишком длинное — не больше 300 символов."
 
 # WR-05: mirror the declared column lengths (app/models.py Customer) here so
 # an overlong value is rejected in the service layer instead of silently
 # truncated by SQLite today and hard-erroring after a future PostgreSQL
 # migration (CLAUDE.md: "same models will run on PostgreSQL later").
 # Phase 21: _ADDRESS_MAX_LEN mirrors Customer.address's declared String(300).
+# _CONTACT_VALUE_MAX_LEN mirrors CustomerContact.value's declared String(300).
 _NAME_MAX_LEN = 200
 _SURNAME_MAX_LEN = 200
 _CONSULTANT_NUMBER_MAX_LEN = 50
 _ADDRESS_MAX_LEN = 300
+_CONTACT_VALUE_MAX_LEN = 300
 
 
 def _search_lc(name: str, surname: str | None, consultant_number: str | None) -> str:
@@ -51,6 +55,54 @@ def _validate_lengths(
         errors["address"] = ADDRESS_TOO_LONG_ERROR
 
 
+def _validate_contacts(contacts: dict[str, list[str]], errors: dict[str, str]) -> None:
+    """Validate a full `contacts` payload BEFORE any write (T-21-09, T-21-04).
+
+    An unknown kind is NOT operator-reachable — the route binds four fixed
+    Form params, so it is a programmer error, not a form error. Raises
+    ValueError, matching record_operation's treatment of an unknown
+    operation type (ledger.py:74-75). Blank values are discarded silently
+    (never an error) — UI-SPEC Interaction 6's always-present blank row
+    depends on this. Errors are keyed by kind, not row index, matching the
+    UI-SPEC's one-{% if errors.KIND %}-per-section markup.
+    """
+    for kind, values in contacts.items():
+        if kind not in CONTACT_KINDS:
+            raise ValueError(f"unknown contact kind: {kind!r}")
+        for value in values:
+            value = value.strip()
+            if not value:
+                continue
+            if len(value) > _CONTACT_VALUE_MAX_LEN:
+                errors[kind] = CONTACT_VALUE_TOO_LONG_ERROR
+
+
+def _replace_contacts(session: Session, customer_id: str, contacts: dict[str, list[str]]) -> None:
+    """Delete-all-then-reinsert (D-01): full replace, never append.
+
+    commit=False semantics — never commits; the caller owns the single
+    create_customer/update_customer transaction. Legal because
+    customer_contacts is an ordinary mutable table (APPEND_ONLY_TRIGGERS
+    cover only operations/cash_movements, app/db.py). label is always None
+    this phase — the column ships unused (Plan 01, RESEARCH Open Question 1).
+    """
+    session.execute(delete(CustomerContact).where(CustomerContact.customer_id == customer_id))
+    for kind, values in contacts.items():
+        for value in values:
+            value = value.strip()
+            if not value:
+                continue
+            session.add(
+                CustomerContact(
+                    id=new_id(),
+                    customer_id=customer_id,
+                    kind=kind,
+                    value=value,
+                    label=None,
+                )
+            )
+
+
 def create_customer(
     session: Session,
     *,
@@ -58,11 +110,20 @@ def create_customer(
     surname: str,
     consultant_number: str,
     address: str = "",
+    contacts: dict[str, list[str]] | None = None,
 ) -> tuple[Customer | None, dict[str, str]]:
     """Create a customer; returns (customer, {}) or (None, RU errors).
 
     address (D-02/CUST-05) defaults to "" so app/routes/sales.py's quick-create
     call (the sale form's inline new-customer flow) keeps working unchanged.
+
+    contacts (D-01/CUST-01..04) is a two-state contract:
+    - None (default) -> no contacts are written. This is what keeps
+      app/routes/sales.py:355's quick-create call working unchanged.
+    - a dict -> full replace: every non-blank value in the dict is inserted
+      as a CustomerContact row. A dict that omits a CONTACT_KINDS key simply
+      inserts nothing for that kind (there is nothing to replace yet on
+      create). The form (Plan 04) always posts all four keys.
     """
     errors: dict[str, str] = {}
     name = name.strip()
@@ -75,6 +136,8 @@ def create_customer(
         return None, errors
 
     _validate_lengths(name, surname, consultant_number, address, errors)
+    if contacts is not None:
+        _validate_contacts(contacts, errors)
     if errors:
         return None, errors
 
@@ -87,6 +150,11 @@ def create_customer(
     )
     customer.search_lc = _search_lc(name, surname, consultant_number)
     session.add(customer)
+    if contacts is not None:
+        # PRAGMA foreign_keys=ON is active: the parent row must exist before
+        # inserting children, so flush before _replace_contacts.
+        session.flush()
+        _replace_contacts(session, customer.id, contacts)
     session.commit()
     return customer, {}
 
@@ -99,11 +167,16 @@ def update_customer(
     surname: str,
     consultant_number: str,
     address: str = "",
+    contacts: dict[str, list[str]] | None = None,
 ) -> tuple[Customer | None, dict[str, str]]:
     """Update a customer's fields and refresh search_lc.
 
     address (D-02/CUST-05) defaults to "" — see create_customer's docstring
     for why the default is load-bearing.
+
+    contacts (D-01/CUST-01..04) is the same two-state contract as
+    create_customer: None leaves existing contacts untouched; a dict fully
+    replaces them (a dict that omits a kind clears that kind).
     """
     customer = session.get(Customer, customer_id)
     if customer is None:
@@ -120,6 +193,8 @@ def update_customer(
         return None, errors
 
     _validate_lengths(name, surname, consultant_number, address, errors)
+    if contacts is not None:
+        _validate_contacts(contacts, errors)
     if errors:
         return None, errors
 
@@ -128,6 +203,8 @@ def update_customer(
     customer.consultant_number = consultant_number or None
     customer.address = address or None
     customer.search_lc = _search_lc(name, surname, consultant_number)
+    if contacts is not None:
+        _replace_contacts(session, customer.id, contacts)
     session.commit()
     return customer, {}
 
