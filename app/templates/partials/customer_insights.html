@@ -9,9 +9,7 @@
    spend.<period>.start_iso is already a `str` (spend_view, app/services/
    customers.py) — this is what keeps | ru_date from ever receiving a date
    object and raising TypeError. #}
-<p>Последний заказ:
-  {% if last_order_iso %}{{ last_order_iso | local_dt }}{% else %}<span class="muted">—</span>{% endif %}
-</p>
+<p>Последний заказ: {% if last_order_iso %}{{ last_order_iso | local_dt }}{% else %}<span class="muted">—</span>{% endif %}</p>
 
 <div class="metric-grid">
   <div class="metric-tile">

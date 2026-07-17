@@ -18,6 +18,7 @@ contacts_* (CUST-01..05), spend_* (CUST-07), favorites_* / last_order
 
 import re
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -1030,3 +1031,67 @@ def test_web_customer_detail_insights_ru_date_captions_render(
     response = client.get(f"/customers/{customer.id}")
     assert response.status_code == 200
     assert re.search(r"с \d{2}\.\d{2}\.\d{4}", response.text)
+
+
+def test_web_customer_detail_empty_profile_renders_zeros(client, customer):
+    """RESEARCH Pitfall 4 / UI-SPEC Interaction 19: a zero-order profile is a
+    first-class state — no section is hidden, no `None` ever reaches the body."""
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    body = response.text
+    assert 'Последний заказ: <span class="muted">—</span>' in body
+    assert body.count("0,00") >= 3
+    assert "С учётом возвратов." in body
+    assert body.count("Покупок пока нет.") >= 2
+    assert 'id="customer-contacts"' in body
+    assert 'id="customer-insights"' in body
+    assert 'id="customer-favorites"' in body
+    assert 'id="customer-history"' in body
+    assert "None" not in body
+
+
+def test_web_contacts_social_renders_escaped_not_as_href(client, session):
+    """T-21-01/T-21-XSS: a stored <script>/javascript: social value renders as
+    escaped, non-clickable plain text on both the detail page and the edit form."""
+    response = client.post(
+        "/customers",
+        data={
+            "name": "Ксения",
+            "phone[]": [""],
+            "telegram[]": [""],
+            "email[]": [""],
+            "social[]": ["<script>alert(1)</script>", "javascript:alert(document.cookie)"],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    customer = session.scalars(select(Customer).where(Customer.name == "Ксения")).first()
+    assert customer is not None
+
+    detail = client.get(f"/customers/{customer.id}")
+    assert detail.status_code == 200
+    assert "&lt;script&gt;" in detail.text
+    assert "<script>alert(1)</script>" not in detail.text
+    assert 'href="javascript:' not in detail.text
+    assert "javascript:alert(document.cookie)" in detail.text
+
+    edit = client.get(f"/customers/{customer.id}/edit")
+    assert edit.status_code == 200
+    assert "<script>alert(1)</script>" not in edit.text
+
+
+def test_customer_templates_never_use_safe_filter():
+    """T-21-22: mechanical, repo-wide `| safe` ban across every Phase 21 template."""
+    files = [
+        "app/templates/partials/contact_row.html",
+        "app/templates/partials/customer_contacts.html",
+        "app/templates/partials/customer_insights.html",
+        "app/templates/partials/favorite_products.html",
+        "app/templates/pages/customer_form.html",
+        "app/templates/pages/customer_detail.html",
+    ]
+    for path in files:
+        text = Path(path).read_text(encoding="utf-8")
+        assert "| safe" not in text
+        assert "|safe" not in text
