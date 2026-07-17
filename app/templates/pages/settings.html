@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Настройки</h1>
+<div class="field">
+  <a class="button" href="/warehouses">Склады</a>
+  <p class="muted">{{ warehouse_count }} складов</p>
+</div>
+<div class="field">
+  <a class="button" href="/backup">Резервные копии</a>
+  <p class="muted">{% if last_backup_iso %}Последняя копия: {{ last_backup_iso | local_dt }}{% else %}Резервных копий пока нет{% endif %}</p>
+</div>
+<div class="field">
+  <a class="button" href="/finance/report">Экспорт кассы</a>
+</div>
+{% endblock %}

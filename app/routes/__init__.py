@@ -2,7 +2,7 @@
 
 from fastapi.templating import Jinja2Templates
 
-from app.config import settings
+from app.config import settings as _config_settings
 from app.core import format_cents, format_ru_date, iso_to_local
 from app.models import (
     CASH_BUCKET_LABELS,
@@ -14,7 +14,14 @@ from app.models import (
 
 templates = Jinja2Templates(directory="app/templates")
 # D-07: store UTC, display local; D-06: cents rendered only via helper.
-templates.env.filters["local_dt"] = lambda iso: iso_to_local(iso, settings.display_tz)
+# Aliased to _config_settings (not `settings`) so this package's own
+# `settings` attribute-name namespace doesn't collide with the sibling
+# route submodule app/routes/settings.py (D-06) — `from app.routes import
+# settings` in app/main.py must resolve to that router module, not to this
+# config instance (Python package attribute shadowing).
+templates.env.filters["local_dt"] = lambda iso: iso_to_local(
+    iso, _config_settings.display_tz
+)
 templates.env.filters["cents"] = format_cents
 # LOT-03: batch expiry stored as ISO text; rendered dd.mm.yyyy in every surface.
 templates.env.filters["ru_date"] = format_ru_date
