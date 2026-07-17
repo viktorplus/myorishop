@@ -74,7 +74,7 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 - [x] **Phase 19: Products Page Rebuild** - Group the product list by code with batch breakout, category filter, and receipt-first entry (completed 2026-07-16)
 - [x] **Phase 20: Warehouses & Batch-Split Transfers** - Form-driven warehouse management with stock-guarded delete, plus a correct partial-batch transfer (completed 2026-07-16)
 - [x] **Phase 21: Customer Profiles & Purchase Insights** - Multi-contact profiles with last-order date, period spend, and favorite products (completed 2026-07-17)
-- [ ] **Phase 22: Sales Page Rebuild** - Table-shaped sale form with a live running total and a new/existing/anonymous customer flow
+- [x] **Phase 22: Sales Page Rebuild** - Table-shaped sale form with a live running total and a new/existing/anonymous customer flow (completed 2026-07-17)
 - [ ] **Phase 23: Dashboard & History Rebuild** - Operational home page plus a type-first history with per-type columns and filters
 - [ ] **Phase 24: Navigation Restructure & Settings** - Reduce the top-level nav to first-class pages and nest the rest where they belong
 
@@ -226,7 +226,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 22-07-PLAN.md — Wave 4: mobile basket wiring, customer_id write path, D-11 batch-card fix
+- [x] 22-07-PLAN.md — Wave 4: mobile basket wiring, customer_id write path, D-11 batch-card fix
 
 **UI hint**: yes
 
@@ -290,6 +290,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
-| 22. Sales Page Rebuild | v2.0 | 6/7 | In Progress|  |
+| 22. Sales Page Rebuild | v2.0 | 7/7 | Complete   | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
