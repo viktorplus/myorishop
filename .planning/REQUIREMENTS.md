@@ -81,7 +81,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Mobile
 
-- [ ] **MOB-01**: Mobile navigation includes the same main tabs as desktop (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы), excluding Настройки
+- [x] **MOB-01**: Mobile navigation includes the same main tabs as desktop (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы), excluding Настройки
 
 ## v2 Requirements
 
@@ -151,7 +151,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-07 | Phase 24 | Pending |
 | NAV-08 | Phase 24 | Pending |
 | RPT-01 | Phase 24 | Pending |
-| MOB-01 | Phase 24 | Pending |
+| MOB-01 | Phase 24 | Complete |
 
 **Coverage:**
 
