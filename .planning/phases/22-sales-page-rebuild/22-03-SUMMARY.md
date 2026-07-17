@@ -119,3 +119,12 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: app/services/sales.py
+- FOUND: app/templates/partials/recent_sales.html
+- FOUND: .planning/phases/22-sales-page-rebuild/22-03-SUMMARY.md
+- FOUND commit: 41fd633
+- FOUND commit: b492fe6
+- FOUND commit: 0d5a842
