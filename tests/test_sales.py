@@ -1480,7 +1480,6 @@ def test_web_recent_sales_retail_label_for_walkin(client, session, stocked_produ
     assert "None" not in block
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-07: customer column lands in 22-03")
 def test_recent_sales_includes_walkin(session, stocked_product, customer):
     """22-RESEARCH.md Anti-Patterns: the outerjoin must not drop the walk-in
     row (an inner join would silently do exactly that)."""
