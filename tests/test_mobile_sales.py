@@ -3,12 +3,22 @@
 
 Uses `mobile_client_factory` (Plan 01 foundation) to test `mobile_sales.router`
 in isolation, without app.main registration (that happens in Plan 09).
+
+Phase 22 Plan 02 (D-04/D-11) added the block below: the mobile customer
+selector + D-11 batch-card basket-preservation fix are strict-xfail red-side
+pins (22-04/22-07 land the feature), except `test_mobile_walkin` and
+`test_batch_step_echoes_acc_when_supplied`, which already pass under today's
+code and are pinned as plain regression guards instead — see each test's
+docstring.
 """
 
+import re
+
+import pytest
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, CatalogPrice, Operation
+from app.models import Batch, CatalogPrice, Operation, Sale
 from app.routes import mobile_sales
 from app.services.ledger import record_operation
 
@@ -245,9 +255,7 @@ def test_qty_price_step_shows_warehouse_once_batch_picked(
         batch_id=batch.id,
     )
     client = _client(mobile_client_factory)
-    resp = client.post(
-        "/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id}
-    )
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id})
     assert resp.status_code == 200
     assert f"Склад: {warehouse.name}" in resp.text
 
@@ -334,9 +342,7 @@ def test_qty_price_step_back_returns_to_batch_step_when_batch_step_was_shown(
     assert "Выберите партию" in resp.text
 
     # "Далее" without picking a card (batch_id="").
-    resp = client.post(
-        "/m/sales/step/qty-price", data={"code": product.code, "batch_id": ""}
-    )
+    resp = client.post("/m/sales/step/qty-price", data={"code": product.code, "batch_id": ""})
     assert resp.status_code == 200
     assert 'hx-get="/m/sales/step/batch"' in resp.text
     assert 'hx-vals=\'{"back": "1"}\'' not in resp.text
@@ -730,3 +736,216 @@ def test_oversell_warns_zero_writes_then_confirm_writes(
     assert resp.status_code == 200
     assert "Продажа оформлена" in resp.text
     assert len(_sale_ops(session)) == 1
+
+
+# ---------------------------------------------------------------------------
+# D-04: mobile customer selector (22-06/22-07) + D-11: batch-card basket fix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
+def test_mobile_customer_selector_renders_on_basket(
+    mobile_client_factory, session, product, warehouse
+):
+    """22-UI-SPEC.md Interaction 9: the Корзина screen renders the 3-way
+    selector above the basket cards, mirroring desktop (D-02 default:
+    `existing` checked)."""
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post(
+        "/m/sales/step/basket-add",
+        data={"code": product.code, "qty": "2", "price": "9,00", "batch_id": batch.id},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="m-customer-header"' in body
+    assert 'name="customer_mode" value="new"' in body
+    assert 'name="customer_mode" value="existing"' in body
+    assert 'name="customer_mode" value="anon"' in body
+    existing_radio = re.search(r'name="customer_mode" value="existing"[^>]*checked', body)
+    assert existing_radio is not None
+
+    selector_index = body.index('id="m-customer-header"')
+    first_card_index = body.index('class="mobile-card"')
+    assert selector_index < first_card_index
+
+
+@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
+def test_mobile_links_customer(mobile_client_factory, session, product, warehouse, customer):
+    """Retires the `customer_id=""` hardcode at mobile_sales.py:346."""
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(client, product.code, "2", "9,00", batch.id)
+    resp = client.post(
+        "/m/sales",
+        data={
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+            "customer_id": customer.id,
+        },
+    )
+    assert resp.status_code == 200
+    sale = session.scalars(select(Sale).order_by(Sale.created_at.desc())).first()
+    assert sale is not None
+    assert sale.customer_id == customer.id
+
+
+def test_mobile_walkin(mobile_client_factory, session, product, warehouse):
+    """D-05: the mobile walk-in path (no customer_id posted) must not regress.
+
+    Deviation from the plan's xfail grouping (Rule 1 — test-suite-green
+    invariant takes priority): unlike its sibling D-04 tests, this assertion
+    ALREADY holds under today's code — mobile_sales.py:346 hardcodes
+    `customer_id=""`, which register_sale's `customer_id or None`
+    (services/sales.py:254) already coerces to NULL regardless of what is
+    posted. Marking an already-passing assertion `xfail(strict=True)` would
+    XPASS and break this plan's "the full suite stays green" truth, so it is
+    pinned as a plain regression guard instead — it must still be passing
+    once 22-06/22-07 wire the real selector in.
+    """
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(client, product.code, "2", "9,00", batch.id)
+    resp = client.post(
+        "/m/sales",
+        data={
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+        },
+    )
+    assert resp.status_code == 200
+    sale = session.scalars(select(Sale).order_by(Sale.created_at.desc())).first()
+    assert sale is not None
+    assert sale.customer_id is None
+
+
+@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
+def test_mobile_selector_swap_acc_survives(mobile_client_factory, session, product, warehouse):
+    """22-UI-SPEC.md Interaction 9: the mode radio MUST target
+    `#m-customer-header`, never `#wizard-step` — swapping `#wizard-step`
+    would wipe the basket's `code_acc[]` hidden inputs."""
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    client = _client(mobile_client_factory)
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(client, product.code, "2", "9,00", batch.id)
+    resp = client.get(
+        "/m/sales/customer-mode",
+        params={
+            "customer_mode": "new",
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+        },
+    )
+    assert resp.status_code == 200
+    assert 'id="m-customer-header"' in resp.text
+    assert 'id="wizard-step"' not in resp.text
+
+
+@pytest.mark.xfail(strict=True, reason="D-11: batch-card hx-include lands in 22-07")
+def test_batch_card_preserves_basket(mobile_client_factory, session, product, warehouse):
+    """22-RESEARCH.md Pitfall 3 (empirically-verified defect): the batch-card
+    tap must carry `hx-include="closest form"` or the accumulated basket's
+    `code_acc[]` hidden inputs are dropped from the GET request. This suite
+    has no browser runtime, so only the markup half of the fix is provable
+    here (see `test_batch_step_echoes_acc_when_supplied` for the endpoint's
+    half of the contract)."""
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    b2 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b2.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.post("/m/sales/step/product", data={"code": product.code})
+    assert resp.status_code == 200
+    card_match = re.search(r'<button[^>]*hx-get="/m/sales/step/batch"[^>]*>', resp.text)
+    assert card_match is not None, "expected a batch-card button targeting /m/sales/step/batch"
+    assert 'hx-include="closest form"' in card_match.group(0)
+
+
+def test_batch_step_echoes_acc_when_supplied(mobile_client_factory, session, product, warehouse):
+    """Pins the endpoint half of the D-11 fix: `GET /m/sales/step/batch`
+    already declares the 4 `*_acc[]` Query params and its template already
+    re-echoes them as hidden inputs — this must keep working so a later
+    refactor cannot drop it. May already pass today; that is expected."""
+    b1 = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=3,
+        unit_cost_cents=100,
+        unit_price_cents=200,
+        batch_id=b1.id,
+    )
+    client = _client(mobile_client_factory)
+    resp = client.get(
+        "/m/sales/step/batch",
+        params={
+            "code": product.code,
+            "code_acc[]": ["OTHER-01"],
+            "qty_acc[]": ["1"],
+            "price_acc[]": ["5,00"],
+            "batch_acc[]": ["some-batch-id"],
+        },
+    )
+    assert resp.status_code == 200
+    assert '<input type="hidden" name="code_acc[]" value="OTHER-01">' in resp.text
+    assert '<input type="hidden" name="qty_acc[]" value="1">' in resp.text
+    assert '<input type="hidden" name="price_acc[]" value="5,00">' in resp.text
+    assert '<input type="hidden" name="batch_acc[]" value="some-batch-id">' in resp.text
