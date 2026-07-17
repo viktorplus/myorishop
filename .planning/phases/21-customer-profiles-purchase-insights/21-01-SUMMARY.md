@@ -103,3 +103,7 @@ None - no external service configuration required.
 ---
 *Phase: 21-customer-profiles-purchase-insights*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All created/modified files exist on disk and all task commit hashes (`ea4399f`, `f1228d7`, `466c86e`) plus this summary's commit (`1ba7a99`) are present in git log.
