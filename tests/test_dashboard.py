@@ -1,8 +1,7 @@
 """Service-level tests for app.services.dashboard (DASH-01..05).
 
 Task 1: dashboard_now / catalog_status / period_metrics / dashboard_metrics.
-Task 2 (stock_summary / recent_operations / dashboard_context composer)
-lands in a later commit on this same plan.
+Task 2: stock_summary / recent_operations / dashboard_context composer.
 
 Monkeypatch pattern: dashboard.py calls `datetime.now(tz)` internally (not
 an injectable `today` param, per the plan's artifact list), so tests freeze
@@ -17,14 +16,17 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from app.core import local_day_bounds_utc, new_id
-from app.models import ActiveCatalog, Batch, Warehouse
+from app.models import ActiveCatalog, Batch, Product, Warehouse
 from app.services import dashboard
 from app.services.dashboard import (
     WEEKDAY_LABELS,
     catalog_status,
+    dashboard_context,
     dashboard_metrics,
     dashboard_now,
     period_metrics,
+    recent_operations,
+    stock_summary,
 )
 from app.services.finance import record_cash_movement
 from app.services.ledger import record_operation
@@ -58,6 +60,22 @@ def _record_sale_at(session, monkeypatch, iso, *, product, qty, price_cents, cos
         type_="sale",
         product_id=product.id,
         qty_delta=-qty,
+        unit_cost_cents=cost_cents,
+        unit_price_cents=price_cents,
+        batch_id=batch_id,
+    )
+
+
+def _record_receipt_at(session, monkeypatch, iso, *, product, qty, cost_cents=100, price_cents=200):
+    import app.services.ledger as ledger_module
+
+    batch_id = _ensure_batch(session, product)
+    monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: iso)
+    return record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=qty,
         unit_cost_cents=cost_cents,
         unit_price_cents=price_cents,
         batch_id=batch_id,
@@ -208,3 +226,89 @@ def test_dashboard_metrics_week_and_month_boundaries_match_resolve_period(
     expected_month = period_metrics(session, month_start, month_end, TZ)
     assert metrics["week"] == expected_week
     assert metrics["month"] == expected_month
+
+
+# --- stock_summary (DASH-04) -------------------------------------------------
+
+
+def test_stock_summary_product_count_excludes_zero_stock_and_deleted(session):
+    in_stock = Product(
+        id=new_id(), code="A1", name="Товар 1", quantity=5, cost_cents=100, sale_cents=200
+    )
+    zero_stock = Product(
+        id=new_id(), code="A2", name="Товар 2", quantity=0, cost_cents=100, sale_cents=200
+    )
+    deleted = Product(
+        id=new_id(),
+        code="A3",
+        name="Товар 3",
+        quantity=3,
+        cost_cents=100,
+        sale_cents=200,
+        deleted_at="2026-01-01T00:00:00+00:00",
+    )
+    session.add_all([in_stock, zero_stock, deleted])
+    session.commit()
+
+    result = stock_summary(session)
+    assert result["product_count"] == 1
+    assert "cost_value_cents" in result
+    assert "sale_value_cents" in result
+
+
+# --- recent_operations (DASH-05, D-09/Pitfall 4) ----------------------------
+
+
+def test_recent_operations_walk_in_sale_has_none_customer(session, product, monkeypatch):
+    _record_sale_at(
+        session, monkeypatch, "2026-07-10T10:00:00+00:00", product=product, qty=1, price_cents=500
+    )
+    feed = recent_operations(session)
+    assert len(feed) == 1
+    assert feed[0]["op"].type == "sale"
+    assert feed[0]["customer"] is None
+
+
+def test_recent_operations_receipt_row_has_none_customer(session, product, monkeypatch):
+    _record_receipt_at(session, monkeypatch, "2026-07-10T10:00:00+00:00", product=product, qty=5)
+    feed = recent_operations(session)
+    assert len(feed) == 1
+    assert feed[0]["op"].type == "receipt"
+    assert feed[0]["customer"] is None
+
+
+def test_recent_operations_excludes_audit_types(session, product, monkeypatch):
+    """price_change/product_created/product_edited are outside STOCK_AFFECTING_TYPES (D-06)."""
+    import app.services.ledger as ledger_module
+
+    monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
+    record_operation(
+        session, type_="price_change", product_id=product.id, qty_delta=0, batch_id=None
+    )
+    feed = recent_operations(session)
+    assert feed == []
+
+
+def test_recent_operations_never_uses_bare_join_for_sale_or_customer():
+    import inspect
+
+    source = inspect.getsource(recent_operations)
+    assert ".outerjoin(Sale" in source
+    assert ".outerjoin(Customer" in source
+    assert ".join(Sale" not in source
+    assert ".join(Customer" not in source
+
+
+# --- dashboard_context composer (DASH-01..05) -------------------------------
+
+
+def test_dashboard_context_no_catalog_row_returns_none_and_full_composition(session):
+    result = dashboard_context(session, TZ)
+    assert result["catalog"] is None
+    assert set(result) == {"weekday", "date", "time", "catalog", "metrics", "stock", "feed"}
+    assert result["metrics"]["today"]["revenue_cents"] == 0
+    assert "product_count" in result["stock"]
+    assert result["feed"] == []
+    # Zero ledger writes: nothing pending on the session after a read-only call.
+    assert not session.new
+    assert not session.dirty
