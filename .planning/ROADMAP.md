@@ -277,7 +277,21 @@ Plans:
   4. Every report detail page has a "Назад к отчётам" link that returns to /reports.
   5. Mobile navigation offers the same main tabs as desktop (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы), excluding Настройки.
 
-**Plans**: TBD
+**Plans**: 6 plans (2 waves)
+
+Plans:
+**Wave 1**
+
+- [ ] 24-01-PLAN.md — Desktop nav reduction to 8 items + Товары toolbar (NAV-01/02/03/08, D-01..D-05)
+- [ ] 24-02-PLAN.md — Настройки hub + embedded Экспорт on /backup + Экспорт кассы relocation (NAV-04/05/06, D-06/D-07/D-08)
+- [ ] 24-03-PLAN.md — «Назад к отчётам» back-links on all 5 report detail pages (RPT-01)
+- [ ] 24-04-PLAN.md — Transfer /transfers?code= prefill + product-row «Переместить» action (NAV-07, D-13/D-14)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 24-05-PLAN.md — Persistent top-docked mobile tab bar + home-grid/finance-link removal (MOB-01, D-09/D-10/D-12)
+- [ ] 24-06-PLAN.md — Mobile Товары + Покупатели pages, D-11 toolbar mirror, main.py registration (MOB-01)
+
 **UI hint**: yes
 
 ## Progress
@@ -310,4 +324,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
+| 24. Navigation Restructure & Settings | v2.0 | 0/6 | Not started | - |
