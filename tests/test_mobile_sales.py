@@ -5,16 +5,14 @@ Uses `mobile_client_factory` (Plan 01 foundation) to test `mobile_sales.router`
 in isolation, without app.main registration (that happens in Plan 09).
 
 Phase 22 Plan 02 (D-04/D-11) added the block below: the mobile customer
-selector + D-11 batch-card basket-preservation fix are strict-xfail red-side
-pins (22-04/22-07 land the feature), except `test_mobile_walkin` and
-`test_batch_step_echoes_acc_when_supplied`, which already pass under today's
-code and are pinned as plain regression guards instead — see each test's
-docstring.
+selector + D-11 batch-card basket-preservation fix were strict-xfail red-side
+pins until 22-06/22-07 landed the feature — all markers are now retired
+(customer selector wiring + register_sale customer_id write path in 22-07,
+the D-11 hx-include fix also in 22-07).
 """
 
 import re
 
-import pytest
 from sqlalchemy import select
 
 from app.core import new_id
@@ -743,7 +741,6 @@ def test_oversell_warns_zero_writes_then_confirm_writes(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
 def test_mobile_customer_selector_renders_on_basket(
     mobile_client_factory, session, product, warehouse
 ):
@@ -779,7 +776,6 @@ def test_mobile_customer_selector_renders_on_basket(
     assert selector_index < first_card_index
 
 
-@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
 def test_mobile_links_customer(mobile_client_factory, session, product, warehouse, customer):
     """Retires the `customer_id=""` hardcode at mobile_sales.py:346."""
     batch = _seed_batch(session, product, warehouse, quantity=0)
@@ -881,7 +877,6 @@ def test_mobile_selector_swap_acc_survives(mobile_client_factory, session, produ
     assert 'id="wizard-step"' not in resp.text
 
 
-@pytest.mark.xfail(strict=True, reason="D-11: batch-card hx-include lands in 22-07")
 def test_batch_card_preserves_basket(mobile_client_factory, session, product, warehouse):
     """22-RESEARCH.md Pitfall 3 (empirically-verified defect): the batch-card
     tap must carry `hx-include="closest form"` or the accumulated basket's
