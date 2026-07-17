@@ -211,8 +211,8 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 22-01-PLAN.md — Wave 1: desktop red-side tests (SALE-03/04/05/06/07 + SALE-01 regression guard)
-- [ ] 22-02-PLAN.md — Wave 1: live-total, mobile and to_cents parity tests
+- [x] 22-01-PLAN.md — Wave 1: desktop red-side tests (SALE-03/04/05/06/07 + SALE-01 regression guard)
+- [x] 22-02-PLAN.md — Wave 1: live-total, mobile and to_cents parity tests
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -290,6 +290,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 19. Products Page Rebuild | v2.0 | 1/1 | Complete    | 2026-07-16 |
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
-| 22. Sales Page Rebuild | v2.0 | 0/TBD | Not started | - |
+| 22. Sales Page Rebuild | v2.0 | 2/7 | In Progress|  |
 | 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
