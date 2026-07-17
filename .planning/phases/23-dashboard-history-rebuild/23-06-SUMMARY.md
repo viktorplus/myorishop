@@ -119,3 +119,15 @@ None - no external service configuration required.
 ---
 *Phase: 23-dashboard-history-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: app/routes/home.py
+- FOUND: app/templates/pages/home.html
+- FOUND: app/templates/partials/dashboard_tiles.html
+- FOUND: tests/test_home.py
+- FOUND: .planning/phases/23-dashboard-history-rebuild/23-06-SUMMARY.md
+- FOUND commit: 00d985d (feat: route rebuild)
+- FOUND commit: 3ce1ba2 (test: RED)
+- FOUND commit: 36bc656 (feat: GREEN)
+- FOUND commit: 123cc36 (docs: SUMMARY)
