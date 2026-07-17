@@ -19,8 +19,8 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
-from app.core import format_ru_date
-from app.models import Customer, CustomerContact
+from app.core import format_ru_date, new_id
+from app.models import Customer, CustomerContact, Product
 from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
@@ -28,7 +28,9 @@ from app.services.customers import (
     _period_starts,
     contacts_by_kind,
     create_customer,
+    favorite_products,
     get_customer,
+    last_order_date,
     list_customers_view,
     purchase_history,
     search_customers,
@@ -515,6 +517,97 @@ def test_spend_view_start_iso_is_a_string(session, customer):
     for period in view.values():
         assert isinstance(period["start_iso"], str)
     assert format_ru_date(view["month"]["start_iso"]) == "01.07.2026"
+
+
+def test_favorite_products_ranked_by_frequency_then_qty(session, customer, past_sale):
+    """CUST-08/D-04: frequency (distinct orders) outranks total quantity."""
+    product_a = Product(id=new_id(), code="FAV-A", name="Товар A", quantity=0)
+    product_b = Product(id=new_id(), code="FAV-B", name="Товар B", quantity=0)
+    session.add_all([product_a, product_b])
+    session.commit()
+
+    past_sale(customer, product_a, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product_a, created_at="2026-05-05T10:00:00+00:00", qty=1)
+    past_sale(customer, product_b, created_at="2026-05-03T10:00:00+00:00", qty=50)
+
+    rows = favorite_products(session, customer.id)
+    assert rows[0]["product"].id == product_a.id
+    b_row = next(r for r in rows if r["product"].id == product_b.id)
+    assert b_row["qty"] == 50
+
+
+def test_favorites_batch_split_counts_once(session, customer, product, past_sale):
+    """CUST-08/Pitfall 3, the locked semantic: two lines in ONE Sale count as freq==1."""
+    sale, _ = past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=3)
+    past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=2, sale=sale)
+
+    rows = favorite_products(session, customer.id)
+    assert len(rows) == 1
+    assert rows[0]["freq"] == 1
+    assert rows[0]["qty"] == 5
+
+
+def test_favorites_limit_caps_at_ten(session, customer, past_sale):
+    """CUST-08/D-04a: default limit is 10 for 12 distinct products; an explicit limit is honored."""
+    for i in range(12):
+        p = Product(id=new_id(), code=f"FAV-{i:02d}", name=f"Товар {i}", quantity=0)
+        session.add(p)
+        session.commit()
+        past_sale(customer, p, created_at="2026-05-01T10:00:00+00:00", qty=1)
+
+    assert len(favorite_products(session, customer.id)) == 10
+    assert len(favorite_products(session, customer.id, limit=3)) == 3
+
+
+def test_favorites_scoped_to_this_customer(session, past_sale):
+    """CUST-08: one customer's ranking never contains another customer's products."""
+    customer_a = Customer(id=new_id(), name="Анна", search_lc="анна")
+    customer_b = Customer(id=new_id(), name="Ольга", search_lc="ольга")
+    session.add_all([customer_a, customer_b])
+    session.commit()
+
+    product_a = Product(id=new_id(), code="SCOPE-A", name="Товар A", quantity=0)
+    product_b = Product(id=new_id(), code="SCOPE-B", name="Товар B", quantity=0)
+    session.add_all([product_a, product_b])
+    session.commit()
+
+    past_sale(customer_a, product_a, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(customer_b, product_b, created_at="2026-05-01T10:00:00+00:00", qty=1)
+
+    rows_a = favorite_products(session, customer_a.id)
+    assert {r["product"].id for r in rows_a} == {product_a.id}
+
+
+def test_favorites_excludes_returns(session, customer, product, past_sale):
+    """CUST-08: a return op does not count toward freq (the type=="sale" boundary vs D-06)."""
+    sale, _ = past_sale(customer, product, created_at="2026-05-01T10:00:00+00:00", qty=1)
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-02T10:00:00+00:00",
+        qty=1,
+        type_="return",
+        sale=sale,
+    )
+
+    rows = favorite_products(session, customer.id)
+    assert len(rows) == 1
+    assert rows[0]["freq"] == 1
+
+
+def test_last_order_returns_most_recent_created_at(session, customer, product, past_sale):
+    """CUST-06: `last_order_date` returns the LATEST `created_at` string exactly."""
+    past_sale(customer, product, created_at="2026-01-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product, created_at="2026-03-01T10:00:00+00:00", qty=1)
+    past_sale(customer, product, created_at="2026-02-01T10:00:00+00:00", qty=1)
+
+    history = purchase_history(session, customer.id)
+    assert last_order_date(history) == "2026-03-01T10:00:00+00:00"
+
+
+def test_last_order_empty_history_returns_none():
+    """CUST-06: `last_order_date([])` returns None and does not raise."""
+    assert last_order_date([]) is None
 
 
 # --- Web slice (routes + templates) ---

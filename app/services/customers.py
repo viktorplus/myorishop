@@ -469,3 +469,72 @@ def spend_view(session: Session, customer_id: str, today: date | None = None) ->
         cents = _spend_window(session, customer_id, start_iso, end_iso)
         view[name] = {"cents": cents, "start_iso": start.isoformat()}
     return view
+
+
+def _favorites_stmt(customer_id: str, limit: int):
+    """Unexecuted favorite-products Select for one customer (CUST-08/D-04/D-04a).
+
+    Returns the Select itself, NOT executed here, so the portability guard
+    (Task 3) can compile it without a session.
+
+    Frequency is count(DISTINCT sale_id) — orders containing the product —
+    NOT count(lines). This resolves D-04's under-specification (RESEARCH
+    Pitfall 3, accepted by the developer). Nothing prevents two `sale` ops
+    for the same product in one sale: the batch picker writes one op per
+    batch, so a batch-split purchase is a ROUTINE occurrence in this app,
+    not an edge case. "How often does this person buy X" means how many
+    shopping trips included X; a two-batch split of one purchase is ONE
+    purchase. Total quantity is the secondary column, so per-line volume
+    is not lost.
+
+    Product.name is a mandatory third sort key — freq DESC, qty DESC alone
+    leaves ties on BOTH keys in DB-arbitrary order, which would make any
+    test asserting exact ordering of two equal-scoring products flaky.
+
+    Does NOT filter out soft-deleted products — this is a historical view
+    (reports.py sales_profit_report Pitfall 5 rule). A soft-deleted
+    product a customer genuinely loved still belongs in their ranking.
+
+    type == "sale" only, mirroring purchase_history: this ranks what was
+    BOUGHT, not net financial exposure — returns are spend_totals' concern
+    (a deliberate D-04 vs D-06 scope boundary, not an oversight).
+
+    `limit` is an int parameter bound by SQLAlchemy — never
+    string-interpolated (T-21-03).
+    """
+    freq = func.count(func.distinct(Operation.sale_id)).label("freq")
+    qty = func.coalesce(func.sum(-Operation.qty_delta), 0).label("qty")
+    return (
+        select(Product, freq, qty)
+        .join(Operation, Operation.product_id == Product.id)
+        .join(Sale, Operation.sale_id == Sale.id)
+        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+        .group_by(Product.id)
+        .order_by(freq.desc(), qty.desc(), Product.name)
+        .limit(limit)
+    )
+
+
+def favorite_products(session: Session, customer_id: str, limit: int = 10) -> list[dict]:
+    """This customer's top products, ranked by distinct orders then quantity (CUST-08/D-04a).
+
+    Default limit=10 per D-04a. See `_favorites_stmt`'s docstring for the
+    batch-split/soft-delete/type=="sale" semantics.
+    """
+    rows = session.execute(_favorites_stmt(customer_id, limit)).all()
+    return [{"product": product, "freq": freq, "qty": qty} for product, freq, qty in rows]
+
+
+def last_order_date(history: list[dict]) -> str | None:
+    """Most recent order's created_at (CUST-06), derived from an already-loaded purchase_history.
+
+    Pure: no session, no query. `purchase_history` is already ordered
+    created_at DESC, seq DESC, so history[0] IS the most recent order —
+    issuing a further query for data already in memory is exactly what
+    RESEARCH Pitfall 6 says not to do. Returns the raw ISO string (not a
+    date object): the detail page renders it with the existing | local_dt
+    filter, exactly as purchase_history.html already does.
+    """
+    if not history:
+        return None
+    return history[0]["op"].created_at
