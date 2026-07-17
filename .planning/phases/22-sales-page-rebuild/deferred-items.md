@@ -91,3 +91,24 @@ Same accumulated debt as 22-01/22-02, reconfirmed during 22-05's Task 3 verifica
 
 This plan's own 3 files pass `ruff check` and `ruff format --check` cleanly, verified
 individually. Not fixed here — out of scope per the plan's `<files>` frontmatter.
+
+## 22-06: Repo-wide ruff debt (pre-existing, not introduced by 22-06)
+
+Same accumulated debt as 22-01/22-02/22-04/22-05, reconfirmed during 22-06's Task 3
+verification:
+
+- `uv run ruff check .`: 9 pre-existing errors (E501 line-too-long across several
+  `app/`/`scripts/`/`tests/` files, plus one F401 unused import in
+  `tests/test_mobile_receipts.py`) — none in `app/routes/mobile_sales.py`,
+  `app/templates/mobile_partials/sale_customer.html`,
+  `app/templates/mobile_partials/customer_picker.html`, or `tests/test_mobile_sales.py`
+  (this plan's entire `files_modified`).
+- `uv run ruff format --check .`: 47 pre-existing files would be reformatted — none
+  is a file this plan touched.
+
+Confirmed both counts (9 errors / 47 files) match the pristine main checkout at the same
+HEAD (74890ee), before this worktree's changes — accumulated debt, not a regression.
+This plan's own 2 Python-adjacent files (`app/routes/mobile_sales.py`,
+`tests/test_mobile_sales.py`) pass `ruff check` and `ruff format --check` cleanly,
+verified individually. Not fixed here — out of scope per the plan's `<files>`
+frontmatter.

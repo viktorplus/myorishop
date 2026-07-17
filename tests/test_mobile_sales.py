@@ -850,7 +850,6 @@ def test_mobile_walkin(mobile_client_factory, session, product, warehouse):
     assert sale.customer_id is None
 
 
-@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
 def test_mobile_selector_swap_acc_survives(mobile_client_factory, session, product, warehouse):
     """22-UI-SPEC.md Interaction 9: the mode radio MUST target
     `#m-customer-header`, never `#wizard-step` — swapping `#wizard-step`
