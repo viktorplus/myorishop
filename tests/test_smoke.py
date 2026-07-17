@@ -22,3 +22,44 @@ def test_home_page_renders(client, product):
     # D-03: vendored htmx, never a CDN script tag
     assert "/static/htmx.min.js" in response.text
     assert "Главная" in response.text
+
+
+def test_web_top_nav_has_exactly_eight_items(client):
+    """NAV-08: desktop top-level nav is reduced from 17 items to exactly 8.
+
+    Phase 24 Plan 01: Приход/Списание/Справочник/Категории/Каталоги moved
+    into the Товары page toolbar; Склады/Резервные копии/Экспорт move under
+    Настройки (later plans); Экспорт кассы leaves the nav entirely.
+    """
+    response = client.get("/")
+    assert response.status_code == 200
+    start = response.text.index("<nav>")
+    end = response.text.index("</nav>", start)
+    nav_html = response.text[start:end]
+    assert nav_html.count("<a ") == 8
+
+    expected_hrefs = [
+        "/",
+        "/products",
+        "/sales/new",
+        "/customers",
+        "/history",
+        "/reports",
+        "/finance",
+        "/settings",
+    ]
+    for href in expected_hrefs:
+        assert f'href="{href}"' in nav_html
+
+    expected_labels = [
+        "Главная",
+        "Товары",
+        "Продажи",
+        "Покупатели",
+        "История",
+        "Отчёты",
+        "Финансы",
+        "Настройки",
+    ]
+    for label in expected_labels:
+        assert label in nav_html
