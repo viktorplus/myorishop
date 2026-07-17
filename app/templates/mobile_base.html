@@ -27,6 +27,17 @@
   <script src="/static/sale-total.js" defer></script>
 </head>
 <body>
+  {% block tabbar %}
+  <nav class="mobile-tabbar">
+    <a href="/m/"{% if request.url.path == "/m/" %} class="active"{% endif %}>Главная</a>
+    <a href="/m/products"{% if request.url.path.startswith("/m/products") %} class="active"{% endif %}>Товары</a>
+    <a href="/m/sales"{% if request.url.path.startswith("/m/sales") %} class="active"{% endif %}>Продажи</a>
+    <a href="/m/customers"{% if request.url.path.startswith("/m/customers") %} class="active"{% endif %}>Покупатели</a>
+    <a href="/m/history"{% if request.url.path.startswith("/m/history") %} class="active"{% endif %}>История</a>
+    <a href="/m/reports/expiry"{% if request.url.path.startswith("/m/reports") %} class="active"{% endif %}>Отчёты</a>
+    <a href="/m/finance"{% if request.url.path.startswith("/m/finance") %} class="active"{% endif %}>Финансы</a>
+  </nav>
+  {% endblock %}
   <main class="mobile-shell">
     {% block back %}<a class="mobile-back" href="/m/">← Главная</a>{% endblock %}
     {% block step_indicator %}{% endblock %}

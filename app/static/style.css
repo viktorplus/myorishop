@@ -50,6 +50,33 @@ nav a.active {
   gap: 8px;
 }
 
+/* Mobile tab bar (Phase 24, D-09/MOB-01): persistent, top-docked 7-tab nav
+   on every /m/* page. Sibling of {% block back %}, full viewport width. */
+nav.mobile-tabbar {
+  display: flex;
+  background: #ffffff;
+  border-bottom: 1px solid #d9d9d9;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+nav.mobile-tabbar a {
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  text-align: center;
+  padding: 4px;
+}
+
+nav.mobile-tabbar a.active {
+  font-weight: 600;
+  border-bottom: 3px solid #2563eb;
+}
+
 a {
   color: #2563eb;
 }
