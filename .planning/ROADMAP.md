@@ -75,7 +75,7 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 - [x] **Phase 20: Warehouses & Batch-Split Transfers** - Form-driven warehouse management with stock-guarded delete, plus a correct partial-batch transfer (completed 2026-07-16)
 - [x] **Phase 21: Customer Profiles & Purchase Insights** - Multi-contact profiles with last-order date, period spend, and favorite products (completed 2026-07-17)
 - [x] **Phase 22: Sales Page Rebuild** - Table-shaped sale form with a live running total and a new/existing/anonymous customer flow (completed 2026-07-17)
-- [ ] **Phase 23: Dashboard & History Rebuild** - Operational home page plus a type-first history with per-type columns and filters
+- [x] **Phase 23: Dashboard & History Rebuild** - Operational home page plus a type-first history with per-type columns and filters (completed 2026-07-17)
 - [ ] **Phase 24: Navigation Restructure & Settings** - Reduce the top-level nav to first-class pages and nest the rest where they belong
 
 ## Phase Details
@@ -259,8 +259,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 23-06-PLAN.md — Desktop Главная rebuild: date/time, catalog line, 4-tile metrics, recent-operations feed (DASH-01..05)
-- [ ] 23-07-PLAN.md — Mobile Главная: dashboard content added below the untouched nav grid (DASH-01..05, D-10, Pitfall 1)
+- [x] 23-06-PLAN.md — Desktop Главная rebuild: date/time, catalog line, 4-tile metrics, recent-operations feed (DASH-01..05)
+- [x] 23-07-PLAN.md — Mobile Главная: dashboard content added below the untouched nav grid (DASH-01..05, D-10, Pitfall 1)
 
 **UI hint**: yes
 
@@ -309,5 +309,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 23. Dashboard & History Rebuild | v2.0 | 5/7 | In Progress|  |
+| 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete   | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
