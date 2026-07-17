@@ -1,24 +1,62 @@
 {% extends "mobile_base.html" %}
-{# Mobile history screen (Phase 11 Plan 08): single "Тип операции" filter
-   (desktop's second filter, по товару, is dropped per UI-SPEC's CONTEXT
-   discretion), a paginated card list, and #return-slot placed OUTSIDE
-   #history-cards so a card-list swap or filter change can never wipe an
-   in-progress return confirmation rendered there (mirrors desktop's
-   pages/history.html placement rationale for #return-slot). #}
+{# Mobile history screen (Phase 11 Plan 08; extended Phase 23 Plan 05,
+   HIST-01..04, D-10): full filter parity with desktop — Тип, Категория,
+   Покупатель (sale/return only, D-05), от/по date range — stacked .field
+   divs under #history-filters, plus the same numbered page_window/paginate
+   pagination desktop already uses (mobile's own simpler layout, no
+   preset-bar reuse — screen-space discretion). #history-cards and
+   #history-pagination stay DOM siblings, never nested, so a filter swap can
+   never destroy the pagination control (CR-01 precedent). #return-slot
+   stays exactly where it was — OUTSIDE both — so an in-progress return
+   confirmation is never wiped by a card-list or pagination swap. #}
 {% block content %}
 <h1>История</h1>
-<div class="field">
-  <label for="type">Тип операции</label>
-  <select id="type" name="type"
-          hx-get="/m/history" hx-trigger="change"
-          hx-target="#history-cards" hx-push-url="true">
-    <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
-    {% for t, label in OPERATION_TYPE_LABELS.items() %}
-    <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
+<div id="history-filters">
+  <div class="field">
+    <label for="type">Тип операции</label>
+    <select id="type" name="type"
+            hx-get="/m/history" hx-trigger="change"
+            hx-include="#history-filters input, #history-filters select"
+            hx-target="#history-cards" hx-swap="outerHTML" hx-push-url="true">
+      <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
+      {% for t, label in OPERATION_TYPE_LABELS.items() %}
+      <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="category">Категория</label>
+    <input type="text" id="category" name="category" placeholder="Фильтр…" value="{{ category }}"
+           hx-get="/m/history" hx-trigger="input changed delay:300ms"
+           hx-include="#history-filters input, #history-filters select"
+           hx-target="#history-cards" hx-swap="outerHTML" hx-push-url="true">
+  </div>
+  {% if type_filter in ("sale", "return") %}
+  <div class="field">
+    <label for="customer">Покупатель</label>
+    <input type="text" id="customer" name="customer" placeholder="Фильтр…" value="{{ customer }}"
+           hx-get="/m/history" hx-trigger="input changed delay:300ms"
+           hx-include="#history-filters input, #history-filters select"
+           hx-target="#history-cards" hx-swap="outerHTML" hx-push-url="true">
+  </div>
+  {% endif %}
+  <div class="field">
+    <label for="from">с</label>
+    <input type="date" id="from" name="from" value="{{ from_date }}"
+           hx-get="/m/history" hx-trigger="change"
+           hx-include="#history-filters input, #history-filters select"
+           hx-target="#history-cards" hx-swap="outerHTML" hx-push-url="true">
+  </div>
+  <div class="field">
+    <label for="to">по</label>
+    <input type="date" id="to" name="to" value="{{ to_date }}"
+           hx-get="/m/history" hx-trigger="change"
+           hx-include="#history-filters input, #history-filters select"
+           hx-target="#history-cards" hx-swap="outerHTML" hx-push-url="true">
+  </div>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
 </div>
-<div id="history-cards">{% include "mobile_partials/history_cards.html" %}</div>
-{% include "mobile_partials/history_load_more.html" %}
+{% include "mobile_partials/history_cards.html" %}
+{% include "mobile_partials/history_pagination.html" %}
 <div id="return-slot"></div>
 {% endblock %}
