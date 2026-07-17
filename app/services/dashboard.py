@@ -5,19 +5,23 @@ Zero ledger writes — 100% read composition over already-shipped Phase
 6/16/17 reporting services. Per D-09, this is achieved by generalizing two
 existing single-purpose shapes rather than inventing new aggregation logic:
 `_metrics_context`'s single-period composition (app/routes/finance.py)
-becomes 3 simultaneous periods here (`period_metrics`/`dashboard_metrics`).
-Task 2 (stock_summary/recent_operations/dashboard_context) lands in a
-later commit on this same plan.
+becomes 3 simultaneous periods here (`period_metrics`/`dashboard_metrics`),
+and `recent_sales`'s type-locked feed query (app/services/sales.py) becomes
+a 6-type feed (`recent_operations`). `stock_summary`'s product_count is the
+one genuinely new SQL aggregation this module adds.
 """
 
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import local_day_bounds_utc
-from app.models import ActiveCatalog
-from app.services.finance_reports import cash_expense_total
+from app.models import ActiveCatalog, Batch, Customer, Operation, Product, Sale
+from app.services.active_catalog import get_active_catalog
+from app.services.finance_reports import cash_expense_total, stock_valuation
+from app.services.ledger import STOCK_AFFECTING_TYPES
 from app.services.reports import sales_profit_report
 
 # Indexed by date.weekday() (Monday=0..Sunday=6) — DASH-01.
@@ -105,4 +109,61 @@ def dashboard_metrics(session: Session, tz_name: str) -> dict:
         "today": period_metrics(session, today, today, tz_name),
         "week": period_metrics(session, week_start, week_end, tz_name),
         "month": period_metrics(session, month_start, month_end, tz_name),
+    }
+
+
+def stock_summary(session: Session) -> dict:
+    """Stock valuation + distinct-code count (DASH-04).
+
+    product_count is a single SQL count aggregation (never a Python loop,
+    Don't-Hand-Roll table) — the one genuinely new aggregation this plan
+    adds; nothing existing computes it today.
+    """
+    product_count = session.scalar(
+        select(func.count())
+        .select_from(Product)
+        .where(Product.deleted_at.is_(None), Product.quantity > 0)
+    )
+    return {**stock_valuation(session), "product_count": product_count}
+
+
+def recent_operations(session: Session, limit: int = 10) -> list[dict]:
+    """Last N stock-affecting ops joined to product/batch/customer (DASH-05).
+
+    D-09's generalization of sales.py::recent_sales's exact double-outerjoin
+    shape to all 6 STOCK_AFFECTING_TYPES. Both the Sale and Customer
+    outerjoins MUST stay outer (Pitfall 4) — a receipt/writeoff/correction/
+    transfer row has sale_id IS NULL by construction and must still appear;
+    a walk-in sale has customer_id IS NULL and must still appear.
+    """
+    rows = session.execute(
+        select(Operation, Product, Batch, Customer)
+        .join(Product, Operation.product_id == Product.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .outerjoin(Sale, Operation.sale_id == Sale.id)
+        .outerjoin(Customer, Sale.customer_id == Customer.id)
+        .where(Operation.type.in_(STOCK_AFFECTING_TYPES))
+        .order_by(Operation.created_at.desc(), Operation.seq.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {"op": op, "product": product, "batch": batch, "customer": customer}
+        for op, product, batch, customer in rows
+    ]
+
+
+def dashboard_context(session: Session, tz_name: str) -> dict:
+    """The single composer call app/routes/home.py and mobile_home.py need.
+
+    Never raises when no ActiveCatalog row exists (DASH-02's empty-state
+    contract) — every other key renders unconditionally regardless of the
+    catalog state.
+    """
+    today = datetime.now(ZoneInfo(tz_name)).date()
+    return {
+        **dashboard_now(tz_name),
+        "catalog": catalog_status(get_active_catalog(session), today),
+        "metrics": dashboard_metrics(session, tz_name),
+        "stock": stock_summary(session),
+        "feed": recent_operations(session, limit=10),
     }
