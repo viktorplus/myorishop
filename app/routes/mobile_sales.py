@@ -497,13 +497,14 @@ def mobile_sale_create(
     qty_acc: list[str] = Form([], alias="qty_acc[]"),
     price_acc: list[str] = Form([], alias="price_acc[]"),
     batch_acc: list[str] = Form([], alias="batch_acc[]"),
+    customer_id: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
     try:
         result, errors = register_sale(
             session,
-            customer_id="",  # D-04: no mobile customer picker this phase
+            customer_id=customer_id,
             codes=code_acc,
             qtys=qty_acc,
             prices=price_acc,

@@ -779,7 +779,6 @@ def test_mobile_customer_selector_renders_on_basket(
     assert selector_index < first_card_index
 
 
-@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
 def test_mobile_links_customer(mobile_client_factory, session, product, warehouse, customer):
     """Retires the `customer_id=""` hardcode at mobile_sales.py:346."""
     batch = _seed_batch(session, product, warehouse, quantity=0)
