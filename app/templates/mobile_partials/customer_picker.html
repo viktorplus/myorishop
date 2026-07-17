@@ -1,0 +1,43 @@
+{# Mobile customer search-result list (D-04, mobile twin of
+   partials/customer_picker.html). Context comes from the SAME unchanged
+   customer_search_view (app/services/customers.py): q + rows of
+   {customer, name_seg, consultant_seg} — the search backend needs zero
+   changes for mobile.
+
+   This file exists SEPARATELY from partials/customer_picker.html because
+   that partial's hx-on:click handler hard-codes FOUR desktop ids
+   (customer-id-input / customer-chip-text / customer-selected /
+   customer-default, customer_picker.html:23-26). Reusing it here would
+   collide those ids with mobile_partials/sale_customer.html's own
+   m-customer-* ids across the two trees — so every id below carries the
+   m- prefix instead, and this is its own file rather than a parameterised
+   include.
+
+   Untrusted-text contract (T-22-02, mirrors the desktop picker exactly):
+   customer names are operator-supplied stored text. Each card's data-id /
+   data-name / data-surname attributes are Jinja attribute-escaped; the
+   hx-on:click handler reads them via .dataset and writes via .textContent
+   only — no raw-markup DOM write of any kind, and never |safe. <mark>
+   below is literal template HTML wrapped around an autoescaped segment,
+   never |safe either. #}
+<div id="m-customer-picker" class="customer-picker">
+  {% if rows %}
+  {% for row in rows %}
+  {% set customer = row.customer %}
+  <button type="button" class="mobile-card"
+          data-id="{{ customer.id }}" data-name="{{ customer.name }}" data-surname="{{ customer.surname or '' }}"
+          hx-on:click="document.getElementById('m-customer-id-input').value = this.dataset.id;
+            document.getElementById('m-customer-chip-text').textContent = 'Покупатель: ' + this.dataset.name + (this.dataset.surname ? (' ' + this.dataset.surname) : '');
+            document.getElementById('m-customer-selected').hidden = false;
+            document.getElementById('m-customer-default').hidden = true;">
+    <p>{% set pre, match, post = row.name_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}</p>
+    <p>{% if customer.surname %}{{ customer.surname }}{% else %}<span class="muted">—</span>{% endif %}</p>
+    <p>{% if customer.consultant_number %}{% set pre, match, post = row.consultant_seg %}{{ pre }}{% if match %}<mark>{{ match }}</mark>{% endif %}{{ post }}{% else %}<span class="muted">—</span>{% endif %}</p>
+  </button>
+  {% endfor %}
+  {% elif q and q.strip() %}
+  <div class="empty-state">
+    <p class="muted">Ничего не найдено по запросу „{{ q }}“. Проверьте имя или номер консультанта.</p>
+  </div>
+  {% endif %}
+</div>
