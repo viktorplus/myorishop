@@ -282,10 +282,10 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 24-01-PLAN.md — Desktop nav reduction to 8 items + Товары toolbar (NAV-01/02/03/08, D-01..D-05)
-- [ ] 24-02-PLAN.md — Настройки hub + embedded Экспорт on /backup + Экспорт кассы relocation (NAV-04/05/06, D-06/D-07/D-08)
-- [ ] 24-03-PLAN.md — «Назад к отчётам» back-links on all 5 report detail pages (RPT-01)
-- [ ] 24-04-PLAN.md — Transfer /transfers?code= prefill + product-row «Переместить» action (NAV-07, D-13/D-14)
+- [x] 24-01-PLAN.md — Desktop nav reduction to 8 items + Товары toolbar (NAV-01/02/03/08, D-01..D-05)
+- [x] 24-02-PLAN.md — Настройки hub + embedded Экспорт on /backup + Экспорт кассы relocation (NAV-04/05/06, D-06/D-07/D-08)
+- [x] 24-03-PLAN.md — «Назад к отчётам» back-links on all 5 report detail pages (RPT-01)
+- [x] 24-04-PLAN.md — Transfer /transfers?code= prefill + product-row «Переместить» action (NAV-07, D-13/D-14)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -324,4 +324,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 24. Navigation Restructure & Settings | v2.0 | 0/6 | Not started | - |
+| 24. Navigation Restructure & Settings | v2.0 | 4/6 | In Progress|  |

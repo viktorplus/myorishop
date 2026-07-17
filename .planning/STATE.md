@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
 status: executing
 stopped_at: Phase 24 UI-SPEC approved
-last_updated: "2026-07-17T20:08:37.661Z"
-last_activity: 2026-07-17 -- Phase 24 planning complete
+last_updated: "2026-07-17T20:17:22.861Z"
+last_activity: 2026-07-17 -- Phase 24 execution started
 progress:
   total_phases: 7
   completed_phases: 6
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 24 — navigation restructure & settings
+**Current focus:** Phase 24 — navigation-restructure-settings
 
 ## Current Position
 
-Phase: 24
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-17 -- Phase 24 planning complete
+Phase: 24 (navigation-restructure-settings) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 24
+Last activity: 2026-07-17 -- Phase 24 execution started
 
 Progress: [██████░░░░] 57% (v2.0 — 21/28 plans; Phase 22's 7 plans are planned, not yet executed)
 
