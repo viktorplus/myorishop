@@ -1,0 +1,20 @@
+{% extends "mobile_base.html" %}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Покупатели</h1>
+{% if not rows %}
+<div class="empty-state"><p class="muted">Покупателей пока нет.</p></div>
+{% else %}
+{% for customer in rows %}
+<a class="mobile-card" href="/customers/{{ customer.id }}">
+  <p><strong>{{ customer.name }} {{ customer.surname or '' }}</strong></p>
+  {% if customer.consultant_number %}
+  <p class="muted">Номер консультанта: {{ customer.consultant_number }}</p>
+  {% endif %}
+</a>
+{% endfor %}
+{% endif %}
+{% if page + 1 < total_pages %}
+<p><a href="/m/customers?page={{ page + 1 }}">Показать ещё →</a></p>
+{% endif %}
+{% endblock %}
