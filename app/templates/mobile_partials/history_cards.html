@@ -1,15 +1,25 @@
-{# Mobile history cards (Phase 11 Plan 08): 10-column desktop history_rows.html
-   restacked into one .mobile-card per operation, nothing hidden — same
-   "everything visible" rule as the batch card. Autoescape only — product
-   names, payload notes, and created_by are untrusted-at-rest text
-   (T-05-18 precedent); NEVER |safe.
+{# Mobile history cards (Phase 11 Plan 08; extended Phase 23 Plan 05,
+   HIST-01, D-10): self-wrapping #history-cards (mirrors recent_sales.html's/
+   finance_tiles.html's self-wrapping-partial convention), so
+   partials/pagination.html's outerHTML-swap buttons (targeting
+   #history-cards) receive a response that includes the wrapper itself.
 
-   DATA ROWS ONLY: this partial contains no load-more control (that lives
-   in history_load_more.html, a structural sibling in the page, isolated
-   from this partial's own innerHTML/beforeend swaps — CR-01 precedent). #}
+   Per-type column narrowing (mirrors Plan 04's desktop history_rows.html):
+   when `columns` is None (no type filter, or one of the 3 audit types),
+   TODAY'S unchanged card markup renders — everything visible. When
+   `columns` is a tuple (one of the 6 STOCK_AFFECTING_TYPES), only the lines
+   for keys present in it render (expiry/qty/price/cost/profit/customer/
+   reason/warehouse), same "Срок"/"Склад" copy and muted-dash fallbacks as
+   desktop.
+
+   DATA ROWS ONLY: pagination lives in history_pagination.html, a structural
+   sibling in the page, isolated from this partial's own outerHTML swaps
+   (CR-01 precedent). Autoescape only — product names, payload notes, and
+   created_by are untrusted-at-rest text (T-05-18 precedent); NEVER |safe. #}
+<div id="history-cards"{% if oob %} hx-swap-oob="true"{% endif %}>
 {% if not rows %}
 <p class="empty-state muted">
-  {%- if type_filter -%}
+  {%- if type_filter or product_id or category or customer or from_date or to_date -%}
   Нет операций по выбранным фильтрам.
   {%- else -%}
   Операций пока нет.
@@ -20,6 +30,36 @@
 <div class="mobile-card">
   <p class="muted">{{ r.op.created_at | local_dt }} · {{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</p>
   <p><strong>{{ r.product.name }} ({{ r.product.code }})</strong></p>
+  {%- if columns %}
+  {%- if "expiry" in columns %}
+  <p class="muted">Срок: {% if r.batch and r.batch.expiry %}{{ r.batch.expiry | ru_date }}{% elif r.batch %}<span class="muted">без срока</span>{% else %}<span class="muted">—</span>{% endif %}</p>
+  {%- endif %}
+  <p class="num">
+    {%- if "qty" in columns -%}
+    Кол-во {% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}
+    {%- endif -%}
+    {%- if "price" in columns %} · Цена {% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}{% endif -%}
+    {%- if "cost" in columns %} · Себестоимость {% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}{% endif -%}
+    {%- if "profit" in columns %} · Прибыль {% if r.op.unit_price_cents is not none and r.op.unit_cost_cents is not none %}{{ ((r.op.unit_price_cents - r.op.unit_cost_cents) * -r.op.qty_delta) | cents }}{% else %}<span class="muted">—</span>{% endif %}{% endif -%}
+  </p>
+  {%- if "customer" in columns %}
+  <p class="muted">Покупатель: {% if r.customer %}{{ r.customer.name }} {{ r.customer.surname or '' }}{% else %}<span class="muted">Розница</span>{% endif %}</p>
+  {%- endif %}
+  {%- if "reason" in columns %}
+  <p class="muted">
+    {%- if r.op.type == "writeoff" and r.op.payload -%}
+    {{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+    {%- elif r.op.type == "correction" and r.op.payload -%}
+    {{ "Пересчёт" if r.op.payload.mode == "count" else "Изменение" }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+    {%- else -%}
+    <span class="muted">—</span>
+    {%- endif %}
+  </p>
+  {%- endif %}
+  {%- if "warehouse" in columns %}
+  <p class="muted">Склад: {% if r.warehouse %}{{ r.warehouse.name }}{% else %}<span class="muted">—</span>{% endif %}</p>
+  {%- endif %}
+  {%- else %}
   {%- if r.op.type not in ("price_change", "product_created", "product_edited") %}
   <p class="muted">
     {%- if r.batch -%}
@@ -37,6 +77,7 @@
   {%- else -%}
   <p class="muted">{{ r.op.created_by }}</p>
   {%- endif %}
+  {%- endif %}
   {%- if r.op.type == "sale" %}
   <p><a href="#" hx-get="/m/returns?sale_id={{ r.op.sale_id or '' }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
         hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></p>
@@ -44,3 +85,4 @@
 </div>
 {% endfor %}
 {% endif %}
+</div>

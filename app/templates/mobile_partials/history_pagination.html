@@ -1,0 +1,14 @@
+{# Mobile history pagination bar (Phase 23 Plan 05, D-10/HIST-04): retires
+   history_load_more.html's legacy "Показать ещё" control — mobile История
+   migrates onto the SAME numbered page_window/paginate mechanism desktop
+   already uses (partials/pagination.html, reused unmodified). Rendered as
+   its own element — a DOM sibling of #history-cards in
+   mobile_pages/history.html, never nested inside it — so a filter-change
+   outerHTML swap on #history-cards can never destroy this control (CR-01
+   precedent, mirrors the retired history_load_more.html's own rationale).
+   The `oob` variable drives hx-swap-oob so every HX response can update
+   this bar in place (a pagination click also refreshes the count, a filter
+   change also refreshes the page count). #}
+<div id="history-pagination"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% include "partials/pagination.html" %}
+</div>
