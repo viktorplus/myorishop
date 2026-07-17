@@ -206,7 +206,17 @@ Plans:
   4. Recent-sales list shows each sale's customer name (first + last).
   5. Existing sale guardrails (oversell warning, batch selection, cash credit) still fire on the rebuilt form.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 22-01-PLAN.md — Wave 1: desktop red-side tests (SALE-03/04/05/06/07 + SALE-01 regression guard)
+- [ ] 22-02-PLAN.md — Wave 1: live-total, mobile and to_cents parity tests
+- [ ] 22-03-PLAN.md — Wave 2: recent-sales customer column via portable outerjoin (SALE-07)
+- [ ] 22-04-PLAN.md — Wave 2: live running total, sale-total.js + both shells (SALE-02)
+- [ ] 22-05-PLAN.md — Wave 2: desktop 3-way customer header + D-10 guard + D-12 chip fix (SALE-03..06)
+- [ ] 22-06-PLAN.md — Wave 3: mobile customer selector partials + endpoints (D-04 parity)
+- [ ] 22-07-PLAN.md — Wave 4: mobile basket wiring, customer_id write path, D-11 batch-card fix
+
 **UI hint**: yes
 
 ### Phase 23: Dashboard & History Rebuild
