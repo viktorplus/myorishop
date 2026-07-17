@@ -451,7 +451,7 @@ def test_web_warehouses_filter_by_name(client, session):
 
 
 def test_web_nav_has_warehouses_link(client):
-    response = client.get("/")
+    response = client.get("/settings")
     assert response.status_code == 200
     assert 'href="/warehouses"' in response.text
     assert "Склады" in response.text
