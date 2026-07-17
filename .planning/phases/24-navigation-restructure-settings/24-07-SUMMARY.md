@@ -102,3 +102,7 @@ None - no external service configuration required.
 ---
 *Phase: 24-navigation-restructure-settings*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All modified files confirmed present on disk; all task commits (728289e, df4b6f1) confirmed in git log.
