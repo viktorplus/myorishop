@@ -2,24 +2,7 @@
 {% block back %}{% endblock %}
 {% block content %}
 <h1>MyOriShop</h1>
-<div class="mobile-tile-grid">
-  <a class="mobile-tile" href="/m/sales">Продажа</a>
-  <a class="mobile-tile" href="/m/receipts">Приход</a>
-  <a class="mobile-tile" href="/m/search">Поиск</a>
-  <a class="mobile-tile" href="/m/writeoff">Списание</a>
-  <a class="mobile-tile" href="/m/corrections">Корректировка</a>
-  <a class="mobile-tile" href="/m/transfers">Перемещение</a>
-  <a class="mobile-tile" href="/m/history">История</a>
-  <a class="mobile-tile" href="/m/reports/expiry">Сроки годности</a>
-  <a class="mobile-tile" href="/m/finance">Финансы</a>
-  <a class="mobile-tile" href="/m/finance/report">Экспорт кассы</a>
-</div>
 
-{# DASH-01..05 (23-UI-SPEC.md Interaction 5, Pitfall 1): dashboard content is
-   ADDED below the nav grid above, never replacing it — the nav grid stays
-   the only way to reach /m/sales, /m/receipts, etc. until Phase 24's tab
-   bar ships. Same dashboard_context(session, tz_name) data as desktop's
-   pages/home.html, mobile's own card/2-column layout (D-10). #}
 <h2>Показатели</h2>
 <p class="muted">{{ weekday }}, {{ date }} · {{ time }}</p>
 <p>
