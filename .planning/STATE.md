@@ -1,36 +1,34 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: UX Overhaul & Navigation Restructure
-status: milestone_complete
-stopped_at: Milestone complete (Phase 24 was final phase)
-last_updated: 2026-07-17T22:53:30.833Z
-last_activity: 2026-07-17 -- Phase 24 execution started
+milestone: none
+milestone_name: Awaiting next milestone
+status: Awaiting next milestone
+stopped_at: v2.0 archived, REQUIREMENTS.md removed
+last_updated: "2026-07-18T00:00:00.000Z"
+last_activity: 2026-07-18 — Milestone v2.0 fully archived (audit + roadmap + requirements + PROJECT.md evolution)
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 41
-  completed_plans: 42
-  percent: 86
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-15)
+See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Milestone complete
+**Current focus:** Awaiting next milestone — run `/gsd-new-milestone`
 
 ## Current Position
 
-Phase: 24
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-17
-
-Progress: [██████████] 100% (v2.0 — 42/42 plans across 7 phases, all Complete)
+Phase: Milestone v2.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-17 — Milestone v2.0 completed and archived
 
 ## Performance Metrics
 
@@ -62,16 +60,7 @@ Progress: [██████████] 100% (v2.0 — 42/42 plans across 7 p
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table (v1.0-v1.3 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
-
-- **v2.0 roadmap (2026-07-15):** 46 requirements grouped into 7 phases (18-24) — Phase 18 (Two-Price Model: PROD-05/06/07), Phase 19 (Products Page Rebuild: PROD-01..04/08), Phase 20 (Warehouses & Batch-Split Transfers: WH-01..03/XFER-01), Phase 21 (Customer Profiles & Insights: CUST-01..08), Phase 22 (Sales Page Rebuild: SALE-01..07), Phase 23 (Dashboard & History Rebuild: DASH-01..05/HIST-01..04), Phase 24 (Navigation Restructure & Settings: NAV-01..08/RPT-01/MOB-01).
-- **Price consolidation (PROD-05/06/07) sequenced first, as its own phase.** It is the only schema-affecting change in the milestone (`Product.catalog_cents` collapses into ПЦ; `min_sale_cents` stays — see Blockers/Concerns) and it is read by receipts, sales, product cards, the dictionary, and the stock-valuation reports. Every later phase builds UI on the final two-price shape — mirrors the v1.1 "riskiest ledger-schema work before the UI that reads it" ordering decision that held for 5 phases.
-- **Navigation (NAV-01..08) sequenced last, not first.** NAV-01/02/03 nest Приход/Списание/Справочник under Товары and NAV-07 nests Перемещение under the product context — all soft-depend on those pages being in final shape (Phases 19/20), and NAV-08's final top-level tab set can only be settled once Главная is rebuilt (Phase 23). MOB-01 (mobile tab parity) reads the final desktop tab set, so it rides with NAV-08 rather than standing alone.
-- **RPT-01 ("Назад к отчётам") and MOB-01 folded into Phase 24 rather than becoming standalone phases.** Both are single-requirement navigation items; per the anti-fragmentation rule they belong with the nav phase they are conceptually part of. RPT-01 also directly addresses the class of gap UAT found in Phase 17 (report pages shipped without entry/exit navigation).
-- **CUST-01..08 (Phase 21) sequenced before SALE-01..07 (Phase 22).** SALE-05 requires the inline new-customer form to show "optional profile fields" — those fields must exist on the profile before the sale form can render them, otherwise the sale rebuild would ship against a profile shape it then has to redo.
-- **DASH-01..05 and HIST-01..04 combined into one phase (23).** Both are read-only presentations over the existing ledger, and DASH-05's per-operation-type feed columns and HIST-01's per-operation-type column sets are the same mapping — building them apart would duplicate it. Most underlying data (period totals, stock valuation) is already computed by the Phase 6/17 reporting services.
-- **XFER-01 grouped with the warehouse work (Phase 20), not the batch/product work.** It is warehouse-to-warehouse batch-split behavior; v1.1's Phase 10 set the precedent of pairing transfers with warehouse-domain work.
-- **7 phases (above the 4-6 "standard" granularity band) is deliberate.** v1.2 and v1.3 each compressed ~12-13 requirements into 3 phases (~4.3 reqs/phase); at that established rate 46 requirements implies ~10 phases. 7 is already a compression, and each phase still owns one coherent page/capability with user-observable criteria. Compressing further would produce grab-bag phases mixing schema migration, service logic, and unrelated page rebuilds.
+Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`). v2.0's own phase-sequencing rationale is archived verbatim in `.planning/milestones/v2.0-ROADMAP.md`.
 
 ### Pending Todos
 
@@ -83,25 +72,19 @@ None yet.
 
 ### Blockers/Concerns
 
-- ✅ [Phase 18] RESOLVED 2026-07-15 (operator decision). The two-price consolidation
-  touches live money columns that shipped features read. Scope now explicit:
-  `Product.catalog_cents` collapses into ПЦ (`sale_cents`); `Product.cost_cents`
-  is ДЦ; `CatalogPrice.consumer_cents`/`consultant_cents` map to ПЦ/ДЦ (v1.2
-  catalog autofill, quick-tasks 260714-2w6 / 260714-fix). **`Product.min_sale_cents`
-  is NOT removed** — the operator confirmed it is a guardrail threshold (like the
-  low-stock threshold), not a displayed price, so Phase 7's below-minimum sale
-  warning (PRICE-01, shipped v1.1) must keep working unchanged. PROD-05 and the
-  Phase 18 roadmap entry both carry this exemption; Phase 18 success criterion 5
-  is the PRICE-01 regression guard.
-
 - ℹ️ [Phase 16] Advisory (cosmetic, desktop only): a movement saved with an empty
   comment renders literal `None` in the `/finance` «Комментарий» column (mobile
   cards handle it correctly). Guard the desktop template cell with
   `{{ movement.note or "" }}` when next touching finance templates. Non-blocking.
 
-- ℹ️ [v1.3 close] No `17-SECURITY.md` threat verification or `/gsd-audit-milestone`
-  was run before v1.3 shipped (operator chose to skip both). v2.0 touches the same
-  money paths; consider restoring the gate at this milestone's close.
+- ℹ️ [v2.0 close, 2026-07-18] Phase 22 (Sales Page Rebuild) shipped with 4 manual-only
+  test cases (live basket-total arithmetic, incomplete-row marker, customer-mode
+  radio round-trip, mobile basket preservation on batch re-tap) never confirmed in
+  a live browser — no `22-UAT.md`, unlike the equivalent Phase 18/20 items which
+  both have a completed UAT file. All 4 are backed by passing server-side tests;
+  only the felt client-side JS behavior is unconfirmed. See
+  `.planning/v2.0-MILESTONE-AUDIT.md` for the full breakdown. Recommend a short
+  manual browser pass before relying heavily on the rebuilt sale form.
 
 ### Quick Tasks Completed
 
@@ -119,22 +102,18 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | uat_gap | Phase 01: 01-UAT.md — offline run.bat launch + browser correction flow + restart persistence (1 pending scenario) | testing | 2026-07-10 (v1.0 close) |
 | verification_gap | Phase 01: 01-VERIFICATION.md — same offline run.bat flow | human_needed | 2026-07-10 (v1.0 close) |
-| code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory, non-blocking) | acknowledged | 2026-07-13 (v1.1 close) — **Phase 20 touches transfers.py; close them there** |
+| code_review | transfers.py/writeoffs.py: batch-ownership leak, unstripped qty echo (2 advisory) | resolved | 2026-07-13 (v1.1 close) — closed by Phase 20 (D-10/D-11, 20-05/20-06-SUMMARY.md, 2026-07-16) |
 | verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | confirmed_working | 2026-07-14 (phase 15 execution), confirmed by operator 2026-07-15 |
 | doc_drift | `export.py`: `stream_customers_csv` docstring claims a *"Full customer profile dump"* — becomes false once Phase 21 ships address + contacts. Out of scope by design (contacts are 1-to-many and don't fit the flat CSV shape). If `address` is ever added it must go through the existing `_csv_safe`. | acknowledged | 2026-07-17 (phase 21 planning) — accepted debt, close in a future phase |
+| uat_gap | Phase 22: no 22-UAT.md for 4 human_needed items (live basket-total math, incomplete-row marker, customer-mode round-trip, mobile basket preservation) — server-side tests all pass, only client-side JS behavior unconfirmed | testing | 2026-07-18 (v2.0 close) — see `.planning/v2.0-MILESTONE-AUDIT.md` |
 
 ## Session Continuity
 
-Last session: 2026-07-17T19:39:38.206Z
-Stopped at: Phase 24 UI-SPEC approved
-Resume file: .planning/phases/24-navigation-restructure-settings/24-UI-SPEC.md
+Last session: 2026-07-18T00:00:00.000Z
+Stopped at: v2.0 milestone archived, REQUIREMENTS.md removed, ready for next milestone
+Resume file: none — start fresh with /gsd-new-milestone
 
 ## Operator Next Steps
 
-- Run `/gsd-execute-phase 22` to execute Phase 22: Sales Page Rebuild (7 plans, 4 waves, SALE-01..07)
-- Phase 22 artifacts complete: RESEARCH, UI-SPEC (approved 6/6), PATTERNS, VALIDATION (nyquist_compliant), 7 PLANs
-- Known gate defect (found 2026-07-17, affects future phases too): `check.decision-coverage-plan` silently reports
-  "no trackable decisions" on this project's CONTEXT.md authoring format (`- **D-01: title**` — title inside the
-  bold; the parser expects `- **D-01:** text`). Phase 21 has the same format and the same vacuous pass, so that
-  gate has been a false green since at least Phase 21. Verify decision coverage by reading `(D-NN)` citations in
-  each plan's `must_haves.truths` — for Phase 22 that check is 12/12 by hand.
+- Start the next milestone with `/gsd-new-milestone`
+- Optional, non-blocking: a short manual browser pass on Phase 22's 4 unconfirmed items (see Blockers/Concerns above)

@@ -10,17 +10,24 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ## Current State
 
-**v2.0 UX Overhaul & Navigation Restructure — all 7 phases complete (2026-07-18).** Phase 24 (Navigation Restructure & Settings) was the last phase: desktop top nav reduced to 8 first-class items, Приход/Списание/Справочник/Категории/Каталоги moved into an always-visible Товары toolbar, Перемещение reachable from the product context, a new Настройки hub hosts Склады/Резервные копии, CSV export moved onto the Резервные копии page, every report detail page got a back-link, and mobile navigation gained a persistent 7-tab bar with parity to desktop. A gap-closure pass (plan 24-07) fixed a mobile-reachability regression the code review and verifier both caught: removing the old mobile home tile grid had orphaned `/m/search`, `/m/corrections`, and `/m/transfers` with no rendered link; all three are now reachable from the mobile Товары toolbar, with a regression test guarding rendered-link presence (not just route-200). Milestone ready for `/gsd-complete-milestone`.
+**Shipped: v2.0 UX Overhaul & Navigation Restructure (2026-07-17)**
+
+Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against the catalog reference, editable everywhere), a code-grouped products page with batch breakout, warehouse CRUD via dedicated forms plus batch-split transfers, extended customer profiles (multi-value contacts, address, spend/favorites), a rebuilt sales page (plain table, live running total, single new/existing/anonymous control), a rebuilt Главная/История, and a full navigation restructure nesting every secondary action under its owning page with a new Настройки hub and mobile tab parity. All 46 requirements (NAV-01..08, DASH-01..05, PROD-01..08, WH-01..03, XFER-01, SALE-01..07, CUST-01..08, HIST-01..04, RPT-01, MOB-01) shipped complete. `/gsd-audit-milestone` passed with status `tech_debt` (no blockers): 46/46 requirements satisfied, cross-phase integration PASS, 919/919 tests green. One open item carried forward: Phase 22 (Sales) has 4 human-verification test cases never confirmed in a live browser (unlike the equivalent Phase 18/20 items, both UAT-confirmed) — see `.planning/v2.0-MILESTONE-AUDIT.md`. See `.planning/milestones/v2.0-ROADMAP.md`, `v2.0-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
 **Shipped: v1.3 Финансы / Касса (2026-07-15)**
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Current Milestone: v2.0 UX Overhaul & Navigation Restructure
+## Current Milestone
+
+None yet — v2.0 shipped 2026-07-17. Run `/gsd-new-milestone` to scope the next milestone (multi-operator sync, multi-currency, and user roles are the leading candidates — see Future below).
+
+<details>
+<summary>Archived: v2.0 UX Overhaul & Navigation Restructure (SHIPPED 2026-07-17)</summary>
 
 **Goal:** Rework navigation into nested/secondary menus, add an operational dashboard to the home page, unify the product price model to two fields (cost/sale), and rebuild the Products/Warehouses/Sales/History/Customers pages around the operator's real workflow instead of their original one-feature-at-a-time shape.
 
-**Target features:**
+**Target features (all delivered):**
 - Home-page dashboard: current date/weekday/time, active catalog number + days until it closes, day/week/month totals (revenue, profit, expenses), total stock codes + valuation, an enriched recent-operations feed (type-specific columns including customer)
 - Navigation restructured into nested menus: Приход/Списание/Справочник under Товары; Склады/Резервные копии under Настройки; Экспорт under Резервные копии; Перемещение under Товар
 - Products page: remove the "Добавить товар" button (receipt already covers it), delete becomes a text link (not a button), rows grouped by product code showing total quantity across batches (batches broken out with their own expiry/name), price model collapsed to exactly two fields — ДЦ (cost) and ПЦ (sale price) — editable at any stage (product card, receipt, sale) with color-coded deviation from the dictionary's reference price, category shown and filterable
@@ -31,6 +38,8 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - History page rebuilt: nested menu by operation type with type-specific columns, filters (code/date/customer/category), sort, pagination
 - Reports: a "Back to Reports" navigation link from any report detail page
 - Mobile navigation reaches parity with desktop's main tabs (excluding Настройки)
+
+</details>
 
 <details>
 <summary>Archived: v1.3 Финансы / Касса (SHIPPED 2026-07-15)</summary>
@@ -116,15 +125,19 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - ✓ Period cash-flow report (income vs. expense by category) and CSV export of cash movements — Phase 17 (FIN-08, FIN-09)
 - ✓ Финансы dashboard: gross profit, net profit, and stock valuation (at cost and at sale price) for a selected period — Phase 17 (FIN-10, FIN-11, FIN-12)
 - ✓ Products page groups rows by product code with a total-quantity column, batches broken out per code (expiry/name) in a collapsed expander; "Добавить товар" removed, delete is a text link; category display/filter unchanged — Phase 19 (PROD-01, PROD-02, PROD-03, PROD-04, PROD-08)
+- ✓ Product pricing reduced to exactly two fields — ДЦ (cost) and ПЦ (sale) — editable from product card/dictionary/receipt/sale, with a colour cue against the catalog reference price; `min_sale_cents` guardrail kept, PRICE-01 regression intact — Phase 18 (PROD-05, PROD-06, PROD-07)
+- ✓ Warehouse list shows item count + last-receipt date; add/edit/delete via dedicated forms; delete blocked while stock > 0; batch-split transfer under a different expiry/condition creates a new destination batch without corrupting the source — Phase 20 (WH-01, WH-02, WH-03, XFER-01)
+- ✓ Customer profile supports multiple phones/Telegram/emails/social links and a physical address; shows most-recent-order date, month/quarter/year spend totals (net of returns), and favorite products ranked by frequency then quantity — Phase 21 (CUST-01..08)
 - ✓ Sales page rebuilt as a code/name/qty/price table with a live running total shown directly under it, and a new/existing/anonymous customer flow (radio control, autocomplete on existing, inline optional fields on new) replacing the old free-text customer field; recent-sales list shows each sale's customer name — Phase 22 (SALE-01..07)
 - ✓ Home-page dashboard: date/weekday/time, active catalog number + days until close, day/week/month revenue/profit/expense totals, total stock codes + valuation, type-adaptive recent-operations feed with customer column — Phase 23 (DASH-01..05)
 - ✓ History page rebuilt: operation-type-first selection with type-specific columns, filters by code/date-range/customer/category, sort, pagination (desktop + mobile parity) — Phase 23 (HIST-01..04)
+- ✓ Top-level navigation reduced to 8 first-class pages (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы, Настройки); Приход/Списание/Справочник nested under Товары, Перемещение under the product context, Склады/Резервные копии under a new Настройки page, Экспорт under Резервные копии, a back-link on every report detail page, mobile nav parity (7 tabs, excluding Настройки) — Phase 24 (NAV-01..08, RPT-01, MOB-01)
 
 ### Active
 
-None yet — v2.0 not scoped. Run `/gsd-new-milestone` to define the next set of requirements.
+None yet — v2.0 shipped 2026-07-17, next milestone not scoped. Run `/gsd-new-milestone` to define the next set of requirements.
 
-### Future (v2.0, deferred)
+### Future (next milestone, deferred)
 
 - [ ] Multi-operator sync across countries via a central server, server-based (online) + USB flash-drive (offline) (SYNC-V2-01)
 - [ ] Multi-currency support (CUR-V2-01)
@@ -157,7 +170,8 @@ None yet — v2.0 not scoped. Run `/gsd-new-milestone` to define the next set of
 - **v1.2 shipped 2026-07-14** (started 2026-07-13, 2 days): 3 phases (12-14), 17 plans, 41 tasks, 186 files changed, +12,808/-882 lines, 142 commits. Stack held unchanged. Milestone audit (`/gsd-audit-milestone`) passed clean: 13/13 requirements satisfied across three independent sources (REQUIREMENTS.md traceability, VERIFICATION.md, SUMMARY.md frontmatter), cross-phase integration checker found no wiring gaps or broken flows across Phase 12→13→14 (autofill → wizard context → list management). Phases 12/13 carry a discovery-only Nyquist gap (draft VALIDATION.md, `nyquist_compliant: false`) — both independently verified passed regardless; Phase 14 is fully Nyquist-compliant. No new tech debt introduced; the two advisory transfers.py/writeoffs.py warnings from v1.1 remain the only carried-forward debt.
 - **Phase 17 shipped 2026-07-15 (final phase of v1.3)**: read-only aggregation services (`cash_expense_total`, `stock_valuation`, `cash_flow_report`) plus period-scoped CSV export, Финансы dashboard tiles (gross/net profit, stock valuation) on desktop and mobile, a cash-flow report page with CSV download, and mobile parity via shared `finance_base`-parameterised partials. Gap-closure plan 17-05 added missing navigation entry points to the new report pages (desktop top-nav, mobile home tile, dashboard buttons), found by UAT Test 2.
 - **v1.3 shipped 2026-07-15** (started 2026-07-14, 2 days): 3 phases (15-17), 13 plans, 102 commits, 142 files changed, +11,114/-10,521 lines. Stack held unchanged: FastAPI + SQLAlchemy 2.0 + SQLite (WAL) + HTMX 2.0.10 (vendored) + Jinja2, uv, Alembic. All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close — both skipped by explicit operator decision at completion time (2026-07-15), a deviation from the v1.0/v1.1/v1.2 pattern of auditing/security-checking before archiving. One new advisory (non-blocking) warning: desktop `/finance` history renders literal `None` for an empty comment (mobile cards handle it correctly); guard with `{{ movement.note or "" }}` when next touching finance templates. The two advisory transfers.py/writeoffs.py warnings from v1.1 remain untouched.
-- **v2.0 (next):** multi-operator sync across countries via a central server, with both server-based sync (when online) and USB flash-drive sync (when offline) in the same milestone; multi-currency support; user roles (administrator, operator, report viewer); customer purchase-frequency analysis and reminders; showing likely-interested customers on goods receipt. Was deferred from v1.1 because it first needed the local data model changes (multi-warehouse, batches) that sync must now account for — those changes are now shipped.
+- **v2.0 shipped 2026-07-17** (started 2026-07-16, 2 days): 7 phases (18-24), 42 plans, 103 tasks, 339 files changed, +39,747/-9,967 lines, 354 commits (since v1.3 tag). Stack held unchanged. `/gsd-audit-milestone` run (full scope, all 7 phases) passed with status `tech_debt`: 46/46 requirements satisfied across three independent sources, cross-phase integration checker found no wiring gaps or dangling `catalog_cents` references across Phase 18→19→20→22→23, 919/919 tests green. Open item: Phase 22 (Sales) shipped 4 human-verification test cases (live JS basket-total math, incomplete-row marker, customer-mode round-trip, mobile basket preservation) with no completed UAT confirming them in a live browser — unlike the structurally identical Phase 18/20 items, both of which have a passed UAT file. Roughly half of REQUIREMENTS.md's checkboxes were stale (marked unchecked despite being fully verified) at every phase's own VERIFICATION.md — a tracking-doc lag only, not a code gap; see `.planning/v2.0-MILESTONE-AUDIT.md` for the full breakdown.
+- **Next milestone (not yet scoped):** leading candidates carried from the v1.1-era Future list — multi-operator sync across countries via a central server (server-based online + USB flash-drive offline), multi-currency support, user roles (administrator, operator, report viewer), customer purchase-frequency "running low" reminders, likely-interested-customer suggestions on goods receipt. Run `/gsd-new-milestone` to scope and prioritize.
 
 ## Constraints
 
@@ -187,6 +201,12 @@ None yet — v2.0 not scoped. Run `/gsd-new-milestone` to define the next set of
 | Batch selection made mandatory (not optional) on every stock-affecting operation via a D-12 guard flip once all services were batch-aware | Partial batch adoption would have left oversell/expiry guarantees inconsistent across operation types | ✓ Good — Shipped Phase 9 |
 | Mobile flow reuses existing services (register_sale, register_receipt, etc.) unchanged — new templates/routes only, no service-layer duplication | Keeps a single source of truth for business rules (guardrails, ledger writes) across desktop and mobile | ✓ Good — Shipped Phase 11, zero desktop regressions |
 | Shared `sale_name_field.html` partial included by both the initial basket-row render and every code-triggered OOB lookup swap | A debounced name-search dropdown wired only into the initial render would silently stop working after any code-based `/sales/lookup` swap replaced the row | ✓ Good — Shipped Phase 12 |
+| Price consolidation (PROD-05/06/07) sequenced first as its own phase (18), ahead of every page rebuild that reads the price shape | Only schema-affecting change in v2.0; receipts/sales/product cards/dictionary/stock-valuation reports all read it — mirrors v1.1's "riskiest schema work before the UI that reads it" ordering | ✓ Good — Shipped Phase 18, zero rework forced on Phases 19-24 |
+| `Product.min_sale_cents` exempted from the two-price consolidation — kept as a guardrail threshold, not folded into ДЦ/ПЦ | It's read by the Phase 7 below-minimum-sale warning (PRICE-01), not displayed as a price the operator reads off the card (operator decision, 2026-07-15) | ✓ Good — Shipped Phase 18, PRICE-01 regression-verified unchanged |
+| Navigation restructure (NAV-01..08) sequenced last (Phase 24), not first | NAV-01/02/03/07 all soft-depend on the pages they nest into being in final shape (19/20); NAV-08's top-level tab set can only be settled once Главная is rebuilt (23) | ✓ Good — Shipped Phase 24, no re-nesting needed after earlier phases shipped |
+| CUST-01..08 (Phase 21) sequenced before SALE-01..07 (Phase 22) | SALE-05's inline new-customer form needs the extended profile fields to already exist, or the sale rebuild would ship against a profile shape it then has to redo | ✓ Good — Shipped Phase 21 then 22, no redo |
+| DASH-01..05 and HIST-01..04 combined into one phase (23) | Both are read-only presentations over the same ledger; DASH-05's per-type feed columns and HIST-01's per-type column sets are the same mapping — building separately would duplicate it | ✓ Good — Shipped Phase 23 |
+| Colour-only price-deviation cue shipped without a text badge, despite the original design note calling for one (D-14) — a documented WCAG 1.4.1 (Use of Color) deviation | Code review (WR-03) found no badge was ever implemented; rather than retrofit one, the deviation was surfaced explicitly for an operator decision | ✓ Good — Operator confirmed colour-only is acceptable (18-UAT.md, 2026-07-16) |
 
 ## Evolution
 
@@ -206,4 +226,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-18 — v2.0 complete: all 7 phases (18-24) shipped, ready for /gsd-complete-milestone*
+*Last updated: 2026-07-18 — v2.0 milestone archived after v1.3*

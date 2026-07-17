@@ -1,5 +1,27 @@
 # Milestones
 
+## v2.0 UX Overhaul & Navigation Restructure (Shipped: 2026-07-17)
+
+**Delivered:** Product pricing consolidated to exactly two fields (ДЦ cost / ПЦ sale) with a colour cue against the catalog reference price everywhere it's edited; the products page rebuilt as a code-grouped stock list with per-batch breakout; full warehouse CRUD via dedicated forms plus batch-split transfers that carry a different expiry/condition without corrupting the source batch; customer profiles expanded with multi-value contacts (phone/Telegram/email/social), address, most-recent-order date, spend totals, and ranked favorite products; the sales page rebuilt as a plain code/name/qty/price table with a live running total and a single new/existing/anonymous customer control; a rebuilt Главная (date/catalog/revenue-profit-expense/stock/recent-ops) and a type-first, filterable/sortable/paginated История; and a navigation restructure that nests every secondary action under the page it belongs to, with a new Настройки page and full mobile tab parity.
+
+**Phases completed:** 7 phases (18-24), 42 plans, 103 tasks
+**Timeline:** 2026-07-16 → 2026-07-17 (2 days)
+**Git range:** `18286245ae1c9722200cdd92c777cbbc67e33523` (docs(18): research two-price model consolidation) → HEAD — 339 files changed, +39,747/-9,967 lines, 354 commits (since v1.3 tag)
+**Known deferred items at close:** Phase 22 (Sales Page Rebuild) shipped with 4 manual-only test cases (live basket-total arithmetic, incomplete-row marker, customer-mode radio round-trip, mobile basket preservation on batch re-tap) never confirmed in a live browser — no `22-UAT.md`, unlike the equivalent Phase 18/20 items which are UAT-confirmed. All 4 are covered server-side by passing tests. See `.planning/v2.0-MILESTONE-AUDIT.md` (status: tech_debt) for the full breakdown, including stale REQUIREMENTS.md checkboxes across most of Phases 18/20/22/23/24 (tracking-doc lag only, code independently verified) and a repo-wide pre-existing ruff lint/format debt (~50 files, predates this milestone).
+
+**Key accomplishments:**
+
+- Two-price model consolidation (ДЦ/ПЦ): `Product.catalog_cents` collapsed into ПЦ (`sale_cents`), a live colour cue (amber below / blue above the catalog reference) wired on every editable price input across product card, dictionary, receipt, and sale — desktop and mobile — with the below-minimum-sale warning guard (PRICE-01) regression-verified unchanged (Phase 18, PROD-05/06/07)
+- Products page rebuilt as a code-grouped stock list with a collapsed per-batch breakout (expiry, batch name, remaining qty), the redundant "Добавить товар" button removed, delete turned into a text link, category filter preserved (Phase 19, PROD-01..04/08)
+- Warehouse CRUD moved to dedicated add/edit forms with item-count and last-receipt-date columns, zero-stock-only deletion, and batch-split transfers that create a new destination batch under a different expiry/condition without touching the source batch's remaining quantity (Phase 20, WH-01..03/XFER-01)
+- Customer profiles gained repeatable multi-value contacts (phone/Telegram/email/social links, XSS-escaped never-clickable), a physical address, most-recent-order date, month/quarter/year spend totals net of returns, and favorite products ranked by purchase frequency then quantity (Phase 21, CUST-01..08)
+- Sales page rebuilt as a plain code/name/qty/price table with a live JS running total, a single new/existing/anonymous customer radio control (autocomplete + auto-fill for existing, inline optional fields for new), and customer name shown on the recent-sales list (Phase 22, SALE-01..07)
+- Главная rebuilt to show date/weekday/time, active catalog + days-to-close, today/week/month revenue-profit-expense, distinct product-code count + valuation, and a per-type recent-operations feed; История rebuilt with type-first column narrowing plus product/date/customer/category filtering, sorting, and pagination (Phase 23, DASH-01..05/HIST-01..04)
+- Top-level navigation reduced to 8 first-class pages with every secondary action (Приход/Списание/Справочник/Перемещение/Склады/Резервные копии/Экспорт) nested under the page it belongs to, a new Настройки page, "Назад к отчётам" links on every report, and full mobile tab parity — including a re-verification cycle that closed a mobile-reachability gap found in the first verification pass (Phase 24, NAV-01..08/RPT-01/MOB-01)
+- Full milestone audit: 46/46 requirements satisfied, cross-phase integration PASS across all 7 phases with zero orphaned/dangling references to the removed `catalog_cents` field, 919/919 tests green (`.planning/v2.0-MILESTONE-AUDIT.md`)
+
+---
+
 ## v1.3 Финансы / Касса (Shipped: 2026-07-15)
 
 **Delivered:** A cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price).
