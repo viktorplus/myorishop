@@ -378,17 +378,19 @@ Not applicable in the usual "library X moved to Y" sense — this is an internal
 | A2 | The 3 audit-only operation types (`price_change`, `product_created`, `product_edited`) should stay selectable in History's type dropdown, falling back to the current generic 10-column view | Pitfall 5 | Medium — if the planner instead narrows the dropdown to 6 types, the operator loses the ability to filter History down to just price changes / product creation events, a currently-working feature. Recommend confirming with the operator during planning/discuss if not already settled. |
 | A3 | `transfer`'s two per-move rows should each show only their own side's warehouse (via `Batch.warehouse_id`), not a synthesized "from → to" single-row summary | Pitfall 6 | Low — cosmetic; either rendering is achievable from the same joined data, but a "from → to" summary would require correlating the two sibling rows (same product, opposite-signed qty, same timestamp), which `history_view`'s per-row pagination model doesn't naturally support without extra work. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the mobile dashboard replace or supplement the existing 10-tile navigation grid on `/m/`?**
    - What we know: D-10 says "full data parity... own simpler layout, never a reduced data set" for the DATA; it does not explicitly address the navigation tiles, which are a structural/navigational element, not dashboard data.
    - What's unclear: Whether "own simpler layout" implies removing the tile grid.
    - Recommendation: Supplement (dashboard content above/around the existing tile grid) — see Pitfall 1. This is the only option that doesn't regress mobile navigation before Phase 24 ships MOB-01's tab bar. If the planner disagrees, this should go back through `/gsd-discuss-phase` rather than being decided silently in a plan.
+   - RESOLVED: Supplement, never replace — implemented in Plan 23-07 Task 2 (`mobile_pages/home.html`), which appends dashboard content below the untouched 10-tile nav grid and adds a structural regression test (`tests/test_mobile_home.py`) asserting the grid's last tile textually precedes the new «Показатели» heading (T-23-19).
 
 2. **Exact per-type column list for `correction` and `receipt` in HIST-01/DASH-05.**
    - What we know: `correction`'s payload carries `{"note": ..., "mode": "count"|...}` (verified `app/services/corrections.py:122-125`); `receipt` carries no special payload beyond the standard cost/batch fields (verified `app/services/receipts.py`).
    - What's unclear: Whether `correction`'s mode (`Пересчёт` vs `Изменение`) should be a dedicated column or folded into the existing free-text "Причина"-style column (as `history_rows.html` already does today).
    - Recommendation: Reuse the existing `history_rows.html` rendering logic for this cell (`{{ "Пересчёт" if r.op.payload.mode == "count" else "Изменение" }}{% if note %} — {{ note }}{% endif %}`) verbatim inside whatever narrower correction-specific column set is built — don't re-derive this formatting.
+   - RESOLVED: Recommendation adopted verbatim — implemented in Plan 23-02 Task 2's `HISTORY_TYPE_COLUMNS` constant, which reuses the existing `history_rows.html` reason/mode rendering logic rather than introducing new column vocabulary; no dedicated mode column was added.
 
 ## Environment Availability
 
