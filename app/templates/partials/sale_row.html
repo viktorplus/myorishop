@@ -46,7 +46,7 @@
     {# Pitfall 2: deleting a line removes BOTH its input row AND its batch
        wrapper row, so the code[]/qty[]/price[]/batch_id[] arrays stay
        index-aligned no matter what order rows are added/removed in. #}
-    <button type="button" class="secondary" hx-on:click="this.closest('tr').remove(); var w=document.getElementById('{{ batch_wrap_id }}'); if (w) w.remove()">Удалить строку</button>
+    <button type="button" class="secondary" hx-on:click="this.closest('tr').remove(); var w=document.getElementById('{{ batch_wrap_id }}'); if (w) w.remove(); if (window.recalcSaleTotal) window.recalcSaleTotal()">Удалить строку</button>
   </td>
 </tr>
 {# Always-rendered batch wrapper row (RESEARCH Pattern 2): the hidden

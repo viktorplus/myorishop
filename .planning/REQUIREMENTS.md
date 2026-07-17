@@ -49,8 +49,8 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Sales
 
-- [ ] **SALE-01**: Sale form is a code / name / quantity / sale-price table
-- [ ] **SALE-02**: Sale form shows a live running total (amount and unit count) directly under the table, updating as lines are filled in
+- [x] **SALE-01**: Sale form is a code / name / quantity / sale-price table
+- [x] **SALE-02**: Sale form shows a live running total (amount and unit count) directly under the table, updating as lines are filled in
 - [ ] **SALE-03**: Operator selects new / existing / anonymous customer via a radio control at the top of the sale form
 - [ ] **SALE-04**: Selecting an existing customer offers autocomplete by consultant number, name, or surname; picking a match auto-fills the other identifying fields and hides the rest of the profile
 - [ ] **SALE-05**: Selecting a new customer shows a form with optional profile fields to fill in inline
@@ -126,8 +126,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CUST-06 | Phase 21 | Complete |
 | CUST-07 | Phase 21 | Complete |
 | CUST-08 | Phase 21 | Complete |
-| SALE-01 | Phase 22 | Pending |
-| SALE-02 | Phase 22 | Pending |
+| SALE-01 | Phase 22 | Complete |
+| SALE-02 | Phase 22 | Complete |
 | SALE-03 | Phase 22 | Pending |
 | SALE-04 | Phase 22 | Pending |
 | SALE-05 | Phase 22 | Pending |
