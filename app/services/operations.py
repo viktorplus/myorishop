@@ -8,7 +8,9 @@ only, no SQLite-specific SQL (D-05 sync-readiness).
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import OPERATION_TYPES, Batch, Operation, Product
+from app.models import OPERATION_TYPES, Batch, Operation, Product, Sale
+from app.services.catalog import category_options
+from app.services.customers import search_customers
 from app.services.pagination import LIST_PAGE_SIZE
 
 # D-06/D-07/T-14-03: fixed sort allow-list — an unknown/tampered `sort` value
@@ -25,6 +27,10 @@ def history_view(
     *,
     type_filter: str | None = None,
     product_id: str | None = None,
+    customer: str | None = None,
+    category: str | None = None,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
     sort: str = "",
     page: int = 0,
     page_size: int = LIST_PAGE_SIZE,
@@ -41,6 +47,15 @@ def history_view(
     D-15: LEFT OUTER JOIN Batch so each row carries its batch (or None for a
     pre-Phase-9 NULL batch_id op) — batch attribution is resolved at READ time;
     the append-only ledger is NEVER rewritten.
+
+    HIST-02 (Plan 02 Task 1): `customer`/`category`/`start_iso`/`end_iso` are
+    additive kwargs, all combining with AND and with the existing filters.
+    `category` and `customer` are resolved to a bounded candidate set in
+    PYTHON (T-23-04/T-23-05: never string-interpolated/lower()'d in SQL —
+    SQLite lower()/LIKE cannot fold Cyrillic, D-27), then applied via a
+    parameterized `.in_()`. `customer` is applied ONLY when `type_filter` is
+    "sale" or "return" (D-05/T-23-06) — a defence-in-depth guard that ignores
+    the filter for every other type regardless of caller intent.
     """
     order_by = _SORT_MAP.get(sort, _DEFAULT_ORDER)
     stmt = (
@@ -60,6 +75,32 @@ def history_view(
     if product_id:
         stmt = stmt.where(Operation.product_id == product_id)
         count_stmt = count_stmt.where(Operation.product_id == product_id)
+
+    category_q = (category or "").strip().lower()
+    if category_q:
+        matched_categories = [c for c in category_options(session) if category_q in c.lower()]
+        stmt = stmt.where(Product.category.in_(matched_categories))
+        count_stmt = count_stmt.where(Product.category.in_(matched_categories))
+
+    customer_q = (customer or "").strip()
+    if customer_q and type_filter in ("sale", "return"):
+        candidate_ids = [c.id for c in search_customers(session, customer_q)]
+        # T-23-07: both hops stay .outerjoin() — never .join() — so a walk-in
+        # sale (Sale.customer_id IS NULL) or a non-sale op is never silently
+        # dropped from the joined result set; the .in_() below is what
+        # actually narrows the rows.
+        stmt = stmt.outerjoin(Sale, Operation.sale_id == Sale.id).where(
+            Sale.customer_id.in_(candidate_ids)
+        )
+        count_stmt = count_stmt.outerjoin(Sale, Operation.sale_id == Sale.id).where(
+            Sale.customer_id.in_(candidate_ids)
+        )
+
+    if start_iso is not None and end_iso is not None:
+        stmt = stmt.where(Operation.created_at >= start_iso, Operation.created_at < end_iso)
+        count_stmt = count_stmt.where(
+            Operation.created_at >= start_iso, Operation.created_at < end_iso
+        )
 
     total = session.scalar(count_stmt) or 0
     total_pages = max(1, -(-total // page_size))
