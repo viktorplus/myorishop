@@ -11,13 +11,16 @@ Naming convention (used by -k filters): route/e2e tests are prefixed
 test_web_; everything else is service level. Selectors mirror
 04-VALIDATION.md's Requirements -> Test Map (crud, search, history,
 history_frozen). 21-VALIDATION.md Wave 0 adds past_sale_fixture (the
-backdated-sale fixture smoke test).
+backdated-sale fixture smoke test). Phase 21 waves 1-2 add: address,
+contacts_* (CUST-01..05), spend_* (CUST-07), favorites_* / last_order
+(CUST-06/08), and portable (the PostgreSQL portability guard).
 """
 
 from datetime import date
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 
 from app.core import format_ru_date, new_id
 from app.models import Customer, CustomerContact, Product
@@ -25,7 +28,9 @@ from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
     CONTACT_VALUE_TOO_LONG_ERROR,
+    _favorites_stmt,
     _period_starts,
+    _spend_stmt,
     contacts_by_kind,
     create_customer,
     favorite_products,
@@ -608,6 +613,26 @@ def test_last_order_returns_most_recent_created_at(session, customer, product, p
 def test_last_order_empty_history_returns_none():
     """CUST-06: `last_order_date([])` returns None and does not raise."""
     assert last_order_date([]) is None
+
+
+# 21-VALIDATION.md's single highest-leverage test in this phase: mechanical
+# enforcement of CLAUDE.md's "PostgreSQL migration is a connection-string
+# change" promise. If it ever goes red, the fix is to move the date math
+# into Python (local_day_bounds_utc), never to relax this test.
+def test_spend_and_favorites_queries_are_portable():
+    """T-21-03/T-21-15: both new statements compile portably under both dialects."""
+    banned = ("strftime", "date_trunc", "extract(", "julianday", "datetime(")
+    stmts = [
+        _spend_stmt("cust-id", "2026-07-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00"),
+        _favorites_stmt("cust-id", 10),
+    ]
+    for stmt in stmts:
+        for dialect in (postgresql.dialect(), sqlite.dialect()):
+            compiled = str(stmt.compile(dialect=dialect))
+            compiled_lc = compiled.lower()
+            for token in banned:
+                assert token not in compiled_lc
+            assert "cust-id" not in compiled
 
 
 # --- Web slice (routes + templates) ---
