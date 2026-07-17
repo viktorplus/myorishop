@@ -8,7 +8,7 @@ only, no SQLite-specific SQL (D-05 sync-readiness).
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import OPERATION_TYPES, Batch, Operation, Product, Sale, Warehouse
+from app.models import OPERATION_TYPES, Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services.catalog import category_options
 from app.services.customers import search_customers
 from app.services.ledger import STOCK_AFFECTING_TYPES
@@ -64,7 +64,11 @@ def history_view(
 
     D-15: LEFT OUTER JOIN Batch so each row carries its batch (or None for a
     pre-Phase-9 NULL batch_id op) — batch attribution is resolved at READ time;
-    the append-only ledger is NEVER rewritten.
+    the append-only ledger is NEVER rewritten. Each row also carries its own
+    `customer` (LEFT OUTER JOIN Sale then Customer via `Operation.sale_id`
+    -> `Sale.customer_id`, None for a walk-in sale/non-sale op) — the
+    per-type «Покупатель» column (Plan 04) needs a real Customer object,
+    not just a filterable id.
 
     HIST-02 (Plan 02 Task 1): `customer`/`category`/`start_iso`/`end_iso` are
     additive kwargs, all combining with AND and with the existing filters.
@@ -77,7 +81,7 @@ def history_view(
     """
     order_by = _SORT_MAP.get(sort, _DEFAULT_ORDER)
     stmt = (
-        select(Operation, Product, Batch, Warehouse)
+        select(Operation, Product, Batch, Warehouse, Customer)
         .join(Product, Operation.product_id == Product.id)
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         # HIST-01: always outerjoined — cheap, Batch is already outerjoined —
@@ -86,6 +90,12 @@ def history_view(
         # of a transfer's two sibling rows resolves its own batch/warehouse
         # independently, exactly like qty_delta's sign already does).
         .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
+        # HIST-01 (Plan 04): always outerjoined too — each row's own
+        # Sale/Customer (or None for a walk-in/non-sale op), same 1:1
+        # per-row attribution pattern as Warehouse above; never fans out
+        # rows since Operation.sale_id -> Sale is at most one-to-one.
+        .outerjoin(Sale, Operation.sale_id == Sale.id)
+        .outerjoin(Customer, Sale.customer_id == Customer.id)
         .order_by(*order_by)
     )
     count_stmt = (
@@ -112,10 +122,11 @@ def history_view(
         # T-23-07: both hops stay .outerjoin() — never .join() — so a walk-in
         # sale (Sale.customer_id IS NULL) or a non-sale op is never silently
         # dropped from the joined result set; the .in_() below is what
-        # actually narrows the rows.
-        stmt = stmt.outerjoin(Sale, Operation.sale_id == Sale.id).where(
-            Sale.customer_id.in_(candidate_ids)
-        )
+        # actually narrows the rows. `stmt` already outerjoins Sale
+        # unconditionally (Plan 04, for per-row customer attribution) —
+        # re-joining it here would duplicate the join, so only `.where(...)`
+        # is added to stmt; count_stmt still needs its own outerjoin.
+        stmt = stmt.where(Sale.customer_id.in_(candidate_ids))
         count_stmt = count_stmt.outerjoin(Sale, Operation.sale_id == Sale.id).where(
             Sale.customer_id.in_(candidate_ids)
         )
@@ -133,7 +144,10 @@ def history_view(
     stmt = stmt.limit(page_size).offset(page * page_size)
     rows = session.execute(stmt).all()
     return {
-        "rows": [{"op": op, "product": p, "batch": b, "warehouse": w} for op, p, b, w in rows],
+        "rows": [
+            {"op": op, "product": p, "batch": b, "warehouse": w, "customer": c}
+            for op, p, b, w, c in rows
+        ],
         "page": page,
         "total": total,
         "total_pages": total_pages,
