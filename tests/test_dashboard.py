@@ -191,15 +191,11 @@ def test_dashboard_metrics_week_and_month_boundaries_match_resolve_period(
 
     # Sale ON week_start: inside both week and month.
     week_start_iso, _ = local_day_bounds_utc(week_start, week_start, TZ)
-    _record_sale_at(
-        session, monkeypatch, week_start_iso, product=product, qty=1, price_cents=500
-    )
+    _record_sale_at(session, monkeypatch, week_start_iso, product=product, qty=1, price_cents=500)
     # Sale the day BEFORE week_start: excluded from week, still inside month.
     before_week = week_start - timedelta(days=1)
     before_week_iso, _ = local_day_bounds_utc(before_week, before_week, TZ)
-    _record_sale_at(
-        session, monkeypatch, before_week_iso, product=product, qty=1, price_cents=700
-    )
+    _record_sale_at(session, monkeypatch, before_week_iso, product=product, qty=1, price_cents=700)
 
     metrics = dashboard_metrics(session, TZ)
 
