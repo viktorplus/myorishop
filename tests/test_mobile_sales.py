@@ -743,7 +743,6 @@ def test_oversell_warns_zero_writes_then_confirm_writes(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="D-04: mobile customer selector lands in 22-06/22-07")
 def test_mobile_customer_selector_renders_on_basket(
     mobile_client_factory, session, product, warehouse
 ):

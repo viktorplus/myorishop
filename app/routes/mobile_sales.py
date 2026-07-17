@@ -486,7 +486,13 @@ def mobile_sale_step_basket_add(
     qty_acc = [*qty_acc, qty]
     price_acc = [*price_acc, price]
     batch_acc = [*batch_acc, batch_id]
-    context = {"lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc)}
+    # D-04/D-12 analog: sale_basket.html's customer-selector include is bare
+    # (inherits this context) — the Корзина screen is reached for the first
+    # time here, so the selector always starts at its D-02 default.
+    context = {
+        **_m_customer_context(session, "existing", "", {}),
+        "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
+    }
     return templates.TemplateResponse(request, "mobile_partials/sale_basket.html", context)
 
 
@@ -498,9 +504,25 @@ def mobile_sale_create(
     price_acc: list[str] = Form([], alias="price_acc[]"),
     batch_acc: list[str] = Form([], alias="batch_acc[]"),
     customer_id: str = Form(""),
+    customer_mode: str = Form(""),
+    name: str = Form(""),
+    surname: str = Form(""),
+    consultant_number: str = Form(""),
+    customer_q: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # D-04/D-12 analog: «Оформить продажу» is an hx-post that auto-includes
+    # the whole #sale-wizard-form, so the customer selector's fields ride
+    # along here for free — they must be echoed back into every re-render of
+    # sale_basket.html/sale_warning.html below (via _m_customer_context) or
+    # the #m-customer-header chip silently blanks on a warn/error re-render.
+    customer_form = {
+        "customer_q": customer_q,
+        "name": name,
+        "surname": surname,
+        "consultant_number": consultant_number,
+    }
     try:
         result, errors = register_sale(
             session,
@@ -519,6 +541,7 @@ def mobile_sale_create(
         session.rollback()
         logger.exception("register_sale failed")
         context = {
+            **_m_customer_context(session, customer_mode, customer_id, customer_form),
             "errors": {"form": SAVE_FAILED_ERROR},
             "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
         }
@@ -531,6 +554,7 @@ def mobile_sale_create(
     # zero writes until the danger button re-POSTs with confirm=1.
     if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
+            **_m_customer_context(session, customer_mode, customer_id, customer_form),
             "oversell": result.get("oversell"),
             "below_minimum": result.get("below_minimum"),
             "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
@@ -539,6 +563,7 @@ def mobile_sale_create(
 
     if errors:
         context = {
+            **_m_customer_context(session, customer_mode, customer_id, customer_form),
             "errors": errors,
             "lines": _basket_lines(session, code_acc, qty_acc, price_acc, batch_acc),
         }

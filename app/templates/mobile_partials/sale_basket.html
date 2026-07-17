@@ -5,6 +5,7 @@
 <div id="wizard-basket">
   <p class="mobile-step-indicator">Корзина</p>
   <h2>Корзина</h2>
+  {% include "mobile_partials/sale_customer.html" %}
   {% set errors = errors | default({}) %}
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
   {% if errors.basket %}<div class="error-block">{{ errors.basket }}</div>{% endif %}
@@ -27,12 +28,23 @@
       {%- endif %}
     </p>
     <button type="button" class="secondary"
-            hx-on:click="this.closest('.mobile-card').remove()">Удалить</button>
+            hx-on:click="this.closest('.mobile-card').remove();
+              if (window.recalcSaleTotal) window.recalcSaleTotal();">Удалить</button>
   </div>
   {% endfor %}
   {% else %}
   <p class="muted">Корзина пуста.</p>
   {% endif %}
+  {# SALE-02/D-08/D-09: mobile twin of desktop's #sale-total
+     (partials/sale_form.html) — the data-rows attribute below is what makes
+     the shared sale-total.js target .mobile-card accumulators instead of
+     #basket-rows tr. No name= and no form control inside (T-22-03): the
+     browser's money math is structurally incapable of reaching the server. #}
+  <p id="sale-total" class="num" data-rows="mobile">
+    Предварительный итог: <strong id="sale-total-amount">0,00</strong> ·
+    <span id="sale-total-units">0</span> шт.
+    <span id="sale-total-warning" class="muted" hidden>· итог неполный: проверьте кол-во и цену</span>
+  </p>
   <div class="mobile-actions">
     <button type="button" class="secondary"
             hx-post="/m/sales/step/product"
