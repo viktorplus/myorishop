@@ -9,10 +9,11 @@ one (per-connection memory DBs break with pooled sessions).
 import pytest
 from sqlalchemy.orm import sessionmaker
 
+from app.config import settings
 from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
-from app.models import Base, Batch, Customer, Product, Warehouse
-from app.services.ledger import record_operation
+from app.models import Base, Batch, Customer, Operation, Product, Sale, Warehouse
+from app.services.ledger import next_seq, record_operation
 
 
 @pytest.fixture()
@@ -154,6 +155,74 @@ def client(engine, session, product, monkeypatch):
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def past_sale(session):
+    """Factory fixture: seed a Sale + Operation pair at a controlled past UTC date.
+
+    21-VALIDATION.md Wave 0 gap: every CUST-07 spend-window test needs a sale
+    placed at an explicit past date (e.g. 2 months ago must fall outside the
+    month window but inside the year window), and no existing fixture does
+    that. This bypasses record_operation on purpose: record_operation always
+    stamps created_at with the current-UTC helper and the operations_no_update
+    trigger ABORTs any later UPDATE, so backdating is only possible at INSERT time.
+    The append-only triggers guard UPDATE/DELETE, never INSERT — a direct
+    INSERT with an explicit created_at is therefore safe and does not touch
+    the ledger's immutability guarantee.
+
+    LIMITATION, stated loudly: this helper does NOT update the
+    Product.quantity / Batch.quantity projections, because it does not go
+    through the single write path (record_operation). It is for
+    READ-ONLY INSIGHT TESTS (CUST-06/07/08) only. Never combine it with
+    rebuild_stock or any stock-invariant assertion, and never use it to
+    test stock.
+    """
+
+    def _make(
+        customer,
+        product,
+        *,
+        created_at: str,
+        qty: int = 1,
+        unit_price_cents: int | None = 1000,
+        type_: str = "sale",
+        sale: Sale | None = None,
+        batch_id: str | None = None,
+    ) -> tuple[Sale, Operation]:
+        if sale is None:
+            sale = Sale(
+                id=new_id(),
+                customer_id=customer.id,
+                created_at=created_at,
+                created_by=settings.operator_name,
+                device_id=settings.device_id,
+            )
+            session.add(sale)
+            # PRAGMA foreign_keys=ON is active — the Sale header must exist
+            # (be flushed) before the Operation referencing it is added.
+            session.flush()
+
+        qty_delta = -qty if type_ == "sale" else qty
+        op = Operation(
+            id=new_id(),
+            type=type_,
+            product_id=product.id,
+            qty_delta=qty_delta,
+            unit_cost_cents=None,
+            unit_price_cents=unit_price_cents,
+            sale_id=sale.id,
+            batch_id=batch_id,
+            device_id=settings.device_id,
+            seq=next_seq(session, settings.device_id),
+            created_at=created_at,
+            created_by=settings.operator_name,
+        )
+        session.add(op)
+        session.commit()
+        return sale, op
+
+    return _make
 
 
 @pytest.fixture()
