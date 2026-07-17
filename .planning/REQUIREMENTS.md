@@ -20,11 +20,11 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 
 ### Dashboard
 
-- [ ] **DASH-01**: Home page shows the current date, weekday, and time
+- [x] **DASH-01**: Home page shows the current date, weekday, and time
 - [x] **DASH-02**: Home page shows the active catalog number and days remaining until it closes
-- [ ] **DASH-03**: Home page shows revenue/profit/expense totals for today, the current week, and the current month
-- [ ] **DASH-04**: Home page shows the total distinct product codes in stock and their combined valuation
-- [ ] **DASH-05**: Home page shows a recent-operations feed with columns adapted per operation type (type, code, name, expiry, quantity, cost, profit, customer)
+- [x] **DASH-03**: Home page shows revenue/profit/expense totals for today, the current week, and the current month
+- [x] **DASH-04**: Home page shows the total distinct product codes in stock and their combined valuation
+- [x] **DASH-05**: Home page shows a recent-operations feed with columns adapted per operation type (type, code, name, expiry, quantity, cost, profit, customer)
 
 ### Product Pricing & List
 
@@ -73,7 +73,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 - [x] **HIST-01**: History page has a nested menu to select an operation type first, then shows that type's relevant columns only
 - [x] **HIST-02**: History supports filtering by product code, date range, customer, and category
 - [x] **HIST-03**: History supports sorting by its relevant columns
-- [ ] **HIST-04**: History results are paginated
+- [x] **HIST-04**: History results are paginated
 
 ### Reports
 
@@ -133,15 +133,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SALE-05 | Phase 22 | Complete |
 | SALE-06 | Phase 22 | Complete |
 | SALE-07 | Phase 22 | Complete |
-| DASH-01 | Phase 23 | Pending |
+| DASH-01 | Phase 23 | Complete |
 | DASH-02 | Phase 23 | Complete |
-| DASH-03 | Phase 23 | Pending |
-| DASH-04 | Phase 23 | Pending |
-| DASH-05 | Phase 23 | Pending |
+| DASH-03 | Phase 23 | Complete |
+| DASH-04 | Phase 23 | Complete |
+| DASH-05 | Phase 23 | Complete |
 | HIST-01 | Phase 23 | Complete |
 | HIST-02 | Phase 23 | Complete |
 | HIST-03 | Phase 23 | Complete |
-| HIST-04 | Phase 23 | Pending |
+| HIST-04 | Phase 23 | Complete |
 | NAV-01 | Phase 24 | Pending |
 | NAV-02 | Phase 24 | Pending |
 | NAV-03 | Phase 24 | Pending |

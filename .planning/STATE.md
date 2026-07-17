@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: UX Overhaul & Navigation Restructure
-status: executing
-stopped_at: Phase 23 UI-SPEC approved
-last_updated: "2026-07-17T16:15:16.740Z"
+status: ready_to_plan
+stopped_at: Phase 23 complete (7/7) — ready to discuss Phase 24
+last_updated: 2026-07-17T17:42:08.956Z
 last_activity: 2026-07-17 -- Phase 23 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 28
+  completed_plans: 35
   percent: 71
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 23 — dashboard-history-rebuild
+**Current focus:** Phase 24 — navigation restructure & settings
 
 ## Current Position
 
-Phase: 23 (dashboard-history-rebuild) — EXECUTING
-Plan: 1 of 7
-Status: Executing Phase 23
-Last activity: 2026-07-17 -- Phase 23 execution started
+Phase: 24
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-17
 
 Progress: [██████░░░░] 57% (v2.0 — 21/28 plans; Phase 22's 7 plans are planned, not yet executed)
 
@@ -36,7 +36,7 @@ Progress: [██████░░░░] 57% (v2.0 — 21/28 plans; Phase 22's
 
 **Velocity:**
 
-- Total plans completed: 72 (v1.0-v1.3)
+- Total plans completed: 79 (v1.0-v1.3)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -48,6 +48,7 @@ Progress: [██████░░░░] 57% (v2.0 — 21/28 plans; Phase 22's
 | 19 | 1 | - | - |
 | 21 | 5 | - | - |
 | 22 | 7 | - | - |
+| 23 | 7 | - | - |
 
 **Recent Trend:**
 
