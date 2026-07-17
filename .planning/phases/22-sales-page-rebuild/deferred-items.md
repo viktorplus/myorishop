@@ -57,3 +57,18 @@ regression from 22-02. This plan's own 3 files
 
 Not fixed here (out of scope for 22-02, whose `<files>` frontmatter is scoped to those 3
 files). Revisit with a dedicated formatting/lint pass if this debt starts blocking CI.
+
+## 22-05: Repo-wide ruff debt (pre-existing, not introduced by 22-05)
+
+Same accumulated debt as 22-01/22-02, reconfirmed during 22-05's Task 3 verification:
+
+- `uv run ruff check .`: 9 pre-existing errors (E501 line-too-long across several
+  `app/`/`scripts/`/`tests/` files, plus one F401 unused import in
+  `tests/test_mobile_receipts.py`) — none in `app/routes/sales.py`,
+  `app/templates/partials/sale_customer.html`, or `tests/test_sales.py` (this plan's
+  entire `files_modified`).
+- `uv run ruff format --check .`: 47 pre-existing files would be reformatted — none
+  is a file this plan touched.
+
+This plan's own 3 files pass `ruff check` and `ruff format --check` cleanly, verified
+individually. Not fixed here — out of scope per the plan's `<files>` frontmatter.
