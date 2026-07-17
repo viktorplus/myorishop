@@ -30,14 +30,47 @@ def _dest_warehouses(session: Session, source: Batch | None) -> list:
     return list(active_warehouses(session))
 
 
+def _resolve_transfer_lookup(session: Session, code: str) -> dict | None:
+    """Resolve a product code to its name + open batches (D-14, V5).
+
+    Shared by transfers_lookup (HTMX oob swap) and transfers_page (?code=
+    prefill on first render). Returns None when lookup_prefill finds no
+    match — the caller renders an empty, unprefilled form (never a 500,
+    never an echo of unsanitized input).
+    """
+    result = lookup_prefill(session, code)
+    if result is None:
+        return None
+    code_clean = code.strip()
+    product = session.scalars(
+        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
+    ).first()
+    batches = open_batches(session, product.id) if product is not None else []
+    return {
+        "name": result["name"],
+        "code": code_clean,
+        "batches": batches,
+        "show_empty": product is not None and not batches,
+    }
+
+
 @router.get("/transfers")
-def transfers_page(request: Request, session: Session = Depends(get_session)):
+def transfers_page(request: Request, code: str = "", session: Session = Depends(get_session)):
+    code_clean = code.strip()
+    form: dict = {}
+    prefill: dict | None = None
+    if code_clean:
+        prefill = _resolve_transfer_lookup(session, code_clean)
+        form = {"code": prefill["code"], "name": prefill["name"]} if prefill else {"code": code_clean}
     context = {
         "errors": {},
-        "form": {},
+        "form": form,
         "focus_code": False,
         "transfers": recent_transfers(session),
     }
+    if prefill is not None:
+        context["prefill_batches"] = prefill["batches"]
+        context["prefill_show_empty"] = prefill["show_empty"]
     return templates.TemplateResponse(request, "pages/transfer_form.html", context)
 
 
@@ -52,25 +85,17 @@ def transfers_lookup(
     # SERVER decides fill vs 204; a non-empty typed name is never overwritten.
     if name.strip():
         return Response(status_code=204)
-    result = lookup_prefill(session, code)
-    if result is None:
+    resolved = _resolve_transfer_lookup(session, code)
+    if resolved is None:
         return Response(status_code=204)
 
-    # WH-03: an active product also gets its open batches (ALL warehouses —
-    # a transfer's source may be any warehouse) so the shared picker can be
-    # oob-swapped into the form (empty state when there are none).
-    code_clean = code.strip()
-    product = session.scalars(
-        select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
-    ).first()
-    batches = open_batches(session, product.id) if product is not None else []
     context = {
-        "name": result["name"],
-        "code": code_clean,
-        "batches": batches,
+        "name": resolved["name"],
+        "code": resolved["code"],
+        "batches": resolved["batches"],
         "selected_batch_id": None,
         "batch_id_value": "",
-        "show_empty": product is not None and not batches,
+        "show_empty": resolved["show_empty"],
     }
     return templates.TemplateResponse(request, "partials/transfer_lookup.html", context)
 
