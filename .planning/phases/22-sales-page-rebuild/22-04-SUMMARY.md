@@ -120,3 +120,7 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All 7 declared files found on disk; all 3 commits (`e5e7352`, `e470aec`, `7859fa4`) found in git log.
