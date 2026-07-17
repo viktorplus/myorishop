@@ -199,3 +199,8 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All 3 created/modified test files and the 2 new phase-doc files found on disk; all 4
+commits (`aedb9de`, `f9cb670`, `24de7bf`, `a5ed266`) found in `git log --oneline --all`.
