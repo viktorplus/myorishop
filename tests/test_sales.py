@@ -1214,7 +1214,6 @@ def test_web_sale_three_line_basket_attributes_each_batch(client, session, wareh
 # FAILS the suite by design).
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
 def test_web_sale_customer_mode_default_renders_three_radios(client):
     """D-01/D-02: GET /sales/new renders 3 customer_mode radios, «Существующий» pre-checked."""
     response = client.get("/sales/new")
@@ -1234,7 +1233,6 @@ def test_web_sale_customer_mode_default_renders_three_radios(client):
     assert anon_tag is not None and "checked" not in anon_tag.group(0)
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
 def test_web_sale_customer_mode_new_renders_three_fields(client):
     """SALE-03: GET /sales/customer-mode?customer_mode=new renders the 3-field block."""
     response = client.get("/sales/customer-mode", params={"customer_mode": "new"})
@@ -1247,7 +1245,6 @@ def test_web_sale_customer_mode_new_renders_three_fields(client):
     assert "Добавить покупателя" in text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
 def test_web_sale_customer_mode_roundtrip_preserves_both_modes(client, customer):
     """D-03: switching mode to «Новый» and back preserves both modes' typed values."""
     step1 = client.get(
@@ -1276,7 +1273,6 @@ def test_web_sale_customer_mode_roundtrip_preserves_both_modes(client, customer)
     assert _input_value(step2.text, "consultant_number") == "999"
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
 def test_web_sale_customer_mode_allowlist_rejects_unknown(client):
     """T-22-01: an unknown customer_mode degrades to «Существующий», never echoed raw."""
     response = client.get(
@@ -1290,7 +1286,6 @@ def test_web_sale_customer_mode_allowlist_rejects_unknown(client):
     assert "<script>alert(1)</script>" not in text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-03: customer mode selector lands in 22-05")
 def test_web_sale_customer_mode_anon_renders_no_inputs(client):
     """SALE-06/D-05: «Без покупателя (розница)» renders zero visible input elements."""
     response = client.get("/sales/customer-mode", params={"customer_mode": "anon"})
@@ -1363,7 +1358,6 @@ def test_web_sale_picker_data_attrs(client, session):
     assert "data-surname=" in row_tag.group(0)
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
 def test_web_sale_new_customer_field_set_is_exactly_three(client):
     """D-07: the «Новый» block has exactly 3 fields — no Phase-21 profile fields."""
     response = client.get("/sales/customer-mode", params={"customer_mode": "new"})

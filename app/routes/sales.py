@@ -449,13 +449,18 @@ def sale_customer_mode(
     # SALE-03/D-03: the mode radio's hx-get lands here on every switch.
     # Coalesce customer_id/customer_id_keep — do NOT pick one: whichever
     # mode is LEAVING supplies one of them (the visible hidden input, or the
-    # inactive echo).
+    # inactive echo). raw_id also becomes "customer_id_keep" in the response
+    # context — _customer_context's own "customer_id" key is the RESOLVED id
+    # (empty whenever mode != "existing"), which is right for
+    # #customer-id-input but wrong for the inactive-mode echo: it must carry
+    # the raw id forward so a later switch back to "existing" can resolve it.
     try:
+        raw_id = customer_id or customer_id_keep
         context = {
             **_customer_context(
                 session,
                 customer_mode,
-                customer_id or customer_id_keep,
+                raw_id,
                 {
                     "customer_q": customer_q,
                     "name": name,
@@ -463,6 +468,7 @@ def sale_customer_mode(
                     "consultant_number": consultant_number,
                 },
             ),
+            "customer_id_keep": raw_id,
             "errors": {},
         }
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
@@ -472,6 +478,7 @@ def sale_customer_mode(
         context = {
             "mode": "existing",
             "customer_id": "",
+            "customer_id_keep": "",
             "selected": None,
             "form": {},
             "errors": {"quick_create": SAVE_FAILED_ERROR},
