@@ -111,3 +111,8 @@ None - no external service configuration required.
 ---
 *Phase: 22-sales-page-rebuild*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All created files verified present on disk; all 4 task/summary commit hashes
+(638e16b, 827ab2f, 8fef702, 9c68ef9) verified present in `git log --oneline --all`.
