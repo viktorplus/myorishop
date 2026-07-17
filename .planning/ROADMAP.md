@@ -76,7 +76,7 @@ Full phase details archived in `.planning/milestones/v1.3-ROADMAP.md`.
 - [x] **Phase 21: Customer Profiles & Purchase Insights** - Multi-contact profiles with last-order date, period spend, and favorite products (completed 2026-07-17)
 - [x] **Phase 22: Sales Page Rebuild** - Table-shaped sale form with a live running total and a new/existing/anonymous customer flow (completed 2026-07-17)
 - [x] **Phase 23: Dashboard & History Rebuild** - Operational home page plus a type-first history with per-type columns and filters (completed 2026-07-17)
-- [ ] **Phase 24: Navigation Restructure & Settings** - Reduce the top-level nav to first-class pages and nest the rest where they belong
+- [x] **Phase 24: Navigation Restructure & Settings** - Reduce the top-level nav to first-class pages and nest the rest where they belong (completed 2026-07-17)
 
 ## Phase Details
 
@@ -289,8 +289,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 24-05-PLAN.md — Persistent top-docked mobile tab bar + home-grid/finance-link removal (MOB-01, D-09/D-10/D-12)
-- [ ] 24-06-PLAN.md — Mobile Товары + Покупатели pages, D-11 toolbar mirror, main.py registration (MOB-01)
+- [x] 24-05-PLAN.md — Persistent top-docked mobile tab bar + home-grid/finance-link removal (MOB-01, D-09/D-10/D-12)
+- [x] 24-06-PLAN.md — Mobile Товары + Покупатели pages, D-11 toolbar mirror, main.py registration (MOB-01)
 
 **UI hint**: yes
 
@@ -324,4 +324,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 24. Navigation Restructure & Settings | v2.0 | 4/6 | In Progress|  |
+| 24. Navigation Restructure & Settings | v2.0 | 6/6 | Complete   | 2026-07-17 |
