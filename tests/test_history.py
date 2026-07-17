@@ -149,6 +149,13 @@ def test_web_history_filters(client, session, stocked_product, product, batch):
     «Товар» cell is now just `<td>{name}` (the muted D-15 batch second line
     still sits between the name and the closing tag; the code is no longer
     inlined here).
+
+    Phase 23 (HIST-01/D-03): `type=writeoff` now renders the NARROWED
+    per-type view (writeoff is a STOCK_AFFECTING_TYPES member), which drops
+    the «Тип» column entirely — so the old Тип-label-based narrowing check
+    is replaced by a «Код» cell count: exactly ONE row (the seeded writeoff)
+    should carry `stocked_product`'s code, versus TWO before filtering
+    (writeoff + correction, both narrowed types, both on the same product).
     """
     _seed_mixed_ops(session, stocked_product)
     # `batch` fixture seeds a batch for `product`; attribute its correction so
@@ -157,10 +164,13 @@ def test_web_history_filters(client, session, stocked_product, product, batch):
         session, type_="correction", product_id=product.id, qty_delta=1, batch_id=batch.id
     )
 
+    unfiltered_response = client.get("/history")
+    unfiltered_code_count = unfiltered_response.text.count(f"<td>{stocked_product.code}</td>")
+
     type_response = client.get("/history", params={"type": "writeoff"})
     assert type_response.status_code == 200
-    assert "<td>Списание</td>" in type_response.text
-    assert "<td>Корректировка</td>" not in type_response.text
+    assert type_response.text.count(f"<td>{stocked_product.code}</td>") == 1
+    assert unfiltered_code_count > 1
 
     product_response = client.get("/history", params={"product": stocked_product.id})
     assert product_response.status_code == 200
@@ -175,7 +185,9 @@ def test_web_history_filtered_reload_returns_full_chrome(client, session, stocke
     parsing rules — while filtering still narrows the displayed rows
     correctly (scoped to <td> row markup — see test_web_history_filters
     docstring for why a bare substring check is insufficient once the
-    always-populated filter-bar <select> is present)."""
+    always-populated filter-bar <select> is present; Phase 23 HIST-01/D-03:
+    `type=writeoff` is a narrowed per-type view with no «Тип» column, so
+    narrowing is verified via the «Код» cell count instead)."""
     _seed_mixed_ops(session, stocked_product)
 
     response = client.get("/history", params={"type": "writeoff"})
@@ -183,8 +195,7 @@ def test_web_history_filtered_reload_returns_full_chrome(client, session, stocke
     assert "<html" in response.text
     assert "<nav" in response.text
     assert "<table" in response.text
-    assert "<td>Списание</td>" in response.text
-    assert "<td>Корректировка</td>" not in response.text
+    assert response.text.count(f"<td>{stocked_product.code}</td>") == 1
 
 
 def test_web_history_pagination_bar_reflects_filtered_total(client, session, stocked_product):
@@ -202,9 +213,7 @@ def test_web_history_pagination_bar_reflects_filtered_total(client, session, sto
             batch_id=batch_id,
         )
 
-    response = client.get(
-        "/history", params={"type": "writeoff"}, headers={"HX-Request": "true"}
-    )
+    response = client.get("/history", params={"type": "writeoff"}, headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert 'class="pagination"' in response.text
     assert "Страница 1 из 2" in response.text
@@ -252,9 +261,7 @@ def test_web_history_batched_op_renders_batch_line(client, session, stocked_prod
 def test_web_history_audit_op_has_no_batch_line(client, session, stocked_product):
     """D-15: an audit op (price_change) renders NO batch second line — neither a
     «Партия:» line nor the legacy label."""
-    record_operation(
-        session, type_="price_change", product_id=stocked_product.id, qty_delta=0
-    )
+    record_operation(session, type_="price_change", product_id=stocked_product.id, qty_delta=0)
 
     response = client.get("/history", params={"type": "price_change"})
     assert response.status_code == 200
@@ -268,16 +275,21 @@ def test_web_history_table_has_10_columns(client, session, stocked_product):
     «Действие» were added (Когда, Тип, Код, Товар, Кол-во, Цена,
     Себестоимость, Причина, Кто, Действие). The D-15 batch annotation is
     still a second line inside the «Товар» cell, not its own column. Since
-    Phase 14, <thead> holds TWO <tr>s (10 header <th> + 10 filter-row <th>,
-    D-04 moves the type/product filters into the header-row shape), so the
-    total <th> count is now 20; exactly 2 of the filter-row cells hold a
-    <select> (type, product)."""
+    Phase 14, <thead> holds TWO <tr>s (10 header <th> + 10 filter-row <th>),
+    so the total <th> count is 20.
+
+    Phase 23 (HIST-01/D-03): the «Тип» select relocated OUT of the header
+    filter-row into the top filter-bar (above <thead>, Interaction 7), so
+    only ONE <select> (product) remains inside <thead> — the type select is
+    verified separately via `id="type"` outside <thead>.
+    """
     response = client.get("/history")
     assert response.status_code == 200
+    assert 'id="type"' in response.text
     header_start = response.text.index("<thead>") + len("<thead>")
     header_end = response.text.index("</thead>", header_start)
     assert response.text.count("<th", header_start, header_end) == 20
-    assert response.text.count("<select", header_start, header_end) == 2
+    assert response.text.count("<select", header_start, header_end) == 1
 
 
 def test_web_history_has_code_column_and_return_link(client, session, stocked_product):

@@ -1,13 +1,39 @@
-{# History rows (OPS-04/D-16, Phase 14 D-01/D-02/D-03/D-04/D-05/D-06/D-07):
-   single swappable #history-rows block — sort dropdown + header-row
-   type/product filters + the 10-column data table + shared pagination
-   partial. Retires the old load-more/tfoot mechanism and the standalone
-   .filter-bar (history_load_more.html/history_response.html/
-   history_filters.html are deleted; their content is folded in here).
-   Autoescape only — product names, payload notes, and created_by are
-   untrusted-at-rest text (T-05-18); NEVER |safe. #}
+{# History rows (OPS-04/D-16, Phase 14 D-01..D-07, Phase 23 HIST-01..04):
+   single swappable #history-rows block — top filter-bar (Тип + Сортировать
+   по) + universal period filter + header-row filters (Товар/Категория,
+   Покупатель sale/return-only) + type-narrowed data table + shared
+   pagination partial.
+   D-03 (Phase 23): selecting a type narrows BOTH rows and columns in one
+   swap — `columns` is None for "no type" and the 3 audit types (falls back
+   to the unchanged generic 10-column view, Pitfall 5); a tuple for the 6
+   STOCK_AFFECTING_TYPES (HISTORY_TYPE_COLUMNS, app/services/operations.py —
+   the single shared source of truth, also used by the dashboard feed).
+   Autoescape only — product/customer names, payload notes, and created_by
+   are untrusted-at-rest text (T-05-18/T-23-13); NEVER |safe. #}
+{% set COLUMN_LABELS = {
+  "expiry": "Срок",
+  "qty": "Кол-во",
+  "price": "Цена",
+  "cost": "Себестоимость",
+  "profit": "Прибыль",
+  "customer": "Покупатель",
+  "reason": "Причина",
+  "warehouse": "Склад",
+} %}
 <div id="history-rows">
   <div class="filter-bar">
+    <div class="field">
+      <label for="type">Тип операции</label>
+      <select id="type" name="type"
+              hx-get="/history" hx-trigger="change"
+              hx-include="#history-rows input, #history-rows select"
+              hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
+        {% for t, label in OPERATION_TYPE_LABELS.items() %}
+        <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="field">
       <label for="sort">Сортировать по</label>
       <select id="sort" name="sort"
@@ -19,7 +45,16 @@
       </select>
     </div>
   </div>
+  {# D-05: date range is universal — visible for every type, including the
+     untyped generic view. Reused verbatim, unmodified partial. #}
+  {% with period_action = "/history", period_target = "#history-rows" %}
+  {% include "partials/period_filter.html" %}
+  {% endwith %}
   <table>
+    {% if not columns %}
+    {# Generic 10-column view — unchanged shape, no type selected OR one of
+       the 3 audit types (price_change/product_created/product_edited,
+       Pitfall 5/Interaction 12). #}
     <thead>
       <tr>
         <th>Когда</th>
@@ -35,17 +70,7 @@
       </tr>
       <tr class="filter-row">
         <th></th>
-        <th>
-          <select name="type"
-                  hx-get="/history" hx-trigger="change"
-                  hx-include="#history-rows input, #history-rows select"
-                  hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
-            <option value=""{% if not type_filter %} selected{% endif %}>Все типы</option>
-            {% for t, label in OPERATION_TYPE_LABELS.items() %}
-            <option value="{{ t }}"{% if t == type_filter %} selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </th>
+        <th></th>
         <th></th>
         <th>
           <select name="product"
@@ -57,6 +82,10 @@
             <option value="{{ p.id }}"{% if p.id == product_id %} selected{% endif %}>{{ p.name }} ({{ p.code }})</option>
             {% endfor %}
           </select>
+          <input type="text" name="category" placeholder="Фильтр по категории…" value="{{ category }}"
+                 hx-get="/history" hx-trigger="input changed delay:300ms"
+                 hx-include="#history-rows input, #history-rows select"
+                 hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
         </th>
         <th></th>
         <th></th>
@@ -70,7 +99,7 @@
       {% if not rows %}
       <tr>
         <td colspan="10" class="empty-state muted">
-          {% if type_filter or product_id %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+          {% if type_filter or product_id or category or customer or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
         </td>
       </tr>
       {% else %}
@@ -127,6 +156,108 @@
       {% endfor %}
       {% endif %}
     </tbody>
+    {% else %}
+    {# HIST-01 (D-03/D-06): per-type narrowed view — Когда/Код/Товар bookend
+       every type, then one column per `columns` key in HISTORY_TYPE_COLUMNS
+       order, then Действие. «Кто» is dropped from every narrowed view
+       (23-UI-SPEC.md Interaction 8 — single-operator v1). #}
+    <thead>
+      <tr>
+        <th>Когда</th>
+        <th>Код</th>
+        <th>Товар</th>
+        {% for key in columns %}
+        <th{% if key in ("qty", "price", "cost", "profit") %} class="num"{% endif %}>{{ COLUMN_LABELS[key] }}</th>
+        {% endfor %}
+        <th>Действие</th>
+      </tr>
+      <tr class="filter-row">
+        <th></th>
+        <th></th>
+        <th>
+          <select name="product"
+                  hx-get="/history" hx-trigger="change"
+                  hx-include="#history-rows input, #history-rows select"
+                  hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+            <option value=""{% if not product_id %} selected{% endif %}>Все товары</option>
+            {% for p in products %}
+            <option value="{{ p.id }}"{% if p.id == product_id %} selected{% endif %}>{{ p.name }} ({{ p.code }})</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="category" placeholder="Фильтр по категории…" value="{{ category }}"
+                 hx-get="/history" hx-trigger="input changed delay:300ms"
+                 hx-include="#history-rows input, #history-rows select"
+                 hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+        </th>
+        {% for key in columns %}
+        <th>
+          {%- if key == "customer" -%}
+          {# Interaction 11 (D-05): customer filter only exists where the
+             «Покупатель» data column exists — sale/return — same debounced
+             idiom as category, reused from product_rows.html. #}
+          {% if type_filter in ("sale", "return") %}
+          <input type="text" name="customer" placeholder="Фильтр по покупателю…" value="{{ customer }}"
+                 hx-get="/history" hx-trigger="input changed delay:300ms"
+                 hx-include="#history-rows input, #history-rows select"
+                 hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+          {% endif %}
+          {%- endif -%}
+        </th>
+        {% endfor %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if not rows %}
+      <tr>
+        <td colspan="{{ 3 + columns|length + 1 }}" class="empty-state muted">
+          {% if type_filter or product_id or category or customer or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.op.created_at | local_dt }}</td>
+        <td>{{ r.product.code }}</td>
+        <td>{{ r.product.name }}</td>
+        {% for key in columns %}
+        {% if key == "expiry" %}
+        <td>{% if r.batch and r.batch.expiry %}{{ r.batch.expiry | ru_date }}{% elif r.batch %}<span class="muted">без срока</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% elif key == "qty" %}
+        <td class="num">{% if r.op.qty_delta > 0 %}+{{ r.op.qty_delta }}{% else %}{{ r.op.qty_delta }}{% endif %}</td>
+        {% elif key == "price" %}
+        <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% elif key == "cost" %}
+        <td class="num">{% if r.op.unit_cost_cents is not none %}{{ r.op.unit_cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% elif key == "profit" %}
+        <td class="num">{% if r.op.unit_price_cents is not none and r.op.unit_cost_cents is not none %}{{ ((r.op.unit_price_cents - r.op.unit_cost_cents) * -r.op.qty_delta) | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% elif key == "customer" %}
+        <td>{% if r.customer %}{{ r.customer.name }} {{ r.customer.surname or '' }}{% else %}<span class="muted">Розница</span>{% endif %}</td>
+        {% elif key == "reason" %}
+        <td>
+          {%- if r.op.type == "writeoff" and r.op.payload -%}
+          {{ WRITEOFF_REASONS.get(r.op.payload.reason_code, r.op.payload.reason_code) }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+          {%- elif r.op.type == "correction" and r.op.payload -%}
+          {{ "Пересчёт" if r.op.payload.mode == "count" else "Изменение" }}{% if r.op.payload.note %} — {{ r.op.payload.note }}{% endif %}
+          {%- else -%}
+          <span class="muted">—</span>
+          {%- endif %}
+        </td>
+        {% elif key == "warehouse" %}
+        <td>{% if r.warehouse %}{{ r.warehouse.name }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% endif %}
+        {% endfor %}
+        {% if r.op.type == "sale" %}
+        <td><a href="#" hx-get="/returns?sale_id={{ r.op.sale_id or '' }}&product_id={{ r.product.id }}&origin_op_id={{ r.op.id }}"
+               hx-target="#return-slot" hx-swap="innerHTML">Вернуть</a></td>
+        {% else %}
+        <td><span class="muted">—</span></td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+    {% endif %}
   </table>
   {% include "partials/pagination.html" %}
 </div>
