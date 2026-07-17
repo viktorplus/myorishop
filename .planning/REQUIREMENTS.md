@@ -21,7 +21,7 @@ Requirements for milestone v2.0. Each maps to roadmap phases.
 ### Dashboard
 
 - [ ] **DASH-01**: Home page shows the current date, weekday, and time
-- [ ] **DASH-02**: Home page shows the active catalog number and days remaining until it closes
+- [x] **DASH-02**: Home page shows the active catalog number and days remaining until it closes
 - [ ] **DASH-03**: Home page shows revenue/profit/expense totals for today, the current week, and the current month
 - [ ] **DASH-04**: Home page shows the total distinct product codes in stock and their combined valuation
 - [ ] **DASH-05**: Home page shows a recent-operations feed with columns adapted per operation type (type, code, name, expiry, quantity, cost, profit, customer)
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SALE-06 | Phase 22 | Complete |
 | SALE-07 | Phase 22 | Complete |
 | DASH-01 | Phase 23 | Pending |
-| DASH-02 | Phase 23 | Pending |
+| DASH-02 | Phase 23 | Complete |
 | DASH-03 | Phase 23 | Pending |
 | DASH-04 | Phase 23 | Pending |
 | DASH-05 | Phase 23 | Pending |
@@ -154,6 +154,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MOB-01 | Phase 24 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 46 total (count corrected from 45 during roadmap creation — the original tally under-counted by one; all requirement IDs are unchanged)
 - Mapped to phases: 46 ✓
 - Unmapped: 0 ✓

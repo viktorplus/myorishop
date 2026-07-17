@@ -1,0 +1,18 @@
+{# DASH-02 (D-01/D-02): fully manual active-catalog number + close-date
+   form, on the existing /catalogs page. method/action pair with hx-post
+   for no-JS progressive enhancement (mirrors period_filter.html's
+   method/action + hx-get pattern). Works whether `active` is the ORM row
+   or the plain echo-dict this partial's own error path re-renders with. #}
+<form hx-post="/catalogs/active" hx-target="this" hx-swap="outerHTML"
+      method="post" action="/catalogs/active">
+  <div class="field">
+    <label for="active-number">Номер каталога</label>
+    <input type="text" id="active-number" name="number" value="{{ active.number or '' }}">
+  </div>
+  <div class="field">
+    <label for="active-close-date">Дата закрытия</label>
+    <input type="date" id="active-close-date" name="close_date" value="{{ active.close_date or '' }}">
+  </div>
+  <button type="submit">Сохранить</button>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+</form>

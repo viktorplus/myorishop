@@ -206,6 +206,27 @@ class Warehouse(Base):
     deleted_at: Mapped[str | None] = mapped_column(String(32))
 
 
+class ActiveCatalog(Base):
+    """Manually-set active catalog number + close date (DASH-02, D-01/D-02).
+
+    Singleton row: no unique constraint, no seed row — an empty table means
+    "no active catalog configured yet" (a placeholder state, not an error).
+    Cardinality (at most one row) is enforced by the service layer's
+    get-or-create in app/services/active_catalog.py, the same convention
+    `Batch` uses for its lifecycle instead of a DB constraint. Both fields
+    are fully manual (D-01) — never derived from `scan_catalog_files()`'s
+    PDF-filename scan.
+    """
+
+    __tablename__ = "active_catalog"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    number: Mapped[str | None] = mapped_column(String(20))
+    close_date: Mapped[str | None] = mapped_column(String(10))
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
 class Batch(Base):
     """Stock-holding unit (LOT-01): one product x one warehouse x one lot.
 

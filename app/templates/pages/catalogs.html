@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Каталоги</h1>
+<h2>Активный каталог</h2>
+{% include "partials/active_catalog_form.html" %}
 {% include "partials/catalog_rows.html" %}
 {% endblock %}

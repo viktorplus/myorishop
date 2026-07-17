@@ -6,12 +6,13 @@ per-catalog product list joins the Dictionary.catalogs membership column.
 
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
+from app.services.active_catalog import get_active_catalog, set_active_catalog
 from app.services.catalogs import (
     catalog_file_path,
     catalog_year_options,
@@ -59,8 +60,32 @@ def catalogs_page(
 ):
     context = _catalogs_context(session, year=year, sort=sort, page=page)
     is_hx = bool(request.headers.get("HX-Request"))
-    template = "partials/catalog_rows.html" if is_hx else "pages/catalogs.html"
-    return templates.TemplateResponse(request, template, context)
+    if is_hx:
+        return templates.TemplateResponse(request, "partials/catalog_rows.html", context)
+    context = {**context, "active": get_active_catalog(session), "error": None}
+    return templates.TemplateResponse(request, "pages/catalogs.html", context)
+
+
+@router.post("/catalogs/active")
+def catalogs_active(
+    request: Request,
+    number: str = Form(""),
+    close_date: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    """DASH-02 (D-01/D-02): save the manually-entered active-catalog number
+    and close date. Always returns the same form partial (mirrors
+    finance_withdraw's convention — this endpoint is only ever reached via
+    the form's own hx-post, so no is_hx branching is needed)."""
+    row, errors = set_active_catalog(session, number=number, close_date=close_date)
+    if errors:
+        context = {
+            "active": {"number": number, "close_date": close_date},
+            "error": next(iter(errors.values())),
+        }
+    else:
+        context = {"active": row, "error": None}
+    return templates.TemplateResponse(request, "partials/active_catalog_form.html", context)
 
 
 @router.get("/catalogs/{url_code}/file")
