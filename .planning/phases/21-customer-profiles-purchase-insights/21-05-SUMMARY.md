@@ -143,3 +143,10 @@ None — no external service configuration required.
 ---
 *Phase: 21-customer-profiles-purchase-insights*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+All created/modified files exist on disk (`app/templates/partials/customer_contacts.html`,
+`app/templates/partials/customer_insights.html`, `app/templates/partials/favorite_products.html`,
+`app/routes/__init__.py`, `app/routes/customers.py`, `tests/test_customers.py`, this summary) and
+all task commit hashes (`831b999`, `33de979`, `6e1ced8`, `bc8e6bb`) are present in git log.
