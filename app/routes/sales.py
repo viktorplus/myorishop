@@ -13,7 +13,7 @@ from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import open_batches
 from app.services.catalog import search_products, split_match
-from app.services.customers import create_customer, customer_search_view
+from app.services.customers import create_customer, customer_search_view, get_customer
 from app.services.pricing import reference_prices_for_code
 from app.services.sales import (
     SALE_BATCH_FILL_HINT,
@@ -33,11 +33,60 @@ logger = logging.getLogger(__name__)
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 
+# D-10: fires when customer_mode=="new", customer_id is empty, and any of the
+# 3 new-customer fields is non-blank — the operator typed a new customer but
+# never pressed «Добавить покупателя», which today silently writes a walk-in
+# sale. Problem + the exact solution button, directly under it.
+NEW_CUSTOMER_REQUIRES_BUTTON_ERROR = (
+    "Сначала нажмите «Добавить покупателя» — иначе продажа сохранится без покупателя."
+)
+
 # CR-01: row_id is echoed unescaped into an hx-on::load JS-evaluated
 # attribute (sale_row.html), so it must be constrained to the exact shape
 # new_id() produces (a UUID4 string) before it is ever trusted. Anything
 # that doesn't match is discarded in favor of a freshly generated id.
 _ROW_ID_RE = re.compile(r"[0-9a-fA-F-]{1,36}")
+
+# T-22-01: customer_mode reaches only {% if mode == "..." %} comparisons in
+# sale_customer.html, never a JS-evaluated attribute (unlike row_id above,
+# which needs the heavier _ROW_ID_RE regex) — so a plain allow-list tuple,
+# membership-checked with a default on miss (mirrors customers.py:262's
+# _SORT_MAP), is the proportionate guard. Compare, NEVER interpolate.
+_CUSTOMER_MODES = ("new", "existing", "anon")
+
+
+def _customer_context(session: Session, mode: str, customer_id: str, form: dict[str, str]) -> dict:
+    """Single shared builder for every render of partials/sale_customer.html.
+
+    D-03 contract: `form` carries ALL modes' values — the active mode's typed
+    fields plus the other two (inactive) modes' echoed values — so a mode
+    switch round-trips indefinitely without ever losing anything.
+
+    D-12 contract (a verified defect, 22-RESEARCH.md Pitfall 7): this is the
+    fix for the silent chip-loss bug. Every one of sale_create's five render
+    paths must go through this builder and resolve `selected` server-side,
+    instead of hand-writing a bare customer-id-only literal with no
+    `selected`/`mode`/`form`.
+
+    Returns NO "errors" key on purpose: callers own their own `errors` dict
+    (e.g. sale_create's basket/oversell/validation errors) and merge this
+    builder's keys into it. 22-RESEARCH.md's Pattern-1 sketch returns
+    "errors": {}, which would CLOBBER a caller's real errors on merge — this
+    is a deliberate deviation from that sketch, done here on purpose.
+    """
+    mode = mode if mode in _CUSTOMER_MODES else "existing"
+    selected = None
+    if mode == "existing" and customer_id:
+        # An id that no longer resolves degrades to "nothing selected"
+        # rather than rendering a chip for a deleted customer (mirrors
+        # _build_lines' batch rule above).
+        selected = get_customer(session, customer_id)
+    return {
+        "mode": mode,
+        "customer_id": selected.id if selected else "",
+        "selected": selected,
+        "form": form,
+    }
 
 
 def _build_lines(
@@ -97,9 +146,10 @@ def _build_lines(
 @router.get("/sales/new")
 def sale_new_page(request: Request, session: Session = Depends(get_session)):
     context = {
+        **_customer_context(session, "existing", "", {}),
+        "customer_id_keep": "",
         "errors": {},
         "lines": [],
-        "customer_id": "",
         "focus_code": False,
         "sales": recent_sales(session),
     }
@@ -157,9 +207,7 @@ def sale_lookup(
 
     if result["source"] == "product":
         product = session.scalars(
-            select(Product).where(
-                Product.code == code_clean, Product.deleted_at.is_(None)
-            )
+            select(Product).where(Product.code == code_clean, Product.deleted_at.is_(None))
         ).first()
         if product is not None:
             batches = open_batches(session, product.id)
@@ -362,11 +410,16 @@ def sale_customer_create(
         # "quick_create" (not "form") — sale_customer.html is included inside
         # sale_form.html on the normal basket routes, which already renders
         # its OWN errors.form; a shared "form" key would double-render the
-        # same error block when both are present.
+        # same error block when both are present. mode stays "new" — the
+        # operator is still mid-quick-create and must see their typed values.
         context = {
-            "selected": None,
+            **_customer_context(
+                session,
+                "new",
+                "",
+                {"name": name, "surname": surname, "consultant_number": consultant_number},
+            ),
             "errors": {"quick_create": SAVE_FAILED_ERROR},
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
         }
         return templates.TemplateResponse(
             request, "partials/sale_customer.html", context, status_code=422
@@ -374,15 +427,71 @@ def sale_customer_create(
 
     if errors:
         context = {
-            "selected": None,
+            **_customer_context(
+                session,
+                "new",
+                "",
+                {"name": name, "surname": surname, "consultant_number": consultant_number},
+            ),
             "errors": errors,
-            "form": {"name": name, "surname": surname, "consultant_number": consultant_number},
         }
         return templates.TemplateResponse(
             request, "partials/sale_customer.html", context, status_code=422
         )
 
-    context = {"selected": customer, "errors": {}, "form": {}}
+    context = {**_customer_context(session, "existing", customer.id, {}), "errors": {}}
+    return templates.TemplateResponse(request, "partials/sale_customer.html", context)
+
+
+@router.get("/sales/customer-mode")
+def sale_customer_mode(
+    request: Request,
+    customer_mode: str = "existing",
+    customer_id: str = "",
+    customer_id_keep: str = "",
+    customer_q: str = "",
+    name: str = "",
+    surname: str = "",
+    consultant_number: str = "",
+    session: Session = Depends(get_session),
+):
+    # SALE-03/D-03: the mode radio's hx-get lands here on every switch.
+    # Coalesce customer_id/customer_id_keep — do NOT pick one: whichever
+    # mode is LEAVING supplies one of them (the visible hidden input, or the
+    # inactive echo). raw_id also becomes "customer_id_keep" in the response
+    # context — _customer_context's own "customer_id" key is the RESOLVED id
+    # (empty whenever mode != "existing"), which is right for
+    # #customer-id-input but wrong for the inactive-mode echo: it must carry
+    # the raw id forward so a later switch back to "existing" can resolve it.
+    try:
+        raw_id = customer_id or customer_id_keep
+        context = {
+            **_customer_context(
+                session,
+                customer_mode,
+                raw_id,
+                {
+                    "customer_q": customer_q,
+                    "name": name,
+                    "surname": surname,
+                    "consultant_number": consultant_number,
+                },
+            ),
+            "customer_id_keep": raw_id,
+            "errors": {},
+        }
+    except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
+        # WR-02: log so a real bug isn't silently reduced to a generic
+        # user-facing message with no server-side trace.
+        logger.exception("customer mode render failed")
+        context = {
+            **_customer_context(session, "existing", "", {}),
+            "customer_id_keep": "",
+            "errors": {"quick_create": SAVE_FAILED_ERROR},
+        }
+        return templates.TemplateResponse(
+            request, "partials/sale_customer.html", context, status_code=422
+        )
     return templates.TemplateResponse(request, "partials/sale_customer.html", context)
 
 
@@ -394,9 +503,36 @@ def sale_create(
     price: list[str] = Form([], alias="price[]"),
     batch_id: list[str] = Form([], alias="batch_id[]"),
     customer_id: str = Form(""),
+    customer_mode: str = Form(""),
+    name: str = Form(""),
+    surname: str = Form(""),
+    consultant_number: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # D-10: keep register_sale's signature untouched and POST /sales/customer
+    # the SOLE customer-creation path — do NOT create the customer here. The
+    # guard only fires when a field is non-blank; all three blank must still
+    # walk in unchanged (D-05 must not regress).
+    new_customer_form = {"name": name, "surname": surname, "consultant_number": consultant_number}
+    guard_mode = customer_mode if customer_mode in _CUSTOMER_MODES else "existing"
+    if (
+        guard_mode == "new"
+        and not customer_id.strip()
+        and (name.strip() or surname.strip() or consultant_number.strip())
+    ):
+        context = {
+            **_customer_context(session, "new", customer_id, new_customer_form),
+            "customer_id_keep": "",
+            "errors": {"new_customer": NEW_CUSTOMER_REQUIRES_BUTTON_ERROR},
+            "lines": _build_lines(session, code, qty, price, batch_id, {}),
+            "focus_code": False,
+            "include_oob_rows": False,
+        }
+        return templates.TemplateResponse(
+            request, "partials/sale_form.html", context, status_code=422
+        )
+
     try:
         result, errors = register_sale(
             session,
@@ -411,10 +547,14 @@ def sale_create(
         # WR-02: log so a real bug isn't silently reduced to a generic
         # user-facing message with no server-side trace.
         logger.exception("register_sale failed")
+        # D-12: route through _customer_context so `selected` is resolved
+        # server-side on this branch too — a bare customer-id-only literal
+        # with no `selected` is the exact chip-loss bug this phase closes.
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": {"form": SAVE_FAILED_ERROR},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
         }
@@ -430,9 +570,10 @@ def sale_create(
     # fall through this guard and reach the success-write branch below.
     if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": {},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
             "oversell": result.get("oversell"),
@@ -442,9 +583,10 @@ def sale_create(
 
     if errors:
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": errors,
             "lines": _build_lines(session, code, qty, price, batch_id, errors),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
         }
@@ -455,9 +597,10 @@ def sale_create(
     # D-02: success -> fresh empty basket + neutral success line + focus
     # back to «Код»; the refreshed recent-sales list rides along as oob.
     context = {
+        **_customer_context(session, "existing", "", {}),
+        "customer_id_keep": "",
         "errors": {},
         "lines": [],
-        "customer_id": "",
         "saved": result,
         "focus_code": True,
         "sales": recent_sales(session),

@@ -1,19 +1,74 @@
-{# Customer header (SAL-03/D-05): search existing customers, quick-create
-   inline, or leave walk-in (D-04). Lives OUTSIDE <form id="sale-form"> (the
-   basket form must not nest another form) — every input here associates via
-   form="sale-form" so it still submits with the basket on finalize. Root
-   id="customer-header" is the outerHTML swap target for the quick-create
-   POST below, so a create fully re-renders this block.
+{# Customer header (SALE-03..06/D-01..D-12): explicit 3-way radio selector —
+   Новый / Существующий / Без покупателя (розница) — replacing the old
+   implicit "search or leave blank" walk-in. Lives OUTSIDE <form id="sale-form">
+   (the basket form must not nest another form) — every input here associates
+   via form="sale-form" so mode, the selected customer, and (for «Новый»)
+   the typed fields all still submit with the basket on finalize. Root
+   id="customer-header" is the outerHTML swap target for both the mode
+   radio's hx-get and the quick-create POST below.
+
+   D-02: «Существующий» is the default mode when no `mode` is supplied.
+
+   D-03: switching the radio never loses data already typed in another mode.
+   The server renders the ACTIVE mode's live fields and re-emits the OTHER
+   TWO modes' values as hidden inputs; the radio's hx-include ships
+   everything back on the next switch, so state round-trips indefinitely
+   without ever being re-fetched or reset.
+
+   D-12 (a verified defect, 22-RESEARCH.md Pitfall 7): every render of this
+   partial — GET /sales/new, GET /sales/customer-mode, POST /sales/customer,
+   and every POST /sales branch — goes through the single
+   _customer_context() builder (app/routes/sales.py), which resolves
+   `selected` from `customer_id` server-side on EVERY path. A 422/oversell
+   re-render must not drop the chip.
 
    Picking a row in the picker is a pure client-side swap (T-4-05 — no extra
    round trip needed): the row already carries the customer's id/name/surname
    as data-* attributes (HTML-attribute-escaped by Jinja autoescape) and the
    handler reads them via .dataset / writes via .textContent — never builds
    HTML strings or interpolates untrusted text into JS (T-4-01). #}
+{% set mode = mode | default("existing") %}
 <div id="customer-header" class="customer-header">
-  <input type="hidden" id="customer-id-input" name="customer_id" form="sale-form"
-         value="{{ selected.id if selected else (customer_id or '') }}">
+  {# T-22-01: customer_mode is allow-listed server-side (_CUSTOMER_MODES);
+     it is only ever COMPARED here ({% if mode == "..." %}), never
+     interpolated into an attribute. hx-include is MANDATORY (D-03) — htmx
+     sends only the triggering element's own value on a GET (the enclosing
+     form's inputs are auto-included only on non-GET requests), and
+     #customer-header sits outside <form id="sale-form"> anyway, so without
+     it the server cannot see what the operator typed and the block comes
+     back empty on the SECOND switch. Matches the shipped quick-create
+     button's element-scoped selector below (22-PATTERNS.md:268). #}
+  <fieldset class="customer-mode field"
+            hx-get="/sales/customer-mode"
+            hx-trigger="change"
+            hx-include="#customer-header input"
+            hx-target="#customer-header"
+            hx-swap="outerHTML"
+            hx-sync="this:replace">
+    <legend>Покупатель</legend>
+    <label>
+      <input type="radio" name="customer_mode" value="new" form="sale-form"
+             {% if mode == "new" %}checked{% endif %}> Новый
+    </label>
+    <label>
+      <input type="radio" name="customer_mode" value="existing" form="sale-form"
+             {% if mode == "existing" %}checked{% endif %}> Существующий
+    </label>
+    <label>
+      <input type="radio" name="customer_mode" value="anon" form="sale-form"
+             {% if mode == "anon" %}checked{% endif %}> Без покупателя (розница)
+    </label>
+  </fieldset>
 
+  {# customer_id is the ONLY field register_sale reads (services/sales.py:254).
+     Forced empty unless mode is "existing", so `customer_id or None` yields
+     NULL for both "anon" and an un-created "new" (D-05: no walk-in customer
+     row, no migration, no seed data). Keep form="sale-form" — it is what
+     makes the oversell confirm re-POST carry the customer (criterion-5 guard). #}
+  <input type="hidden" id="customer-id-input" name="customer_id" form="sale-form"
+         value="{{ customer_id if mode == 'existing' else '' }}">
+
+  {% if mode == "existing" %}
   <div id="customer-selected" class="customer-chip"{% if not selected %} hidden{% endif %}>
     <span id="customer-chip-text">{% if selected %}Покупатель: {{ selected.name }} {{ selected.surname or '' }}{% endif %}</span>
     <button type="button" class="secondary"
@@ -23,10 +78,10 @@
   </div>
 
   <div id="customer-default"{% if selected %} hidden{% endif %}>
-    {% if errors.quick_create %}<div class="error-block">{{ errors.quick_create }}</div>{% endif %}
     <div class="field">
       <label for="customer-q">Поиск покупателя</label>
-      <input type="search" id="customer-q" name="customer_q" placeholder="Поиск покупателя по имени…"
+      <input type="search" id="customer-q" name="customer_q" form="sale-form"
+             placeholder="Поиск покупателя по имени…" value="{{ form.customer_q if form else '' }}"
              hx-get="/sales/customer-search"
              hx-trigger="input changed delay:300ms"
              hx-target="#customer-picker"
@@ -34,32 +89,57 @@
              hx-sync="this:replace">
     </div>
     <div id="customer-picker" class="customer-picker"></div>
-
-    <p class="muted">Без покупателя (розница)</p>
-
-    <div class="customer-quick-create">
-      <h2>Новый покупатель</h2>
-      <div class="field">
-        <label for="customer-name">Имя</label>
-        <input type="text" id="customer-name" name="name" value="{{ form.name if form else '' }}">
-        {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
-      </div>
-      <div class="field">
-        <label for="customer-surname">Фамилия <span class="muted">(необязательно)</span></label>
-        <input type="text" id="customer-surname" name="surname" value="{{ form.surname if form else '' }}">
-        {% if errors.surname %}<p class="error">{{ errors.surname }}</p>{% endif %}
-      </div>
-      <div class="field">
-        <label for="customer-consultant">Номер консультанта <span class="muted">(необязательно)</span></label>
-        <input type="text" id="customer-consultant" name="consultant_number" value="{{ form.consultant_number if form else '' }}">
-        {% if errors.consultant_number %}<p class="error">{{ errors.consultant_number }}</p>{% endif %}
-      </div>
-      <button type="button"
-              hx-post="/sales/customer"
-              hx-include="#customer-header input"
-              hx-target="#customer-header"
-              hx-swap="outerHTML"
-              hx-disabled-elt="this">Добавить покупателя</button>
-    </div>
   </div>
+  {% else %}
+  {# INACTIVE echo (D-03): keeps «Существующий»'s last pick + typed search
+     alive across a switch to «Новый»/«Без покупателя». #}
+  <input type="hidden" name="customer_id_keep" form="sale-form" value="{{ customer_id_keep | default('') }}">
+  <input type="hidden" name="customer_q" form="sale-form" value="{{ form.customer_q if form else '' }}">
+  {% endif %}
+
+  {% if mode == "new" %}
+  <div class="customer-quick-create">
+    <h2>Новый покупатель</h2>
+    {% if errors.quick_create %}<div class="error-block">{{ errors.quick_create }}</div>{% endif %}
+    <div class="field">
+      <label for="customer-name">Имя</label>
+      <input type="text" id="customer-name" name="name" form="sale-form" value="{{ form.name if form else '' }}">
+      {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="customer-surname">Фамилия <span class="muted">(необязательно)</span></label>
+      <input type="text" id="customer-surname" name="surname" form="sale-form" value="{{ form.surname if form else '' }}">
+      {% if errors.surname %}<p class="error">{{ errors.surname }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="customer-consultant">Номер консультанта <span class="muted">(необязательно)</span></label>
+      <input type="text" id="customer-consultant" name="consultant_number" form="sale-form" value="{{ form.consultant_number if form else '' }}">
+      {% if errors.consultant_number %}<p class="error">{{ errors.consultant_number }}</p>{% endif %}
+    </div>
+    <button type="button"
+            hx-post="/sales/customer"
+            hx-include="#customer-header input"
+            hx-target="#customer-header"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this">Добавить покупателя</button>
+    {# D-10: the operator filled the 3 fields above and clicked «Оформить
+       продажу» WITHOUT clicking «Добавить покупателя» — sale_create's guard
+       blocks the write with a 422 instead of silently writing a walk-in
+       sale. Problem + the exact solution button, directly under it. #}
+    {% if errors.new_customer %}<p class="error">{{ errors.new_customer }}</p>{% endif %}
+  </div>
+  {% else %}
+  {# INACTIVE echo (D-03): keeps «Новый»'s typed-but-unsaved fields alive
+     across a switch to «Существующий»/«Без покупателя». #}
+  <input type="hidden" name="name" form="sale-form" value="{{ form.name if form else '' }}">
+  <input type="hidden" name="surname" form="sale-form" value="{{ form.surname if form else '' }}">
+  <input type="hidden" name="consultant_number" form="sale-form" value="{{ form.consultant_number if form else '' }}">
+  {% endif %}
+
+  {% if mode == "anon" %}
+  {# SALE-06: zero <input>/<select>/<textarea> in this mode — a muted caption
+     is copy, not a field. It is the only surface telling the operator what
+     «Розница» means in the recent-sales list (D-06). #}
+  <p class="muted">Продажа без покупателя. В списке продаж она будет отмечена как «Розница».</p>
+  {% endif %}
 </div>
