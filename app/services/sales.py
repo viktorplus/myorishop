@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
-from app.models import Batch, Operation, Product, Sale
+from app.models import Batch, Customer, Operation, Product, Sale
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
@@ -55,8 +55,7 @@ SALE_CARD_FILL_HINT = (
     "изменение сохранится только в этой продаже."
 )
 SALE_BATCH_FILL_HINT = (
-    "Цена подставлена из партии — можно изменить; "
-    "изменение сохранится только в этой продаже."
+    "Цена подставлена из партии — можно изменить; изменение сохранится только в этой продаже."
 )
 # LOT-02/D-04: service-level enforcement that every line has a picked, owned
 # batch. This is the primary guard (the record_operation D-12 guard is only a
@@ -331,12 +330,23 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
 
 
 def recent_sales(session: Session, limit: int = 10) -> list[dict]:
-    """Last N sale ops joined to their products, newest first (mirrors D-04)."""
+    """Last N sale ops joined to their products, newest first (mirrors D-04).
+
+    SALE-07/D-06: also joins the buyer via a DOUBLE outerjoin (Operation ->
+    Sale -> Customer, mirroring export.py:117-125's shipped shape) so every
+    row carries a `customer` key — `None` for a walk-in sale. Both hops MUST
+    stay outerjoin: an inner join on Sale or Customer would silently DROP a
+    walk-in row from this newest-first UI listing instead of labelling it
+    «Розница» (D-06), and Operation.sale_id/Sale.customer_id are both
+    nullable by design (models.py:318/409). Do not "simplify" to `.join`.
+    """
     rows = session.execute(
-        select(Operation, Product)
+        select(Operation, Product, Customer)
         .join(Product, Operation.product_id == Product.id)
+        .outerjoin(Sale, Operation.sale_id == Sale.id)
+        .outerjoin(Customer, Sale.customer_id == Customer.id)
         .where(Operation.type == "sale")
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()
-    return [{"op": op, "product": product} for op, product in rows]
+    return [{"op": op, "product": product, "customer": customer} for op, product, customer in rows]

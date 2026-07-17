@@ -13,6 +13,7 @@
         <th>Когда</th>
         <th>Код</th>
         <th>Название</th>
+        <th>Покупатель</th>
         <th>Кол-во</th>
         <th>Цена</th>
         <th>Сумма</th>
@@ -25,6 +26,7 @@
         <td>{{ r.op.created_at | local_dt }}</td>
         <td>{{ r.product.code }}</td>
         <td>{{ r.product.name }}</td>
+        <td>{% if r.customer %}{{ r.customer.name }} {{ r.customer.surname or '' }}{% else %}<span class="muted">Розница</span>{% endif %}</td>
         <td class="num">{{ -r.op.qty_delta }}</td>
         <td class="num">{% if r.op.unit_price_cents is not none %}{{ r.op.unit_price_cents | cents }}{% endif %}</td>
         <td class="num">{% if r.op.unit_price_cents is not none %}{{ (-r.op.qty_delta * r.op.unit_price_cents) | cents }}{% endif %}</td>
