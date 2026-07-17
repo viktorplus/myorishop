@@ -1306,7 +1306,6 @@ def test_web_sale_customer_mode_anon_renders_no_inputs(client):
 # --- Phase 22 Wave 0 (22-01): SALE-04/05 chip, picker, and D-10 guard tests -
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
 def test_web_sale_chip_survives_422_rerender(client, session, stocked_product, customer):
     """D-12 (verified defect, 22-RESEARCH.md Pitfall 7): a 422 basket
     re-render must keep the selected-customer chip visible — not just the
@@ -1370,7 +1369,6 @@ def test_web_sale_new_customer_field_set_is_exactly_three(client):
         assert f'name="{forbidden}"' not in text
 
 
-@pytest.mark.xfail(strict=True, reason="SALE-04/05: lands in 22-05")
 def test_web_sale_new_customer_requires_button_returns_422(client, session, stocked_product):
     """D-10: «Новый» mode with filled fields and no created customer -> 422,
     never a silent walk-in — the DB assertion is the real contract."""

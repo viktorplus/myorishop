@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 
+# D-10: fires when customer_mode=="new", customer_id is empty, and any of the
+# 3 new-customer fields is non-blank — the operator typed a new customer but
+# never pressed «Добавить покупателя», which today silently writes a walk-in
+# sale. Problem + the exact solution button, directly under it.
+NEW_CUSTOMER_REQUIRES_BUTTON_ERROR = (
+    "Сначала нажмите «Добавить покупателя» — иначе продажа сохранится без покупателя."
+)
+
 # CR-01: row_id is echoed unescaped into an hx-on::load JS-evaluated
 # attribute (sale_row.html), so it must be constrained to the exact shape
 # new_id() produces (a UUID4 string) before it is ever trusted. Anything
@@ -57,8 +65,8 @@ def _customer_context(session: Session, mode: str, customer_id: str, form: dict[
     D-12 contract (a verified defect, 22-RESEARCH.md Pitfall 7): this is the
     fix for the silent chip-loss bug. Every one of sale_create's five render
     paths must go through this builder and resolve `selected` server-side,
-    instead of hand-writing a bare "customer_id": customer_id (or "") literal
-    with no `selected`/`mode`/`form`.
+    instead of hand-writing a bare customer-id-only literal with no
+    `selected`/`mode`/`form`.
 
     Returns NO "errors" key on purpose: callers own their own `errors` dict
     (e.g. sale_create's basket/oversell/validation errors) and merge this
@@ -138,9 +146,10 @@ def _build_lines(
 @router.get("/sales/new")
 def sale_new_page(request: Request, session: Session = Depends(get_session)):
     context = {
+        **_customer_context(session, "existing", "", {}),
+        "customer_id_keep": "",
         "errors": {},
         "lines": [],
-        "customer_id": "",
         "focus_code": False,
         "sales": recent_sales(session),
     }
@@ -476,11 +485,8 @@ def sale_customer_mode(
         # user-facing message with no server-side trace.
         logger.exception("customer mode render failed")
         context = {
-            "mode": "existing",
-            "customer_id": "",
+            **_customer_context(session, "existing", "", {}),
             "customer_id_keep": "",
-            "selected": None,
-            "form": {},
             "errors": {"quick_create": SAVE_FAILED_ERROR},
         }
         return templates.TemplateResponse(
@@ -497,9 +503,36 @@ def sale_create(
     price: list[str] = Form([], alias="price[]"),
     batch_id: list[str] = Form([], alias="batch_id[]"),
     customer_id: str = Form(""),
+    customer_mode: str = Form(""),
+    name: str = Form(""),
+    surname: str = Form(""),
+    consultant_number: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # D-10: keep register_sale's signature untouched and POST /sales/customer
+    # the SOLE customer-creation path — do NOT create the customer here. The
+    # guard only fires when a field is non-blank; all three blank must still
+    # walk in unchanged (D-05 must not regress).
+    new_customer_form = {"name": name, "surname": surname, "consultant_number": consultant_number}
+    guard_mode = customer_mode if customer_mode in _CUSTOMER_MODES else "existing"
+    if (
+        guard_mode == "new"
+        and not customer_id.strip()
+        and (name.strip() or surname.strip() or consultant_number.strip())
+    ):
+        context = {
+            **_customer_context(session, "new", customer_id, new_customer_form),
+            "customer_id_keep": "",
+            "errors": {"new_customer": NEW_CUSTOMER_REQUIRES_BUTTON_ERROR},
+            "lines": _build_lines(session, code, qty, price, batch_id, {}),
+            "focus_code": False,
+            "include_oob_rows": False,
+        }
+        return templates.TemplateResponse(
+            request, "partials/sale_form.html", context, status_code=422
+        )
+
     try:
         result, errors = register_sale(
             session,
@@ -514,10 +547,14 @@ def sale_create(
         # WR-02: log so a real bug isn't silently reduced to a generic
         # user-facing message with no server-side trace.
         logger.exception("register_sale failed")
+        # D-12: route through _customer_context so `selected` is resolved
+        # server-side on this branch too — a bare customer-id-only literal
+        # with no `selected` is the exact chip-loss bug this phase closes.
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": {"form": SAVE_FAILED_ERROR},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
         }
@@ -533,9 +570,10 @@ def sale_create(
     # fall through this guard and reach the success-write branch below.
     if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": {},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
             "oversell": result.get("oversell"),
@@ -545,9 +583,10 @@ def sale_create(
 
     if errors:
         context = {
+            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            "customer_id_keep": "",
             "errors": errors,
             "lines": _build_lines(session, code, qty, price, batch_id, errors),
-            "customer_id": customer_id,
             "focus_code": False,
             "include_oob_rows": False,
         }
@@ -558,9 +597,10 @@ def sale_create(
     # D-02: success -> fresh empty basket + neutral success line + focus
     # back to «Код»; the refreshed recent-sales list rides along as oob.
     context = {
+        **_customer_context(session, "existing", "", {}),
+        "customer_id_keep": "",
         "errors": {},
         "lines": [],
-        "customer_id": "",
         "saved": result,
         "focus_code": True,
         "sales": recent_sales(session),
