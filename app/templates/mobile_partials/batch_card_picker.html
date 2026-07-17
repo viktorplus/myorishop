@@ -50,6 +50,16 @@
            a double quote inside code/row_id for both JSON and this HTML
            attribute — manual concatenation broke on a quote character. #}
         hx-vals="{{ ({'batch_id': b.id, 'code': code | default(''), 'row': row_id} if row_id else {'batch_id': b.id, 'code': code | default('')}) | tojson }}"
+        {# D-11: htmx auto-includes the enclosing form's inputs ONLY on
+           non-GET requests — this card tap is a GET, so without an explicit
+           hx-include the *_acc[] hidden inputs (Sale) and other sibling
+           form state (Correction/Write-off) never reach the pick endpoint,
+           and the re-rendered swap target comes back with them dropped.
+           This partial is shared by three wizards (Sale/Correction/
+           Write-off) via sale_step_batch.html, corrections_step_batch.html,
+           writeoff_step_batch.html and writeoff_batch_wrap.html — do not
+           "simplify" this away. #}
+        hx-include="closest form"
         hx-target="{{ batch_target }}"
         hx-swap="outerHTML">
   <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
