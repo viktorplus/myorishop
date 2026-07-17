@@ -7,6 +7,7 @@ fixtures only.
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -105,6 +106,17 @@ CASH_BUCKET_LABELS = {
     "return": "Возврат",
     "withdrawal": "Снятие",
     "deposit": "Внесение",
+}
+
+# Phase 21 (D-01): latin kind -> RU label for CustomerContact.kind. This is
+# also the exact server-side allow-list the customer service validates `kind`
+# against — same shape as WRITEOFF_REASONS above. Keys are latin/internal; the
+# RU values are operator-facing labels shown on the customer detail page.
+CONTACT_KINDS = {
+    "phone": "Телефон",
+    "telegram": "Telegram",
+    "email": "Email",
+    "social": "Соцсеть",
 }
 
 # Phase 5 (D-16): latin operation type -> RU label for the /history "Тип" column.
@@ -208,12 +220,8 @@ class Batch(Base):
     __tablename__ = "batches"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    product_id: Mapped[str] = mapped_column(
-        ForeignKey("products.id"), nullable=False, index=True
-    )
-    warehouse_id: Mapped[str] = mapped_column(
-        ForeignKey("warehouses.id"), nullable=False
-    )
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
+    warehouse_id: Mapped[str] = mapped_column(ForeignKey("warehouses.id"), nullable=False)
     # LOT-03: optional ISO yyyy-mm-dd expiry; TEXT sorts lexicographically ==
     # chronologically (input type=date always posts ISO regardless of locale).
     expiry: Mapped[str | None] = mapped_column(String(10))
@@ -275,9 +283,7 @@ class CatalogPrice(Base):
 
     __tablename__ = "catalog_prices"
     __table_args__ = (
-        UniqueConstraint(
-            "year", "number", "code", name="uq_catalog_prices_year_number_code"
-        ),
+        UniqueConstraint("year", "number", "code", name="uq_catalog_prices_year_number_code"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -300,9 +306,7 @@ class Operation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
-    product_id: Mapped[str] = mapped_column(
-        ForeignKey("products.id"), nullable=False, index=True
-    )
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
     qty_delta: Mapped[int] = mapped_column(Integer, nullable=False)  # signed
     unit_cost_cents: Mapped[int | None] = mapped_column(Integer)
     unit_price_cents: Mapped[int | None] = mapped_column(Integer)
@@ -346,7 +350,47 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     surname: Mapped[str | None] = mapped_column(String(200))
     consultant_number: Mapped[str | None] = mapped_column(String(50))
+    # D-02 (Phase 21): singular physical address -> plain column, not a
+    # CustomerContact row. Byte-identical copy of Warehouse.address (:190).
+    # Not folded into search_lc — search stays "name surname consultant".
+    address: Mapped[str | None] = mapped_column(String(300))
     search_lc: Mapped[str | None] = mapped_column(String(400), index=True)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
+class CustomerContact(Base):
+    """Multi-value customer contact row (D-01): phone/telegram/email/social.
+
+    One generic table with a `kind` discriminator — all four kinds share an
+    identical label+value shape (CUST-01..04). The CHECK constraint below is
+    defence-in-depth only; the PRIMARY gate is the CONTACT_KINDS Python
+    allow-list validated in the service, matching the models.py:32-33
+    decision not to CHECK operations.type.
+    """
+
+    __tablename__ = "customer_contacts"
+    __table_args__ = (
+        # name= is MANDATORY: NAMING_CONVENTION's ck_%(table_name)s_%(constraint_name)s
+        # raises InvalidRequestError at import of app.models without it, which
+        # breaks collection of the entire test suite, not just new tests.
+        CheckConstraint("kind IN ('phone', 'telegram', 'email', 'social')", name="kind_valid"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # No relationship()/back_populates — there are ZERO in app/ and the FK is
+    # joined manually in the service (house rule, per Sale.customer_id /
+    # Operation.sale_id).
+    customer_id: Mapped[str] = mapped_column(
+        ForeignKey("customers.id", name="fk_customer_contacts_customer_id_customers"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    value: Mapped[str] = mapped_column(String(300), nullable=False)
+    # Nullable, ships unused this phase — no form field, no template renders
+    # it (RESEARCH Open Question 1, decided).
+    label: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 
