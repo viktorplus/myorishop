@@ -1,0 +1,20 @@
+{% extends "mobile_base.html" %}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Товары</h1>
+{% include "mobile_partials/products_toolbar.html" %}
+{% if not rows %}
+<div class="empty-state"><p class="muted">Товаров пока нет.</p></div>
+{% else %}
+{% for product in rows %}
+<div class="mobile-card">
+  <p><strong>{{ product.name }}</strong></p>
+  <p class="muted">Код: {{ product.code }}{% if product.category %} · {{ product.category }}{% endif %}</p>
+  <p class="num">Кол-во: {{ product.quantity }}</p>
+</div>
+{% endfor %}
+{% endif %}
+{% if page + 1 < total_pages %}
+<p><a href="/m/products?page={{ page + 1 }}">Показать ещё →</a></p>
+{% endif %}
+{% endblock %}
