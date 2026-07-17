@@ -14,20 +14,26 @@ history_frozen). 21-VALIDATION.md Wave 0 adds past_sale_fixture (the
 backdated-sale fixture smoke test).
 """
 
+from datetime import date
+
 import pytest
 from sqlalchemy import select
 
+from app.core import format_ru_date
 from app.models import Customer, CustomerContact
 from app.services.batches import open_batches
 from app.services.customers import (
     ADDRESS_TOO_LONG_ERROR,
     CONTACT_VALUE_TOO_LONG_ERROR,
+    _period_starts,
     contacts_by_kind,
     create_customer,
     get_customer,
     list_customers_view,
     purchase_history,
     search_customers,
+    spend_totals,
+    spend_view,
     update_customer,
 )
 from app.services.sales import register_sale  # noqa: F401 (used to seed linked sales)
@@ -420,6 +426,95 @@ def test_contacts_all_kinds_are_independent(session, customer):
     assert [row.value for row in result["telegram"]] == ["@anna"]
     assert [row.value for row in result["email"]] == ["anna@example.com"]
     assert [row.value for row in result["social"]] == ["https://vk.com/anna"]
+
+
+def test_spend_totals_month_quarter_year_with_injected_today(session, product, customer, past_sale):
+    """CUST-07: three genuinely different totals via an injected mid-quarter today (Pitfall 7)."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-05-10T10:00:00+00:00", qty=1, unit_price_cents=2000
+    )
+    past_sale(
+        customer, product, created_at="2026-04-15T10:00:00+00:00", qty=1, unit_price_cents=3000
+    )
+    past_sale(
+        customer, product, created_at="2026-02-10T10:00:00+00:00", qty=1, unit_price_cents=5000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals == {"month": 2000, "quarter": 5000, "year": 10000}
+
+
+def test_spend_totals_period_starts_boundary_table():
+    """CUST-07: `_period_starts` against the documented quarter-boundary table."""
+    assert _period_starts(date(2026, 7, 17))["quarter"] == date(2026, 7, 1)
+    assert _period_starts(date(2026, 3, 31))["quarter"] == date(2026, 1, 1)
+    assert _period_starts(date(2026, 12, 31))["quarter"] == date(2026, 10, 1)
+    assert _period_starts(date(2026, 1, 1))["quarter"] == date(2026, 1, 1)
+
+
+def test_spend_net_of_returns_subtracts(session, product, customer, past_sale):
+    """CUST-07/D-06: a return at the frozen price subtracts from the window total."""
+    today = date(2026, 5, 20)
+    sale, _ = past_sale(
+        customer, product, created_at="2026-05-10T10:00:00+00:00", qty=10, unit_price_cents=1000
+    )
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-12T10:00:00+00:00",
+        qty=4,
+        unit_price_cents=1000,
+        type_="return",
+        sale=sale,
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 6000
+
+
+def test_spend_window_excludes_sale_outside_period(session, product, customer, past_sale):
+    """CUST-07: a sale 2 months before `today` is excluded from month but present in year."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-03-15T10:00:00+00:00", qty=1, unit_price_cents=1000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 0
+    assert totals["year"] == 1000
+
+
+def test_spend_empty_customer_returns_zero_not_none(session, customer):
+    """CUST-07/Pitfall 4: a customer with zero orders returns 0, never None, in every window."""
+    totals = spend_totals(session, customer.id, today=date(2026, 5, 20))
+    assert totals["month"] is not None
+    assert totals["quarter"] is not None
+    assert totals["year"] is not None
+    assert totals == {"month": 0, "quarter": 0, "year": 0}
+
+
+def test_spend_null_price_line_does_not_crash_sum(session, product, customer, past_sale):
+    """CUST-07/Pitfall 4: a NULL unit_price_cents line contributes 0 and does not crash SUM()."""
+    today = date(2026, 5, 20)
+    past_sale(
+        customer, product, created_at="2026-05-05T10:00:00+00:00", qty=1, unit_price_cents=None
+    )
+    past_sale(
+        customer, product, created_at="2026-05-06T10:00:00+00:00", qty=1, unit_price_cents=2000
+    )
+
+    totals = spend_totals(session, customer.id, today=today)
+    assert totals["month"] == 2000
+    assert isinstance(totals["month"], int)
+
+
+def test_spend_view_start_iso_is_a_string(session, customer):
+    """The `| ru_date` TypeError guard: every `spend_view` start_iso is a string."""
+    view = spend_view(session, customer.id, today=date(2026, 7, 17))
+    for period in view.values():
+        assert isinstance(period["start_iso"], str)
+    assert format_ru_date(view["month"]["start_iso"]) == "01.07.2026"
 
 
 # --- Web slice (routes + templates) ---
