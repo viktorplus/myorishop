@@ -319,8 +319,9 @@ def test_web_product_form_wired_for_autofill(client):
 
 
 def test_web_nav_has_dictionary_link(client):
-    """Nav gains the third entry: Справочник -> /dictionary."""
-    response = client.get("/")
+    """Phase 24: Справочник -> /dictionary moved from the top nav into the
+    Товары page toolbar (D-01/D-04); verify reachability there instead."""
+    response = client.get("/products")
     assert response.status_code == 200
     assert 'href="/dictionary"' in response.text
     assert "Справочник" in response.text
