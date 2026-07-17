@@ -753,3 +753,38 @@ def test_transfer_post_422_echoes_typed_override_values(client, session, stocked
     assert response.status_code == 422
     assert 'value="2027-01-01"' in response.text
     assert 'value="повреждена упаковка"' in response.text
+
+
+# --- NAV-07: GET /transfers?code= prefill (D-14, V5) -----------------------
+
+
+def test_web_transfers_page_prefills_code_and_batches(client, stocked_product):
+    """The product name and its one open batch resolve server-side on the
+    very first render — no re-selection step."""
+    response = client.get("/transfers", params={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert f'value="{stocked_product.code}"' in response.text
+    assert stocked_product.name in response.text
+    # Proves the batch picker resolved a real batch, not the empty state.
+    assert "Нет партий с остатком." not in response.text
+
+
+def test_web_transfers_page_unmatched_code_renders_empty_form(client):
+    """An unmatched code silently renders an empty form — never a 500, never
+    an unescaped echo of the raw query param (V5 Security Domain)."""
+    response = client.get("/transfers", params={"code": "NOPE-NOPE"})
+
+    assert response.status_code == 200
+    assert 'value="NOPE-NOPE"' in response.text
+    # The code is only ever echoed via the escaped `value="..."` attribute —
+    # never as freestanding unescaped text elsewhere on the page.
+    assert response.text.count("NOPE-NOPE") == 1
+
+
+def test_web_transfers_lookup_unmatched_code_still_returns_204(client):
+    """Regression guard: the _resolve_transfer_lookup extraction in Task 1
+    must not change this endpoint's pre-existing 204 contract."""
+    response = client.get("/transfers/lookup", params={"code": "NOPE-NOPE"})
+
+    assert response.status_code == 204

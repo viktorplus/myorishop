@@ -1264,3 +1264,12 @@ def test_web_products_delete_control_is_link_not_button(client, product):
         in page.text
     )
     assert '<button type="button" class="danger"' not in page.text
+
+
+def test_web_products_list_row_has_transfer_link(client, product):
+    """NAV-07/D-13: every product row offers a direct link into the transfer
+    form, pre-loaded with the row's product code."""
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert f'href="/transfers?code={product.code}"' in page.text
+    assert "Переместить" in page.text
