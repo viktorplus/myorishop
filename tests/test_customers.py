@@ -10,7 +10,8 @@ service here.
 Naming convention (used by -k filters): route/e2e tests are prefixed
 test_web_; everything else is service level. Selectors mirror
 04-VALIDATION.md's Requirements -> Test Map (crud, search, history,
-history_frozen).
+history_frozen). 21-VALIDATION.md Wave 0 adds past_sale_fixture (the
+backdated-sale fixture smoke test).
 """
 
 from sqlalchemy import select
@@ -117,8 +118,7 @@ def test_list_customers_view_sort_surname_and_consultant(session):
     assert by_surname == sorted(by_surname)
 
     by_consultant = [
-        c.consultant_number
-        for c in list_customers_view(session, sort="consultant_number")["rows"]
+        c.consultant_number for c in list_customers_view(session, sort="consultant_number")["rows"]
     ]
     assert by_consultant == sorted(by_consultant)
 
@@ -172,6 +172,19 @@ def test_purchase_history_frozen(session, stocked_product, customer):
 
     rows = purchase_history(session, customer.id)
     assert rows[0]["op"].unit_price_cents == 1500
+
+
+def test_past_sale_fixture_seeds_backdated_op(session, past_sale, customer, stocked_product):
+    """21-VALIDATION.md Wave 0: past_sale seeds a Sale+Operation pair at an
+    explicit past UTC timestamp, readable via purchase_history."""
+    sale, op = past_sale(customer, stocked_product, created_at="2026-01-15T10:00:00+00:00")
+
+    assert op.created_at == "2026-01-15T10:00:00+00:00"
+    assert op.qty_delta < 0
+    assert op.sale_id == sale.id
+
+    rows = purchase_history(session, customer.id)
+    assert any(r["op"].id == op.id for r in rows)
 
 
 # --- Web slice (routes + templates) ---
