@@ -586,6 +586,32 @@ def test_web_finance_report_still_reachable_directly(client):
     assert response.status_code == 200
 
 
+def test_web_finance_report_highlights_settings_not_finance(client):
+    """WR-03 (24-REVIEW.md): /finance/report is reached via Настройки
+    (D-08), so the "you are here" nav indicator must highlight Настройки,
+    not Финансы, when visiting it directly."""
+    response = client.get("/finance/report")
+    assert response.status_code == 200
+    start = response.text.index("<nav>")
+    end = response.text.index("</nav>", start)
+    nav_html = response.text[start:end]
+    assert '<a href="/settings" class="active">' in nav_html
+    assert '<a href="/finance" class="active">' not in nav_html
+
+
+def test_web_finance_page_still_highlights_finance(client):
+    """WR-03 (24-REVIEW.md) regression guard: the /finance/report
+    active-state fix must not over-broadly break the plain /finance
+    balance page, which should still highlight Финансы as active."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    start = response.text.index("<nav>")
+    end = response.text.index("</nav>", start)
+    nav_html = response.text[start:end]
+    assert '<a href="/finance" class="active">' in nav_html
+    assert '<a href="/settings" class="active">' not in nav_html
+
+
 def test_web_finance_page_report_link_is_button_styled(client):
     """GET /finance's in-page report link is now a .button-styled CTA with
     CSV wording, not the old bare unstyled inline text link."""

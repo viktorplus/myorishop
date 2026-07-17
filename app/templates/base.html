@@ -38,8 +38,8 @@
       <a href="/customers"{% if request.url.path.startswith("/customers") %} class="active"{% endif %}>Покупатели</a>
       <a href="/history"{% if request.url.path.startswith("/history") %} class="active"{% endif %}>История</a>
       <a href="/reports"{% if request.url.path.startswith("/reports") %} class="active"{% endif %}>Отчёты</a>
-      <a href="/finance"{% if request.url.path.startswith("/finance") %} class="active"{% endif %}>Финансы</a>
-      <a href="/settings"{% if request.url.path.startswith("/settings") %} class="active"{% endif %}>Настройки</a>
+      <a href="/finance"{% if request.url.path.startswith("/finance") and not request.url.path.startswith("/finance/report") %} class="active"{% endif %}>Финансы</a>
+      <a href="/settings"{% if request.url.path.startswith("/settings") or request.url.path.startswith("/finance/report") %} class="active"{% endif %}>Настройки</a>
     </nav>
     {% block content %}{% endblock %}
   </main>
