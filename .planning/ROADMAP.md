@@ -243,7 +243,25 @@ Plans:
   4. History page lets the operator select an operation type first and then shows only that type's relevant columns.
   5. History results can be filtered by product code, date range, customer, and category, sorted by the relevant columns, and paginated.
 
-**Plans**: TBD
+**Plans**: 7 plans (3 waves)
+
+Plans:
+**Wave 1**
+
+- [ ] 23-01-PLAN.md — ActiveCatalog schema (migration 0016) + service + /catalogs save form (DASH-02, D-01/D-02)
+- [ ] 23-02-PLAN.md — history_view: category/customer/date-range filters + HISTORY_TYPE_COLUMNS + Warehouse join (HIST-01/02/03, D-03..D-06)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 23-03-PLAN.md — dashboard.py service: date/time, catalog countdown, period metrics, stock summary, recent-operations feed (DASH-01/03/04/05, D-07/D-08/D-09)
+- [ ] 23-04-PLAN.md — Desktop /history: top filter-bar relocation, per-type column narrowing, category/customer/date filters (HIST-01..04)
+- [ ] 23-05-PLAN.md — Mobile /m/history: full filter parity + numbered pagination migration (HIST-01..04, D-10)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 23-06-PLAN.md — Desktop Главная rebuild: date/time, catalog line, 4-tile metrics, recent-operations feed (DASH-01..05)
+- [ ] 23-07-PLAN.md — Mobile Главная: dashboard content added below the untouched nav grid (DASH-01..05, D-10, Pitfall 1)
+
 **UI hint**: yes
 
 ### Phase 24: Navigation Restructure & Settings
@@ -291,5 +309,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 20. Warehouses & Batch-Split Transfers | v2.0 | 7/7 | Complete   | 2026-07-16 |
 | 21. Customer Profiles & Purchase Insights | v2.0 | 5/5 | Complete    | 2026-07-17 |
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 23. Dashboard & History Rebuild | v2.0 | 0/TBD | Not started | - |
+| 23. Dashboard & History Rebuild | v2.0 | 0/7 | Planned | - |
 | 24. Navigation Restructure & Settings | v2.0 | 0/TBD | Not started | - |
