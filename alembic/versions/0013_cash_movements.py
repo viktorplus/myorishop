@@ -47,6 +47,23 @@ _CASH_APPEND_ONLY_TRIGGERS: tuple[str, str] = (
     """,
 )
 
+# PostgreSQL equivalent of the SQLite append-only triggers above (WR-06:
+# ADDITIVE dialect branch only — the SQLite path stays byte-for-behavior
+# identical). RAISE(ABORT, …) is SQLite trigger-body syntax and a syntax error
+# on PostgreSQL, so PG needs a PL/pgSQL BEFORE UPDATE/DELETE trigger function.
+# Trigger NAMES (cash_movements_no_update / cash_movements_no_delete) and the
+# 'append-only' message substring are identical across dialects. The message
+# wording ('cash ledger is append-only') is preserved exactly as on SQLite.
+_PG_CASH_APPEND_ONLY_DDL: tuple[str, str, str] = (
+    """CREATE OR REPLACE FUNCTION cash_movements_append_only()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN RAISE EXCEPTION 'cash ledger is append-only'; END; $$""",
+    """CREATE TRIGGER cash_movements_no_update BEFORE UPDATE ON cash_movements
+       FOR EACH ROW EXECUTE FUNCTION cash_movements_append_only()""",
+    """CREATE TRIGGER cash_movements_no_delete BEFORE DELETE ON cash_movements
+       FOR EACH ROW EXECUTE FUNCTION cash_movements_append_only()""",
+)
+
 
 def upgrade() -> None:
     op.create_table(
@@ -77,12 +94,18 @@ def upgrade() -> None:
 
     # FND-01 / D-00a: append-only enforcement at the DATABASE level (frozen
     # DDL copy).
-    for stmt in _CASH_APPEND_ONLY_TRIGGERS:
-        op.execute(stmt)
+    if op.get_bind().dialect.name == "postgresql":
+        for stmt in _PG_CASH_APPEND_ONLY_DDL:
+            op.execute(stmt)
+    else:  # sqlite — output byte-for-behavior identical to today (WR-06)
+        for stmt in _CASH_APPEND_ONLY_TRIGGERS:
+            op.execute(stmt)
 
 
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS cash_movements_no_update")
     op.execute("DROP TRIGGER IF EXISTS cash_movements_no_delete")
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP FUNCTION IF EXISTS cash_movements_append_only()")
     op.drop_index(op.f("ix_cash_movements_sale_id"), table_name="cash_movements")
     op.drop_table("cash_movements")
