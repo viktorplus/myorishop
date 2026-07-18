@@ -11,10 +11,10 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 ### Authentication (AUTH)
 
-- [ ] **AUTH-01**: User must log in with a login and password before reaching any page — on the local desktop client and on both of the server's interfaces (browser and mobile).
+- [x] **AUTH-01**: User must log in with a login and password before reaching any page — on the local desktop client and on both of the server's interfaces (browser and mobile).
 - [x] **AUTH-02**: Passwords are stored only as Argon2id hashes — never in plaintext or a reversible form.
 - [x] **AUTH-03**: A logged-in session persists across browser refresh via a signed cookie, and the user can log out to end it.
-- [ ] **AUTH-04**: On first run with no users yet, the app guides creation of an initial administrator account (no default credentials are shipped).
+- [x] **AUTH-04**: On first run with no users yet, the app guides creation of an initial administrator account (no default credentials are shipped).
 - [x] **AUTH-05**: HTMX POST forms are protected against CSRF.
 
 ### User Accounts & Attribution (USER)
@@ -29,7 +29,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 ### Roles & Access Control (ROLE)
 
 - [x] **ROLE-01**: Exactly two roles exist — administrator and operator — assigned per user.
-- [ ] **ROLE-02**: Every protected route enforces a server-side role guard — the local client's routes, the server's browser and mobile interfaces, and the `export`/`backup` endpoints — menu hiding alone is never the boundary.
+- [x] **ROLE-02**: Every protected route enforces a server-side role guard — the local client's routes, the server's browser and mobile interfaces, and the `export`/`backup` endpoints — menu hiding alone is never the boundary.
 - [ ] **ROLE-03**: An operator can perform receipts, sales, write-offs/returns/corrections, cash movements, and sync; administrator-only sections (user management, warehouses, dictionaries, settings) are hidden and blocked for operators.
 - [x] **ROLE-04**: An administrator has full access — user management, warehouses, dictionaries, settings, reports — plus every operator action.
 
@@ -117,10 +117,10 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 25 | Pending |
+| AUTH-01 | Phase 25 | Complete |
 | AUTH-02 | Phase 25 | Complete |
 | AUTH-03 | Phase 25 | Complete |
-| AUTH-04 | Phase 25 | Pending |
+| AUTH-04 | Phase 25 | Complete |
 | AUTH-05 | Phase 25 | Complete |
 | USER-01 | Phase 25 | Complete |
 | USER-02 | Phase 25 | Complete |
@@ -129,7 +129,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | USER-05 | Phase 25 | Complete |
 | USER-06 | Phase 25 | Pending |
 | ROLE-01 | Phase 25 | Complete |
-| ROLE-02 | Phase 25 | Pending |
+| ROLE-02 | Phase 25 | Complete |
 | ROLE-03 | Phase 25 | Pending |
 | ROLE-04 | Phase 25 | Complete |
 | RPT-01 | Phase 25 | Pending |
