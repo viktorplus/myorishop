@@ -1,0 +1,135 @@
+# Requirements: MyOriShop — Milestone v3.0 (Multi-Operator Sync, Central Server & Roles)
+
+**Defined:** 2026-07-18
+**Core Value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
+
+**Milestone goal:** Turn the single-operator local app into a multi-operator system built around a central PostgreSQL server. The server hosts two online interfaces (browser + mobile). A local desktop client keeps working offline and syncs online when internet is available; when it isn't, work accumulates and is carried on a USB flash drive as a self-contained file that uploads itself to the server from any internet computer — no install required. Everything is gated behind mandatory login with an administrator/operator split.
+
+## v3.0 Requirements
+
+Requirements committed to this milestone. Each maps to exactly one roadmap phase (see Traceability).
+
+### Authentication (AUTH)
+
+- [ ] **AUTH-01**: User must log in with a login and password before reaching any page — on the local desktop client and on both of the server's interfaces (browser and mobile).
+- [ ] **AUTH-02**: Passwords are stored only as Argon2id hashes — never in plaintext or a reversible form.
+- [ ] **AUTH-03**: A logged-in session persists across browser refresh via a signed cookie, and the user can log out to end it.
+- [ ] **AUTH-04**: On first run with no users yet, the app guides creation of an initial administrator account (no default credentials are shipped).
+- [ ] **AUTH-05**: HTMX POST forms are protected against CSRF.
+
+### User Accounts & Attribution (USER)
+
+- [ ] **USER-01**: Each user has a profile with a display name, login, and role.
+- [ ] **USER-02**: An administrator can create a new user and assign their role.
+- [ ] **USER-03**: An administrator can deactivate a user (soft-disable) without deleting them, so the user can no longer log in but their past operations stay attributed.
+- [ ] **USER-04**: An administrator can reset another user's password.
+- [ ] **USER-05**: Every operation and cash movement records the logged-in user as its author, stamped at the single `record_operation()` write path.
+- [ ] **USER-06**: The History page shows the operating user for each entry and can be filtered by user.
+
+### Roles & Access Control (ROLE)
+
+- [ ] **ROLE-01**: Exactly two roles exist — administrator and operator — assigned per user.
+- [ ] **ROLE-02**: Every protected route enforces a server-side role guard — the local client's routes, the server's browser and mobile interfaces, and the `export`/`backup` endpoints — menu hiding alone is never the boundary.
+- [ ] **ROLE-03**: An operator can perform receipts, sales, write-offs/returns/corrections, cash movements, and sync; administrator-only sections (user management, warehouses, dictionaries, settings) are hidden and blocked for operators.
+- [ ] **ROLE-04**: An administrator has full access — user management, warehouses, dictionaries, settings, reports — plus every operator action.
+
+### Central Server & PostgreSQL (SRV)
+
+- [ ] **SRV-01**: The same data models and single Alembic migration history run unchanged on both SQLite (client) and PostgreSQL (server).
+- [ ] **SRV-02**: The central server runs on PostgreSQL and enforces the same append-only ledger guarantee (UPDATE/DELETE of ledger rows blocked at the database) as the SQLite client.
+- [ ] **SRV-03**: The local desktop client keeps working fully offline on local SQLite; the central server is required only for sync/upload, never for day-to-day local work.
+- [ ] **SRV-04**: The central server hosts two online web interfaces — a browser (desktop) UI and a mobile UI. The mobile version is server-only: there is no local/offline mobile install; mobile users always work against the server online.
+
+### Synchronization — Online & Core (SYNC)
+
+- [ ] **SYNC-01**: When internet is available, the local desktop client syncs with the central server via a manual «Синхронизировать» action — pushing its operations and cash movements up and pulling server-authoritative reference data down.
+- [ ] **SYNC-02**: The server merges the append-only ledgers by UUID with idempotent replay — re-syncing or re-uploading the same data twice changes nothing (no duplicated operations, no double-counted stock).
+- [ ] **SYNC-03**: After any merge, derived stock quantities and cash balances are recomputed so counts and figures stay correct.
+- [ ] **SYNC-04**: Online sync and the offline self-upload file use one shared exchange format and one server-side merge engine (never two divergent implementations).
+- [ ] **SYNC-05**: The central server is the source of truth for mutable reference data (products, customers, warehouses, batches, dictionary) — conflicting edits from different devices resolve to the server's version, including a defined rule for duplicate `Product.code` created on two devices.
+- [ ] **SYNC-06**: The sync UI shows sync status, last-sync time, and a plain-language result; a sync failure never blocks local work.
+- [ ] **SYNC-07**: The app shows a badge with the count of local operations not yet synced to the server.
+- [ ] **SYNC-08**: The operator can enable an optional interval-based automatic sync that runs in the background and silently stops attempting while offline; when disabled, only the manual button syncs.
+- [ ] **SYNC-09**: The client authenticates to the server's sync endpoints with a per-device token.
+
+### Offline Data Transfer (OFF)
+
+The offline path is upload-only: a local client with no internet accumulates work, then ships it to the server via a self-contained file carried on a USB flash drive to any internet-connected computer — no app installation required there.
+
+- [ ] **OFF-01**: When the local desktop client has no internet, it keeps recording operations normally and accumulates everything not yet uploaded to the server.
+- [ ] **OFF-02**: The operator can export all not-yet-uploaded data to a single self-contained file on a USB flash drive with no internet connection.
+- [ ] **OFF-03**: The self-contained file requires NO application installation on the internet-connected computer — the operator opens it (leading approach: an HTML file opened in any browser; final mechanism decided in phase research) and it uploads its own data to the central server.
+- [ ] **OFF-04**: The self-uploading file authenticates to the server with a login and password before uploading; a wrong credential is rejected with a clear message and no data is sent.
+- [ ] **OFF-05**: The server ingests the uploaded file through the same idempotent UUID merge as online sync — uploading the same file twice changes nothing, and an interrupted upload never leaves a half-applied batch (all-or-nothing on the server).
+- [ ] **OFF-06**: Before uploading, the file shows the operator a preview of what will be sent (count of operations/records) and requires an explicit confirm.
+- [ ] **OFF-07**: The server validates every uploaded file (integrity checksum + schema-version compatibility) and rejects a tampered or incompatible file with a clear message.
+
+### Reports (RPT)
+
+- [ ] **RPT-01**: Reports (sales, profit, and other period reports) can be filtered by operator.
+
+## Future Requirements (deferred)
+
+Acknowledged but out of this milestone's scope. Moving any to v3.0 requires a roadmap update.
+
+### Roles & Auth
+
+- **AUTH-V2-01**: A third "report viewer" role with read-only access to reports.
+- **AUTH-V2-02**: Idle session timeout / auto-lock after inactivity.
+
+### Currency
+
+- **CUR-V2-01**: Multi-currency support (prices, reports, cash by currency).
+
+### Customer Intelligence
+
+- **CST-V2-01**: Customer purchase-frequency analysis and "running low" reminders.
+- **CST-V2-02**: On goods receipt, suggest customers likely interested in the product based on purchase history.
+
+### Export & Mobile
+
+- **EXP-V2-01**: CSV export includes warehouse/batch columns.
+- **MOB-V2-01**: Mobile CRUD parity (warehouses, products/catalog, customers, dictionary, full reports).
+
+## Out of Scope
+
+Explicitly excluded for this milestone. Documented to prevent scope creep. Most are anti-features surfaced by the v3.0 research.
+
+| Feature | Reason |
+|---------|--------|
+| Multi-currency | Deferred to a separate milestone (operator decision, 2026-07-18); single currency as today |
+| A local/offline mobile install | Mobile is server-only (SRV-04); the offline client is desktop-only |
+| Installing any app on the internet-connected computer for upload | The offline transfer is a self-contained file that uploads itself — no install (OFF-03) |
+| Pulling server data down via the offline USB path | Offline transfer is upload-only; pulling reference data happens on online sync (SYNC-01) |
+| Interactive per-row conflict-resolution UI | Server-authoritative resolution chosen; append-only ledgers have no conflicts to resolve |
+| Real-time / continuous multi-master sync | Manual + optional-interval sync is sufficient for a handful of operators; avoids background-job infrastructure |
+| Syncing derived stock/batch quantities or cash balance directly | Caches are always recomputed from the ledger after merge — shipping them risks corruption |
+| Password policies / rotation / lockout / 2FA / email-based reset | Over-engineered for a few trusted operators on trusted machines; admin resets passwords directly |
+| Self-service registration | Accounts are administrator-created only |
+| Custom / dynamic roles or a permission matrix | Exactly two fixed roles (administrator, operator) |
+| Hard-deleting users | Soft-deactivate preserves operation attribution and audit history |
+| Selective / partial sync | Full sync only — simpler and correct at this data scale |
+| CRDTs / Kafka / Celery / Redis | Unjustified complexity; sync is set-union-by-UUID + recompute |
+
+## Traceability
+
+Which phases cover which requirements. Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01..05 | TBD | Pending |
+| USER-01..06 | TBD | Pending |
+| ROLE-01..04 | TBD | Pending |
+| SRV-01..04 | TBD | Pending |
+| SYNC-01..09 | TBD | Pending |
+| OFF-01..07 | TBD | Pending |
+| RPT-01 | TBD | Pending |
+
+**Coverage:**
+- v3.0 requirements: 36 total (AUTH×5, USER×6, ROLE×4, SRV×4, SYNC×9, OFF×7, RPT×1)
+- Mapped to phases: 0 (roadmap not yet created) ⚠️
+- Unmapped: 36 ⚠️ — resolved when the roadmapper writes the phase mapping
+
+---
+*Requirements defined: 2026-07-18*
+*Last updated: 2026-07-18 after operator revision (server-hosted mobile, self-uploading offline file)*

@@ -23,9 +23,9 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 **Goal:** Turn the single-operator local app into a multi-operator system — local clients synchronize with a central server (online over the internet AND offline via USB flash drive), backed by user accounts with mandatory login and an administrator/operator permission split.
 
 **Target features:**
-- Central server on the user's own VPS/cloud running PostgreSQL (SQLite stays on the client; models port with a connection-string change + the same Alembic history)
-- Online sync — clients exchange data with the central server over the internet, merging the append-only operation ledger by UUID/device_id (the sync foundation seeded since v1.0)
-- Offline sync via USB — export/import an exchange file between clients and the server with no internet
+- Central server on the user's own VPS/cloud running PostgreSQL, hosting two online interfaces — a browser (desktop) UI and a mobile UI (mobile is server-only; there is no offline mobile install)
+- Local desktop client (SQLite) that keeps working offline and syncs with the server when internet is available — pushing its operations up and pulling server-authoritative reference data down (the append-only UUID/device_id ledger, seeded since v1.0)
+- Offline transfer (upload-only) — when the client has no internet, work accumulates and is exported to a single self-contained file on a USB flash drive that, on any internet-connected computer with no app installed, uploads itself to the server given a login/password
 - User accounts with mandatory login/password and a user profile (name, login, role)
 - Two roles — administrator (users, warehouses, dictionaries, settings, reports) and operator (receipts, sales, write-offs, cash)
 
