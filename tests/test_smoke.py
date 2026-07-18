@@ -30,13 +30,20 @@ def test_web_top_nav_has_exactly_eight_items(client):
     Phase 24 Plan 01: Приход/Списание/Справочник/Категории/Каталоги moved
     into the Товары page toolbar; Склады/Резервные копии/Экспорт move under
     Настройки (later plans); Экспорт кассы leaves the nav entirely.
+
+    Phase 25 Plan 06: the nav gained a hrefless logout control
+    (`<a hx-post="/logout">…</a>`) — that is authenticated *chrome*, not a
+    navigation destination, so NAV-08 counts only the href-bearing links (the
+    `client` fixture is an administrator, so «Настройки» is present).
     """
     response = client.get("/")
     assert response.status_code == 200
     start = response.text.index("<nav>")
     end = response.text.index("</nav>", start)
     nav_html = response.text[start:end]
-    assert nav_html.count("<a ") == 8
+    # Count navigation links only (href-bearing); the logout control is a
+    # hrefless hx-post affordance and is intentionally excluded.
+    assert nav_html.count("<a href=") == 8
 
     expected_hrefs = [
         "/",
