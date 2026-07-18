@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 # Aliased to config_settings so it does not collide with the `settings` route
 # submodule imported below (app/routes/settings.py).
 from app.config import settings as config_settings
-from app.services.security import NotAuthenticated, auth_guard
+from app.services.security import NotAuthenticated, auth_guard, require_role
 
 from app.routes import (
     auth,
@@ -44,6 +44,7 @@ from app.routes import (
     sales,
     settings,
     transfers,
+    users,
     warehouses,
     writeoffs,
 )
@@ -102,8 +103,20 @@ app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(categories.router)
 app.include_router(catalogs.router)
-app.include_router(warehouses.router)
-app.include_router(dictionary.router)
+# ROLE-02/03: the admin-only routers (user management, warehouses, dictionaries,
+# settings) are gated SERVER-SIDE with require_role — the menu-hide in Plan 06 is
+# cosmetic only. require_role reads request.state.user (attached by the app-level
+# auth_guard, which runs first), so an operator hitting any of these gets a 403
+# «Доступ только для администратора.» while an administrator (admin ⊇ operator)
+# passes. Every OTHER router below stays operator-accessible — an operator needs
+# products + warehouse pickers during receipts/sales (ROLE-03 lists ONLY these
+# four sections as admin-only).
+app.include_router(
+    warehouses.router, dependencies=[Depends(require_role("administrator"))]
+)
+app.include_router(
+    dictionary.router, dependencies=[Depends(require_role("administrator"))]
+)
 app.include_router(receipts.router)
 app.include_router(sales.router)
 app.include_router(customers.router)
@@ -116,7 +129,13 @@ app.include_router(history.router)
 app.include_router(reports.router)
 app.include_router(export.router)
 app.include_router(finance.router)
-app.include_router(settings.router)
+app.include_router(
+    settings.router, dependencies=[Depends(require_role("administrator"))]
+)
+# USER-01..04 / ROLE-03: the admin user-management surface at /settings/users.
+app.include_router(
+    users.router, dependencies=[Depends(require_role("administrator"))]
+)
 app.include_router(mobile_home.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)
