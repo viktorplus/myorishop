@@ -48,6 +48,22 @@ _APPEND_ONLY_TRIGGERS: tuple[str, str] = (
     """,
 )
 
+# PostgreSQL equivalent of the SQLite append-only triggers above (WR-06:
+# ADDITIVE dialect branch only — the SQLite path stays byte-for-behavior
+# identical). RAISE(ABORT, …) is SQLite trigger-body syntax and a syntax error
+# on PostgreSQL, so PG needs a PL/pgSQL BEFORE UPDATE/DELETE trigger function.
+# Trigger NAMES (operations_no_update / operations_no_delete) and the
+# 'append-only' message substring are identical across dialects.
+_PG_OPERATIONS_DDL: tuple[str, str, str] = (
+    """CREATE OR REPLACE FUNCTION operations_append_only()
+       RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN RAISE EXCEPTION 'operations ledger is append-only'; END; $$""",
+    """CREATE TRIGGER operations_no_update BEFORE UPDATE ON operations
+       FOR EACH ROW EXECUTE FUNCTION operations_append_only()""",
+    """CREATE TRIGGER operations_no_delete BEFORE DELETE ON operations
+       FOR EACH ROW EXECUTE FUNCTION operations_append_only()""",
+)
+
 # Frozen seed timestamp (UTC ISO-8601) — deterministic across installs.
 _SEED_CREATED_AT = "2026-07-08T00:00:00+00:00"
 
@@ -92,8 +108,12 @@ def upgrade() -> None:
     )
 
     # FND-01: append-only enforcement at the DATABASE level (frozen DDL copy).
-    for stmt in _APPEND_ONLY_TRIGGERS:
-        op.execute(stmt)
+    if op.get_bind().dialect.name == "postgresql":
+        for stmt in _PG_OPERATIONS_DDL:
+            op.execute(stmt)
+    else:  # sqlite — output byte-for-behavior identical to today (WR-06)
+        for stmt in _APPEND_ONLY_TRIGGERS:
+            op.execute(stmt)
 
     # Walking-skeleton seed: one demo product to correct against.
     now = _SEED_CREATED_AT
@@ -124,6 +144,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS operations_no_update")
     op.execute("DROP TRIGGER IF EXISTS operations_no_delete")
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP FUNCTION IF EXISTS operations_append_only()")
     op.drop_index(op.f("ix_operations_product_id"), table_name="operations")
     op.drop_table("operations")
     op.drop_table("products")
