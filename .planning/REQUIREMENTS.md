@@ -30,7 +30,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 - [x] **ROLE-01**: Exactly two roles exist — administrator and operator — assigned per user.
 - [x] **ROLE-02**: Every protected route enforces a server-side role guard — the local client's routes, the server's browser and mobile interfaces, and the `export`/`backup` endpoints — menu hiding alone is never the boundary.
-- [ ] **ROLE-03**: An operator can perform receipts, sales, write-offs/returns/corrections, cash movements, and sync; administrator-only sections (user management, warehouses, dictionaries, settings) are hidden and blocked for operators.
+- [x] **ROLE-03**: An operator can perform receipts, sales, write-offs/returns/corrections, cash movements, and sync; administrator-only sections (user management, warehouses, dictionaries, settings) are hidden and blocked for operators.
 - [x] **ROLE-04**: An administrator has full access — user management, warehouses, dictionaries, settings, reports — plus every operator action.
 
 ### Central Server & PostgreSQL (SRV)
@@ -130,7 +130,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | USER-06 | Phase 25 | Pending |
 | ROLE-01 | Phase 25 | Complete |
 | ROLE-02 | Phase 25 | Complete |
-| ROLE-03 | Phase 25 | Pending |
+| ROLE-03 | Phase 25 | Complete |
 | ROLE-04 | Phase 25 | Complete |
 | RPT-01 | Phase 25 | Pending |
 | SRV-01 | Phase 26 | Pending |
