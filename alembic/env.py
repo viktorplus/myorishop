@@ -7,16 +7,20 @@ from alembic import context
 from app.config import settings
 from app.models import Base
 
-# SQLite can't create the db file if its parent directory is missing
-# (e.g. fresh clone, data/ is gitignored) — mirrors app/db.py's build_engine().
-Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# Force the URL from app settings — alembic.ini keeps only a placeholder.
-config.set_main_option("sqlalchemy.url", f"sqlite:///{settings.db_path}")
+# Single source of truth (SRV-01/SRV-02, Phase 26): both the app (app/db.py) and
+# Alembic read settings.database_url. sqlite:///… by default; a
+# postgresql+psycopg://… DATABASE_URL retargets the whole migration chain to PG.
+config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# SQLite can't create the db file if its parent directory is missing (fresh
+# clone, gitignored data/) — mirrors app/db.py. Meaningless for a PG target, so
+# gate it to the sqlite dialect.
+if settings.database_url.startswith("sqlite"):
+    Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -40,12 +44,15 @@ def run_migrations_offline() -> None:
 
     """
     url = config.get_main_option("sqlalchemy.url")
+    # render_as_batch is SQLite-only (move-and-copy ALTER); PG supports native
+    # ALTER, so gate it by the URL scheme (no connection available offline).
+    render_as_batch = url is not None and url.startswith("sqlite")
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,  # SQLite-safe (move-and-copy) migrations
+        render_as_batch=render_as_batch,
     )
 
     with context.begin_transaction():
@@ -66,10 +73,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # render_as_batch is SQLite-only; derive it from the live dialect.
+        render_as_batch = connection.dialect.name == "sqlite"
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True,  # SQLite-safe (move-and-copy) migrations
+            render_as_batch=render_as_batch,
         )
 
         with context.begin_transaction():
