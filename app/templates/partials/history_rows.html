@@ -44,6 +44,23 @@
         <option value="oldest"{% if sort == "oldest" %} selected{% endif %}>Сначала старые</option>
       </select>
     </div>
+    {# USER-06 (A-UI-3): author filter is a top-bar control (not a per-type
+       column filter — the «Кто» column is dropped from narrowed views). Same
+       HTMX idiom as the sibling type/sort selects; «Все пользователи» first,
+       then one option per user. Autoescape only on display_name — never |safe
+       (T-25-08-02). Selecting a user excludes pre-auth NULL-author rows. #}
+    <div class="field">
+      <label for="author">Пользователь</label>
+      <select id="author" name="author"
+              hx-get="/history" hx-trigger="change"
+              hx-include="#history-rows input, #history-rows select"
+              hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value=""{% if not author_id %} selected{% endif %}>Все пользователи</option>
+        {% for u in users %}
+        <option value="{{ u.id }}"{% if u.id == author_id %} selected{% endif %}>{{ u.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
   {# D-05: date range is universal — visible for every type, including the
      untyped generic view. Reused verbatim, unmodified partial. #}
@@ -99,7 +116,7 @@
       {% if not rows %}
       <tr>
         <td colspan="10" class="empty-state muted">
-          {% if type_filter or product_id or category or customer or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+          {% if type_filter or product_id or category or customer or author_id or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
         </td>
       </tr>
       {% else %}
@@ -140,7 +157,10 @@
           <span class="muted">—</span>
           {%- endif %}
         </td>
-        <td>{{ r.op.created_by }}</td>
+        {# USER-06: live author display_name via the author join; a pre-auth
+           NULL-author row falls back to the frozen created_by text, rendered
+           .muted (Copywriting Contract). Autoescape only — never |safe. #}
+        <td>{% if r.author %}{{ r.author.display_name }}{% else %}<span class="muted">{{ r.op.created_by }}</span>{% endif %}</td>
         {# D-05/09-07: «Действие» — sale rows expose the same «Вернуть» entry point as
            recent_sales.html / purchase_history.html (carries sale_id/product_id/id so
            GET /returns can resolve the frozen sale line and reach legacy returns from
@@ -211,7 +231,7 @@
       {% if not rows %}
       <tr>
         <td colspan="{{ 3 + columns|length + 1 }}" class="empty-state muted">
-          {% if type_filter or product_id or category or customer or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+          {% if type_filter or product_id or category or customer or author_id or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
         </td>
       </tr>
       {% else %}

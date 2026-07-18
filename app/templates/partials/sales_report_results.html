@@ -2,6 +2,26 @@
    Swapped in place by the period filter's hx-get/hx-target — no wrapping
    id here, the page template supplies div#sales-results around the
    include (this same partial is the HX innerHTML swap payload). #}
+{# RPT-01 (Plan 08): operator filter lives INSIDE this swapped partial so it
+   survives the period filter's innerHTML swap of #sales-results and reflects
+   the echoed selection. The period filter's hx-include (#sales-results select)
+   picks THIS select up; conversely this select's hx-include grabs the от/по
+   date inputs so switching operator preserves the current period. Autoescape
+   only on display_name — never |safe (T-25-08-02). #}
+<div class="filter-bar">
+  <div class="field">
+    <label for="author">Пользователь</label>
+    <select id="author" name="author"
+            hx-get="/reports/sales" hx-trigger="change"
+            hx-include="[name='from'], [name='to']"
+            hx-target="#sales-results" hx-push-url="true">
+      <option value=""{% if not author_id %} selected{% endif %}>Все пользователи</option>
+      {% for u in users %}
+      <option value="{{ u.id }}"{% if u.id == author_id %} selected{% endif %}>{{ u.display_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
 {% if report is none %}
 <div class="error-block">
   <p class="error">Не удалось загрузить отчёт. Проверьте даты и попробуйте ещё раз.</p>

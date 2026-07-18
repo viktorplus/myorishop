@@ -17,12 +17,25 @@ and the documented fallback (explicit-parameter threading) is required.
 """
 
 import re
+from datetime import date
 
 from sqlalchemy import select
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_day_bounds_utc, new_id
 from app.models import CashMovement, Operation, User, Warehouse
 from app.services import auth
+from app.services.ledger import next_seq
+from app.services.operations import history_view
+from app.services.reports import sales_profit_report
+
+# A fixed day + a safely-mid-day UTC timestamp: 10:00 UTC on 2026-07-10 maps to
+# 2026-07-10 in every realistic display_tz (UTC-10..UTC+13), so the sales-report
+# period filter (which resolves from=to=this day into local bounds) always
+# contains these rows regardless of the machine's configured timezone.
+FILTER_DAY = date(2026, 7, 10)
+FILTER_DAY_ISO = FILTER_DAY.isoformat()
+FILTER_MID_DAY_UTC = "2026-07-10T10:00:00+00:00"
 
 
 def _seed_user(session, *, login, display_name, password="pw", role="operator"):
@@ -147,3 +160,86 @@ def test_attribution_is_per_request_not_global(anon_client, session, login):
     assert op_a.author_id == user_a.id
     assert op_b.author_id == user_b.id
     assert op_a.author_id != op_b.author_id
+
+
+def _seed_sale_op(session, product, *, author_id, created_by, qty=1, price_cents=1000):
+    """Direct-insert one sale Operation with an explicit author_id + created_at.
+
+    Bypasses record_operation on purpose (like conftest.past_sale): it stamps
+    author_id from the request contextvar, but these read-only filter tests need
+    to seed rows attributed to arbitrary users AND a pre-auth NULL-author row.
+    Does NOT touch stock projections — for read-only history/report proofs only.
+    """
+    op = Operation(
+        id=new_id(),
+        type="sale",
+        product_id=product.id,
+        qty_delta=-qty,
+        unit_cost_cents=price_cents // 2,
+        unit_price_cents=price_cents,
+        author_id=author_id,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at=FILTER_MID_DAY_UTC,
+        created_by=created_by,
+    )
+    session.add(op)
+    session.commit()
+    return op
+
+
+def test_filter_by_user_history(client, session, product):
+    # Two attributed users + one pre-auth NULL-author row (frozen "operator").
+    user_a = _seed_user(session, login="anna", display_name="Анна А")
+    user_b = _seed_user(session, login="boris", display_name="Борис Б")
+    _seed_sale_op(session, product, author_id=user_a.id, created_by=user_a.display_name)
+    _seed_sale_op(session, product, author_id=user_b.id, created_by=user_b.display_name)
+    _seed_sale_op(session, product, author_id=None, created_by="operator")
+
+    # Service: filtering by user_a returns ONLY user_a's rows.
+    filtered = history_view(session, author_id=user_a.id)
+    assert {r["op"].author_id for r in filtered["rows"]} == {user_a.id}
+    assert filtered["author_id"] == user_a.id
+
+    # Service: the unfiltered view keeps the pre-auth NULL-author row (LEFT
+    # OUTER JOIN never drops it) and surfaces author=None so the template falls
+    # back to the frozen created_by text.
+    unfiltered = history_view(session)
+    all_authors = {r["op"].author_id for r in unfiltered["rows"]}
+    assert {user_a.id, user_b.id, None} <= all_authors
+    null_row = next(r for r in unfiltered["rows"] if r["op"].author_id is None)
+    assert null_row["author"] is None
+
+    # HTTP: the pre-auth row renders as a muted «operator» in the unfiltered
+    # view, and is EXCLUDED once a user is selected (route passes author through).
+    unfiltered_html = client.get("/history").text
+    assert 'class="muted">operator<' in unfiltered_html
+    filtered_html = client.get(f"/history?author={user_a.id}").text
+    assert 'class="muted">operator<' not in filtered_html
+
+
+def test_filter_by_user_reports(client, session, product):
+    user_a = _seed_user(session, login="anna", display_name="Анна")
+    user_b = _seed_user(session, login="boris", display_name="Борис")
+    _seed_sale_op(session, product, author_id=user_a.id, created_by=user_a.display_name, qty=2)
+    _seed_sale_op(session, product, author_id=user_b.id, created_by=user_b.display_name, qty=5)
+    _seed_sale_op(session, product, author_id=None, created_by="operator", qty=3)
+
+    start_iso, end_iso = local_day_bounds_utc(FILTER_DAY, FILTER_DAY, settings.display_tz)
+
+    # Service: author filter narrows totals to that operator; None = all authors.
+    rep_a = sales_profit_report(session, start_iso, end_iso, user_a.id)
+    assert rep_a["totals"]["units_sold"] == 2
+    rep_all = sales_profit_report(session, start_iso, end_iso)
+    assert rep_all["totals"]["units_sold"] == 10  # 2 + 5 + 3 (NULL-author included)
+
+    # HTTP: /reports/sales?author=<id> passes the filter through the route —
+    # only user_a's 2 units show, vs 10 for the unfiltered period.
+    html_a = client.get(
+        f"/reports/sales?from={FILTER_DAY_ISO}&to={FILTER_DAY_ISO}&author={user_a.id}"
+    ).text
+    assert '<td class="num">2</td>' in html_a
+    html_all = client.get(
+        f"/reports/sales?from={FILTER_DAY_ISO}&to={FILTER_DAY_ISO}"
+    ).text
+    assert '<td class="num">10</td>' in html_all
