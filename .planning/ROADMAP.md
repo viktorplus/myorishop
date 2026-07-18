@@ -111,7 +111,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 **Plans**: 8 plans (5 waves)
 
 - [x] 25-01-PLAN.md — Dependencies (argon2-cffi/itsdangerous), persisted secret_key, per-install device_id (wave 1)
-- [ ] 25-02-PLAN.md — Data layer: User model, author_id columns, ROLES, migration 0017 + trigger-survival regression (wave 1)
+- [x] 25-02-PLAN.md — Data layer: User model, author_id columns, ROLES, migration 0017 + trigger-survival regression (wave 1)
 - [ ] 25-03-PLAN.md — Auth/user/security services: Argon2id hashing, user CRUD, guard/require_role/contextvars/CSRF core (wave 2)
 - [ ] 25-04-PLAN.md — Flip auth on: SessionMiddleware + app-level guard + login/logout/setup + authenticated conftest fixture (wave 3)
 - [ ] 25-05-PLAN.md — Admin role gating (require_role on admin routers) + user-management page /settings/users (wave 4)
@@ -228,7 +228,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 25. Authentication, Roles & User Attribution | v3.0 | 1/8 | In Progress|  |
+| 25. Authentication, Roles & User Attribution | v3.0 | 2/8 | In Progress|  |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
