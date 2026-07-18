@@ -13,6 +13,7 @@ from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
 from app.services.pagination import LIST_PAGE_SIZE
+from app.services.security import author_fields
 
 # Fixed newest-first order for the cash history read (mirrors
 # operations._DEFAULT_ORDER). created_at is ISO-8601 UTC text (sorts
@@ -67,16 +68,21 @@ def record_cash_movement(
     if category not in CASH_CATEGORIES:
         raise ValueError(f"unknown cash category: {category!r}")
 
+    # USER-05: stamp the request-scoped author at the single write path,
+    # identically to ledger.record_operation. author_fields() falls back to
+    # (None, settings.operator_name) when no user is in context.
+    author_id, created_by = author_fields()
     mv = CashMovement(
         id=new_id(),
         category=category,
         amount_cents=amount_cents,
         sale_id=sale_id,
         note=note,
+        author_id=author_id,
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),
-        created_by=settings.operator_name,
+        created_by=created_by,
     )
     session.add(mv)
     if commit:

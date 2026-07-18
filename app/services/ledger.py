@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import OPERATION_TYPES, Batch, Operation, Product
+from app.services.security import author_fields
 
 # D-12: the stock-affecting operation types. A batch_id is MANDATORY for these
 # (they move stock into/out of a specific lot); the remaining OPERATION_TYPES
@@ -101,6 +102,11 @@ def record_operation(
     elif batch_id is not None:
         raise ValueError(f"{type_!r} operations are batch-less")
 
+    # USER-05: stamp the request-scoped author at the single write path.
+    # author_fields() resolves the logged-in user from the contextvar the guard
+    # set, falling back to (None, settings.operator_name) when unset (fixtures,
+    # scripts, background tasks) so historical attribution stays unchanged.
+    author_id, created_by = author_fields()
     op = Operation(
         id=new_id(),
         type=type_,
@@ -111,10 +117,11 @@ def record_operation(
         payload=payload,
         sale_id=sale_id,
         batch_id=batch_id,
+        author_id=author_id,
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),
-        created_by=settings.operator_name,
+        created_by=created_by,
     )
     session.add(op)
     # IN-02: SQL-side increment (UPDATE ... SET quantity = quantity + ?) —
