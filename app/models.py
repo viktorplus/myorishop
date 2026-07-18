@@ -134,6 +134,17 @@ OPERATION_TYPE_LABELS = {
 }
 
 
+# Phase 25 (ROLE-01): the exact server-side role allow-list ROLE-01 validates
+# against — EXACTLY two roles, no dynamic/custom roles. Latin key = stored
+# value (User.role), RU value = operator-facing label (mirrors WRITEOFF_REASONS
+# / CASH_CATEGORIES shape). Any role not in this dict is rejected by the user
+# service (Plan 03).
+ROLES = {
+    "administrator": "Администратор",
+    "operator": "Оператор",
+}
+
+
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
@@ -348,6 +359,14 @@ class Operation(Base):
     batch_id: Mapped[str | None] = mapped_column(
         ForeignKey("batches.id", name="fk_operations_batch_id_batches"), index=True
     )
+    # Phase 25 (USER-05): nullable link to the User who authored this row.
+    # Mirrors batch_id — bare native column in migration 0017 (no inline DB-FK,
+    # the sale_id/batch_id precedent); the ORM ForeignKey gives insert ordering
+    # + PostgreSQL portability. Pre-auth historical rows stay NULL (never
+    # backfilled). created_by (100) keeps the append-only display-name snapshot.
+    author_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", name="fk_operations_author_id_users"), index=True
+    )
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
@@ -432,6 +451,13 @@ class Sale(Base):
     )
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Phase 25 (USER-05): nullable header-level attribution to the authoring
+    # User. Bare native column in migration 0017 (batch_id/sale_id precedent);
+    # ORM ForeignKey for insert ordering + PostgreSQL portability. NULL for
+    # pre-auth headers (never backfilled).
+    author_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", name="fk_sales_author_id_users"), index=True
+    )
     device_id: Mapped[str | None] = mapped_column(String(36))
 
 
@@ -462,8 +488,42 @@ class CashMovement(Base):
     sale_id: Mapped[str | None] = mapped_column(
         ForeignKey("sales.id", name="fk_cash_movements_sale_id_sales"), index=True
     )
+    # Phase 25 (USER-05): nullable link to the authoring User. Mirrors sale_id —
+    # bare native column in migration 0017; ORM ForeignKey for insert ordering +
+    # PostgreSQL portability. NULL for pre-auth rows (never backfilled). The
+    # cash_movements_no_update trigger ABORTs any later UPDATE, so this is set
+    # at INSERT time only.
+    author_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", name="fk_cash_movements_author_id_users"), index=True
+    )
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
     synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
+
+
+class User(Base):
+    """Operator identity (USER-01): login, display name, role, Argon2 hash.
+
+    Mirrors the codebase UUID-PK / ISO-timestamp convention. `login` is
+    case-sensitive ASCII (RESEARCH A7) — no `login_lc` shadow this phase.
+    `password_hash` stores a full Argon2id PHC string (no separate salt
+    column). `is_active` is a soft-disable flag mirroring `Batch.is_legacy`
+    (1 = active, 0 = disabled); users are never hard-deleted. `role` holds a
+    `ROLES` key, validated server-side by the user service (ROLE-01).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    login: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    # display_name (200) is snapshotted into the append-only ledger's
+    # created_by (String(100)) at write time, so the user service (Plan 03)
+    # caps display_name for that snapshot to fit the 100-char column.
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # a ROLES key
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)  # Argon2id PHC
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
