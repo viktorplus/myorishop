@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
-stopped_at: Completed 25-04-PLAN.md
-last_updated: "2026-07-18T06:49:09.225Z"
+stopped_at: Completed 25-07-PLAN.md
+last_updated: "2026-07-18T07:00:20.526Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 25 (authentication-roles-user-attribution) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-07-18
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 88%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -68,6 +68,7 @@ Progress: [████████░░] 75%
 | Phase 25 P04 | ~30min | 3 tasks | 8 files |
 | Phase 25 P05 | ~25min | 3 tasks | 7 files |
 | Phase 25 P06 | 12min | 3 tasks | 4 files |
+| Phase 25 P07 | ~15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 25]: Phase 25-04: app-level auth boundary ON — single Depends(auth_guard) + SessionMiddleware + NotAuthenticated handler (303 HTML / 401+HX-Redirect HTMX) guards every route incl. export/backup; legacy suite kept green via an authenticated client fixture that overrides the whole guard
 - [Phase ?]: Phase 25-05: admin boundary enforced server-side via require_role on warehouses/dictionary/settings/users include_router calls (operator 403 before route body); /settings/users create/deactivate/reactivate/reset ships with scoped CSRF hx-headers until Plan 06 adds the base-chrome line
 - [Phase ?]: Plan 25-06: logout is a hrefless hx-post chrome control; NAV-08 smoke count retargeted to href-bearing links to preserve its 8-nav-item intent
+- [Phase 25]: USER-05: author_id stamped at both single write paths via author_fields(); contextvars->threadpool propagation proven end-to-end (no explicit-param fallback needed)
 
 ### Pending Todos
 
@@ -135,8 +137,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T06:48:36.478Z
-Stopped at: Completed 25-04-PLAN.md
+Last session: 2026-07-18T07:00:19.521Z
+Stopped at: Completed 25-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
