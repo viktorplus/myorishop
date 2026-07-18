@@ -43,10 +43,23 @@ APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
 )
 
 
-def build_engine(db_path: str) -> Engine:
-    """Create a sync SQLite engine with per-connection PRAGMAs (D-14)."""
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{db_path}")
+def build_engine_from_url(url: str) -> Engine:
+    """Create a sync engine from a full DB URL, gating SQLite-only side effects.
+
+    SRV-01/SRV-02 (Phase 26): `settings.database_url` is the single source of
+    truth (sqlite:///… by default, postgresql+psycopg://… when DATABASE_URL is
+    set). The parent-dir mkdir and the PRAGMA connect-listener are SQLite-only
+    (Pitfall 3: `PRAGMA …` is a syntax error on PostgreSQL, which enforces FKs
+    by default and needs no WAL/busy_timeout), so they run only when the
+    resolved dialect is sqlite.
+    """
+    engine = create_engine(url)
+    if engine.dialect.name != "sqlite":
+        return engine
+
+    # SQLite file target: ensure the parent directory exists (fresh clone,
+    # gitignored data/) before the first connection creates the db file.
+    Path(engine.url.database).parent.mkdir(parents=True, exist_ok=True)
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -63,7 +76,17 @@ def build_engine(db_path: str) -> Engine:
     return engine
 
 
-engine = build_engine(settings.db_path)
+def build_engine(db_path: str) -> Engine:
+    """Create a sync SQLite engine with per-connection PRAGMAs (D-14).
+
+    Kept for the test suite (tests/conftest.py) — lowest blast radius. Delegates
+    to build_engine_from_url() with the sqlite file URL so the SQLite path is
+    byte-identical to before.
+    """
+    return build_engine_from_url(f"sqlite:///{db_path}")
+
+
+engine = build_engine_from_url(settings.database_url)
 SessionLocal = sessionmaker(bind=engine)
 
 
