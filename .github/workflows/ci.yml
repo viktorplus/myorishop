@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pg-parity:
+    name: PostgreSQL portability & append-only parity (SRV-01/SRV-02)
+    runs-on: ubuntu-latest
+
+    # Throwaway, non-secret credential for an ephemeral CI container ONLY
+    # (T-26-02): never a production secret, never referenced from repo secrets.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: SQLite suite (no DATABASE_URL — PG parity tests auto-skip)
+        run: uv run pytest
+
+      - name: PostgreSQL parity (SRV-01 full history + SRV-02 append-only)
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+        run: uv run pytest tests/test_pg_parity.py -x
