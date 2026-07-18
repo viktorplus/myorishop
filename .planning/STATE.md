@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: planning
-last_updated: "2026-07-17T23:55:50.971Z"
-last_activity: 2026-07-17
+last_updated: "2026-07-18T00:00:00.000Z"
+last_activity: 2026-07-18
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,20 +20,31 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Awaiting next milestone — run `/gsd-new-milestone`
+**Current focus:** Phase 25 — Authentication, Roles & User Attribution (ready to plan)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-17 — Milestone v3.0 started
+Phase: 25 of 30 (Authentication, Roles & User Attribution) — first phase of v3.0
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-18 — v3.0 roadmap created (6 phases, 25-30); 36/36 requirements mapped
+
+Progress: [░░░░░░░░░░] 0%
+
+**v3.0 phase map (Phases 25-30):**
+
+1. Phase 25 — Authentication, Roles & User Attribution (AUTH/USER/ROLE + RPT-01, 16 reqs) — local, testable first
+2. Phase 26 — PostgreSQL Portability & Append-Only Parity (SRV-01/02)
+3. Phase 27 — Shared Idempotent Merge Core (SYNC-02/03/04/05) — **research flag** (server-authoritative Tier-B conflict policy + `Product.code` collision rule)
+4. Phase 28 — Central Server: Hosting & Sync API (SRV-04, SYNC-09)
+5. Phase 29 — Online Client Sync (SYNC-01/06/07/08, SRV-03)
+6. Phase 30 — Offline Self-Uploading File (OFF-01..07) — **research flag** (self-contained-file mechanism + trust/version model)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 86 (v1.0-v1.3)
+- Total plans completed: 86 (v1.0-v2.0)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -41,25 +52,28 @@ Last activity: 2026-07-17 — Milestone v3.0 started
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1-17 | 59 | - | - |
-| 19 | 1 | - | - |
-| 21 | 5 | - | - |
-| 22 | 7 | - | - |
-| 23 | 7 | - | - |
-| 24 | 7 | - | - |
+| 1-24 (v1.0-v2.0) | 86 | - | - |
+| 25-30 (v3.0) | TBD | - | - |
 
 **Recent Trend:**
 
 - Last 5 plans: -
 - Trend: -
 
-*Updated after each plan completion. Per-plan v1.0-v1.3 timings archived with their milestones.*
+*Updated after each plan completion. Per-plan v1.0-v2.0 timings archived with their milestones.*
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`). v2.0's own phase-sequencing rationale is archived verbatim in `.planning/milestones/v2.0-ROADMAP.md`.
+Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+
+**v3.0 roadmap-level decisions (2026-07-18):**
+
+- **Dependency-ordered build:** identity/auth first (locally testable, unblocks attribution) → prove one model set on PostgreSQL → harden the shared merge engine in isolation → server + sync API → online client sync → offline self-uploading file last. The shared idempotent merge engine (Phase 27) is built and hardened before either transport (Phases 29/30) — both are thin callers of one engine.
+- **Operator revisions override research where they disagree:** mobile is server-only (SRV-04, no offline mobile install); the offline path is upload-only via a self-contained self-uploading file to a server with no app installed (OFF-01..07, not peer import); Tier-B mutable master-data conflict resolution is server-authoritative (SYNC-05).
+- **RPT-01 placed in Phase 25** (attribution phase) alongside USER-06 — same operator-filter pattern, cleanest coverage.
+- **Device identity** (per-install unique `device_id`, replacing the static `device-01` default) is a Phase 25 pre-flight for all later sync.
 
 ### Pending Todos
 
@@ -109,10 +123,11 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-18T00:00:00.000Z
-Stopped at: v2.0 milestone archived, REQUIREMENTS.md removed, ready for next milestone
-Resume file: none — start fresh with /gsd-new-milestone
+Stopped at: v3.0 roadmap created (Phases 25-30), STATE + REQUIREMENTS traceability updated, ready to plan Phase 25
+Resume file: none — start with `/gsd-plan-phase 25`
 
 ## Operator Next Steps
 
-- Start the next milestone with `/gsd-new-milestone`
+- Plan the first v3.0 phase with `/gsd-plan-phase 25` (Authentication, Roles & User Attribution)
+- Phases 27 and 30 are research-flagged — expect a `--research-phase` pass at their plan time
 - Optional, non-blocking: a short manual browser pass on Phase 22's 4 unconfirmed items (see Blockers/Concerns above)

@@ -113,23 +113,60 @@ Explicitly excluded for this milestone. Documented to prevent scope creep. Most 
 
 ## Traceability
 
-Which phases cover which requirements. Populated during roadmap creation.
+Which phases cover which requirements. Each v3.0 requirement maps to exactly one phase (roadmap created 2026-07-18).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01..05 | TBD | Pending |
-| USER-01..06 | TBD | Pending |
-| ROLE-01..04 | TBD | Pending |
-| SRV-01..04 | TBD | Pending |
-| SYNC-01..09 | TBD | Pending |
-| OFF-01..07 | TBD | Pending |
-| RPT-01 | TBD | Pending |
+| AUTH-01 | Phase 25 | Pending |
+| AUTH-02 | Phase 25 | Pending |
+| AUTH-03 | Phase 25 | Pending |
+| AUTH-04 | Phase 25 | Pending |
+| AUTH-05 | Phase 25 | Pending |
+| USER-01 | Phase 25 | Pending |
+| USER-02 | Phase 25 | Pending |
+| USER-03 | Phase 25 | Pending |
+| USER-04 | Phase 25 | Pending |
+| USER-05 | Phase 25 | Pending |
+| USER-06 | Phase 25 | Pending |
+| ROLE-01 | Phase 25 | Pending |
+| ROLE-02 | Phase 25 | Pending |
+| ROLE-03 | Phase 25 | Pending |
+| ROLE-04 | Phase 25 | Pending |
+| RPT-01 | Phase 25 | Pending |
+| SRV-01 | Phase 26 | Pending |
+| SRV-02 | Phase 26 | Pending |
+| SYNC-02 | Phase 27 | Pending |
+| SYNC-03 | Phase 27 | Pending |
+| SYNC-04 | Phase 27 | Pending |
+| SYNC-05 | Phase 27 | Pending |
+| SRV-04 | Phase 28 | Pending |
+| SYNC-09 | Phase 28 | Pending |
+| SYNC-01 | Phase 29 | Pending |
+| SYNC-06 | Phase 29 | Pending |
+| SYNC-07 | Phase 29 | Pending |
+| SYNC-08 | Phase 29 | Pending |
+| SRV-03 | Phase 29 | Pending |
+| OFF-01 | Phase 30 | Pending |
+| OFF-02 | Phase 30 | Pending |
+| OFF-03 | Phase 30 | Pending |
+| OFF-04 | Phase 30 | Pending |
+| OFF-05 | Phase 30 | Pending |
+| OFF-06 | Phase 30 | Pending |
+| OFF-07 | Phase 30 | Pending |
+
+**Phase → Requirements summary:**
+- **Phase 25 — Authentication, Roles & User Attribution:** AUTH-01..05, USER-01..06, ROLE-01..04, RPT-01 (16)
+- **Phase 26 — PostgreSQL Portability & Append-Only Parity:** SRV-01, SRV-02 (2)
+- **Phase 27 — Shared Idempotent Merge Core:** SYNC-02, SYNC-03, SYNC-04, SYNC-05 (4)
+- **Phase 28 — Central Server (Hosting & Sync API):** SRV-04, SYNC-09 (2)
+- **Phase 29 — Online Client Sync:** SYNC-01, SYNC-06, SYNC-07, SYNC-08, SRV-03 (5)
+- **Phase 30 — Offline Self-Uploading File:** OFF-01..07 (7)
 
 **Coverage:**
 - v3.0 requirements: 36 total (AUTH×5, USER×6, ROLE×4, SRV×4, SYNC×9, OFF×7, RPT×1)
-- Mapped to phases: 0 (roadmap not yet created) ⚠️
-- Unmapped: 36 ⚠️ — resolved when the roadmapper writes the phase mapping
+- Mapped to phases: 36 ✓
+- Unmapped: 0 ✓ (every requirement maps to exactly one phase, no duplicates)
 
 ---
 *Requirements defined: 2026-07-18*
-*Last updated: 2026-07-18 after operator revision (server-hosted mobile, self-uploading offline file)*
+*Last updated: 2026-07-18 — roadmap created; 36/36 requirements mapped to Phases 25-30*
