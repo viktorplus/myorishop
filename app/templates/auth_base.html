@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# CR-01 (mirrored from base.html, Pitfall 3): htmx 2 does NOT swap 4xx
+     responses by default; the login form re-renders its error partial with
+     422, so 422 must be opted into swapping or bad-credential errors are
+     silently discarded. auth_base.html is a standalone file (does NOT inherit
+     from base.html), so this tag is NOT inherited and must be duplicated here
+     verbatim (mobile_base.html precedent). #}
+  <meta name="htmx-config"
+        content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+  <title>MyOriShop</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+{# AUTH-05: one hx-headers line carries the CSRF synchronizer token on every
+   hx-post on this page (login/setup submit). No <nav>/<tabbar>: an
+   unauthenticated visitor must not see navigation into protected pages. #}
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+  <main class="mobile-shell">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

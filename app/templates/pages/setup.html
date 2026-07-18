@@ -1,0 +1,34 @@
+{% extends "auth_base.html" %}
+{% block content %}
+<h1>Первый запуск</h1>
+<p class="muted">Создайте первого администратора. Пароль по умолчанию не предусмотрен.</p>
+
+<form method="post" action="/setup" class="stacked-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="field">
+    <label for="display_name">Отображаемое имя</label>
+    {# Untrusted-at-rest text — never |safe (autoescape stays ON). Entered
+       values are preserved on a 422 re-render; the password is never echoed. #}
+    <input type="text" id="display_name" name="display_name" required autofocus
+           value="{{ form.display_name or '' if form else '' }}">
+    {% if errors.display_name %}<p class="error">{{ errors.display_name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="login">Логин</label>
+    <input type="text" id="login" name="login" required
+           value="{{ form.login or '' if form else '' }}">
+    {% if errors.login %}<p class="error">{{ errors.login }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="password">Пароль</label>
+    <input type="password" id="password" name="password" required>
+    {% if errors.password %}<p class="error">{{ errors.password }}</p>{% endif %}
+  </div>
+
+  <div class="form-actions">
+    <button type="submit">Создать администратора</button>
+  </div>
+</form>
+{% endblock %}

@@ -13,6 +13,7 @@ from app.config import settings as config_settings
 from app.services.security import NotAuthenticated, auth_guard
 
 from app.routes import (
+    auth,
     backup,
     catalogs,
     categories,
@@ -95,6 +96,8 @@ async def _redirect_to_login(request: Request, exc: NotAuthenticated) -> Respons
 
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# Auth surfaces are public (listed in security.PUBLIC_PATHS) — /login /logout /setup.
+app.include_router(auth.router)
 app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(categories.router)
