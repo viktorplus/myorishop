@@ -586,17 +586,19 @@ def test_web_finance_report_still_reachable_directly(client):
     assert response.status_code == 200
 
 
-def test_web_finance_report_highlights_settings_not_finance(client):
-    """WR-03 (24-REVIEW.md): /finance/report is reached via Настройки
-    (D-08), so the "you are here" nav indicator must highlight Настройки,
-    not Финансы, when visiting it directly."""
+def test_web_finance_report_highlights_finance_not_settings(client):
+    """25-UAT.md § Gaps (test 1) supersedes D-08 (24-REVIEW.md WR-03): the
+    finance report is operator-visible by product decision, so «Финансы»
+    owns the whole /finance subtree and the "you are here" nav indicator
+    must highlight Финансы — not the admin-only Настройки — when visiting
+    /finance/report directly."""
     response = client.get("/finance/report")
     assert response.status_code == 200
     start = response.text.index("<nav>")
     end = response.text.index("</nav>", start)
     nav_html = response.text[start:end]
-    assert '<a href="/settings" class="active">' in nav_html
-    assert '<a href="/finance" class="active">' not in nav_html
+    assert '<a href="/finance" class="active">' in nav_html
+    assert '<a href="/settings" class="active">' not in nav_html
 
 
 def test_web_finance_page_still_highlights_finance(client):
