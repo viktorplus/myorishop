@@ -15,14 +15,14 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [x] **AUTH-02**: Passwords are stored only as Argon2id hashes — never in plaintext or a reversible form.
 - [x] **AUTH-03**: A logged-in session persists across browser refresh via a signed cookie, and the user can log out to end it.
 - [ ] **AUTH-04**: On first run with no users yet, the app guides creation of an initial administrator account (no default credentials are shipped).
-- [ ] **AUTH-05**: HTMX POST forms are protected against CSRF.
+- [x] **AUTH-05**: HTMX POST forms are protected against CSRF.
 
 ### User Accounts & Attribution (USER)
 
 - [x] **USER-01**: Each user has a profile with a display name, login, and role.
-- [ ] **USER-02**: An administrator can create a new user and assign their role.
-- [ ] **USER-03**: An administrator can deactivate a user (soft-disable) without deleting them, so the user can no longer log in but their past operations stay attributed.
-- [ ] **USER-04**: An administrator can reset another user's password.
+- [x] **USER-02**: An administrator can create a new user and assign their role.
+- [x] **USER-03**: An administrator can deactivate a user (soft-disable) without deleting them, so the user can no longer log in but their past operations stay attributed.
+- [x] **USER-04**: An administrator can reset another user's password.
 - [x] **USER-05**: Every operation and cash movement records the logged-in user as its author, stamped at the single `record_operation()` write path.
 - [ ] **USER-06**: The History page shows the operating user for each entry and can be filtered by user.
 
@@ -31,7 +31,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [x] **ROLE-01**: Exactly two roles exist — administrator and operator — assigned per user.
 - [ ] **ROLE-02**: Every protected route enforces a server-side role guard — the local client's routes, the server's browser and mobile interfaces, and the `export`/`backup` endpoints — menu hiding alone is never the boundary.
 - [ ] **ROLE-03**: An operator can perform receipts, sales, write-offs/returns/corrections, cash movements, and sync; administrator-only sections (user management, warehouses, dictionaries, settings) are hidden and blocked for operators.
-- [ ] **ROLE-04**: An administrator has full access — user management, warehouses, dictionaries, settings, reports — plus every operator action.
+- [x] **ROLE-04**: An administrator has full access — user management, warehouses, dictionaries, settings, reports — plus every operator action.
 
 ### Central Server & PostgreSQL (SRV)
 
@@ -121,17 +121,17 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | AUTH-02 | Phase 25 | Complete |
 | AUTH-03 | Phase 25 | Complete |
 | AUTH-04 | Phase 25 | Pending |
-| AUTH-05 | Phase 25 | Pending |
+| AUTH-05 | Phase 25 | Complete |
 | USER-01 | Phase 25 | Complete |
-| USER-02 | Phase 25 | Pending |
-| USER-03 | Phase 25 | Pending |
-| USER-04 | Phase 25 | Pending |
+| USER-02 | Phase 25 | Complete |
+| USER-03 | Phase 25 | Complete |
+| USER-04 | Phase 25 | Complete |
 | USER-05 | Phase 25 | Complete |
 | USER-06 | Phase 25 | Pending |
 | ROLE-01 | Phase 25 | Complete |
 | ROLE-02 | Phase 25 | Pending |
 | ROLE-03 | Phase 25 | Pending |
-| ROLE-04 | Phase 25 | Pending |
+| ROLE-04 | Phase 25 | Complete |
 | RPT-01 | Phase 25 | Pending |
 | SRV-01 | Phase 26 | Pending |
 | SRV-02 | Phase 26 | Pending |
