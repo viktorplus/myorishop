@@ -115,7 +115,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 - [x] 25-03-PLAN.md — Auth/user/security services: Argon2id hashing, user CRUD, guard/require_role/contextvars/CSRF core (wave 2)
 - [x] 25-04-PLAN.md — Flip auth on: SessionMiddleware + app-level guard + login/logout/setup + authenticated conftest fixture (wave 3)
 - [x] 25-05-PLAN.md — Admin role gating (require_role on admin routers) + user-management page /settings/users (wave 4)
-- [ ] 25-06-PLAN.md — Chrome: CSRF hx-headers + logout control + role-conditioned menu-hide (desktop + mobile) (wave 4)
+- [x] 25-06-PLAN.md — Chrome: CSRF hx-headers + logout control + role-conditioned menu-hide (desktop + mobile) (wave 4)
 - [ ] 25-07-PLAN.md — Attribution at both write paths + contextvars threadpool-propagation proof (wave 4)
 - [ ] 25-08-PLAN.md — History + Reports author display & «Пользователь» filter (wave 5)
 
@@ -228,7 +228,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 25. Authentication, Roles & User Attribution | v3.0 | 5/8 | In Progress|  |
+| 25. Authentication, Roles & User Attribution | v3.0 | 6/8 | In Progress|  |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
