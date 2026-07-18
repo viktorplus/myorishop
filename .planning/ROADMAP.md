@@ -228,7 +228,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 25. Authentication, Roles & User Attribution | v3.0 | 8/8 | Complete   | 2026-07-18 |
+| 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
