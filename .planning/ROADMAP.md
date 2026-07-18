@@ -89,7 +89,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 **Build order (dependency-ordered):** identity/auth first (locally testable, unblocks attribution) → prove one model set on PostgreSQL → harden the shared merge engine in isolation → stand up the server + sync API → wire online client sync → ship the offline self-uploading file last, reusing the proven engine.
 
 - [x] **Phase 25: Authentication, Roles & User Attribution** - Mandatory login over the whole app (desktop + mobile + export/backup), two roles, user management, and per-user attribution of every operation (completed 2026-07-18)
-- [ ] **Phase 26: PostgreSQL Portability & Append-Only Parity** - One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee
+- [x] **Phase 26: PostgreSQL Portability & Append-Only Parity** - One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee (completed 2026-07-18)
 - [ ] **Phase 27: Shared Idempotent Merge Core** - The single server-side merge engine and exchange format: UUID-idempotent ledger replay, post-merge recompute, and server-authoritative reference-data conflict policy
 - [ ] **Phase 28: Central Server — Hosting & Sync API** - The VPS PostgreSQL server hosting both online interfaces plus token-authenticated push/pull sync endpoints and the column-scoped trigger relaxation
 - [ ] **Phase 29: Online Client Sync** - «Синхронизировать» push/pull, sync status + last-sync time, unsynced-count badge, optional interval sync, offline-safe failure
@@ -136,7 +136,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 
 - [x] 26-01-PLAN.md — psycopg dependency + `settings.database_url` single source of truth + PG-parity test scaffold (wave 1)
 - [x] 26-02-PLAN.md — Dialect-branch append-only trigger DDL in frozen migrations 0001 + 0013 (wave 1)
-- [ ] 26-03-PLAN.md — Dialect-gate engine (app/db.py) + Alembic env + GitHub Actions CI with postgres:17 (wave 2)
+- [x] 26-03-PLAN.md — Dialect-gate engine (app/db.py) + Alembic env + GitHub Actions CI with postgres:17 (wave 2)
 
 #### Phase 27: Shared Idempotent Merge Core
 
@@ -233,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
-| 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 2/3 | In Progress|  |
+| 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
 | 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
