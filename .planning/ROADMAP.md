@@ -88,7 +88,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 
 **Build order (dependency-ordered):** identity/auth first (locally testable, unblocks attribution) → prove one model set on PostgreSQL → harden the shared merge engine in isolation → stand up the server + sync API → wire online client sync → ship the offline self-uploading file last, reusing the proven engine.
 
-- [ ] **Phase 25: Authentication, Roles & User Attribution** - Mandatory login over the whole app (desktop + mobile + export/backup), two roles, user management, and per-user attribution of every operation
+- [x] **Phase 25: Authentication, Roles & User Attribution** - Mandatory login over the whole app (desktop + mobile + export/backup), two roles, user management, and per-user attribution of every operation (completed 2026-07-18)
 - [ ] **Phase 26: PostgreSQL Portability & Append-Only Parity** - One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee
 - [ ] **Phase 27: Shared Idempotent Merge Core** - The single server-side merge engine and exchange format: UUID-idempotent ledger replay, post-merge recompute, and server-authoritative reference-data conflict policy
 - [ ] **Phase 28: Central Server — Hosting & Sync API** - The VPS PostgreSQL server hosting both online interfaces plus token-authenticated push/pull sync endpoints and the column-scoped trigger relaxation
@@ -117,7 +117,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 - [x] 25-05-PLAN.md — Admin role gating (require_role on admin routers) + user-management page /settings/users (wave 4)
 - [x] 25-06-PLAN.md — Chrome: CSRF hx-headers + logout control + role-conditioned menu-hide (desktop + mobile) (wave 4)
 - [x] 25-07-PLAN.md — Attribution at both write paths + contextvars threadpool-propagation proof (wave 4)
-- [ ] 25-08-PLAN.md — History + Reports author display & «Пользователь» filter (wave 5)
+- [x] 25-08-PLAN.md — History + Reports author display & «Пользователь» filter (wave 5)
 
 **UI hint**: yes
 
@@ -228,7 +228,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 25. Authentication, Roles & User Attribution | v3.0 | 7/8 | In Progress|  |
+| 25. Authentication, Roles & User Attribution | v3.0 | 8/8 | Complete   | 2026-07-18 |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |

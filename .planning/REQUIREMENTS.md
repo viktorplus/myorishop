@@ -24,7 +24,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [x] **USER-03**: An administrator can deactivate a user (soft-disable) without deleting them, so the user can no longer log in but their past operations stay attributed.
 - [x] **USER-04**: An administrator can reset another user's password.
 - [x] **USER-05**: Every operation and cash movement records the logged-in user as its author, stamped at the single `record_operation()` write path.
-- [ ] **USER-06**: The History page shows the operating user for each entry and can be filtered by user.
+- [x] **USER-06**: The History page shows the operating user for each entry and can be filtered by user.
 
 ### Roles & Access Control (ROLE)
 
@@ -66,7 +66,7 @@ The offline path is upload-only: a local client with no internet accumulates wor
 
 ### Reports (RPT)
 
-- [ ] **RPT-01**: Reports (sales, profit, and other period reports) can be filtered by operator.
+- [x] **RPT-01**: Reports (sales, profit, and other period reports) can be filtered by operator.
 
 ## Future Requirements (deferred)
 
@@ -127,12 +127,12 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | USER-03 | Phase 25 | Complete |
 | USER-04 | Phase 25 | Complete |
 | USER-05 | Phase 25 | Complete |
-| USER-06 | Phase 25 | Pending |
+| USER-06 | Phase 25 | Complete |
 | ROLE-01 | Phase 25 | Complete |
 | ROLE-02 | Phase 25 | Complete |
 | ROLE-03 | Phase 25 | Complete |
 | ROLE-04 | Phase 25 | Complete |
-| RPT-01 | Phase 25 | Pending |
+| RPT-01 | Phase 25 | Complete |
 | SRV-01 | Phase 26 | Pending |
 | SRV-02 | Phase 26 | Pending |
 | SYNC-02 | Phase 27 | Pending |

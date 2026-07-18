@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
-status: executing
-stopped_at: Completed 25-07-PLAN.md
-last_updated: "2026-07-18T07:00:20.526Z"
+status: verifying
+stopped_at: Completed 25-08-PLAN.md
+last_updated: "2026-07-18T07:15:38.807Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 6
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 Phase: 25 (authentication-roles-user-attribution) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-18
 
 Progress: [█████████░] 88%
@@ -69,6 +69,7 @@ Progress: [█████████░] 88%
 | Phase 25 P05 | ~25min | 3 tasks | 7 files |
 | Phase 25 P06 | 12min | 3 tasks | 4 files |
 | Phase 25 P07 | ~15min | 2 tasks | 3 files |
+| Phase 25 P08 | 25 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Phase 25-05: admin boundary enforced server-side via require_role on warehouses/dictionary/settings/users include_router calls (operator 403 before route body); /settings/users create/deactivate/reactivate/reset ships with scoped CSRF hx-headers until Plan 06 adds the base-chrome line
 - [Phase ?]: Plan 25-06: logout is a hrefless hx-post chrome control; NAV-08 smoke count retargeted to href-bearing links to preserve its 8-nav-item intent
 - [Phase 25]: USER-05: author_id stamped at both single write paths via author_fields(); contextvars->threadpool propagation proven end-to-end (no explicit-param fallback needed)
+- [Phase 25]: Plan 25-08: History «Кто» column resolves the LIVE display_name via a LEFT OUTER JOIN on author_id (never inner, so pre-auth NULL-author rows survive, shown as muted frozen created_by «operator»); the «Пользователь» filter select on /reports/sales lives INSIDE the innerHTML-swapped sales_report_results.html partial so the shared period_filter hx-include (#sales-results select) reaches it and it survives swaps
 
 ### Pending Todos
 
@@ -137,8 +139,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T07:00:19.521Z
-Stopped at: Completed 25-07-PLAN.md
+Last session: 2026-07-18T07:15:38.787Z
+Stopped at: Completed 25-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
