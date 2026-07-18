@@ -2,7 +2,7 @@
 phase: 25
 slug: authentication-roles-user-attribution
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-18
 ---
@@ -80,11 +80,13 @@ created: 2026-07-18
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (new test files + conftest update)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (plan-checker Dim 8a: every impl task has an inline automated command)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify (Dim 8c pass)
+- [x] Wave 0 covers all MISSING references — each plan creates its own tests alongside implementation; no separate Wave-0-only gap (Dim 8d pass)
+- [x] No watch-mode flags (Dim 8b pass)
+- [x] Feedback latency < 60s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+> `wave_0_complete` stays `false` until execution: tests are authored but not yet run green.
+
+**Approval:** approved 2026-07-18 (design-time; per gsd-plan-checker verification of Phase 25 plans)

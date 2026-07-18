@@ -447,19 +447,24 @@ app.dependency_overrides[current_user] = override_current_user
 | A6 | Starlette `SessionMiddleware` and `Jinja2Templates(context_processors=...)` APIs are unchanged in the installed starlette 1.3.1 | Patterns 1 & 6 | API drift in a 1.x line. Verify against the installed version at plan/execute time. |
 | A7 | Login is case-sensitive ASCII; no `login_lc` Cyrillic shadow needed (unlike `name_lc`) | Users table | If operators use Cyrillic/mixed-case logins, add a `login_lc` shadow (established pattern). Confirm. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Attribution mechanism: contextvars vs explicit parameter?**
+> No `25-CONTEXT.md` / discuss-phase ran. Per autonomous planning (2026-07-18), the three
+> open questions were LOCKED to the recommended options and made explicit in the plans.
+> Resolutions recorded here so the research record matches what the plans committed to.
+
+1. **Attribution mechanism: contextvars vs explicit parameter?** — **RESOLVED → contextvars.**
    - What we know: both work; contextvars is a ~2-function diff, explicit threading touches ~7 services + callers.
    - What's unclear: threadpool propagation of contextvars in this exact stack (A1).
-   - Recommendation: implement contextvars, gate it behind a proving test; keep explicit-param as the documented fallback. Surface both to the user in discuss.
+   - **Decision:** implement contextvars, set by the auth guard, read inside the two write paths with a `settings.operator_name` fallback (keeps ~45 legacy tests green). Gated behind a mandatory threadpool-propagation proving test (Plan 25-07 Task 2); explicit-param threading documented as the fallback if the proof fails.
 
-2. **`device_id` storage: local file vs `.env` vs DB row?**
+2. **`device_id` storage: local file vs `.env` vs DB row?** — **RESOLVED → local file, not in the DB.**
    - What we know: it must be per-install unique and must not travel with a copied `.db`.
-   - Recommendation: generate once into a local file (or `.env`), loaded by `app/config.py`. Confirm with user (A2) since later sync phases depend on it.
+   - **Decision:** generate a per-install UUID once into a local file (under the app data dir, e.g. `data/`), loaded by `app/config.py` — deliberately NOT a DB row, so a copied/restored `.db` backup does not clone the device identity (Plan 25-01).
 
-3. **Where do warehouses/dictionaries/settings sit on the operator/admin line?**
-   - ROLE-03/04 name "user management, warehouses, dictionaries, settings" as admin-only. Verify each existing router's path prefix maps cleanly to `require_role("administrator")` and that operator-needed sub-actions (e.g., picking a warehouse during a receipt) are not accidentally blocked. Enumerate exact admin router set at plan time.
+3. **Where do warehouses/dictionaries/settings sit on the operator/admin line?** — **RESOLVED → enumerated admin router set.**
+   - ROLE-03/04 name "user management, warehouses, dictionaries, settings" as admin-only.
+   - **Decision:** admin-only routers = warehouses / dictionaries / settings / users, each guarded server-side with `require_role("administrator")`; operator routers (receipts, sales, write-offs/returns/corrections, cash movements, and operator-needed sub-actions like picking a warehouse during a receipt) explicitly excluded from the admin gate (Plan 25-05 Task 1).
 
 ## Environment Availability
 
