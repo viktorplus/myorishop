@@ -257,3 +257,142 @@ def test_auth_guard_issues_csrf_before_public_return():
     request.method = "GET"
     asyncio.run(security.auth_guard(request, session=None))
     assert request.session.get("csrf")
+
+
+# --- Integration tests (Plan 04 Task 3): the real app-level guard ------------
+#
+# These use the `anon_client` fixture (real guard active, no auth override) plus
+# the `login` helper from conftest. They prove the end-to-end AUTH-01/03/04/05 +
+# ROLE-02 behaviours through the HTTP stack, not just the unit primitives above.
+
+import re
+
+
+def _seed_admin(session, *, login="admin", password="pw", is_active=1):
+    """Persist one administrator with a real Argon2id hash for login round-trips."""
+    user = User(
+        id=new_id(),
+        login=login,
+        display_name="Админ",
+        role="administrator",
+        password_hash=auth.hash_password(password),
+        is_active=is_active,
+    )
+    session.add(user)
+    session.commit()
+    return user
+
+
+def _csrf_from_login_page(anon_client) -> str:
+    """Scrape the session CSRF token from the rendered login page hidden field."""
+    html = anon_client.get("/login").text
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match, "login page must render a csrf_token hidden field"
+    return match.group(1)
+
+
+def test_guard_redirects_html_and_htmx(anon_client, session):
+    _seed_admin(session)
+    # Plain (HTML) GET of a protected route → 303 to /login.
+    resp = anon_client.get("/products", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/login"
+    # The same GET as an HTMX request → 401 + HX-Redirect (Pitfall 3): HTMX does
+    # not swap 4xx, so the browser must be told to navigate via the header.
+    hx = anon_client.get(
+        "/history", headers={"HX-Request": "true"}, follow_redirects=False
+    )
+    assert hx.status_code == 401
+    assert hx.headers["hx-redirect"] == "/login"
+
+
+def test_guard_gated_export_backup(anon_client, session):
+    # AUTH-01 must cover export + backup, not just the ordinary pages.
+    _seed_admin(session)
+    for path in ("/export", "/export/products.csv", "/backup"):
+        resp = anon_client.get(path, follow_redirects=False)
+        assert resp.status_code == 303, path
+        assert resp.headers["location"] == "/login", path
+
+
+def test_session_persist_logout(anon_client, session, login):
+    # AUTH-03: login sets a signed-cookie session that survives a SECOND request;
+    # logout ends it.
+    _seed_admin(session, login="anna", password="s3cret")
+    resp = login(anon_client, "anna", "s3cret")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+    # Second request (cookie persists via TestClient) reaches a protected page.
+    page = anon_client.get("/products", follow_redirects=False)
+    assert page.status_code == 200
+    # Logout clears the session (a public path — no CSRF needed).
+    out = anon_client.post("/logout", follow_redirects=False)
+    assert out.status_code == 303
+    assert out.headers["location"] == "/login"
+    # After logout the protected page redirects to /login again.
+    after = anon_client.get("/products", follow_redirects=False)
+    assert after.status_code == 303
+    assert after.headers["location"] == "/login"
+
+
+def test_login_bad_credentials_writes_no_session(anon_client, session):
+    _seed_admin(session, login="anna", password="s3cret")
+    resp = anon_client.post(
+        "/login",
+        data={"login": "anna", "password": "wrong"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 422
+    assert "Неверный логин или пароль." in resp.text
+    # No session was written → the next protected request still redirects.
+    assert anon_client.get("/products", follow_redirects=False).status_code == 303
+
+
+def test_first_run_setup(anon_client, session):
+    # AUTH-04: zero users → every protected route redirects to /setup.
+    from app.services.users import count_users
+
+    assert count_users(session) == 0
+    guarded = anon_client.get("/products", follow_redirects=False)
+    assert guarded.status_code == 303
+    assert guarded.headers["location"] == "/setup"
+    # POST /setup creates the first administrator and logs them in.
+    created = anon_client.post(
+        "/setup",
+        data={"display_name": "Первый", "login": "root", "password": "pw"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    assert created.headers["location"] == "/"
+    assert count_users(session) == 1
+    # Now logged in: a protected page renders.
+    assert anon_client.get("/products", follow_redirects=False).status_code == 200
+    # Self-close: a SECOND POST /setup does NOT create another user.
+    second = anon_client.post(
+        "/setup",
+        data={"display_name": "Второй", "login": "root2", "password": "pw"},
+        follow_redirects=False,
+    )
+    assert second.status_code == 303
+    assert second.headers["location"] == "/login"
+    assert count_users(session) == 1
+
+
+def test_csrf_enforced_on_protected_post(anon_client, session, login):
+    # AUTH-05: an authenticated but token-less unsafe POST is rejected (403);
+    # the same POST carrying the session token succeeds.
+    _seed_admin(session, login="anna", password="s3cret")
+    login(anon_client, "anna", "s3cret")
+    no_token = anon_client.post(
+        "/warehouses", data={"name": "Без токена"}, follow_redirects=False
+    )
+    assert no_token.status_code == 403
+    token = _csrf_from_login_page(anon_client)
+    with_token = anon_client.post(
+        "/warehouses",
+        data={"name": "С токеном"},
+        headers={"X-CSRF-Token": token},
+        follow_redirects=False,
+    )
+    assert with_token.status_code != 403
+    assert with_token.status_code == 303
