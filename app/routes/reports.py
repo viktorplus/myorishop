@@ -22,6 +22,7 @@ from app.services.stock import (
     effective_low_stock_threshold,
     low_stock_products,
 )
+from app.services.users import list_users
 
 router = APIRouter()
 
@@ -93,6 +94,7 @@ def reports_sales_page(
     request: Request,
     from_: str = Query("", alias="from"),
     to: str = Query("", alias="to"),
+    author: str = Query(""),
     session: Session = Depends(get_session),
 ):
     period = _resolve_period(from_, to, settings.display_tz)
@@ -101,7 +103,7 @@ def reports_sales_page(
         start_iso, end_iso = local_day_bounds_utc(
             period["from_date"], period["to_date"], settings.display_tz
         )
-        report = sales_profit_report(session, start_iso, end_iso)
+        report = sales_profit_report(session, start_iso, end_iso, author or None)
 
     context = {
         "from_date": period["from_date"].isoformat(),
@@ -110,6 +112,8 @@ def reports_sales_page(
         "presets": period["presets"],
         "error": period["error"],
         "report": report,
+        "users": list_users(session),
+        "author_id": author,
     }
     # CR-01 precedent (history.py): only a genuine HX-Request header gets
     # the chrome-less results partial; a filtered top-level GET still

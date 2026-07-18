@@ -17,7 +17,9 @@ from app.config import settings
 from app.models import WRITEOFF_REASONS, Operation, Product
 
 
-def sales_profit_report(session: Session, start_iso: str, end_iso: str) -> dict:
+def sales_profit_report(
+    session: Session, start_iso: str, end_iso: str, author_id: str | None = None
+) -> dict:
     """Sales/profit totals and per-product breakdown for a UTC [start_iso, end_iso) period.
 
     RESEARCH Pitfall 2: unit_cost_cents is nullable — a sale line whose cost
@@ -31,7 +33,7 @@ def sales_profit_report(session: Session, start_iso: str, end_iso: str) -> dict:
     NOT filter Product.deleted_at, so a product soft-deleted after the
     period still appears in a report for a period before its deletion.
     """
-    rows = session.execute(
+    stmt = (
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
         .where(
@@ -39,7 +41,15 @@ def sales_profit_report(session: Session, start_iso: str, end_iso: str) -> dict:
             Operation.created_at >= start_iso,
             Operation.created_at < end_iso,
         )
-    ).all()
+    )
+    # RPT-01 (Plan 08): optional operator filter — extra parameterized
+    # `.where(...)` mirroring the period bounds above. An unknown/absent id
+    # matches no rows (T-25-08-01, never a raw 500); pre-auth NULL-author sale
+    # rows are excluded when a user is selected (they predate auth). author_id
+    # None reproduces the all-authors report exactly.
+    if author_id:
+        stmt = stmt.where(Operation.author_id == author_id)
+    rows = session.execute(stmt).all()
 
     entries: dict[str, dict] = {}
     cost_unknown_count = 0
