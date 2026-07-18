@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     db_path: str = "data/myorishop.db"
+    # SRV-01/SRV-02 (Phase 26): the SINGLE DB-URL source of truth read by both
+    # alembic/env.py and app/db.py. Empty default so an explicit DATABASE_URL in
+    # .env/environment wins (field database_url ⇒ env var DATABASE_URL via
+    # pydantic-settings); otherwise _resolve_local_identity fills the local
+    # sqlite:///{db_path} default below. A PostgreSQL URL
+    # (postgresql+psycopg://…) only ever arrives via env/.env — never hardcode a
+    # host/user/password here.
+    database_url: str = ""
     operator_name: str = "operator"
     # AUTH-03 (Pitfall 5): signing key for session cookies. Empty default so an
     # explicit SECRET_KEY in .env wins; otherwise a stable per-install key is
@@ -52,6 +60,10 @@ class Settings(BaseSettings):
         default and the static `"device-01"` sentinel are replaced.
         """
         data_dir = Path(self.db_path).parent
+        # Single source of truth: only the empty default is filled; an explicit
+        # DATABASE_URL (e.g. postgresql+psycopg://…) is left untouched.
+        if not self.database_url:
+            self.database_url = f"sqlite:///{self.db_path}"
         if not self.secret_key:
             self.secret_key = get_or_create_local_id(data_dir / "secret_key")
         if self.device_id == "device-01":
