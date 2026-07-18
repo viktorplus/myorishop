@@ -9,6 +9,8 @@ CLAUDE.md safety: raw passwords here are local test literals only; no hash
 value is asserted on or printed.
 """
 
+from sqlalchemy import select
+
 from app.core import new_id
 from app.models import User
 from app.services import auth, users
@@ -232,3 +234,112 @@ def test_list_users_ordered_by_display_name(session):
     names = [u.display_name for u in users.list_users(session)]
     assert names == sorted(names)
     assert names[0] == "Анна"
+
+
+# --- HTTP surface (Plan 25-05 Task 2): /settings/users create/deactivate/reset --
+#
+# These drive the routes + templates through the authenticated `client` fixture
+# (a seeded administrator with the guard/CSRF overridden), proving the HTTP
+# behaviours in the UI-SPEC (the service-level rules above are re-used, not
+# re-tested). The `session` fixture is the SAME session the route sees, so a row
+# created/mutated over HTTP is visible to the assertions.
+
+
+def _admin(session) -> User:
+    """The administrator seeded by the `client` fixture (login 'test-admin')."""
+    return session.scalar(select(User).where(User.login == "test-admin"))
+
+
+def test_user_admin_http_create_shows_row_and_notice(client, session):
+    resp = client.post(
+        "/settings/users",
+        data={
+            "display_name": "Оператор HTTP",
+            "login": "op-http",
+            "role": "operator",
+            "password": "pw",
+        },
+    )
+    assert resp.status_code == 200
+    assert "Пользователь создан." in resp.text
+    assert "op-http" in resp.text
+    created = session.scalar(select(User).where(User.login == "op-http"))
+    assert created is not None
+    assert created.role == "operator"
+    assert created.is_active == 1
+    # The raw password never appears in the response.
+    assert "pw" not in resp.text
+
+
+def test_user_admin_http_duplicate_login_is_422(client, session):
+    client.post(
+        "/settings/users",
+        data={"display_name": "Первый", "login": "dup", "role": "operator", "password": "pw"},
+    )
+    resp = client.post(
+        "/settings/users",
+        data={"display_name": "Второй", "login": "dup", "role": "operator", "password": "pw"},
+    )
+    assert resp.status_code == 422
+    assert users.LOGIN_TAKEN_ERROR in resp.text
+    # ZERO extra writes — still exactly one 'dup' (plus the seeded admin).
+    assert len(list(session.scalars(select(User).where(User.login == "dup")))) == 1
+
+
+def test_http_deactivate_sets_inactive_and_shows_status(client, session):
+    client.post(
+        "/settings/users",
+        data={"display_name": "Жертва", "login": "victim", "role": "operator", "password": "pw"},
+    )
+    victim = session.scalar(select(User).where(User.login == "victim"))
+    resp = client.post(f"/settings/users/{victim.id}/deactivate")
+    assert resp.status_code == 200
+    assert "Отключён" in resp.text
+    assert session.get(User, victim.id).is_active == 0
+
+
+def test_http_deactivate_refuses_self(client, session):
+    admin = _admin(session)
+    resp = client.post(f"/settings/users/{admin.id}/deactivate")
+    assert resp.status_code == 422
+    assert users.SELF_DEACTIVATE_ERROR in resp.text
+    # ZERO writes — the acting admin stays active (no self-lockout, T-25-05-03).
+    assert session.get(User, admin.id).is_active == 1
+
+
+def test_http_reactivate_restores_active(client, session):
+    client.post(
+        "/settings/users",
+        data={"display_name": "Назад", "login": "back", "role": "operator", "password": "pw"},
+    )
+    user = session.scalar(select(User).where(User.login == "back"))
+    client.post(f"/settings/users/{user.id}/deactivate")
+    resp = client.post(f"/settings/users/{user.id}/reactivate")
+    assert resp.status_code == 200
+    assert "Активен" in resp.text
+    assert session.get(User, user.id).is_active == 1
+
+
+def test_http_reset_password_updates_hash_and_never_echoes(client, session):
+    client.post(
+        "/settings/users",
+        data={
+            "display_name": "Сброс",
+            "login": "resetme",
+            "role": "operator",
+            "password": "old-pass",
+        },
+    )
+    user = session.scalar(select(User).where(User.login == "resetme"))
+    old_hash = user.password_hash
+    resp = client.post(
+        f"/settings/users/{user.id}/reset-password",
+        data={"new_password": "brand-new-pass"},
+    )
+    assert resp.status_code == 200
+    assert "Пароль сброшен." in resp.text
+    # The new password is written server-side and NEVER echoed back (T-25-05-05).
+    assert "brand-new-pass" not in resp.text
+    session.refresh(user)
+    assert user.password_hash != old_hash
+    assert auth.verify_password(session, user, "brand-new-pass") is True

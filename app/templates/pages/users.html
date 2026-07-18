@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Пользователи</h1>
+
+{# base.html does not yet carry the CSRF hx-headers line (that lands in Plan 06),
+   so this admin page scopes the token onto its own content wrapper — hx-headers
+   is inherited by every descendant hx-post (create / deactivate / reactivate /
+   reset), which the app-level guard requires on unsafe methods (AUTH-05). #}
+<div hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+  <form class="stacked-form" method="post" action="/settings/users"
+        hx-post="/settings/users" hx-target="#users-table" hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <h2>Создать пользователя</h2>
+    <div class="field">
+      <label for="display_name">Отображаемое имя</label>
+      <input type="text" id="display_name" name="display_name" required autofocus>
+    </div>
+    <div class="field">
+      <label for="login">Логин</label>
+      <input type="text" id="login" name="login" required>
+    </div>
+    <div class="field">
+      <label for="role">Роль</label>
+      <select id="role" name="role">
+        {% for value, label in ROLES.items() %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="password">Пароль</label>
+      <input type="password" id="password" name="password" required
+             autocomplete="new-password">
+    </div>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-actions">
+      <button type="submit">Создать пользователя</button>
+    </div>
+  </form>
+
+  {% include "partials/user_rows.html" %}
+</div>
+{% endblock %}

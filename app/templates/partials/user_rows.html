@@ -1,0 +1,64 @@
+{# Users table (USER-01..04) — the single swappable #users-table block, reused
+   for the create-success refresh and the deactivate/reactivate swaps. Columns:
+   Имя / Логин / Роль / Статус / Действия. Autoescape only — display_name and
+   login are untrusted-at-rest text; NEVER |safe (T-05-18 precedent). Stored role
+   stays Latin; only its RU label from ROLES is shown (ROLE-01). #}
+<div id="users-table">
+  {% if notice %}<p>{{ notice }}</p>{% endif %}
+  {% if errors %}
+    {% for field, message in errors.items() %}
+    <p class="error">{{ message }}</p>
+    {% endfor %}
+  {% endif %}
+  <table>
+    <thead>
+      <tr>
+        <th>Имя</th>
+        <th>Логин</th>
+        <th>Роль</th>
+        <th>Статус</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if not users %}
+      <tr>
+        <td colspan="5" class="empty-state muted">Пользователей пока нет.</td>
+      </tr>
+      {% else %}
+      {% for u in users %}
+      <tr id="user-row-{{ u.id }}">
+        <td>{{ u.display_name }}</td>
+        <td>{{ u.login }}</td>
+        <td>{{ ROLES.get(u.role, u.role) }}</td>
+        <td>{% if u.is_active %}Активен{% else %}<span class="muted">Отключён</span>{% endif %}</td>
+        <td>
+          {% if u.is_active %}
+          {# Reset password: native <details> reveal (no client JS, no extra
+             GET route) wrapping the swappable in-row reset fragment. #}
+          <details>
+            <summary>Сбросить пароль</summary>
+            {% with user = u %}{% include "partials/user_reset.html" %}{% endwith %}
+          </details>
+          {# USER-03/T-25-05-03: the acting admin's OWN row omits the deactivate
+             control (self-lockout is also refused server-side). #}
+          {% if not (current_user and current_user.id == u.id) %}
+          <button type="button" class="danger"
+                  hx-post="/settings/users/{{ u.id }}/deactivate"
+                  hx-target="#users-table" hx-swap="outerHTML"
+                  hx-confirm="Отключить пользователя „{{ u.display_name }}“? Он больше не сможет войти, но его прошлые операции останутся за ним.">
+            Деактивировать</button>
+          {% endif %}
+          {% else %}
+          <button type="button"
+                  hx-post="/settings/users/{{ u.id }}/reactivate"
+                  hx-target="#users-table" hx-swap="outerHTML">
+            Активировать</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>

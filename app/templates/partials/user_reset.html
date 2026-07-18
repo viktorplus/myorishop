@@ -1,0 +1,16 @@
+{# In-row reset-password fragment (USER-04). Swapped in place by
+   POST /settings/users/{id}/reset-password. The «Новый пароль» field is NEVER
+   pre-filled and the raw password is never echoed back (T-25-05-05). #}
+<form id="user-reset-{{ user.id }}" method="post"
+      action="/settings/users/{{ user.id }}/reset-password"
+      hx-post="/settings/users/{{ user.id }}/reset-password"
+      hx-target="#user-reset-{{ user.id }}" hx-swap="outerHTML"
+      hx-disabled-elt="find button">
+  <label for="new-password-{{ user.id }}">Новый пароль</label>
+  <input type="password" id="new-password-{{ user.id }}" name="new_password"
+         autocomplete="new-password">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit">Сбросить пароль</button>
+  {% if reset_error %}<span class="error">{{ reset_error }}</span>{% endif %}
+  {% if reset_done %}<span>Пароль сброшен.</span>{% endif %}
+</form>
