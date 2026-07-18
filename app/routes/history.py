@@ -13,6 +13,7 @@ from app.db import get_session
 from app.routes import templates
 from app.services.operations import filter_products, history_view
 from app.services.pagination import page_window
+from app.services.users import list_users
 
 router = APIRouter()
 
@@ -89,6 +90,7 @@ def history_page(
     page: int = 0,
     category: str = "",
     customer: str = "",
+    author: str = "",
     from_: str = Query("", alias="from"),
     to: str = Query("", alias="to"),
     session: Session = Depends(get_session),
@@ -108,6 +110,7 @@ def history_page(
         page=page,
         customer=customer or None,
         category=category or None,
+        author_id=author or None,
         start_iso=start_iso,
         end_iso=end_iso,
     )
@@ -130,6 +133,7 @@ def history_page(
             "sort": result["sort"],
             "category": category,
             "customer": customer,
+            "author": result["author_id"],
             "from": from_date.isoformat() if from_date else "",
             "to": to_date.isoformat() if to_date else "",
         }.items()
@@ -152,6 +156,8 @@ def history_page(
         "columns": result["columns"],
         "category": category,
         "customer": customer,
+        "users": list_users(session),
+        "author_id": result["author_id"],
         "from_date": from_date.isoformat() if from_date else "",
         "to_date": to_date.isoformat() if to_date else "",
         "active_preset": period["active_preset"],

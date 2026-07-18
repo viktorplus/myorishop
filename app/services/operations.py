@@ -8,7 +8,16 @@ only, no SQLite-specific SQL (D-05 sync-readiness).
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import OPERATION_TYPES, Batch, Customer, Operation, Product, Sale, Warehouse
+from app.models import (
+    OPERATION_TYPES,
+    Batch,
+    Customer,
+    Operation,
+    Product,
+    Sale,
+    User,
+    Warehouse,
+)
 from app.services.catalog import category_options
 from app.services.customers import search_customers
 from app.services.ledger import STOCK_AFFECTING_TYPES
@@ -49,6 +58,7 @@ def history_view(
     category: str | None = None,
     start_iso: str | None = None,
     end_iso: str | None = None,
+    author_id: str | None = None,
     sort: str = "",
     page: int = 0,
     page_size: int = LIST_PAGE_SIZE,
@@ -81,7 +91,7 @@ def history_view(
     """
     order_by = _SORT_MAP.get(sort, _DEFAULT_ORDER)
     stmt = (
-        select(Operation, Product, Batch, Warehouse, Customer)
+        select(Operation, Product, Batch, Warehouse, Customer, User)
         .join(Product, Operation.product_id == Product.id)
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         # HIST-01: always outerjoined — cheap, Batch is already outerjoined —
@@ -96,6 +106,12 @@ def history_view(
         # rows since Operation.sale_id -> Sale is at most one-to-one.
         .outerjoin(Sale, Operation.sale_id == Sale.id)
         .outerjoin(Customer, Sale.customer_id == Customer.id)
+        # USER-06 (Plan 08): LEFT OUTER JOIN the author — NEVER inner — so a
+        # pre-auth NULL-author row (created_by frozen to "operator", author_id
+        # NULL) is never dropped from the unfiltered view (RESEARCH Pitfall 2).
+        # Surfaces the LIVE display_name per row; the template falls back to
+        # the frozen created_by text when this join yields None.
+        .outerjoin(User, Operation.author_id == User.id)
         .order_by(*order_by)
     )
     count_stmt = (
@@ -137,6 +153,15 @@ def history_view(
             Operation.created_at >= start_iso, Operation.created_at < end_iso
         )
 
+    # USER-06: optional author filter — additive, combines with AND, applied to
+    # BOTH stmt and count_stmt (mirrors the customer/category kwarg blocks).
+    # Parameterized `.where(...)` only (T-25-08-01): an unknown/absent id simply
+    # matches no rows, never a raw 500. Pre-auth NULL-author rows do not match a
+    # selected user — correct, they predate auth.
+    if author_id:
+        stmt = stmt.where(Operation.author_id == author_id)
+        count_stmt = count_stmt.where(Operation.author_id == author_id)
+
     total = session.scalar(count_stmt) or 0
     total_pages = max(1, -(-total // page_size))
     page = max(0, min(page, total_pages - 1))
@@ -145,14 +170,24 @@ def history_view(
     rows = session.execute(stmt).all()
     return {
         "rows": [
-            {"op": op, "product": p, "batch": b, "warehouse": w, "customer": c}
-            for op, p, b, w, c in rows
+            {
+                "op": op,
+                "product": p,
+                "batch": b,
+                "warehouse": w,
+                "customer": c,
+                # USER-06: live author (or None for a pre-auth NULL-author row —
+                # the template then falls back to the frozen created_by text).
+                "author": u,
+            }
+            for op, p, b, w, c, u in rows
         ],
         "page": page,
         "total": total,
         "total_pages": total_pages,
         "type_filter": type_filter or "",
         "product_id": product_id or "",
+        "author_id": author_id or "",
         "sort": sort or "",
         # HIST-01: None for "no type selected" AND for the 3 audit types —
         # both cases are simply absent from HISTORY_TYPE_COLUMNS (D-04).
