@@ -15,14 +15,22 @@ from app.models import User
 from app.services import auth
 
 
-def _make_user(session, *, raw_password: str, password_hash: str | None = None) -> User:
-    """Persist a minimal admin User carrying the given (or freshly hashed) hash."""
+_UNSET = object()
+
+
+def _make_user(session, *, raw_password: str, password_hash=_UNSET) -> User:
+    """Persist a minimal admin User carrying the given (or freshly hashed) hash.
+
+    `password_hash` defaults to a fresh Argon2id hash of `raw_password`; pass an
+    explicit value (including "") to store a malformed/empty hash under test.
+    """
+    stored = auth.hash_password(raw_password) if password_hash is _UNSET else password_hash
     user = User(
         id=new_id(),
         login=f"login-{new_id()[:8]}",
         display_name="Тест Пользователь",
         role="administrator",
-        password_hash=password_hash or auth.hash_password(raw_password),
+        password_hash=stored,
         is_active=1,
     )
     session.add(user)
