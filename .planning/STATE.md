@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
-stopped_at: Completed 25-08-PLAN.md
-last_updated: "2026-07-18T22:24:51.212Z"
-last_activity: 2026-07-18 -- Phase 26 planning complete
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-07-18T22:43:13.285Z"
+last_activity: 2026-07-18 -- Phase 26 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 17
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 25 — authentication-roles-user-attribution
+**Current focus:** Phase 26 — postgresql-portability-append-only-parity
 
 ## Current Position
 
-Phase: 25 (authentication-roles-user-attribution) — EXECUTING
-Plan: 8 of 8
+Phase: 26 (postgresql-portability-append-only-parity) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 26 planning complete
+Last activity: 2026-07-18 -- Phase 26 execution started
 
 Progress: [██████████] 100%
 
@@ -71,6 +71,7 @@ Progress: [██████████] 100%
 | Phase 25 P07 | ~15min | 2 tasks | 3 files |
 | Phase 25 P08 | 25 min | 3 tasks | 6 files |
 | Phase 25 P09 | 5min | 1 tasks | 2 files |
+| Phase 26 P01 | ~12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 25]: USER-05: author_id stamped at both single write paths via author_fields(); contextvars->threadpool propagation proven end-to-end (no explicit-param fallback needed)
 - [Phase 25]: Plan 25-08: History «Кто» column resolves the LIVE display_name via a LEFT OUTER JOIN on author_id (never inner, so pre-auth NULL-author rows survive, shown as muted frozen created_by «operator»); the «Пользователь» filter select on /reports/sales lives INSIDE the innerHTML-swapped sales_report_results.html partial so the shared period_filter hx-include (#sales-results select) reaches it and it survives swaps
 - [Phase ?]: Phase 25-09: /finance/report nav highlight moved from admin «Настройки» to «Финансы» (operator-visible per UAT test 1); active-state CSS-class only, no route/gate change
+- [Phase 26]: settings.database_url is the single DB-URL source of truth (sqlite default filled in _resolve_local_identity; DATABASE_URL env wins), read by alembic/env.py and app/db.py in Plan 03; no PG credential hardcoded (T-26-02)
+- [Phase 26]: PG-parity tests match append-only rejection on the message SUBSTRING 'append-only' (PG raises a driver exception, not SQLite IntegrityError); tests/test_pg_parity.py skips on SQLite, RED in CI until Plans 02-03
 
 ### Pending Todos
 
@@ -141,8 +144,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T21:31:27.357Z
-Stopped at: Completed 25-08-PLAN.md
+Last session: 2026-07-18T22:43:13.265Z
+Stopped at: Completed 26-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

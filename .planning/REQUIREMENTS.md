@@ -35,8 +35,8 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 ### Central Server & PostgreSQL (SRV)
 
-- [ ] **SRV-01**: The same data models and single Alembic migration history run unchanged on both SQLite (client) and PostgreSQL (server).
-- [ ] **SRV-02**: The central server runs on PostgreSQL and enforces the same append-only ledger guarantee (UPDATE/DELETE of ledger rows blocked at the database) as the SQLite client.
+- [x] **SRV-01**: The same data models and single Alembic migration history run unchanged on both SQLite (client) and PostgreSQL (server).
+- [x] **SRV-02**: The central server runs on PostgreSQL and enforces the same append-only ledger guarantee (UPDATE/DELETE of ledger rows blocked at the database) as the SQLite client.
 - [ ] **SRV-03**: The local desktop client keeps working fully offline on local SQLite; the central server is required only for sync/upload, never for day-to-day local work.
 - [ ] **SRV-04**: The central server hosts two online web interfaces — a browser (desktop) UI and a mobile UI. The mobile version is server-only: there is no local/offline mobile install; mobile users always work against the server online.
 
@@ -133,8 +133,8 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | ROLE-03 | Phase 25 | Complete |
 | ROLE-04 | Phase 25 | Complete |
 | RPT-01 | Phase 25 | Complete |
-| SRV-01 | Phase 26 | Pending |
-| SRV-02 | Phase 26 | Pending |
+| SRV-01 | Phase 26 | Complete |
+| SRV-02 | Phase 26 | Complete |
 | SYNC-02 | Phase 27 | Pending |
 | SYNC-03 | Phase 27 | Pending |
 | SYNC-04 | Phase 27 | Pending |
