@@ -29,7 +29,10 @@
      amount. Standalone file, mirrors the price-cue.js line above. #}
   <script src="/static/sale-total.js" defer></script>
 </head>
-<body>
+{# AUTH-05: one hx-headers line on <body> carries the session CSRF token to
+   EVERY hx-post/hx-put/hx-delete on the page (login is on auth_base; here it
+   covers logout + every existing state-changing form). #}
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   <main class="container">
     <nav>
       <a href="/"{% if request.url.path == "/" %} class="active"{% endif %}>Главная</a>
@@ -39,7 +42,19 @@
       <a href="/history"{% if request.url.path.startswith("/history") %} class="active"{% endif %}>История</a>
       <a href="/reports"{% if request.url.path.startswith("/reports") %} class="active"{% endif %}>Отчёты</a>
       <a href="/finance"{% if request.url.path.startswith("/finance") and not request.url.path.startswith("/finance/report") %} class="active"{% endif %}>Финансы</a>
+      {# ROLE-03: cosmetic menu-hide only — «Настройки» holds the admin-only
+         sections. The server-side require_role("administrator") dependency on
+         those routers is the real boundary; this {% if %} just hides the link. #}
+      {% if current_user and current_user.role == "administrator" %}
       <a href="/settings"{% if request.url.path.startswith("/settings") or request.url.path.startswith("/finance/report") %} class="active"{% endif %}>Настройки</a>
+      {% endif %}
+      {# AUTH-05: logout is a state-change → POST, CSRF-carried via the body
+         hx-headers above. Right-aligned via margin-left:auto (no new CSS token),
+         accent text from the existing `a` rule. display_name is autoescaped —
+         never |safe (T-25-06-03). #}
+      {% if current_user %}
+      <a hx-post="/logout" style="margin-left:auto;cursor:pointer">{{ current_user.display_name }} · Выйти</a>
+      {% endif %}
     </nav>
     {% block content %}{% endblock %}
   </main>
