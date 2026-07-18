@@ -132,7 +132,11 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
   2. Cyrillic case-insensitive search returns identical results on PostgreSQL and SQLite (the shadow-column approach holds uniformly on both dialects). (SRV-01)
   3. On PostgreSQL, any attempt to UPDATE or DELETE a row in `operations` or `cash_movements` is rejected at the database, exactly as on SQLite. (SRV-02)
 
-**Plans**: TBD
+**Plans**: 3 plans (2 waves)
+
+- [ ] 26-01-PLAN.md — psycopg dependency + `settings.database_url` single source of truth + PG-parity test scaffold (wave 1)
+- [ ] 26-02-PLAN.md — Dialect-branch append-only trigger DDL in frozen migrations 0001 + 0013 (wave 1)
+- [ ] 26-03-PLAN.md — Dialect-gate engine (app/db.py) + Alembic env + GitHub Actions CI with postgres:17 (wave 2)
 
 #### Phase 27: Shared Idempotent Merge Core
 
@@ -229,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
-| 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
+| 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/3 | Planned | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
 | 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
