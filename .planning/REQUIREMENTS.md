@@ -12,8 +12,8 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 ### Authentication (AUTH)
 
 - [ ] **AUTH-01**: User must log in with a login and password before reaching any page — on the local desktop client and on both of the server's interfaces (browser and mobile).
-- [ ] **AUTH-02**: Passwords are stored only as Argon2id hashes — never in plaintext or a reversible form.
-- [ ] **AUTH-03**: A logged-in session persists across browser refresh via a signed cookie, and the user can log out to end it.
+- [x] **AUTH-02**: Passwords are stored only as Argon2id hashes — never in plaintext or a reversible form.
+- [x] **AUTH-03**: A logged-in session persists across browser refresh via a signed cookie, and the user can log out to end it.
 - [ ] **AUTH-04**: On first run with no users yet, the app guides creation of an initial administrator account (no default credentials are shipped).
 - [ ] **AUTH-05**: HTMX POST forms are protected against CSRF.
 
@@ -118,8 +118,8 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | AUTH-01 | Phase 25 | Pending |
-| AUTH-02 | Phase 25 | Pending |
-| AUTH-03 | Phase 25 | Pending |
+| AUTH-02 | Phase 25 | Complete |
+| AUTH-03 | Phase 25 | Complete |
 | AUTH-04 | Phase 25 | Pending |
 | AUTH-05 | Phase 25 | Pending |
 | USER-01 | Phase 25 | Pending |
@@ -155,6 +155,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | OFF-07 | Phase 30 | Pending |
 
 **Phase → Requirements summary:**
+
 - **Phase 25 — Authentication, Roles & User Attribution:** AUTH-01..05, USER-01..06, ROLE-01..04, RPT-01 (16)
 - **Phase 26 — PostgreSQL Portability & Append-Only Parity:** SRV-01, SRV-02 (2)
 - **Phase 27 — Shared Idempotent Merge Core:** SYNC-02, SYNC-03, SYNC-04, SYNC-05 (4)
@@ -163,6 +164,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 - **Phase 30 — Offline Self-Uploading File:** OFF-01..07 (7)
 
 **Coverage:**
+
 - v3.0 requirements: 36 total (AUTH×5, USER×6, ROLE×4, SRV×4, SYNC×9, OFF×7, RPT×1)
 - Mapped to phases: 36 ✓
 - Unmapped: 0 ✓ (every requirement maps to exactly one phase, no duplicates)

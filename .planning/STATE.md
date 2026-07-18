@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: v3.0 roadmap created (Phases 25-30), STATE + REQUIREMENTS traceability updated, ready to plan Phase 25
-last_updated: "2026-07-18T01:31:31.968Z"
-last_activity: 2026-07-18 -- Phase 25 planning complete
+last_updated: "2026-07-18T05:32:54.933Z"
+last_activity: 2026-07-18 -- Phase 25 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 8
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 25 — Authentication, Roles & User Attribution (ready to plan)
+**Current focus:** Phase 25 — authentication-roles-user-attribution
 
 ## Current Position
 
-Phase: 25 of 30 (Authentication, Roles & User Attribution) — first phase of v3.0
-Plan: — (not yet planned)
+Phase: 25 (authentication-roles-user-attribution) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 25 planning complete
+Last activity: 2026-07-18 -- Phase 25 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion. Per-plan v1.0-v2.0 timings archived with their milestones.*
+| Phase 25 P01 | ~10min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - **Operator revisions override research where they disagree:** mobile is server-only (SRV-04, no offline mobile install); the offline path is upload-only via a self-contained self-uploading file to a server with no app installed (OFF-01..07, not peer import); Tier-B mutable master-data conflict resolution is server-authoritative (SYNC-05).
 - **RPT-01 placed in Phase 25** (attribution phase) alongside USER-06 — same operator-filter pattern, cleanest coverage.
 - **Device identity** (per-install unique `device_id`, replacing the static `device-01` default) is a Phase 25 pre-flight for all later sync.
+- [Phase ?]: Phase 25: secret_key + per-install device_id persisted under gitignored data/ outside synced DB; env overrides win
 
 ### Pending Todos
 
@@ -123,7 +125,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T00:00:00.000Z
+Last session: 2026-07-18T05:32:19.220Z
 Stopped at: v3.0 roadmap created (Phases 25-30), STATE + REQUIREMENTS traceability updated, ready to plan Phase 25
 Resume file: none — start with `/gsd-plan-phase 25`
 
