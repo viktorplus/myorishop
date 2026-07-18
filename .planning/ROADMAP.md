@@ -105,7 +105,15 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
   3. An administrator can create a user with a display name/login/role, deactivate a user (soft-disable) without deleting them, and reset another user's password; a deactivated user can no longer log in but their past operations stay attributed; exactly two roles exist (administrator, operator). (USER-01, USER-02, USER-03, USER-04, ROLE-01)
   4. An operator can perform receipts, sales, write-offs/returns/corrections, and cash movements, but administrator-only sections (user management, warehouses, dictionaries, settings) are both hidden and server-side-blocked; an administrator has full access to everything plus every operator action. (ROLE-03, ROLE-04)
   5. Every operation and cash movement records the logged-in user as its author at the single `record_operation()` write path, and both the History page and period Reports show the operating user and can be filtered by user. (USER-05, USER-06, RPT-01)
-**Plans**: TBD
+**Plans**: 8 plans (5 waves)
+- [ ] 25-01-PLAN.md — Dependencies (argon2-cffi/itsdangerous), persisted secret_key, per-install device_id (wave 1)
+- [ ] 25-02-PLAN.md — Data layer: User model, author_id columns, ROLES, migration 0017 + trigger-survival regression (wave 1)
+- [ ] 25-03-PLAN.md — Auth/user/security services: Argon2id hashing, user CRUD, guard/require_role/contextvars/CSRF core (wave 2)
+- [ ] 25-04-PLAN.md — Flip auth on: SessionMiddleware + app-level guard + login/logout/setup + authenticated conftest fixture (wave 3)
+- [ ] 25-05-PLAN.md — Admin role gating (require_role on admin routers) + user-management page /settings/users (wave 4)
+- [ ] 25-06-PLAN.md — Chrome: CSRF hx-headers + logout control + role-conditioned menu-hide (desktop + mobile) (wave 4)
+- [ ] 25-07-PLAN.md — Attribution at both write paths + contextvars threadpool-propagation proof (wave 4)
+- [ ] 25-08-PLAN.md — History + Reports author display & «Пользователь» filter (wave 5)
 **UI hint**: yes
 
 #### Phase 26: PostgreSQL Portability & Append-Only Parity
@@ -200,7 +208,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 22. Sales Page Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 23. Dashboard & History Rebuild | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
-| 25. Authentication, Roles & User Attribution | v3.0 | 0/TBD | Not started | - |
+| 25. Authentication, Roles & User Attribution | v3.0 | 0/8 | Planned | - |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 0/TBD | Not started | - |
 | 27. Shared Idempotent Merge Core | v3.0 | 0/TBD | Not started | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
