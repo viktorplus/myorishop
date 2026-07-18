@@ -1,5 +1,6 @@
 """Shared template environment for all routers (avoids main.py circular import)."""
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings as _config_settings
@@ -9,10 +10,29 @@ from app.models import (
     CASH_CATEGORIES,
     CONTACT_KINDS,
     OPERATION_TYPE_LABELS,
+    ROLES,
     WRITEOFF_REASONS,
 )
+from app.services.security import session_csrf
 
-templates = Jinja2Templates(directory="app/templates")
+
+def _auth_context(request: Request) -> dict:
+    """Inject current_user + csrf_token into EVERY template (Phase 25, AUTH-05).
+
+    Mirrors the RU-label globals below: no route re-passes these. current_user
+    is the user the guard attached to request.state (None for anon/first-run);
+    csrf_token is the session synchronizer token (empty when no SessionMiddleware
+    session exists in scope, e.g. bare mobile_client_factory tests).
+    """
+    return {
+        "current_user": getattr(request.state, "user", None),
+        "csrf_token": session_csrf(request) if "session" in request.scope else "",
+    }
+
+
+templates = Jinja2Templates(
+    directory="app/templates", context_processors=[_auth_context]
+)
 # D-07: store UTC, display local; D-06: cents rendered only via helper.
 # Aliased to _config_settings (not `settings`) so this package's own
 # `settings` attribute-name namespace doesn't collide with the sibling
@@ -37,3 +57,6 @@ templates.env.globals["CASH_BUCKET_LABELS"] = CASH_BUCKET_LABELS
 # Phase 21 (CUST-01..04): expose the RU contact-kind labels for
 # customer_contacts.html the same established way as the constants above.
 templates.env.globals["CONTACT_KINDS"] = CONTACT_KINDS
+# Phase 25 (ROLE-01): expose the role allow-list (Latin key → RU label) so the
+# role <select> and the role-conditioned menu-hide can read labels globally.
+templates.env.globals["ROLES"] = ROLES

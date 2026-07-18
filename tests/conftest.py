@@ -7,12 +7,15 @@ one (per-connection memory DBs break with pooled sessions).
 """
 
 import pytest
+from fastapi import Request
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
-from app.models import Base, Batch, Customer, Operation, Product, Sale, Warehouse
+from app.models import Base, Batch, Customer, Operation, Product, Sale, User, Warehouse
+from app.services import security
+from app.services.auth import hash_password
 from app.services.ledger import next_seq, record_operation
 
 
@@ -128,15 +131,72 @@ def customer(session):
 
 @pytest.fixture()
 def client(engine, session, product, monkeypatch):
-    """TestClient with the app's get_session dependency overridden.
+    """Authenticated TestClient — the legacy suite stays green under the guard.
 
-    app.main is imported lazily INSIDE this fixture: it only exists after
-    Plan 01-03, and a module-level import would break collection of
-    test_ledger / test_pragmas during Wave 2.
+    Phase 25 (AUTH-01): app/main now installs an app-level `auth_guard` in front
+    of every route. So the ~45 pre-existing test files would all 303→/login
+    unless the client is authenticated. This fixture:
+      - seeds ONE administrator so first-run (`count_users==0`) does not fire;
+      - overrides `auth_guard` with a no-op that attaches that admin to
+        `request.state.user` + the `_current_user` contextvar. Overriding the
+        whole guard (not just current_user) also bypasses CSRF for the legacy
+        POST tests, which carry no token.
+
+    app.main is imported lazily INSIDE this fixture (module-level import would
+    break collection of pure-unit test modules).
 
     RESEARCH Pitfall 1: `with TestClient(app)` RUNS lifespan, so the startup
     backup must be disabled here or every client test would VACUUM the
     developer's real data/myorishop.db into backups/.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+    from app.db import get_session
+    from app.main import app
+    from app.services.security import auth_guard
+
+    monkeypatch.setattr(settings, "backup_on_startup", False)
+
+    admin = User(
+        id=new_id(),
+        login="test-admin",
+        display_name="Тест Админ",
+        role="administrator",
+        password_hash=hash_password("test-admin-pw"),
+        is_active=1,
+    )
+    session.add(admin)
+    session.commit()
+
+    def override_get_session():
+        yield session
+
+    def override_auth_guard(request: Request):
+        # Attach the seeded admin so request.state.user / current_user /
+        # author_fields() resolve, and bypass the real guard's CSRF check.
+        request.state.user = admin
+        security._current_user.set(admin)
+
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[auth_guard] = override_auth_guard
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def anon_client(engine, session, monkeypatch):
+    """Unauthenticated TestClient with the REAL app-level guard active.
+
+    For the auth/roles integration tests (Plan 04 Task 3): no `auth_guard`
+    override, so the guard runs for real — anonymous requests 303→/login (or
+    →/setup on a zero-user DB), CSRF is enforced on unsafe methods, and a real
+    `POST /login` is required to obtain a session. Only `get_session` +
+    `backup_on_startup` are overridden. Deliberately does NOT seed a user so
+    each test controls the user count (first-run vs seeded).
     """
     from fastapi.testclient import TestClient
 
@@ -155,6 +215,24 @@ def client(engine, session, product, monkeypatch):
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def login():
+    """Helper: POST /login on a test client, returning the response.
+
+    Usage: `login(anon_client, "admin", "pw")`. Does not follow redirects so the
+    caller can assert on the 303/204 status and Location/HX-Redirect headers.
+    """
+
+    def _login(test_client, login_value, password):
+        return test_client.post(
+            "/login",
+            data={"login": login_value, "password": password},
+            follow_redirects=False,
+        )
+
+    return _login
 
 
 @pytest.fixture()
