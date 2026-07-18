@@ -1,179 +1,231 @@
 # Feature Research
 
-**Domain:** Cash balance / cash-flow tracking ("Касса") module for a single-operator local retail-reseller app — not an accounting system
-**Researched:** 2026-07-14
-**Confidence:** MEDIUM-HIGH (domain is well-established practitioner consensus; PROJECT.md scope itself is HIGH-confidence first-party source)
+**Domain:** Local-first inventory app gaining multi-operator sync (online + USB), mandatory auth, and admin/operator roles
+**Researched:** 2026-07-18
+**Confidence:** MEDIUM-HIGH (web-informed UX best practices + established auth/RBAC/local-first patterns; no exotic libraries required)
 
-> Supersedes the v1.1-era FEATURES.md (2026-07-10, multi-warehouse/batch-tracking domain). This file covers only the v1.3 milestone: Финансы / Касса (cash balance tracking). Prior milestone findings remain valid history in git; see PROJECT.md "Validated" section for what already shipped.
+> Scope note: this file covers ONLY the v3.0-new behavior — Sync (online + USB), Auth/Users, Roles, and per-operator attribution. The existing local warehouse/sales/finance app (v1.0–v2.0) is treated as a fixed foundation, not re-researched. Multi-currency is explicitly out of scope.
+
+---
+
+## Foundation the milestone builds on (already shipped)
+
+These existing facts change what is "table stakes" vs "hard" for v3.0. Cite them when scoping.
+
+- **Append-only operation ledger** with `record_operation()` as the single write path (Phase 1, D-rule). This is THE sync foundation and THE attribution hook. Sync = ship ledger rows; attribution = stamp the row.
+- **Per-row `device_id`** already exists on ledger rows (states machine identity — "which client").
+- **`created_by` / `created_at`** already present on the ledger (Phase 1), but `created_by` today is effectively a constant/device placeholder — v3.0 must repoint it at a real user.
+- **UUID-per-entity pattern** recommended in STACK (integer PK + `uuid` text column) — dedup key for sync. Must be confirmed present on synced tables (add where missing) before online/USB merge can be idempotent.
+- **Stock counts are a derived cache**, recomputed from the ledger — never a source of truth. Critical: sync moves ledger rows, then recomputes stock; it never syncs quantities directly.
+- **Настройки hub** (Phase 24) — the natural home for both a Sync page and User Management.
+- **Backups via `VACUUM INTO`** (Phase 3) — file-handling/offline mechanics to reuse for the USB exchange file (distinct feature, shared plumbing).
+- **History with type-adaptive columns** (Phase 23) — an operator column slots in cheaply.
+- **Dedicated mobile flow** (Phase 11) — login + a sync trigger must reach mobile parity.
+- **PostgreSQL portability** (STACK) — the server is the same models with a connection string; the client stays on SQLite.
+
+---
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features a "Касса"/petty-cash module is broken without — all are already implied by the v1.3 target features in PROJECT.md, made explicit here with complexity.
+#### Sync
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Current cash balance display | The single reason the module exists — operator must see "how much cash do I have right now" at a glance | LOW | Sum of all cash-ledger entries (in − out). If Касса reuses the existing append-only `record_operation()` ledger with new operation types, balance is a `SUM()` query, no new stored-balance column needed (avoids cache-consistency bugs) |
-| Auto-credit on every sale | PROJECT.md target feature; matches how every real petty-cash/POS tool works — revenue is captured automatically, never re-typed | LOW-MEDIUM | Hook into the existing `register_sale()` service (single ledger write path per project's own Key Decision) — do not create a second, parallel write path |
-| Auto-debit on sale-linked return | **Gap found, not in PROJECT.md's stated target list.** A sale-linked return already exists (Phase 5, OPS-01..04) and refunds the customer — if Касса doesn't mirror it as a cash-out, the balance silently drifts from physical reality the first time a return happens | LOW-MEDIUM | Same hook point as auto-credit; wire into the existing return-registration path, not a new manual step |
-| Manual withdrawal with mandatory reason | PROJECT.md target feature: "pay supplier order / salary / other" + free-text comment | LOW | Simple form: category select (3 fixed values) + required comment when "other" (and recommended even for the other two, for traceability) |
-| Movement history (chronological ledger) | Universal expectation for any cash-tracking tool — "show me what happened and when" | LOW-MEDIUM | Reuse the existing `/history` list-page pattern (Phase 5) already built for operations — pagination/filter/sort infrastructure from Phase 14 (`pagination.py`) applies directly |
-| Insufficient-balance guard on withdrawal | The app has an established UX pattern for this exact situation: oversell warns but allows override (Phase 4 SAL-05), min-price warns but allows override (Phase 7 PRICE-01) | LOW | Extend the same "warn, allow override" convention to withdrawals exceeding current balance — do NOT silently block (operator may legitimately need to record a withdrawal that puts cash negative, e.g. cash was topped up from a personal wallet) |
-| Separate "Финансы" UI section | PROJECT.md explicit requirement | LOW | New top-level nav entry + its own routes/templates, following the existing section pattern (Catalog, Warehouses, Reports, etc.) |
+| Manual **«Синхронизировать»** button | A non-technical operator wants to press one button and know data is exchanged; explicit beats invisible | MEDIUM | Primary trigger. Runs push-then-pull against the server. Same code path the USB flow reuses. |
+| Clear sync **status** (idle → «Синхронизация…» → «Готово» / «Ошибка») | Users must know what's happening; silence reads as "broken" | LOW | HTMX partial swap on the Sync page + a small header indicator. Plain-Russian microcopy, not codes. |
+| **Last-sync time** shown («Последняя синхронизация: сегодня 14:32») | Baseline trust signal for any sync UI | LOW | Store per-transport (online / USB) timestamps. |
+| **Plain-language result summary** («Отправлено 12, получено 5 операций») | Confirms something actually happened; reassures against data loss | LOW | Count rows pushed/pulled; no jargon. |
+| **Offline USB export → file** («Экспорт для обмена») | The literal milestone requirement; the offline transport | MEDIUM | Writes one exchange file (all un-exchanged ledger rows + reference deltas) to a chosen path / flash drive. |
+| **Offline USB import** («Импорт обмена») | Other half of the USB flow | MEDIUM | Reads an exchange file, merges by UUID, recomputes stock. Same merge engine as online pull. |
+| **One exchange format for both directions and both transports** | Prevents two divergent, separately-buggy code paths | MEDIUM | A single versioned envelope (schema_version + rows). Online push/pull and USB export/import all speak it. |
+| **Idempotent re-apply** (import the same file twice → nothing changes) | Non-technical users double-click, re-insert the same flash drive | MEDIUM | Dedup by operation UUID. This is the single most important correctness property of the whole milestone. |
+| **Offline-safe failure** (sync error never blocks local work) | The app was local-first for two years; that promise must hold | LOW | Sync errors are surfaced and dismissible; the local DB keeps working with no network. |
 
-### Differentiators (Valuable, Not Required for v1.3 Scope)
+#### Authentication
 
-Real capabilities seen in petty-cash and POS-till tools, worth flagging for a *future* milestone rather than building now — none are requested in the current PROJECT.md target list.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Login screen** (login + password), mandatory before any page | This milestone introduces the first security boundary; multi-operator implies "who are you" | MEDIUM | Server-rendered form; unauthenticated requests redirect to `/login`. |
+| **Logout** | Universally expected | LOW | Clears the session cookie. |
+| **Password hashing** (bcrypt or argon2) | Non-negotiable; plaintext/weak hashing is a defect, not a choice | LOW | Use `passlib`/`argon2` or `bcrypt`. Never store or log plaintext. |
+| **Signed session cookie** | Standard session mechanism for server-rendered FastAPI | LOW | Starlette `SessionMiddleware` / itsdangerous-signed cookie. No JWT needed. |
+| **Self-service password change** | Expected once a login exists | LOW | Requires current password + new. |
+| **First-run admin bootstrap** | On upgrading a no-auth app, someone must become the first admin without a hardcoded default password | MEDIUM | First launch on the new schema forces creation of the initial administrator. No default credentials shipped. |
+
+#### Roles & Users
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Two fixed roles: administrator, operator** | The stated requirement | LOW | Enum on the user row. No dynamic role system. |
+| **Role-based menu hiding** | Operators shouldn't see admin surfaces (Настройки, Склады, Справочник, Users) | LOW | Template gates on role. UX layer only — see next row for the real boundary. |
+| **Server-side route guards on every protected route** | Menu hiding is cosmetic; the actual security boundary is per-request authorization | MEDIUM | A dependency/guard on each router. Operator hitting an admin URL directly gets 403, not the page. Both this AND menu hiding are required. |
+| **Admin user management** (create user, assign role, deactivate, reset password) | An admin with no way to manage users is incomplete | MEDIUM | CRUD under Настройки. Deactivate ≠ delete (see below). Password reset sets a new password directly — no email. |
+| **Deactivate (not delete) users** | Ledger rows reference the user; deleting orphans historical attribution | LOW | Soft flag; deactivated users can't log in but stay referenced in history. |
+
+#### Attribution
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Real `created_by` = the logged-in user** on every operation | Once >1 operator exists, "who did this" is the whole point | LOW | Stamp inside `record_operation()` from the session. The single choke point makes this a one-place change. |
+| **Operator shown in History** | "Who sold this / who wrote this off" is the first question in a multi-user shop | LOW | Add an operator column to the existing type-adaptive History (Phase 23). |
+
+### Differentiators (Competitive Advantage)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Manual balance correction/adjustment entry | Reconciles the ledger-computed balance with what's physically counted in the cash box (miscounts, undocumented historical cash, rounding drift) | LOW-MEDIUM | Same pattern as existing stock "correction" operation (Phase 5 OPS-04) — a signed adjustment entry with a mandatory comment, never a direct edit of past entries. **See Gaps section — likely needed at Касса launch, not just "nice later."** |
-| Cash flow reports (period cash-in/out, by category) | Natural extension once the ledger exists; mirrors the existing Reports module (Phase 6) which already does day/week/month/custom-period aggregation | MEDIUM | Reuse the existing shared period-filter + local-day-boundary helper (Key Decision, Phase 6) rather than writing new date-math |
-| CSV export of cash movements | Consistent with existing data-export pattern (BCK-02, Phase 6) — Excel-compatible CSV, BOM, `;` delimiter, formula-injection escaping already solved once | LOW-MEDIUM | Add as a fourth export file alongside products/sales/customers, reusing the existing CSV-writer helper, not a new implementation |
-| Structured link: withdrawal → specific goods receipt/supplier order | Lets a "pay supplier" withdrawal reference *which* receipt it's paying for (partial/deferred payment tracking) rather than free text | MEDIUM | Would require a nullable FK from the cash-out entry to a receipt/operation ID, plus UI to pick one — real value only once goods are commonly received on credit/deferred payment, which isn't a stated v1.3 need |
-| Shift/period reconciliation (expected vs physically counted) | Standard POS-till practice: compare ledger-computed balance to a manual physical count, surface the delta ("shortage/overage") | MEDIUM | Genuinely valuable for catching data-entry mistakes, but the value is highest with multiple cashiers/shifts. With 1 operator it mostly duplicates the "manual correction" entry above. Low urgency now |
-| Multiple cash accounts/tills (e.g. cash box vs bank account) | Real businesses often split "cash on hand" from "money in the bank" | MEDIUM-HIGH | Explicitly out of scope for this milestone — see Anti-Features |
-| Scheduled/recurring expenses (e.g. auto-log monthly rent) | Reduces repetitive manual entry for predictable recurring costs | MEDIUM-HIGH | Requires a background scheduler (APScheduler or similar) that does not exist anywhere in the current stack — disproportionate complexity for a convenience feature; operator can log it manually in seconds |
-| Budget categories / spending limits per category | Lets the operator cap "how much can go to X per month" and get warned | MEDIUM | This is a personal-finance-app feature, not a cash-box-tracking feature; no signal in PROJECT.md that budgeting is a goal |
+| **Conflict-free-by-design sync** | Because the ledger is append-only and UUID-keyed, operations interleave by timestamp instead of overwriting — so there is essentially nothing to "resolve" for operational data | MEDIUM | This is the milestone's structural advantage: it turns the hardest part of most sync projects into a dedup + recompute. Sell it, protect it (see anti-features). Only *mutable reference data* needs a policy. |
+| **Last-write-wins on reference data** (product names, reference prices, dictionaries), server authoritative | The one place edits genuinely collide; a simple timestamp rule avoids a conflict UI entirely | MEDIUM | Compare `updated_at`; newest wins; server breaks ties. Predictable, no user prompt. |
+| **Unsynced-count badge** («3 операции не отправлены») | Ambient reassurance that pending work is tracked, without forcing a sync | LOW | Count ledger rows not yet acknowledged by the server / not yet exported. |
+| **"What will change" preview before applying a USB import** | A non-technical operator sees «Будет добавлено 5 операций, обновлено 2 товара» before committing — undo-anxiety killer | MEDIUM | Dry-run the merge, show counts, then confirm. High trust-per-effort. |
+| **Filter History/Reports by operator** | Answers "how much did each person sell", "who made this correction" | LOW | Reuses existing History filters (Phase 23) + reports period filter; add operator facet. |
+| **Optional automatic/background sync on app start + interval** (opt-in) | Convenience for the online case once manual sync is trusted | MEDIUM | Keep manual as primary and always available; auto is a toggle in Настройки. Must degrade silently offline. |
+| **USB exchange integrity check** (schema_version + checksum in the envelope) | Rejects a truncated/foreign file with «Файл обмена повреждён или несовместим» instead of corrupting data | LOW | A header field + hash; not cryptography. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-The instinct with any "money" feature is to reach for real accounting patterns. Resist it — this is a cash-box counter for one operator, not a bookkeeping system.
-
 | Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|------------------|-------------|
-| Full double-entry bookkeeping (debits/credits, chart of accounts, trial balance) | "Proper" accounting systems all work this way | Massive conceptual and implementation overhead for a single till with 3 expense categories; the project is explicitly beginner-friendly and local-first | Simple signed append-only ledger: each entry is `+amount` (sale/credit) or `-amount` (withdrawal/debit), balance = running sum |
-| Tax reporting / VAT / tax categories | "Might as well capture it while we're tracking money" | No tax requirement stated anywhere in PROJECT.md; adds jurisdiction-specific complexity that doesn't belong in a warehouse-inventory tool | Nothing — if ever needed, export the CSV and hand it to an accountant/external tool |
-| Invoicing / payment processing / payment gateway integration | Feels like a natural companion to "cash movements" | Already explicitly out of scope project-wide ("Invoicing/payments... not needed for core value") | Nothing — Касса only tracks cash already changing hands via existing sale/withdrawal flows |
-| Bank reconciliation / bank statement import | Businesses do reconcile books against bank statements | This module tracks a *physical* cash box, not a bank account; no bank integration exists or is planned | Nothing — if a bank account is ever tracked, that's a separate "account" concept, not this feature |
-| Multi-currency in Касса | Could seem needed once multi-country sync (v2.0) lands | Already deferred project-wide to v2.0 (CUR-V2-01); adding it here now creates a parallel currency model to retrofit later | Single-currency ledger now; extend when CUR-V2-01 is actually scoped |
-| Multi-till / multi-cash-account structure | "What if there are two registers someday?" | No stated need; single operator, single physical location in v1.3 scope | Ship single-till now; the append-only ledger design doesn't block adding a `till_id` column later if genuinely needed |
-| User roles / manager-approval workflow for withdrawals | Standard in multi-employee petty-cash tools | Project constraint: 1 operator, no auth complexity in v1 (explicit constraint in PROJECT.md and CLAUDE.md) | Nothing — the single operator is trusted by construction |
-| Editable/deletable cash entries | "Let me just fix a typo directly" | Breaks the append-only audit-log invariant the whole app is built on (Key Decision: ledger rows are never UPDATE/DELETE'd) | Reversal/correction entry with a comment — same pattern as existing stock corrections |
-| Receipt photo capture / OCR | Common in expense-tracking apps | No camera/OCR infrastructure anywhere in this stack; this app is manual, fast-entry by design (no barcode scanner either, by explicit prior decision) | Free-text comment field is enough for a single trusted operator |
+|---------|---------------|-----------------|-------------|
+| **Interactive per-row conflict resolution UI** ("keep mine / keep theirs") | Sounds like the "proper" way to do sync | The append-only ledger design deletes the need — operations don't conflict, they coexist. Building the UI re-introduces the complexity the architecture avoided, and confuses a non-technical operator | Auto-dedup by UUID for operations; last-write-wins for reference data. No prompts. |
+| **Real-time / continuous multi-master sync** (WebSockets, CRDT libraries, live cursors) | "Modern" sync feels instant | Enormous complexity and moving parts for operators who sync a few times a day across countries; battery/bandwidth cost; nothing needs sub-second freshness | Manual button + optional interval sync. Batch, not stream. |
+| **Syncing stock quantities / balances directly** | Seems like the obvious thing to keep in step | Stock is a derived cache; syncing it invites divergence and double-counting. The ledger is the truth | Sync ledger rows only; recompute stock locally after every merge. |
+| **Password policies, rotation, lockout, 2FA/MFA, email verification** | "Security best practice" reflex | Enterprise auth sprawl for a 2-role, few-operator, trusted-machine app; friction with zero threat-model justification here; no email infra exists | Strong hashing + admin-set/admin-reset passwords + a signed session. Keep it minimal. |
+| **Self-service registration + forgot-password-via-email** | Standard SaaS onboarding | Users are created by the admin; there's no mail server, and self-signup breaks the closed-team model | Admin creates accounts and resets passwords directly in Настройки. |
+| **A dynamic permission matrix / custom roles / third "report-viewer" role now** | "Flexibility for the future" | Exactly two roles are specified; a permission editor is pure overhead and a bug surface. Report-viewer is on the deferred Future list, not this milestone | Hard-code two roles. Add report-viewer later if actually needed. |
+| **Deleting users** | Housekeeping instinct | Breaks historical attribution (ledger references the user) | Deactivate (soft); keep the record for history. |
+| **PKI-signed / encrypted USB exchange files** | "The file is sensitive" | Key management is a rabbit hole for a non-technical operator; the flash drive is physically carried by the same trusted person | A version header + integrity checksum. Physical custody is the security model. |
+| **Selective / partial sync** (choose warehouses/date ranges to sync) | "Give me control" | Splits the dataset, breaks idempotency guarantees, confuses users | Sync everything; the ledger is small and dedup makes re-sync free. |
+| **Aggressive idle session timeout** | "Auto-lock is secure" | On a single trusted local machine it mostly annoys; forces re-login mid-work | Long-lived / "remember me" session by default; provide explicit Logout. Make timeout an optional admin setting, off by default. |
+
+---
 
 ## Feature Dependencies
 
 ```
-Auto-credit on sale (table stakes)
-    └──requires──> register_sale() service already exists (Phase 4) — hook, don't duplicate
+[User accounts (Auth)]
+    ├──requires──> [First-run admin bootstrap]
+    ├──enables───> [Roles: administrator / operator]
+    │                   └──requires──> [Server-side route guards]  (the real boundary)
+    │                   └──enhanced-by─> [Role-based menu hiding]  (UX only)
+    └──enables───> [Real created_by attribution]
+                        └──requires──> [record_operation() choke point]   (EXISTS, Phase 1)
+                        └──enables───> [Operator column + filter in History/Reports]
 
-Auto-debit on sale-linked return (table stakes, gap-flagged)
-    └──requires──> return-registration path already exists (Phase 5) — hook, don't duplicate
+[Sync (online + USB)]
+    ├──requires──> [UUID on every synced entity]   (pattern EXISTS; verify/add columns)
+    ├──requires──> [Append-only ledger + record_operation()]   (EXISTS, Phase 1)
+    ├──requires──> [Single versioned exchange format]
+    │                   ├──used-by──> [Online push/pull (PostgreSQL server)]
+    │                   └──used-by──> [USB export/import]
+    ├──requires──> [Stock recompute-from-ledger after merge]   (recompute EXISTS)
+    └──enhanced-by─> [Central PostgreSQL server]   (online transport only; USB works without it)
 
-Manual withdrawal entry (table stakes)
-    └──requires──> category enum (pay supplier / salary / other) + comment field
-
-Movement history view (table stakes)
-    └──requires──> both of the above writing to one shared cash-ledger table/operation-type
-
-Current balance display (table stakes)
-    └──requires──> Movement history ledger (balance = SUM of entries, not a separately maintained counter)
-
-Insufficient-balance guard (table stakes)
-    └──requires──> Current balance display (need the number to compare against)
-    └──mirrors──> existing oversell-warning and min-price-warning UX pattern (Phase 4/7)
-
-Cash flow reports (differentiator)
-    └──requires──> Movement history ledger + existing period-filter helper (Phase 6)
-
-CSV export of cash movements (differentiator)
-    └──requires──> Movement history ledger + existing CSV export helper (Phase 6)
-
-Manual balance correction (differentiator, likely needed at launch — see Gaps)
-    └──requires──> Movement history ledger
-    └──mirrors──> existing stock "correction" operation pattern (Phase 5 OPS-04)
-
-Structured link: withdrawal → goods receipt (differentiator)
-    └──requires──> Manual withdrawal entry + existing goods-receipt operation IDs (Phase 3)
-
-Shift reconciliation (differentiator)
-    └──requires──> Manual balance correction (functionally overlaps for a single-operator app)
-
-Multiple cash accounts/tills (future) ──conflicts──> current single-balance design
-    (would require a till_id dimension on every ledger entry and every report — a schema
-     decision, so if ever wanted it should be decided before, not after, the balance
-     column/query shape is fixed)
+[created_by attribution] ──enriches──> [Sync]   (each synced row carries WHO + which device_id)
+[Interactive conflict UI] ──conflicts-with──> [Append-only conflict-free design]   (do not build)
 ```
 
 ### Dependency Notes
 
-- **Auto-credit and auto-debit both require the *same* single write path.** The project's own Key Decision ("`record_operation()` as the single ledger write path... makes append-only + stock-cache consistency and future sync conflict resolution tractable") applies directly to cash: Касса should almost certainly be new operation types appended to the *same* ledger table the app already has, not a second parallel `cash_movements` table. That's an architecture call, but it directly shapes which features are "free" (history, reports reuse existing infra) versus which require new plumbing (a second ledger would need its own history view, its own pagination, its own CSV export).
-- **Balance must never be a separately maintained/cached column that can drift.** Compute it from the ledger (`SUM`), exactly like the project already avoids float/cache-consistency bugs elsewhere (money stored as integer minor units per STACK.md).
-- **Manual balance correction enhances all of the above** by giving the operator an escape hatch when the computed balance and physical cash disagree — without it, any data-entry mistake (or the very first day of using Касса, when a real cash balance already exists in the drawer) has no clean recovery path other than a fake "withdrawal" or "sale" abusing the wrong category.
-- **Multiple cash accounts/tills conflicts with the current single-balance design** if bolted on later without planning — worth a one-line schema note (e.g. keep a nullable `till_id`/`account_id` slot even if unused in v1.3) only if the team wants to keep that door open cheaply; not a requirement for this milestone.
+- **Roles require user accounts, and route guards are the real boundary:** menu hiding without server-side guards is a false sense of security. Both ship together, guards being the non-optional half.
+- **Attribution requires the `record_operation()` choke point (already exists):** stamping `created_by` from the session in one place is why attribution is LOW complexity — no scatter-gun edits across every operation type.
+- **Both sync transports must share one exchange format:** if online and USB diverge into two merge algorithms, one will silently be less correct. The format/merge engine is the core deliverable; online and USB are just two ways to move the same envelope.
+- **Sync requires UUIDs actually present, not just recommended:** the STACK note prescribes UUIDs; before any merge ships, confirm every synced table has one, or idempotent dedup is impossible. This is a pre-flight, not an assumption.
+- **USB sync does not depend on the server:** client↔client (or client↔server) file exchange works with no PostgreSQL online. This lets USB ship independently of / before online.
+- **The conflict UI conflicts with the architecture:** listed as a dependency edge specifically to flag that building it undoes the append-only advantage.
+
+---
 
 ## MVP Definition
 
-### Launch With (v1.3 — matches PROJECT.md target features, refined)
+### Launch With (v3.0 core)
 
-- [ ] Auto-credit balance from every sale — table stakes, explicit PROJECT.md requirement
-- [ ] Auto-debit balance from every sale-linked return — **gap not in PROJECT.md's stated list; without it the balance is wrong the first time a return happens**
-- [ ] Manual withdrawal with mandatory category (pay supplier order / salary / other) + comment — explicit PROJECT.md requirement
-- [ ] Movement history view (filterable/sortable, reusing existing list-page infrastructure) — explicit PROJECT.md requirement
-- [ ] Current balance display — explicit PROJECT.md requirement
-- [ ] Insufficient-balance warning on withdrawal (warn, allow override) — matches existing app-wide UX convention
-- [ ] Separate "Финансы" UI section — explicit PROJECT.md requirement
+Minimum to deliver "multi-operator system with roles and both sync transports."
 
-### Add After Validation (v1.3.x or immediate follow-up)
+- [ ] **Auth: login/logout + hashed passwords + signed session** — the security boundary the whole milestone rests on.
+- [ ] **First-run admin bootstrap** — upgrade path from the no-auth app; without it nobody can log in.
+- [ ] **User profiles (name, login, role) + admin user management** (create / assign role / deactivate / reset password) — required to have more than one operator.
+- [ ] **Two roles with server-side route guards + menu hiding** — the administrator/operator split.
+- [ ] **Real `created_by` attribution + operator column in History** — the point of knowing "who".
+- [ ] **Single versioned exchange format + idempotent UUID merge + stock recompute** — the sync engine.
+- [ ] **USB export/import** — the offline transport (ships first; no server needed).
+- [ ] **Online push/pull against the central PostgreSQL server + manual «Синхронизировать» button** — the online transport, with status + last-sync time + plain-language result.
+- [ ] **Offline-safe failure + mobile parity for login and sync trigger** — preserve the local-first promise across desktop and mobile.
 
-- [ ] Manual balance correction/adjustment entry — trigger: as soon as the module ships against a business that already has cash on hand (balance starts at 0 otherwise, which is wrong from day one)
-- [ ] Cash flow reports (period in/out, by category) — trigger: once a few weeks of movement history exist and the operator wants trend visibility, same as existing Reports module
-- [ ] CSV export of cash movements — trigger: once the operator wants to hand data to an accountant/backup, matching the existing full-data-export pattern
+### Add After Validation (v3.x)
 
-### Future Consideration (v2+)
+- [ ] **"What will change" preview before USB import** — add once base merge is trusted; strong anxiety-reducer.
+- [ ] **Unsynced-count badge** — after the manual flow proves stable.
+- [ ] **Optional automatic/interval background sync** — convenience once manual online sync is proven and trusted.
+- [ ] **Filter Reports (not just History) by operator** — after attribution ships and per-operator questions arise.
 
-- [ ] Structured link: withdrawal → specific goods receipt/supplier order — defer: no deferred-payment/credit-purchase pattern exists yet in the app to link against
-- [ ] Multiple cash accounts/tills — defer: no second till/location need stated; would be a schema decision better made deliberately, not incidentally
-- [ ] Shift/period reconciliation (expected vs counted) — defer: value is highest with multiple cashiers/shifts; single operator gets most of the benefit from the simpler manual-correction entry
-- [ ] Scheduled/recurring expenses — defer: needs a background scheduler not present anywhere in the stack; disproportionate for the convenience gained
-- [ ] Budget categories/spending limits — defer: no signal this is a goal; it's a personal-finance feature, not a cash-box tracker
+### Future Consideration (v4+ / already deferred)
+
+- [ ] **Third "report-viewer" role** — deferred (Future list AUTH-V2-01); only if a read-only stakeholder actually appears.
+- [ ] **Multi-currency** — explicitly out of scope this milestone.
+- [ ] **Optional idle session timeout / auto-lock** — only if a shared-machine scenario emerges.
+
+---
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
-|---------|------------|----------------------|----------|
-| Auto-credit on sale | HIGH | LOW | P1 |
-| Auto-debit on sale-linked return | HIGH | LOW | P1 |
-| Manual withdrawal + mandatory reason | HIGH | LOW | P1 |
-| Movement history view | HIGH | LOW | P1 |
-| Current balance display | HIGH | LOW | P1 |
-| Insufficient-balance warning | MEDIUM | LOW | P1 |
-| "Финансы" UI section | HIGH | LOW | P1 |
-| Manual balance correction | HIGH | LOW-MEDIUM | P1 (recommend pulling into v1.3, see Gaps) |
-| Cash flow reports | MEDIUM | MEDIUM | P2 |
-| CSV export of cash movements | MEDIUM | LOW-MEDIUM | P2 |
-| Structured link to goods receipt | LOW-MEDIUM | MEDIUM | P3 |
-| Shift/period reconciliation | LOW (single operator) | MEDIUM | P3 |
-| Multiple cash accounts/tills | LOW | MEDIUM-HIGH | P3 |
-| Scheduled/recurring expenses | LOW | MEDIUM-HIGH | P3 |
-| Budget categories/limits | LOW | MEDIUM | P3 |
+|---------|------------|---------------------|----------|
+| Login/logout + hashed session auth | HIGH | MEDIUM | P1 |
+| First-run admin bootstrap | HIGH | MEDIUM | P1 |
+| User management (CRUD, role, deactivate, reset) | HIGH | MEDIUM | P1 |
+| Two roles + route guards + menu hiding | HIGH | MEDIUM | P1 |
+| Real `created_by` + operator in History | HIGH | LOW | P1 |
+| Exchange format + idempotent UUID merge + stock recompute | HIGH | HIGH | P1 |
+| USB export/import | HIGH | MEDIUM | P1 |
+| Online push/pull + manual sync button + status/last-sync | HIGH | HIGH | P1 |
+| Last-write-wins on reference data | MEDIUM | MEDIUM | P1 (needed for correctness of ref edits) |
+| Offline-safe failure + mobile parity | HIGH | LOW-MEDIUM | P1 |
+| "What will change" import preview | MEDIUM | MEDIUM | P2 |
+| Unsynced-count badge | MEDIUM | LOW | P2 |
+| Filter Reports by operator | MEDIUM | LOW | P2 |
+| Automatic/interval background sync | MEDIUM | MEDIUM | P2 |
+| USB integrity/version check | MEDIUM | LOW | P2 |
+| Interactive conflict-resolution UI | LOW (negative) | HIGH | P3 — do NOT build |
+| Password policies / 2FA / email reset | LOW (negative) | HIGH | P3 — do NOT build |
 
-**Priority key:**
-- P1: Must have for v1.3 launch
-- P2: Should have, add once v1.3 core is validated
-- P3: Nice to have, defer to v2+ or drop
+**Priority key:** P1 must-have for the milestone · P2 add after core validates · P3 avoid / far future.
 
-## Competitor Feature Analysis
+---
 
-Not a market-facing product (single-operator internal tool), so this compares against the *category* of tool rather than named competitors — small-business petty-cash apps and POS till-management features, per the practitioner sources below.
+## Concrete User-Facing Behavior (for requirements authoring)
 
-| Feature | Petty-cash apps (Pleo, Zoho Expense, Weel, etc.) | POS till management (Lightspeed, Shopify POS, etc.) | Our Approach |
-|---------|----------------------------------------------------|--------------------------------------------------------|--------------|
-| Balance visibility | Real-time balance, always shown | Running total per shift/drawer | Real-time balance from ledger `SUM`, always shown |
-| Cash in/out entry | Manual entry + receipt photo/OCR + categories | Auto from sales; manual "cash drop/loan" entries | Auto from sales/returns; manual entry with fixed categories, no OCR (not needed, single trusted operator) |
-| Categorization | Free-form customizable categories | Minimal (drop/loan/paid-in/paid-out) | Fixed 3-category set (supplier/salary/other) + comment — matches PROJECT.md scope, avoids unbounded category sprawl |
-| Approval workflow | Multi-user approval chains | Manager approves cashier's count | Not applicable — single trusted operator, no auth layer |
-| Reconciliation | N/A (not till-based) | End-of-shift count vs expected, shortage/overage report | Deferred to v2+ (manual correction entry covers the single-operator case for now) |
-| Multi-account | Often supports multiple wallets/cards | Multiple registers/drawers | Single balance only, by design |
+**(a) Sync UX.** Primary trigger is a manual **«Синхронизировать»** button on a Sync page under Настройки (and reachable on mobile). Pressing it: pushes local un-acknowledged ledger rows to the server, pulls new remote rows, dedups by UUID, applies last-write-wins to reference edits, recomputes stock, and shows «Готово · отправлено N, получено M» plus updates «Последняя синхронизация: …». Errors show one plain-Russian line and never block local work. Because operations are append-only and UUID-keyed, the operator is **never** asked to resolve a conflict; the only silent policy is newest-wins on product/dictionary edits.
+
+**(b) Offline USB exchange.** Under the same page: **«Экспорт для обмена»** writes one file (e.g. to `E:\` flash drive); the operator carries it to the other machine and picks **«Импорт обмена»**, selects the file, optionally sees a "what will change" count, confirms, and the exact same merge runs. The same envelope format is what the online transport ships — one algorithm, two carriers. Re-importing the same file is a safe no-op.
+
+**(c) Authentication.** App opens to a **«Вход»** screen (логин + пароль). On the very first launch after upgrade, it instead demands creation of the first administrator. A signed session cookie keeps the operator logged in (long-lived / "remember me" by default; explicit **«Выход»**). Users change their own password from their profile; there is no email reset — the admin resets it.
+
+**(d) Role-gated behavior.** An **operator** sees only operational surfaces (Приход, Продажи, Списание, Касса, История, and their own profile); Настройки, Склады, Справочник, and User Management are hidden AND blocked server-side (direct URL → 403). An **administrator** additionally sees user management (create user, assign administrator/operator, deactivate, reset password), warehouses, dictionaries, settings, and reports.
+
+**(e) Per-operator attribution.** Every operation records the logged-in user as `created_by` (stamped in the existing `record_operation()`); `device_id` continues to record which machine. History (and later Reports) shows an operator column and can filter by it, so "who sold / wrote off / corrected this" is answerable across machines and countries after sync.
+
+---
+
+## Competitor / Comparable Feature Analysis
+
+| Feature | Typical small-biz SaaS (cloud POS/inventory) | Offline sync tools (file-sync apps) | Our Approach |
+|---------|----------------------------------------------|-------------------------------------|--------------|
+| Sync model | Always-online, server is source of truth | Continuous file diff + conflict copies | Batch, manual-first; append-only ledger is source of truth, conflict-free by design |
+| Conflict handling | Server-authoritative, rare user prompts | "Conflict_" duplicate files for the user to reconcile | No operational conflicts; last-write-wins only on reference data |
+| Offline transport | None (cloud required) | Core competency (folders) | First-class USB exchange file sharing the online format |
+| Auth | Full accounts, SSO, MFA | OS/account-level | Minimal: hashed password + signed session, admin-managed |
+| Roles | Many granular roles/permissions | N/A | Exactly two hard-coded roles |
+| Attribution | Per-user audit logs | File-level | Per-operation `created_by` off the existing ledger choke point |
+
+---
 
 ## Sources
 
-- `.planning/PROJECT.md` — first-party project scope, target features, existing architecture/Key Decisions (Confidence: HIGH)
-- Web search: "simple petty cash management app features small business cash in cash out categories" — [haeywa petty cash app](https://play.google.com/store/apps/details?id=com.dotnovaai.haeywa&hl=en_US), [Weel: Top 5 Petty Cash Management Software](https://letsweel.com/resources/the-weelhouse/articles/the-best-petty-cash-management-software), [Pleo petty cash](https://www.pleo.io/en/petty-cash), [Zoho Expense petty cash](https://www.zoho.com/us/expense/petty-cash-management/) (Confidence: MEDIUM — cross-checked across multiple independent listings, consistent pattern: real-time balance, categorized in/out, approval workflows for multi-user tools)
-- Web search: "POS cash drawer reconciliation shift closing count till features small retail" — [Fit Small Business: POS Reconciliation](https://fitsmallbusiness.com/pos-reconciliation/), [Shopify: Balancing a Cash Drawer](https://www.shopify.com/blog/balancing-a-cash-drawer), [KORONA POS: Count the Till](https://koronapos.com/blog/count-the-till-cash-handling/), [POS Highway: Cash Drawer Management](https://www.poshighway.com/blog/cash-drawer-management-cycle-counts-reconcilation-activation-and-closing/) (Confidence: MEDIUM — cross-checked, confirms reconciliation/shift-count value scales with multiple cashiers, which doesn't apply to this single-operator app)
+- WebSearch — local-first / offline-first sync UX (manual trigger, status badges, last-sync, non-technical conflict handling): [Offline-First Architecture (Medium, J. Topic)](https://medium.com/@jusuftopic/offline-first-architecture-designing-for-reality-not-just-the-cloud-e5fd18e50a79), [Offline-First Mobile App Architecture: Syncing, Caching, Conflict Resolution (DEV)](https://dev.to/odunayo_dada/offline-first-mobile-app-architecture-syncing-caching-and-conflict-resolution-518n), [Cool frontend arts of local-first: storage, sync, conflicts (Evil Martians)](https://evilmartians.com/chronicles/cool-front-end-arts-of-local-first-storage-sync-and-conflicts), [A Design Guide for Building Offline First Apps (Hasura)](https://hasura.io/blog/design-guide-to-offline-first-apps), [Offline File Sync: Developer Guide (daily.dev)](https://daily.dev/blog/offline-file-sync-developer-guide-2024/) — MEDIUM confidence.
+- Project context: `.planning/PROJECT.md` (v3.0 goal, foundation features, append-only ledger + device_id + UUID pattern) and repo `CLAUDE.md` STACK notes (UUID-for-sync, PostgreSQL portability, session-cookie auth guidance) — HIGH confidence for the existing foundation.
+- Established-pattern synthesis (append-only/UUID conflict-free sync, minimal session-cookie auth, two-role RBAC with server-side guards, soft-deactivate for attribution) — MEDIUM-HIGH confidence; standard practice, no exotic dependencies.
 
 ---
-*Feature research for: Касса/Финансы module, MyOriShop v1.3*
-*Researched: 2026-07-14*
+*Feature research for: multi-operator sync + auth + roles on a local-first FastAPI/SQLite app*
+*Researched: 2026-07-18*

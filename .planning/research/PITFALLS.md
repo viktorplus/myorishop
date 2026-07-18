@@ -1,280 +1,347 @@
 # Pitfalls Research
 
-**Domain:** Adding a cash-balance/cash-flow ledger ("Касса") module to an existing single-operator, offline, SQLite/FastAPI/HTMX warehouse-and-sales app with an append-only stock ledger
-**Researched:** 2026-07-14
-**Confidence:** HIGH for architecture-grounded pitfalls (read directly from `app/services/ledger.py`, `sales.py`, `returns.py`, `writeoffs.py`, `receipts.py`, `reports.py`, `db.py`, `models.py`); MEDIUM for general financial-ledger/small-business practitioner findings (web search, no official spec exists for "how to bolt cash tracking onto an existing app")
+**Domain:** Local-first SQLite app gaining client↔central-server sync (online + USB), a central PostgreSQL server, and mandatory auth/roles
+**Researched:** 2026-07-18
+**Confidence:** HIGH (codebase-grounded) / MEDIUM (sync-design recommendations = practitioner consensus)
+
+> Scope note: these pitfalls are tied to THIS app's real structures — the append-only `operations` ledger written only through `record_operation()`, the sibling append-only `cash_movements` ledger, the derived `Product.quantity`/`Batch.quantity` caches, the Python-computed Cyrillic `name_lc`/`search_lc` shadow columns, the mirrored desktop (`/...`) + mobile (`/m/...`) route trees, and the CSV export / VACUUM-INTO backup endpoints. Generic "use HTTPS" advice is omitted.
+
+---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Bolting cash movements onto the existing `operations` table
+### Pitfall 1: Replaying synced ledger rows THROUGH `record_operation()` — double-counting stock
 
 **What goes wrong:**
-The temptation is to add `cash_in`/`cash_out` as two more members of `OPERATION_TYPES` and reuse `record_operation()`, since it's already "the single write path." This breaks on contact: `Operation.product_id` is a `NOT NULL` FK, and `record_operation` requires `STOCK_AFFECTING_TYPES` to carry a mandatory, product-owned `batch_id` (D-12 guard) — but a cash withdrawal for "зарплата" has no product and no batch. You'd either force a dummy "cash" product/batch (data-model lie) or special-case the guard (weakens the D-12 invariant for every future stock type too). It also pollutes `reports.py`, which filters `Operation.type == "sale"` / `"writeoff"` directly against this same table for revenue/profit math (`app/services/reports.py:38,102,158,187`) — new row types with `qty_delta` semantics that don't mean "units of stock" corrupt those SUM queries if anyone forgets to add a `type` filter.
+When a batch of foreign operations arrives (from the server online, or from a USB exchange file), the obvious-looking way to apply them is to loop and call `record_operation(...)` for each. That silently corrupts everything: `record_operation()` is not a neutral inserter — it (a) mints a fresh `id=new_id()`, (b) re-stamps `device_id=settings.device_id` and a fresh local `seq` via `next_seq()`, (c) stamps `created_by=settings.operator_name` and a new `created_at`, and (d) does the non-idempotent cache increment `product.quantity = Product.quantity + qty_delta` (plus the batch cache). So a foreign op gets a new identity (defeating dedup-by-UUID), loses its origin author/device/time, and inflates the local stock cache. Re-running the same sync (a retry after a dropped connection) does it again.
 
 **Why it happens:**
-The codebase's existing "one ledger table" story is compelling and the docstrings ("record_operation is the ONLY sanctioned write path") read as a project-wide rule, not a stock-specific one.
+`record_operation()` is documented as "the ONLY sanctioned write path" (FND-01), so a developer reasonably assumes sync must go through it too. But that rule is about *local UI writes*, not *merge/replay*.
 
 **How to avoid:**
-Create a **separate** append-only ledger table (e.g. `cash_movements`), mirroring the *pattern* of `ledger.py` (own single write-path function, e.g. `record_cash_movement()`) but not the *table*. Give it its own DB-level immutability triggers (copy the `operations_no_update`/`operations_no_delete` pattern in `app/db.py`), its own `id`/`created_at`/`created_by`/`device_id`/`seq` columns, and a nullable `sale_id` FK to link auto-credit rows back to `Sale` — but no `product_id`/`batch_id` requirement.
+Add a separate merge path (e.g. `apply_remote_operation()` / bulk insert) that inserts rows **verbatim** — preserving the origin `id`, `device_id`, `seq`, `created_at`, `created_by` — using `INSERT ... ON CONFLICT (id) DO NOTHING` (Postgres) / `INSERT OR IGNORE` semantics keyed on the UUID PK so re-applying is a no-op. Do **not** touch `Product.quantity`/`Batch.quantity` during the merge; instead call the already-existing `rebuild_stock(session)` once after all rows are applied. Make the whole merge idempotent by UUID PK. The UUID PKs and `synced_at` cursor were seeded from v1.0 precisely for this — use them.
 
 **Warning signs:**
-Any PR that adds a value to `OPERATION_TYPES` for cash, or that makes `Operation.product_id` nullable "just for cash rows."
+Stock cache drifts upward after every sync; the same logical sale appears twice in `/history` with different IDs; `rebuild_stock()` raises `stock invariant violated`; retrying an interrupted sync changes balances.
 
-**Phase to address:**
-The phase that introduces the cash schema (first phase of the milestone) — this is a foundational data-model decision, expensive to reverse once real financial rows exist.
+**Phase to address:** Sync foundation phase (the merge/apply engine), before any transport work.
 
 ---
 
-### Pitfall 2: Auto-credit wired into `sales.py` but not symmetrically into `returns.py`
+### Pitfall 2: Forgetting to recompute the derived caches after a merge — stock/balance disagree with the ledger
 
 **What goes wrong:**
-`register_sale()` (`app/services/sales.py`) and `register_return()` (`app/services/returns.py`) are two separate service modules with separate write paths. If the cash auto-credit is added only inside `register_sale`'s commit block, a sale-linked return (already a shipped feature, OPS-02) silently leaves the cash balance permanently inflated by however much was returned — the balance stops reflecting reality the very first time a customer returns anything.
+`Product.quantity` and `Batch.quantity` are caches — "a projection of SUM(operations.qty_delta), always recomputable". After merging remote ledger rows, if you don't recompute them, the dashboard, product list, oversell guard, and stock-valuation report all show pre-sync numbers while the ledger already holds the new rows. Worse, if you *did* increment during merge (Pitfall 1) AND recompute, you'll have double-applied.
 
 **Why it happens:**
-Returns are architecturally a *second* write path that happens to reuse the same `sale_id`/`product_id` shape as sales but lives in a different file (`returns.py`) written in a different phase (Phase 5). It's easy to treat "wire up cash" as a `sales.py`-only task because that's where "Касса пополняется автоматически с каждой продажи" naturally points a developer's attention.
+The cache is invisible in day-to-day code (reads just use `product.quantity`); nothing in the current single-device code ever needed a rebuild after a bulk insert.
 
 **How to avoid:**
-Treat cash-in and cash-out as symmetric obligations from day one, the same way the codebase already treats price/cost freezing symmetrically (D-07: "price/cost symmetry — copy the origin sale op's FROZEN unit_price_cents/unit_cost_cents"). Add the return's cash debit in the exact same commit as the `return` operation write inside `register_return`, not as an afterthought bolted onto `sales.py`.
+Treat cache recompute as a mandatory, atomic final step of every merge (both transports). Call `rebuild_stock(session)` — it already recomputes every `Product.quantity` and `Batch.quantity` from the ledger AND asserts the invariant per product. The cash balance is even simpler: it is deliberately NOT cached (`D-00b: balance is always a live SUM(amount_cents)`), so merging `cash_movements` needs no balance rebuild — but confirm no one later "optimizes" it into a cached column. Run the merge + rebuild in one transaction so a crash can't leave applied rows with a stale cache.
 
 **Warning signs:**
-Grep for the new cash-write call and check it appears in *both* `sales.py` and `returns.py` before the phase is called done. A test that sells, fully returns, and asserts balance is back to its pre-sale value is the concrete regression guard.
+`compute_stock()` ≠ `product.quantity` after sync; the "expiring soon" / low-stock reports lag; `rebuild_stock` raising is actually the *good* case (it caught the drift) — silent drift is the dangerous one.
 
-**Phase to address:**
-Same phase as Pitfall 1 (schema + auto-credit) — return-symmetry must ship in the same phase as sale auto-credit, not deferred to a later phase, or there will be a window where returns silently break the balance.
+**Phase to address:** Sync foundation phase (merge engine), same transaction as the apply step.
 
 ---
 
-### Pitfall 3: Trying to "match" a return against the original cash-in row instead of deriving the debit independently
+### Pitfall 3: `device_id` and `created_by` are static config defaults — colliding sequences and forged authorship across operators
 
 **What goes wrong:**
-A naive design looks up the sale's original cash-in movement (by `sale_id`) and tries to reduce it, or asserts the return amount against it, then fails/logs a warning "cannot find matching cash-in movement" when the lookup comes up empty (e.g. legacy sales predating the cash feature, or a partial return where the "amounts don't match" because only part of the line was returned). This reconciliation logic is unnecessary and fragile.
+Today `settings.device_id` defaults to the literal `"device-01"` and `settings.operator_name` to `"operator"`, and `record_operation()` stamps both from config. Ship two clients without changing `.env` and **every** client emits `device_id="device-01"`. The `UNIQUE(device_id, seq)` constraint on both `operations` and `cash_movements` then collides the moment the server (or a peer) holds rows from two devices: device A's `(device-01, 5)` and device B's `(device-01, 5)` are the same key → merge insert fails or, if the constraint is dropped, two distinct ops become indistinguishable and one is silently lost. Separately, with mandatory login, `created_by` must be the logged-in user, not a process-wide config string — otherwise the audit trail attributes every operator's actions to the same name.
 
 **Why it happens:**
-"Reverse a previous entry" is the natural mental model for a refund, borrowed from double-entry bookkeeping intuition, but this app already solved the equivalent problem for *stock* by never editing the original `sale` op and instead writing a fresh, independently-computed `return` op (D-06/D-07) whose amount comes from the **return's own** `qty * frozen unit_price_cents`, not from re-reading and adjusting the original sale row (which the `operations_no_update` trigger wouldn't even allow).
+In a single-device app a constant device id and operator name were correct and cheap. Sync makes device identity a hard requirement, and auth makes per-user attribution a hard requirement, but the config-default seam still "works" (no error) until a second device exists.
 
 **How to avoid:**
-Mirror `returns.py`'s existing approach exactly: `register_return` already copies `origin.unit_price_cents` (D-07, frozen at sale time) and computes `qty_delta`/amount purely from `qty * origin.unit_price_cents` for the returned quantity — no lookup or match against any prior movement is needed. Apply the identical rule to cash: the return's cash debit = `qty_returned * origin.unit_price_cents` (or, for a multi-line sale, sum only the returned line's own frozen price), written fresh, independent of whatever the original cash-in movement recorded. This sidesteps the "what if the original movement is missing or the amounts don't match" question entirely — there is nothing to match against.
-This also means: don't seed the cash-in movement at the header level as a single lump `total_cents` row per `Sale` if you want partial per-line returns to net cleanly. Prefer one cash-in movement per sale `Operation` line (mirroring the ledger's existing per-line granularity) — or, if a single lump credit per sale is kept for simplicity, ensure the return debit is still computed independently line-by-line and never "diffs" the header's lump sum.
+- Generate a persistent, unique `device_id` (UUID) per client install on first run, store it in the DB (a one-row settings/identity table), never in shared code or a copied `.env`. Verify uniqueness server-side on first sync.
+- Make `created_by` come from the authenticated session/user at write time, threaded into `record_operation()` — not read from `settings`. Keep a `user_id` (UUID) in addition to a display name so a renamed user stays linkable.
+- Keep the server as a **preserver, not a re-stamper**: it must store each row's origin `device_id`+`seq` unchanged; never regenerate `seq` server-side.
 
 **Warning signs:**
-Any code path that does `session.get(CashMovement, ...)` by `sale_id` and then errors/warns when it's `None`, or that tries to `sum(returns) <= original_credit` and blocks the return if not.
+Two installs show the same `device_id` in `/history` or the operations table; `UNIQUE(device_id, seq)` violations on the very first multi-device sync; every ledger row's `created_by` is the same string.
 
-**Phase to address:**
-Same phase as Pitfall 2 (return handling) — design the debit formula before writing any code, since retrofitting "independent computation" after a matching-based design ships is a rewrite, not a patch.
+**Phase to address:** Sync foundation phase (device identity) + Auth phase (per-user `created_by`). Do device identity FIRST — the auth phase depends on stable identity.
 
 ---
 
-### Pitfall 4: Balance computed from a stale cache instead of a live SUM, or updated outside the writing transaction
+### Pitfall 4: The two append-only ledgers (`operations` + `cash_movements`) synced inconsistently — stock and cash disagree
 
 **What goes wrong:**
-The existing stock model already had this exact problem and solved it: `Product.quantity` is a cached projection, but it's *always* recomputable from `SUM(operations.qty_delta)` via `compute_stock()`, updated with a SQL-side atomic increment (`product.quantity = Product.quantity + qty_delta`) **inside the same transaction** as the ledger insert (`app/services/ledger.py:120-126`), and there's a `rebuild_stock()` repair/assertion function. A cash balance implemented as "just a cached integer column, updated in application code (`balance += amount`) in a separate step after the ledger write" reintroduces the exact class of bug (stale-read window, no atomicity, no recompute-and-verify path) that `record_operation`'s design was built to eliminate.
+A sale writes to BOTH ledgers in the same local transaction: a `sale` row in `operations` (stock down) and a `sale`-category row in `cash_movements` (balance up); a return writes symmetric rows to both. But the two tables have **independent** `(device_id, seq)` counters and are separate append-only logs. If the sync engine ships/merges `operations` and `cash_movements` as two independent streams, a transport interruption or a partial-batch bug can land the stock side of a sale without the cash side (or vice-versa). Result: the product shows sold but the cash balance never rose — the exact "profit figures wrong / data lost" failure the Core Value forbids.
 
 **Why it happens:**
-It's tempting to treat "current balance" as a simple running total for display speed, without replicating the SQL-side-increment-in-the-same-transaction discipline, especially since the milestone description literally says "текущий баланс" (a display concept), inviting a naive `balance` column.
+The ledgers were built as siblings with mirrored shapes, which invites treating them as two symmetric-but-separate sync jobs. Their *transactional coupling* (a sale = rows in both) lives only in the local write services, not in the schema.
 
 **How to avoid:**
-Either (a) don't cache at all — at this scale (one operator, local SQLite, at most a few thousand cash rows a year) `SELECT COALESCE(SUM(amount_cents), 0) FROM cash_movements` is cheap and always correct, matching how `compute_stock()` is available as ground truth; or (b) if a cached balance is added for display speed, update it with the same SQL-side atomic increment pattern in the SAME transaction as the movement insert, and ship a `rebuild_cash_balance()` counterpart to `rebuild_stock()` from day one, not as a later "fix."
+Sync both ledgers inside one atomic merge transaction and commit them together — never "operations succeeded, cash pending". For USB, put both tables in the same exchange file and apply them all-or-nothing. Add a post-merge reconciliation check: for every `sale_id`, the `operations` sale rows and the `cash_movements` sale row must both be present (or both absent). Because both are append-only and keyed by UUID, the reconciliation is a cheap join, run right after `rebuild_stock`.
 
 **Warning signs:**
-A `balance` field updated via ORM read-modify-write (`balance = balance.value + amount`) instead of `Model.balance + amount` in the UPDATE; a balance update committed in a different `session.commit()` than the movement row.
+Cash-flow report income ≠ sum of synced sales; a `sale_id` present in `operations` with no matching `cash_movements` row after sync; balance and stock-valuation reports that were consistent locally diverge post-sync.
 
-**Phase to address:**
-The schema/write-path phase (Pitfall 1) — the balance-computation strategy is part of the same design decision as the table shape.
+**Phase to address:** Sync foundation phase (merge engine covers both ledgers atomically) + a reconciliation check in the same phase.
 
 ---
 
-### Pitfall 5: No idempotency guard against a sale being processed (and cash auto-credited) twice
+### Pitfall 5: Interrupted / partial USB transfer leaving a half-applied batch
 
 **What goes wrong:**
-`register_sale()` has no idempotency key today — a double-click on submit, a retried HTMX request after a network blip on localhost, or (once multi-operator sync exists) a duplicate sync replay could in principle create two `Sale` headers with duplicate `sale` operations. For stock, a duplicate sale silently oversells by the same amount twice, which the existing oversell warning would at least flag on the *second* attempt if stock runs out — but a duplicate cash auto-credit has no equivalent guard, since cash "oversell" isn't checked at all (crediting cash never fails). Money gets invisibly duplicated with no warning path, unlike stock.
+The USB path reads an exchange file and applies rows. If it applies row-by-row with intermediate commits (or writes the stock cache incrementally), a pulled drive / crash / malformed tail record leaves the DB with some rows applied, the caches partially updated, and no clean way to know where it stopped. Re-importing the same file then risks either duplicating (if not keyed by UUID) or, if the importer "resumes" heuristically, skipping rows.
 
 **Why it happens:**
-The app was designed for a single trusted local operator with WAL + `busy_timeout=5000` serializing writes at the DB level — which prevents *corruption* from concurrent writes, but does nothing to prevent the *same logical action* (one basket) from being submitted twice as two separate, individually-valid transactions.
+Large files invite streaming/chunked application "to save memory"; the append-only insert feels safe to do incrementally because each row is immutable.
 
 **How to avoid:**
-This is a pre-existing gap in the whole app, not something the cash feature must fully solve — but the cash feature is where it becomes financially visible for the first time. At minimum: disable the sale-submit button/form during the HTMX request (standard `hx-disabled-elt` pattern) to close the double-click window, and document that duplicate-basket detection (e.g. an idempotency token per basket submission) is a gap worth closing before/alongside this milestone rather than silently inherited. Do not treat "cash auto-credit never fails" as a reason to skip this — the absence of a failure mode is exactly what makes duplicates invisible.
+Apply an exchange file as a single all-or-nothing transaction: begin, `INSERT OR IGNORE` all ledger rows (dedup by UUID), merge mutable master rows, `rebuild_stock`, then one commit. If anything raises, roll back to the pre-import state (and the startup VACUUM-INTO backup is the outer safety net). Record an idempotency marker (file hash / export batch UUID) so a re-import of the identical file is a proven no-op, not a guess. Validate the entire file (schema version, integrity) BEFORE opening the write transaction.
 
 **Warning signs:**
-Two `Sale` headers with identical `customer_id`, lines, and `created_at` within the same second; a balance that's "suspiciously exactly 2x" a spot-check total.
+`rebuild_stock` raises after a USB import; row counts don't match the file's declared count; a second import of the same file changes anything.
 
-**Phase to address:**
-Flag for the schema/auto-credit phase to at least add the UI-level submit-guard; a full idempotency-key mechanism can be deferred but should be an explicit, named deferral (Future/Out-of-Scope entry), not a silent gap.
+**Phase to address:** Offline/USB sync phase — but it reuses the same idempotent merge engine and single-transaction rule as Pitfall 1/2, so build that engine first.
 
 ---
 
-### Pitfall 6: Negative-balance validation inconsistent with the app's established warn-but-allow pattern
+### Pitfall 6: Only `operations`/`cash_movements` merge cleanly — the MUTABLE master tables (products, customers, warehouses, batches, dictionary) have no conflict story
 
 **What goes wrong:**
-Two wrong choices are equally tempting and equally bad: (a) hard-blocking any withdrawal that would take the balance negative (inconsistent with how this app treats every other "physically implausible" situation — oversell and below-minimum-price both warn-and-allow-with-confirm, never hard-block), or (b) allowing withdrawals with zero warning at all, which for real money is worse than for stock because a negative cash balance either means a data-entry mistake or a genuinely urgent real-world problem (cash box empty), and the operator should be told either way.
+The "append-only ledger is the sync foundation" narrative is true for stock and cash — those are commutative (a merge is just the union of immutable rows; final stock = SUM of deltas regardless of order). But the app also has **mutable, updated-in-place** tables: `Product` (name/prices/thresholds/`deleted_at`, `updated_at`), `Customer` (+ contacts), `Warehouse`, `Batch` (price/location/comment/quantity), `Dictionary`, `ActiveCatalog`, `Sale` headers. Two operators editing the same product on different devices, or one editing while another soft-deletes, is a real conflict the ledger merge does nothing for. Naively "last-write-wins by `updated_at`" is unreliable because `updated_at` is a wall-clock string from each client (see Pitfall 7). And `Product.code`'s partial unique index (`uq_products_code_active`) will be **violated** when two devices independently create the same product code and both sync to the server.
 
 **Why it happens:**
-"Money" instinctively feels like it should be stricter than "stock count," pulling toward a hard block; but this app has a strong, already-validated precedent (oversell in `sales.py`/`writeoffs.py`/`transfers.py`, below-minimum-price in `sales.py` PRICE-01) of warn-with-`confirm=1`-to-override, chosen specifically because a purely local single-operator tool should never trap the operator behind a check it can't override (e.g. a legitimate reason: cash was withdrawn in person before this app recorded the receipt).
+The project decisions repeatedly emphasize the append-only ledger as "the sync foundation", which is easy to over-generalize into "everything syncs cleanly". The mutable catalog/customer half was never designed for merge.
 
 **How to avoid:**
-Reuse the exact same warn-but-allow UX contract already implemented for oversell/min-price: compute the check, and when `confirm != "1"` and the resulting balance would go negative, return a warning payload with ZERO writes; `confirm == "1"` skips the check and writes anyway (balance may go negative, exactly like stock may go negative). This keeps the whole app's validation vocabulary consistent for the operator instead of introducing a third, different pattern.
+Decide an explicit policy per mutable table before writing merge code: e.g. last-write-wins keyed on a monotonic per-row version or a server-authoritative timestamp (not a client clock); soft-delete (`deleted_at`) as a tombstone that propagates rather than a hard delete; and a defined resolution for `Product.code` collisions (server rejects/renames the loser, or codes become globally coordinated). Consider making the central server the source of truth for master data (clients pull), while ledgers flow client→server. Keep `Batch.quantity`/`Product.quantity` OUT of the synced master data — they're caches, rebuilt locally.
 
 **Warning signs:**
-A withdrawal route that returns a raw 4xx/500 or refuses the write entirely with no `confirm` escape hatch.
+`uq_products_code_active` violations on sync; a product edit made on the phone silently reverts after a desktop sync; a soft-deleted customer reappears; two "same" products with different UUIDs.
 
-**Phase to address:**
-The manual-debit phase.
+**Phase to address:** Sync foundation / data-model phase — this needs an explicit design decision and likely its own sub-phase; it is the most underestimated part of the milestone.
 
 ---
 
-### Pitfall 7: No opening/seed balance, so the very first negative-balance warning is a false alarm
+### Pitfall 7: Trusting client wall-clock time for ordering or conflict resolution
 
 **What goes wrong:**
-The milestone's target features list auto-credit-on-sale and manual-debit-with-reason, but no "set starting balance" concept. If Финансы launches computing balance purely from `SUM(cash_movements.amount_cents)` starting at zero, then any real-world cash the operator already has on hand at go-live is invisible to the app. The very first supplier payment or salary withdrawal recorded — even though physically fine — will trip the negative-balance warning from Pitfall 6, teaching the operator to distrust or ignore the warning from day one.
+`created_at`/`updated_at` are UTC ISO **text** strings stamped from each client's local clock (`utcnow_iso()`). Clients are offline PCs whose clocks can be minutes-to-days off. Any logic that orders cross-device events by `created_at`, or resolves a master-data conflict by "newer timestamp wins", will make wrong decisions when a clock is skewed. For stock/cash totals this is harmless (sums are order-independent), but for the history *display order*, "last edit wins", and any future "who was first" logic it matters.
 
 **Why it happens:**
-This mirrors a genuine architectural blind spot: the app has never modeled "initial state" for money the way it does for stock (every stock item starts at zero and is built up via receipts — there's no equivalent "cash receipt" concept to seed a starting cash balance, since receipts in this app only ever add *stock*, never cash — see Pitfall 9).
+ISO text timestamps sort lexicographically == chronologically within one device, so they look like a global clock; they aren't.
 
 **How to avoid:**
-Give the operator an explicit way to record a starting/adjustment cash-in movement (e.g. a "Внесение/корректировка" category available on the manual-movement form, or a dedicated one-time "opening balance" action) before relying on the negative-balance warning. This does not need its own UI flow — reusing the manual movement form with an `is_credit` direction and a "внесение наличных" category, mirroring how `WRITEOFF_REASONS` already models a category dict with an `"other"` free-text escape hatch, covers it.
+Rely on the commutative ledger for correctness (totals don't need ordering). For per-device causal ordering use `(device_id, seq)`, which is monotonic per device. For master-data conflict resolution, prefer a server-assigned timestamp/version at sync time (the server has one clock) over client `created_at`. Don't build a global total order out of client wall-clocks; if display needs a global feed, sort by server-received time or accept approximate ordering.
 
 **Warning signs:**
-The requirements list only mentions debit categories ("оплата заказа поставщику, зарплата, прочее") — if the shipped UI genuinely has no way to add a manual *credit*, this is unaddressed.
+History feed rows interleave in impossible order after sync; a stale edit wins because a device's clock is fast; "days until catalog closes" or period reports shift when a client's clock is wrong.
 
-**Phase to address:**
-The manual-debit phase — build the movement form bidirectional (credit + debit) from the start rather than debit-only, even though the milestone description emphasizes debit.
+**Phase to address:** Sync foundation phase (define ordering/conflict rules) — cross-cutting; document the rule once.
 
 ---
 
-### Pitfall 8: No correction/reversal path for a mistyped manual entry, colliding with the append-only trigger
+### Pitfall 8: Relaxing the append-only UPDATE trigger too broadly for the sync cursor — reopening the ledger to tampering
 
 **What goes wrong:**
-`operations_no_update`/`operations_no_delete` (`app/db.py`) ABORT any UPDATE/DELETE at the SQLite trigger level — this is a deliberate, hard architectural guarantee, and any new cash table should copy it verbatim (Pitfall 1). But that means an operator who fat-fingers a withdrawal amount (e.g. types 5000 instead of 500) has **no way to fix it** unless the UI explicitly supports adding a compensating entry. If the shipped UI only exposes the three named debit categories from the requirements (supplier payment / salary / other) with no way to add a manual credit, the operator is stuck with a permanently wrong balance and no recourse except a raw SQL edit — which defeats the entire point of an immutable, trustworthy ledger.
+Sync needs to stamp `synced_at` on rows already written — but `synced_at` lives on `operations`/`cash_movements`, and those tables carry `operations_no_update` / `cash_movements_no_update` triggers that `RAISE(ABORT)` on ANY update. `app/db.py` explicitly anticipates this: "the v2 sync milestone relaxes the UPDATE trigger with a WHEN clause in a NEW migration". The pitfall is relaxing it wrong — dropping the trigger entirely, or a `WHEN` that permits updating more than `synced_at`. That converts the immutable audit ledger (the whole integrity story, and the reason merges are safe) into a mutable table a bug — or a compromised sync endpoint — could use to rewrite `qty_delta`, `amount_cents`, prices, or authorship after the fact.
 
 **Why it happens:**
-The stock side already solved this with a dedicated `correction` operation type (Phase 5) precisely because "the recorded number is wrong and needs fixing without editing history" is a known, expected need — but the v1.3 requirements as scoped don't mention an equivalent "cash correction" category, likely because the milestone description focuses on the two headline flows (auto-credit, manual debit) and doesn't explicitly call out reversals.
+The simplest way to make `UPDATE operations SET synced_at=... ` work is to drop the trigger. It "works" and tests pass.
 
 **How to avoid:**
-Ship a manual-credit path (see Pitfall 7) with a "Корректировка" category from day one, so a wrong entry is always fixable by adding an offsetting movement with a note explaining why — never by editing/deleting the original row. Document this in the UI itself (e.g. helper text near the balance: "Ошибку нельзя удалить — добавьте корректирующую запись").
+Write the relaxation as a **column-scoped** trigger: allow the UPDATE only when nothing but `synced_at` changes (e.g. abort `WHEN OLD.qty_delta IS NOT NEW.qty_delta OR OLD.amount_cents IS NOT NEW.amount_cents OR ...` — reject if any immutable column differs). Do it in a NEW Alembic migration (never edit the frozen `APPEND_ONLY_TRIGGERS` DDL semantics in place — migration 0001 froze its own copy; the constant is for test fixtures). Mirror the equivalent guard on PostgreSQL (a `BEFORE UPDATE` trigger/rule, since Postgres has no SQLite trigger syntax — see Pitfall 11). Consider tracking sync progress in a **separate** cursor table instead of mutating ledger rows at all, which sidesteps the trigger entirely.
 
 **Warning signs:**
-Any support/debug request that ends in "can we just edit that row in the database" is a sign this path is missing in the UI.
+The migration drops rather than replaces the trigger; a test proves `synced_at` updates but no test proves `qty_delta`/`amount_cents` updates still ABORT; the Postgres side has no equivalent trigger.
 
-**Phase to address:**
-The manual-debit phase, same as Pitfall 7 (they're the same underlying gap: debit-only UI).
+**Phase to address:** Sync foundation phase (the `synced_at` cursor design) — with an explicit "immutable columns still rejected" test on BOTH SQLite and PostgreSQL.
 
 ---
 
-### Pitfall 9: UI conflates "cash balance" with "profit"/"revenue," and goods-receipt cost isn't auto-linked to a cash debit
+### Pitfall 9: Adding auth but leaving the parallel MOBILE route tree (or export/backup) unguarded — role escalation & data leak
 
 **What goes wrong:**
-Two distinct confusions:
-1. `reports.py` already computes sales/profit reports (RPT-01..04) from the same `operations` table. A business owner glancing at a big "баланс кассы" number on the new Финансы page can easily read it as "profit," when it actually also contains money that must be reserved to restock inventory (cost of goods) and is reduced by non-COGS expenses (salary) that never touch the profit report. Confusing available cash with profit is one of the most common small-business financial mistakes in general (external sources below) — U.S. Bank found most business failures trace to cash-flow mismanagement, not unprofitability, and it stems exactly from this "I have money in the account, so I must be doing fine" confusion. This app now has two overlapping-but-different money views (Отчёты profit/revenue vs. Финансы cash balance) that must be labeled unambiguously or the owner will misread one for the other.
-2. `receipts.py` (goods intake) records `unit_cost_cents` for stock but has zero connection to cash — the v1.3 spec treats "оплата заказа поставщику" as a manual withdrawal category, entirely decoupled from recording the receipt itself. This is intentional per the requirements, but if undocumented in the UI, an operator's natural mental model ("I sold something → cash went up automatically; I bought stock → shouldn't cash go down automatically too?") will be violated silently, leading them to either forget to record the manual payment (balance overstated) or worry the app is missing a feature.
+The app has ~40 routers in two near-mirrored trees: desktop (`sales`, `receipts`, `finance`, `export`, `backup`, `settings`, ...) and mobile (`mobile_sales`, `mobile_receipts`, `mobile_finance`, `mobile_reports`, ...). Auth/role gating added only to the desktop tree leaves every `/m/...` endpoint open — an operator (or an unauthenticated request) can drive receipts/sales/finance through the mobile routes even if the desktop equivalents are locked. The same asymmetry hits the two high-value data endpoints: `export` (full products/sales/customers/cash CSV dumps — every row, no filter) and `backup` (VACUUM-INTO of the entire DB). If those aren't restricted to the administrator role, an operator can exfiltrate the whole dataset. The mobile home even exposes report/finance tiles.
 
 **Why it happens:**
-The milestone deliberately scopes cash tracking as an *aggregate* module bolted onto an existing product-centric app, not a full accounting/AP system — so the natural symmetry a user expects (every stock-affecting money event has a cash-affecting counterpart) is only half-built by design (sale → auto; receipt → manual, and only if the operator remembers).
+The desktop and mobile trees were deliberately built as separate routers reusing the same services; a guard added as a per-router dependency is easy to wire into one include-list and forget the other. There is currently **zero** auth middleware in `main.py`, so "protected" is not the default — every new route is public unless explicitly gated.
 
 **How to avoid:**
-Label the Финансы balance explicitly as cash-on-hand ("Наличные в кассе"), distinct from the existing Отчёты "Выручка"/"Прибыль" labels, and consider a short explanatory line or link between the two pages. Add a one-line note on the receipt form near the cost field, or on the Финансы manual-debit form, clarifying that recording a receipt does NOT withdraw cash automatically — the operator must record a separate withdrawal if they paid at receipt time.
+Enforce auth as a global default (app-level dependency / middleware) so routes are closed unless opted-out (the login page itself), rather than opt-in per router. Define the role→route matrix once and assert it in tests that enumerate EVERY router in `main.py` (both trees) — a test that fails when a new unguarded router is added. Put `export` and `backup` behind the administrator role explicitly. Map the admin/operator split from PROJECT.md: admin = users/warehouses/dictionaries/settings/reports; operator = receipts/sales/write-offs/cash — and apply it identically to `/x` and `/m/x`.
 
 **Warning signs:**
-User-facing copy that uses "баланс"/"касса"/"выручка"/"прибыль" interchangeably; support questions like "why doesn't my cash match my profit report."
+A `/m/...` endpoint returns data without a session; `curl` to `/export/...` or `/backup/...` succeeds unauthenticated or as an operator; a new mobile router added without a corresponding auth test; the role check exists on `sales.py` but not `mobile_sales.py`.
 
-**Phase to address:**
-UI/history-and-balance-display phase (whichever phase builds the Финансы page and its copy) — this is a labeling/documentation fix, cheap to do right the first time, expensive to retrofit once the owner has already formed a wrong mental model.
+**Phase to address:** Auth & roles phase — with a "every router is gated" enumeration test as an exit criterion.
+
+---
+
+### Pitfall 10: Storing passwords wrong / session fixation / no CSRF on the all-HTMX POST forms
+
+**What goes wrong:**
+This is the app's *first ever* security boundary — there is no auth code to copy patterns from. Three concrete traps: (1) storing passwords as plaintext or a fast/unsalted hash (MD5/SHA-256) instead of a slow salted KDF; (2) session fixation — reusing the pre-login session identifier after authentication, letting an attacker fix a victim's session; (3) no CSRF protection — the entire UI is HTMX `hx-post` form submissions, and once auth is a cookie session, any external page can forge state-changing POSTs (create sale, withdraw cash, delete product) against the server unless CSRF is handled.
+
+**Why it happens:**
+"Single local user, no auth" was the v1 assumption; the team has never shipped login here, so defaults (a hand-rolled cookie, a plain hash) are tempting.
+
+**How to avoid:**
+Hash with a modern KDF (argon2id or bcrypt) via a maintained library; never invent crypto. Use a vetted session mechanism (signed/rotated session cookie, e.g. Starlette `SessionMiddleware` or `fastapi-users` per the CLAUDE.md "add session-cookie auth then" note) and **rotate the session id on login** to kill fixation. Set cookies `HttpOnly`, `Secure` (server is over the internet now), `SameSite=Lax/Strict`. Add CSRF tokens to HTMX POSTs (hidden field or `hx-headers` with a per-session token validated server-side); `SameSite` cookies help but are not sufficient alone. Verify these on BOTH route trees (Pitfall 9).
+
+**Warning signs:**
+Passwords readable in the DB; login doesn't change the session cookie value; a cross-site form can POST to a state-changing endpoint; CSRF token absent from `hx-post` forms.
+
+**Phase to address:** Auth & roles phase.
+
+---
+
+### Pitfall 11: SQLite→PostgreSQL portability traps that only bite once the real server exists
+
+**What goes wrong:**
+The models were written "sync-ready" and mostly portable, but several things behave differently on a live PostgreSQL server and won't surface until then:
+- **`render_as_batch=True` is SQLite-only.** Alembic's batch mode (rebuild-table-to-ALTER) is required for SQLite and *wrong* for PostgreSQL, which supports real `ALTER`. Running batch migrations against Postgres, or maintaining one migration that assumes batch, breaks. The Alembic `env.py` must set `render_as_batch` conditionally on dialect.
+- **Cyrillic `name_lc`/`search_lc` shadow columns.** These exist because "SQLite `lower()`/`LIKE` cannot fold Cyrillic", so they're computed in Python (`str.lower()`) and matched with `LIKE`. PostgreSQL *can* case-fold Cyrillic (`ILIKE`, `lower()` under a UTF-8 collation). If any Postgres-side code path switches to `ILIKE`/`lower()` on `name` directly, it returns different matches than the Python-computed shadow, causing search inconsistency between client (SQLite+shadow) and server. Keep the shadow-column approach uniform on both DBs, or fully commit to server-side collation — don't mix.
+- **Boolean-ish `is_legacy`** is an `Integer` 0/1. Fine as Integer on Postgres, but if anyone remaps it to `Boolean`, SQLite's 0/1 and Postgres `true/false` diverge in comparisons.
+- **Timestamps are TEXT ISO** and queries compare them as strings (`created_at >= start_iso`). If a Postgres column is ever declared `timestamptz`, string comparison and lexicographic ordering break. Keep them TEXT, or convert every comparison.
+- **`JSON` columns** (`payload`, `catalogs`): SQLite stores JSON as TEXT; Postgres has native `json`/`jsonb` with different query operators. Currently read only in Python — safe — but any server-side `payload->>'reason_code'` query is non-portable.
+- **Partial unique index** (`uq_products_code_active`) already ships both `sqlite_where` and `postgresql_where` — good; keep that pattern for any new partial index.
+- **Money is integer cents** everywhere (good, portable); never let a Postgres migration turn a cents column into `Numeric`/`float`.
+- **SQLite-specific SQL** (`INSERT OR IGNORE`, `INSERT OR REPLACE`, `strftime`) that a merge/import path might introduce is non-portable — express portably or dialect-branch.
+
+**Why it happens:**
+SQLite is famously permissive (dynamic typing, ignores lengths, no real ALTER). Code that "works" on SQLite can rely on that permissiveness; Postgres is strict and rejects or behaves differently.
+
+**How to avoid:**
+Stand up a real PostgreSQL instance in CI and run the *same* Alembic history + a subset of tests against it early — don't wait for deployment. Make `render_as_batch` dialect-conditional in `env.py`. Add a cross-DB search test proving Cyrillic case-insensitive search returns identical results on SQLite and Postgres. Keep timestamps TEXT and money integer. Audit for any raw SQLite-specific constructs.
+
+**Warning signs:**
+Migrations run on SQLite but fail on Postgres; Cyrillic search matches differ between client and server; length overflows appear only on Postgres (SQLite ignored `String(n)`); `ILIKE` sneaks into a query.
+
+**Phase to address:** Central PostgreSQL server phase — with a Postgres-in-CI gate before the server ships.
+
+---
+
+### Pitfall 12: Untrusted exchange file — tampering, forged rows, and schema-version drift
+
+**What goes wrong:**
+The USB exchange file crosses a trust boundary: it can be edited, corrupted, or crafted. Two distinct risks. (1) **Tampering / forged rows:** a hand-edited file could inject ledger rows with a forged `device_id`/`created_by` (impersonating another operator), negative or absurd `qty_delta`/`amount_cents`, or a `batch_id` belonging to another product — and if the merge path is a raw bulk insert (correctly bypassing `record_operation()` per Pitfall 1), it also bypasses `record_operation()`'s ownership/validation guards (soft-deleted-product rejection, batch-belongs-to-product check, category allow-lists). Formula-injection also re-enters if exchange data is ever re-exported to CSV without `_csv_safe`. (2) **Schema-version drift:** a client on app v3.0 and a server/peer on v3.1 have different columns/tables; a file from the newer version imported by the older (or vice-versa) can fail hard, or worse, silently drop columns and apply a subtly wrong subset.
+
+**Why it happens:**
+Offline/USB feels "internal" and trusted, so validation is skipped; and both ends' schema is assumed identical because they're "the same app".
+
+**How to avoid:**
+- Treat the file as untrusted input: sign it (HMAC/asymmetric) or at minimum checksum + validate on import; reject on signature/integrity failure before opening the write transaction.
+- Re-run the same server-side allow-lists and ownership/sanity checks on merged rows that `record_operation()` does inline — validate `qty_delta` sign vs type, `category` ∈ `CASH_CATEGORIES`, `type` ∈ `OPERATION_TYPES`, batch-belongs-to-product, product not soft-deleted — even on the bulk path. Reject/quarantine violating rows rather than trusting the file.
+- Bind rows to their authenticated origin: on the online path the server authenticates the device/user, so `created_by`/`device_id` are trustworthy; for USB, carry a signed manifest identifying the exporting device/user and reject rows whose claimed origin doesn't match.
+- Stamp every exchange file with an explicit **schema/app version** in a header/manifest; on import, refuse (with a clear operator message) if the versions are incompatible, and define a forward/backward-compat rule. Never silently drop unknown columns.
+- Keep `_csv_safe` on any path that re-emits imported free-text to CSV.
+
+**Warning signs:**
+Import accepts a file with a mismatched version header; a merged op has a `created_by` that never authenticated; negative `qty_delta` on a `receipt` slips in; a batch_id references another product; imported text later opens as an Excel formula.
+
+**Phase to address:** Offline/USB sync phase (file format, signing, version header, validation) — the validation logic is shared with the online merge path.
 
 ---
 
 ## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|--------------------|-----------------|------------------|
-| Cache the balance as a plain column updated by application-code `+=` instead of a SQL-side atomic increment | Slightly less code to write initially | Balance drift under any concurrent/retried write, no audit trail to explain drift (same failure mode the ledger-vs-standalone-balance-field research above warns against) | Never — the SQL-side-increment-in-same-transaction pattern already exists in `ledger.py`; copying it costs nothing extra |
-| Skip the "opening balance" / manual-credit UI and ship debit-only for v1.3 | Matches the literal milestone wording faster | Every operator whose real cash box has starting money gets a false negative-balance warning on day one, and any mistyped debit is permanently unfixable | Only acceptable if explicitly flagged to the user as a known v1.3 gap and fast-followed — not silently deferred |
-| Store the cash-movement "reason" as unconstrained free text only (no category allow-list) | Faster form to build | Loses the reportability the `WRITEOFF_REASONS` pattern already proved valuable (filterable categories in `/history`) — a future "expenses by category" report becomes a text-parsing problem | Never, given the app already has a working allow-list + "other" free-text pattern one file away (`writeoffs.py`) to copy |
-| Skip a `rebuild_cash_balance()`/recompute-from-ledger repair function | Saves one function in the first phase | No way to detect or repair drift if a bug is ever found, unlike stock which has `rebuild_stock()` as a safety net | Acceptable only if the balance is never cached (computed live via SUM every read) — then there's nothing to rebuild |
+|----------|-------------------|----------------|-----------------|
+| Reuse `record_operation()` to apply synced rows | No new code path | Double-counted stock, lost origin identity, non-idempotent retries (Pitfall 1) | **Never** — build a dedicated verbatim merge path |
+| Drop the append-only UPDATE trigger to write `synced_at` | Cursor works immediately | Ledger becomes mutable; integrity & tamper-resistance gone (Pitfall 8) | **Never** — use a column-scoped trigger or a separate cursor table |
+| Gate auth per-router, opt-in | Small, incremental | A forgotten mobile/export router stays public (Pitfall 9) | Only if a test enumerates every router and fails on a gap |
+| Keep `device_id`/`created_by` from static config | Zero change to the write path | Seq collisions across devices; unattributable audit trail (Pitfall 3) | **Never** once a 2nd device or 2nd user exists |
+| Ship both sync transports before proving the merge engine | Feature-complete sooner | Two half-tested integration paths over the riskiest code in project history | Never — build & prove the shared idempotent merge engine first, then layer transports |
+| Sync master tables as last-write-wins on client `updated_at` | Simple to code | Skewed clocks corrupt edits; code collisions (Pitfall 6/7) | Only with a server-authoritative version/timestamp and a defined code-collision rule |
+| Test only on SQLite | Fast local CI | Postgres-only failures found in production (Pitfall 11) | Never for this milestone — add Postgres to CI |
 
 ## Integration Gotchas
 
-Mistakes when wiring the new Финансы module into the existing sales/returns/receipts/reports code, not external services (this app has none — fully local/offline).
-
-| Integration point | Common Mistake | Correct Approach |
-|--------------------|-----------------|-------------------|
-| `sales.py` (`register_sale`) | Wiring the cash credit as a second, separate `session.commit()` after the sale operations commit | Stage the cash-credit write inside the SAME try/commit block as the sale operations (WR-03 pattern: one commit closes the whole transaction) |
-| `returns.py` (`register_return`) | Forgetting to add the symmetric debit at all (Pitfall 2), or computing it by looking up/matching the original credit (Pitfall 3) | Compute the debit independently from `qty_returned * origin.unit_price_cents`, write it in the same transaction as the `return` op |
-| `writeoffs.py` / `corrections.py` / `transfers.py` | Assuming these need cash wiring too, since they're stock-affecting operation types | Per v1.3 scope, only `sale` (credit) and `return` (debit) touch cash automatically — write-off/correction/transfer are stock-only and must NOT silently create cash movements |
-| `receipts.py` | Assuming goods receipt should auto-debit cash for the cost (natural symmetry expectation) | Per v1.3 scope this is explicitly a MANUAL category ("оплата заказа поставщику") — do not auto-wire it; document the gap in UI (Pitfall 9) |
-| `reports.py` | Extending existing profit/revenue report queries to also sum cash movements from the operations table | Cash movements live in their own table (Pitfall 1) — a "Финансы" report is a separate query/page, not a modification to the existing `Operation.type == "sale"` filters |
-| `/history` view (`operations.py`, `OPERATION_TYPE_LABELS`) | Trying to merge cash movements into the same history list/pagination as stock operations | Give Финансы its own history view (mirrors the existing `LIST-01..03` pagination/filter/sort pattern from `pagination.py`, applied to the new table) rather than injecting rows into the stock ledger's `/history` |
-| CSV export (`export.py`, BCK-02) | Silently omitting cash movements from the existing three-file export, or bolting them onto an existing CSV without the same BOM/`;`-delimiter/formula-injection-escape treatment | If cash export is in scope, reuse the exact same CSV-safety convention (BOM-once, `;` delimiter, apostrophe-escape of formula-injection prefixes) already proven in `export.py`; if out of scope for v1.3, say so explicitly rather than leaving it ambiguous |
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Central PostgreSQL | Assuming SQLite-passing migrations/queries "just work"; `render_as_batch` on Postgres | Postgres in CI; dialect-conditional batch mode; portable ORM constructs only |
+| Online sync transport | Non-idempotent retry after a dropped HTTP connection double-applies a batch | Idempotent merge keyed on UUID PK + an export-batch id; safe to re-send |
+| USB exchange file | Trusting the file; applying row-by-row with commits | Sign/validate + version header; single all-or-nothing transaction; re-run write-path validations |
+| Dual ledgers (operations + cash) | Syncing them as two independent streams | One atomic merge covering both + a `sale_id` reconciliation check |
+| Cache columns | Shipping `Product.quantity`/`Batch.quantity` in the sync payload | Never sync caches; `rebuild_stock()` after every merge |
+| Session cookies + HTMX | No CSRF token on `hx-post`; non-rotating session id | CSRF token via `hx-headers`/hidden field; rotate session on login; `HttpOnly`/`Secure`/`SameSite` |
 
 ## Performance Traps
 
-Low risk at this project's actual scale (one operator, local SQLite, hundreds to low thousands of cash rows/year), but worth naming so the design doesn't accidentally block growth.
-
 | Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|-----------------|
-| Recomputing `SUM(amount_cents)` on every page load with no index | Финансы page feels slightly slower to load over years of accumulated rows | Index on the movement table's `created_at` (for period filters) — mirrors existing `Operation.product_id`/`created_at` indexing choices | Not before tens of thousands of rows on SQLite; unlikely to matter for a single-store operator within the app's realistic lifetime |
-| Financial history page with no pagination | Page becomes slow/unwieldy after a year or two of daily movements | Reuse `app/services/pagination.py`, the same helper already applied uniformly to all six existing list pages (Phase 14, LIST-01..03) | Same threshold as the existing `/history` and `dictionary` pages that already needed it (thousands of rows) |
+|------|----------|------------|----------------|
+| `rebuild_stock()` full-table recompute on every sync | Sync slows as ledger grows (re-sums every product & batch) | Incremental recompute of only touched products/batches, or accept full rebuild while row counts are small | Tens of thousands of ledger rows across multi-year multi-operator history |
+| `next_seq()` = `SELECT max(seq)` per insert | Fine single-writer; contention if the server ever writes ledger rows itself | Server preserves origin seq (never generates); keep local single-writer assumption | Only if the server starts minting its own ledger rows concurrently |
+| Full-table CSV export / VACUUM-INTO backup over the network | Large dumps block; memory spikes | Already streamed (good); keep streaming; gate by role; consider server-side scheduled backups | Large multi-operator dataset pulled synchronously |
+| Sending the entire ledger every sync | Sync time grows unbounded | Use the `synced_at` cursor to send only unsynced rows (delta sync) | Immediately at scale — cursor is why `synced_at` exists |
 
 ## Security Mistakes
 
-This is a local, offline, single-operator app with no auth — "security" here means protecting the integrity guarantees the app already relies on, not network/auth hardening.
-
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Adding an admin/debug route that directly UPDATEs a cash balance or movement row "just for fixing mistakes" | Defeats the append-only guarantee the whole ledger design (and this feature's trustworthiness) depends on; also would silently succeed only until the trigger is copied onto this table (Pitfall 1), then fail confusingly | Never add such a route; use compensating entries (Pitfall 8) instead, exactly like the rest of the app has no "edit a past sale" backdoor |
-| Free-text reason/note field rendered unescaped anywhere (UI or future CSV export) | Reflected-content or formula-injection risk if ever exported to Excel/CSV, mirroring the exact risk the existing export already had to solve | Reuse the existing Jinja2 autoescape + CSV apostrophe-escape conventions already proven in `export.py`/templates — don't build a new unescaped path for this one feature |
-| Trusting a client-submitted amount/category without server-side re-validation | A crafted form POST could submit a category not in the allow-list, or a negative "credit" amount used to secretly debit | Validate category against a server-side allow-list (mirror `WRITEOFF_REASONS`) and validate amount sign/positivity server-side, exactly like `sales.py` re-validates price sign (D-10/WR-04) rather than trusting the form |
+| Plaintext / fast-hash passwords | Credential theft on server compromise | argon2id/bcrypt via a maintained lib |
+| No CSRF on HTMX POST forms | Forged sales/withdrawals/deletes | Per-session CSRF token validated server-side + `SameSite` cookies |
+| Session not rotated on login | Session fixation | Regenerate session id at authentication |
+| Export/backup endpoints not role-gated | Operator exfiltrates full dataset (all customers, sales, cash) | Administrator-only; enumeration test over both route trees |
+| Mobile route tree unguarded | Role escalation via `/m/...` bypass | Global auth default; role matrix asserted for every router |
+| Bulk-merge path skips write-path validations | Forged/absurd ledger rows enter via sync/USB | Re-run allow-lists + ownership + sign checks on merged rows |
+| Relaxed append-only trigger too broad | Post-hoc rewrite of qty/amount/author | Column-scoped trigger; test immutables still ABORT |
+| Trusting `created_by`/`device_id` from an exchange file | Impersonation of another operator | Bind to authenticated origin / signed manifest |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
-|---------|--------------|-------------------|
-| Labeling the Финансы balance ambiguously (just "Баланс") next to the existing profit/revenue reports | Owner conflates cash-on-hand with profit, may over-withdraw believing all of it is profit (Pitfall 9) | Explicit label "Наличные в кассе" distinct from "Выручка"/"Прибыль", short explanatory copy or cross-link |
-| Debit-only manual movement form (matches literal requirements wording) | No way to seed an opening balance or fix a mistake (Pitfall 7/8) | Bidirectional form (credit + debit) with a "Корректировка"/"Внесение" category from day one |
-| Hard-blocking negative balance | Breaks the app's own established warn-and-override precedent (oversell, min-price), traps the operator in a state they can't record | Warn-with-`confirm=1`-override, identical to the existing oversell/min-price pattern (Pitfall 6) |
-| No visible link between a sale's cash-in and the sale itself in the movement history | Owner sees a growing list of anonymous "приход" rows and can't tell which sale generated which credit, especially once returns start appearing as separate debit rows | Show the linked sale (customer/products) inline in the Финансы history row, reusing the existing `sale_id` FK, the same way `/history` already resolves op → product/batch context |
-| Receipt form silent about cash (Pitfall 9) | Operator forgets to record the manual supplier-payment withdrawal, balance silently overstated | One-line note on the receipt form near the cost field pointing to the manual withdrawal flow |
+|---------|-------------|-----------------|
+| Silent sync failure | Operator believes data is safe; it isn't (violates Core Value) | Explicit sync status/last-synced time; loud, actionable errors in Russian |
+| Version-mismatch import fails cryptically | Operator can't tell why USB sync did nothing | Clear Russian message naming the version gap and next step |
+| Login/roles added with English UI strings | Inconsistent with the Russian UI | All auth/role prompts and errors in Russian (per project convention) |
+| Conflict silently resolved (edit reverts) | Operator's product/customer edit vanishes with no notice | Surface conflicts or make server-authoritative resolution predictable & visible |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Auto-credit on sale:** Often missing the symmetric debit on return — verify `returns.py`'s `register_return` writes a cash debit in the same transaction as the `return` op, computed independently (not matched against the original credit).
-- [ ] **Current balance display:** Often backed by a cached field with no recompute-from-ledger safety net — verify a `compute_cash_balance()` (mirroring `compute_stock()`) exists and, if a cache is used, a `rebuild_cash_balance()` (mirroring `rebuild_stock()`) exists too.
-- [ ] **Manual withdrawal reason:** Often free-text only, or category-only with no escape hatch — verify it mirrors `WRITEOFF_REASONS`: a server-validated category allow-list plus an optional free-text note, with "прочее" as the escape hatch.
-- [ ] **Negative-balance handling:** Often either silently allowed with no warning or hard-blocked — verify it follows the existing warn-with-`confirm=1`-override pattern used by oversell/min-price.
-- [ ] **Opening balance:** Often entirely absent — verify there's a way to record a starting/adjustment cash-in that isn't tied to a fake sale.
-- [ ] **Audit fields on cash movements:** Often reinvented ad hoc — verify the new table reuses `created_by`/`device_id`/`seq`/`synced_at` exactly like `Operation`, not a bespoke "operator" text field, so v2 multi-operator sync doesn't require a schema rewrite.
-- [ ] **Финансы history view:** Often built without pagination/filter/sort — verify it reuses `app/services/pagination.py`, matching every other list page (LIST-01..03).
-- [ ] **Reports/CSV export scope:** Often silently left out — verify whether cash movements are (or explicitly are not) part of the existing profit reports and the three-file CSV export (BCK-02), and that this is a stated decision, not an oversight.
+- [ ] **Sync merge:** Often missing idempotency — verify re-sending/re-importing the same batch changes nothing (UUID-PK dedup).
+- [ ] **Cache after merge:** Often missing the `rebuild_stock()` call — verify `compute_stock()` == `product.quantity` for every product post-sync.
+- [ ] **Dual ledgers:** Often missing cash↔stock atomicity — verify every synced `sale_id` has rows in BOTH ledgers.
+- [ ] **Auth coverage:** Often missing the mobile tree / export / backup — verify a test enumerates every router in `main.py` and asserts its required role.
+- [ ] **Append-only after relax:** Often missing the immutability test — verify updating `qty_delta`/`amount_cents` still ABORTs while `synced_at` updates succeed, on SQLite AND Postgres.
+- [ ] **Postgres parity:** Often missing a real Postgres run — verify the full Alembic history + Cyrillic search tests pass on Postgres in CI.
+- [ ] **Device identity:** Often missing per-install uniqueness — verify two fresh installs get distinct `device_id`s and don't collide on `UNIQUE(device_id, seq)`.
+- [ ] **Exchange file:** Often missing a version header + signature — verify a tampered or version-mismatched file is rejected before any write.
+- [ ] **Master-data conflicts:** Often missing entirely — verify a defined outcome for concurrent product edits and duplicate `code` creation across devices.
+- [ ] **CSRF:** Often missing on HTMX — verify a state-changing `hx-post` without a valid token is rejected.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|----------------|-----------------|
-| Cash reused the `operations` table (Pitfall 1) | HIGH | Requires a new migration to split cash rows into a dedicated table, backfilling from the polluted `operations` rows, and auditing every `reports.py` query that filters `Operation.type` to confirm no cash rows leaked into profit/revenue sums |
-| Return didn't debit cash (Pitfall 2) | LOW–MEDIUM | Because the ledger is append-only, recovery is itself a compensating entry: a one-time backfill script that finds every `return` op lacking a matching cash debit and inserts the missing debit rows (never edits existing ones) |
-| Duplicate cash credit from a double-submitted sale (Pitfall 5) | LOW | Insert a compensating manual debit with a "Корректировка" category and a note referencing the duplicate sale/op id — same recovery mechanism as Pitfall 8, no special tooling needed if the bidirectional manual-movement form (Pitfall 7) was built |
-| Balance drifted from a non-atomic cache update (Pitfall 4) | LOW (if `rebuild_cash_balance()` exists) / MEDIUM (if it doesn't) | With the recompute function: call it to snap the cache back to `SUM(cash_movements.amount_cents)`. Without it: write the function first, then run it — same shape as the existing `rebuild_stock()` repair path |
+|---------|---------------|----------------|
+| Double-counted stock after bad merge (P1/P2) | LOW | Ledger is intact & append-only — run `rebuild_stock()` to recompute caches from truth |
+| Half-applied USB import (P5) | LOW–MEDIUM | Roll back the merge transaction; restore from the startup VACUUM-INTO backup; re-import validated file |
+| Ledger tampered via over-broad trigger (P8) | HIGH | Hard to detect/undo post-hoc — restore from backup; re-scope trigger; add immutability tests; audit affected rows |
+| Duplicate product codes merged (P6) | MEDIUM | Define winner, re-point ledger `product_id`s (append-only correction rows, not deletes), rebuild caches |
+| Data leak via unguarded export/mobile route (P9) | HIGH | Rotate credentials/secrets; add gating + enumeration test; assess exposure — leaked data can't be un-leaked |
+| Plaintext passwords discovered (P10) | MEDIUM | Force reset all passwords; migrate to argon2id; invalidate sessions |
 
 ## Pitfall-to-Phase Mapping
 
-| Pitfall | Prevention Phase | Verification |
-|---------|--------------------|----------------|
-| 1. Cash bolted onto `operations` table | Schema/foundation phase | New migration creates a dedicated `cash_movements` table (or equivalent) with its own immutability triggers; `OPERATION_TYPES` unchanged; no new `NOT NULL` relaxation on `Operation.product_id` |
-| 2. Return doesn't debit cash | Same schema/foundation phase (ship credit + debit together) | Test: sell → fully return → assert balance returns to pre-sale value |
-| 3. Return "matches" against original credit | Same schema/foundation phase | Code review: return-debit computation reads only from the `return` op's own frozen price/qty, never queries prior cash movements |
-| 4. Cache/balance drift | Same schema/foundation phase | Either no cache (live SUM), or a `rebuild_cash_balance()` exists and is exercised by a test that intentionally desyncs and repairs the cache |
-| 5. No idempotency guard | Schema/foundation phase (UI guard) + explicit Future/Out-of-Scope note if full fix deferred | Submit button disabled during HTMX request; PROJECT.md/roadmap explicitly notes duplicate-basket detection as a known gap if not fully solved |
-| 6. Negative-balance validation inconsistency | Manual-debit phase | Withdrawal form returns a warning + `confirm=1` override on negative-balance, verified against the same test shape as existing oversell tests |
-| 7. No opening balance | Manual-debit phase | Manual movement form supports a credit direction with an "opening/adjustment" category, not debit-only |
-| 8. No correction path for manual entries | Manual-debit phase (same as 7 — same underlying gap) | UI copy explicitly tells the operator to add a compensating entry rather than edit/delete; no admin route exists that UPDATEs a movement row |
-| 9. Balance/profit conflation + receipt-cash expectation gap | UI/history-and-balance-display phase | Финансы page copy uses "Наличные в кассе" (not "Прибыль"/"Выручка"); receipt form has a note about manual supplier-payment withdrawal |
+| Pitfall | Prevention Phase (area) | Verification |
+|---------|-------------------------|--------------|
+| P1 Replay via `record_operation()` | Sync foundation (merge engine) | Re-applying a batch is a no-op; origin id/device/seq/author preserved |
+| P2 Caches not recomputed | Sync foundation (merge engine) | `compute_stock()` == cache for all products after sync |
+| P3 Static `device_id`/`created_by` | Sync foundation (device identity) + Auth (per-user author) | Distinct per-install device_id; `created_by` = session user |
+| P4 Dual-ledger inconsistency | Sync foundation (atomic dual merge) | Every synced `sale_id` present in both ledgers |
+| P5 Partial USB apply | Offline/USB sync | Single-transaction import; interrupted import leaves no trace |
+| P6 Mutable master conflicts | Sync foundation (data-model design) | Defined resolution for concurrent edits + `code` collisions |
+| P7 Clock trust | Sync foundation (ordering rules) | Correctness independent of client clocks; documented rule |
+| P8 Over-broad trigger relax | Sync foundation (`synced_at` cursor) | Immutable columns still ABORT on SQLite & Postgres |
+| P9 Unguarded mobile/export/backup | Auth & roles | Enumeration test gates every router in both trees |
+| P10 Password/CSRF/session | Auth & roles | argon2id hashing; session rotation; CSRF on HTMX POSTs |
+| P11 SQLite→Postgres portability | Central PostgreSQL server | Full Alembic history + Cyrillic search pass on Postgres in CI |
+| P12 Untrusted exchange file | Offline/USB sync | Signed + version-headed file; validations re-run on merge |
 
 ## Sources
 
-- `app/services/ledger.py`, `sales.py`, `returns.py`, `writeoffs.py`, `receipts.py`, `reports.py`, `db.py`, `models.py` (this repository) — direct code reading, HIGH confidence, primary grounding for all architecture-specific pitfalls
-- `.planning/PROJECT.md` — milestone scope, requirements, and prior Key Decisions (D-XX/WR-XX conventions), HIGH confidence
-- [The Idempotent Ledger: Solving the Duplicate Event Problem in High-Throughput Financial Systems](https://medium.com/@adeyemi_malik/the-idempotent-ledger-solving-the-duplicate-event-problem-in-high-throughput-financial-systems-e41dfa390f25) — general idempotency/duplicate-write pitfalls in ledger design, MEDIUM confidence (practitioner blog, cross-checked against this app's own WAL/`operations_no_update` design)
-- [Formance — What Is a Ledger? A Guide for Software Engineers](https://www.formance.com/blog/financial-operations/what-is-a-ledger) — "storing a running balance as a standalone field is error-prone" finding used in Pitfall 4, MEDIUM confidence
-- [Accu-Tax — Cash Flow vs. Profit: The Mistake That Sinks Small Businesses](https://www.accutaxinc.net/cash-flow-vs-profit-the-mistake-that-sinks-small-businesses/) — small-business cash-vs-profit confusion pattern used in Pitfall 9, MEDIUM confidence
-- [GrowthForce — Why Profits Don't Equal Cash Flow](https://www.growthforce.com/blog/why-profits-dont-equal-cash-flow) — corroborating source for Pitfall 9, MEDIUM confidence
+- Codebase (HIGH): `app/services/ledger.py` (`record_operation`, `next_seq`, `rebuild_stock`, `compute_stock`), `app/models.py` (UUID PKs, `device_id`/`seq` UNIQUE, `synced_at`, `name_lc`/`search_lc`, integer-cents, `is_legacy`, JSON columns, `uq_products_code_active` dual `sqlite_where`/`postgresql_where`), `app/db.py` (`APPEND_ONLY_TRIGGERS` + the explicit "v2 sync relaxes the UPDATE trigger with a WHEN clause" note, PRAGMA setup), `app/config.py` (static `device_id`/`operator_name` defaults), `app/main.py` (no auth middleware; ~40 routers across desktop + mobile trees), `app/services/export.py` (`_csv_safe` formula-injection guard, full-table dumps, BOM-once).
+- Project context (HIGH): `.planning/PROJECT.md` — v3.0 milestone scope, admin/operator role split, "append-only ledger is the sync foundation" decisions (D-05..D-11), "both transports = maximum-scope, highest-risk" note.
+- `CLAUDE.md` (HIGH): Stack Patterns by Variant (UUID-for-sync, WAL/foreign_keys pragmas, `render_as_batch` SQLite-only, TEXT UTC timestamps, integer cents, "add session-cookie auth then"), What NOT to Use (no SQLite-specific SQL, no float money).
+- Practitioner consensus / official docs knowledge (MEDIUM–HIGH): idempotent-merge-by-UUID and delta-sync-cursor patterns; last-write-wins vs. server-authoritative conflict resolution; OWASP session-fixation/CSRF guidance; argon2id/bcrypt for password storage; SQLAlchemy SQLite-dialect FK-pragma and Alembic batch-mode documentation.
 
 ---
-*Pitfalls research for: Adding a Касса (cash-balance) module to MyOriShop's existing warehouse/sales app*
-*Researched: 2026-07-14*
+*Pitfalls research for: adding client-server sync + central PostgreSQL + auth/roles to a mature local-first SQLite app (MyOriShop v3.0)*
+*Researched: 2026-07-18*

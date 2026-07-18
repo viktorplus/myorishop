@@ -1,140 +1,158 @@
 # Project Research Summary
 
-**Project:** MyOriShop - Kassa / Finansy module (v1.3 milestone)
-**Domain:** Cash-balance / cash-flow ledger bolted onto an existing single-operator, offline warehouse-and-sales app
-**Researched:** 2026-07-14
+**Project:** MyOriShop — Oriflame Warehouse Inventory
+**Domain:** Local-first SQLite app gaining multi-operator sync (online + offline USB), a central PostgreSQL server, and mandatory auth with admin/operator roles (v3.0)
+**Researched:** 2026-07-18
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This is not a greenfield feature: it is a second append-only ledger grafted onto a codebase that already solved this exact class of problem for stock. The existing operations table plus record_operation() single-write-path pattern (UUID PK, device_id/seq, DB-level immutability triggers, SQL-side atomic cache increments with a rebuild_*() recompute/repair function) is the proven template. All four research files converge on one architectural verdict: do not reuse operations for cash. Instead create a sibling cash_movements table that copies the sync-ready, append-only shape but drops the stock-specific invariants (product_id NOT NULL, mandatory batch_id). No new runtime dependency is required; money stays Integer cents, balance is a live SUM() (no cache needed at this scale), and every UI interaction (warn-but-allow negative balance, category allow-list plus free-text other) should mirror patterns already shipped for oversell/min-price warnings and write-off reasons.
+MyOriShop v3.0 is not a green-field sync project — it is the moment the app *activates* machinery that was deliberately seeded since v1.0. The `operations` and `cash_movements` tables are already append-only ledgers with UUID4 PKs, per-device `seq`, a `UNIQUE(device_id, seq)` guard, an unused `synced_at` cursor column, and UPDATE/DELETE-blocking triggers whose own code comment anticipates "the v2 sync milestone relaxes the UPDATE trigger." All four researchers independently reached the same conclusion: because ledger rows are immutable and globally UUID-keyed, **sync is a set-union-by-UUID plus a `rebuild_stock()` recompute — no CRDT, no conflict-resolution UI, no last-write-wins on operational data, and no background-job infrastructure (Kafka/Celery/Redis) whatsoever.** The stated hard problem of most sync projects is deleted by the existing architecture.
 
-The recommended approach: one foundation phase creates the cash_movements schema, the finance.py service (single write path, mirrors ledger.py), and wires both sale auto-credit (sales.py) and return auto-debit (returns.py) in the same phase, since these must ship together, not sequentially, because a return without a symmetric debit silently corrupts the balance on day one. A second phase builds the manual-movement UI (bidirectional, credit and debit, not debit-only, to cover opening balance and typo-correction) plus the Finansy dashboard/history page. A third, lower-priority phase covers reports/CSV export if pulled into scope.
+The recommended approach is therefore small and surgical. A **separate, idempotent, verbatim merge path** (`ingest_batch`, INSERT-if-absent by UUID) must be built — synced rows must NOT be routed through `record_operation()`, which re-stamps `device_id`/`seq`, runs the IN-01 deleted-product guard, and increments caches non-idempotently. **One serialization format (NDJSON) serves both online HTTP and offline USB** — the transports are two thin callers of the same pure serialize/ingest core. Auth is the app's first-ever security boundary and must cover **two mirrored route trees** (desktop and mobile `/m/`) plus the high-value `export`/`backup` endpoints, enforced as a global default with a router-enumeration test. The new stack additions are minimal and version-verified: `psycopg` 3 (server only), `pwdlib[argon2]` (NOT passlib — its `crypt` dependency was removed in Python 3.13), Starlette `SessionMiddleware` + `itsdangerous`, and sync `httpx`.
 
-Key risks: (1) treating cash as just more operations rows, rejected by all four researchers for concrete, code-grounded reasons (FK/NOT-NULL invariants, report-query pollution); (2) shipping sale-credit without return-debit in the same phase, silently breaking the balance the first time a customer returns something; (3) a debit-only manual form with no opening-balance/correction path, which turns the very first negative-balance warning into a false alarm the operator learns to distrust; (4) reintroducing a stale-cache balance bug that the Product.quantity design already solved, so default to live SUM(), no cache until proven necessary. None of these require new libraries or infrastructure; they require following the codebase own established conventions exactly.
+The genuinely hard, under-appreciated risk is **mutable master-data conflict** — products, customers, warehouses, batches, dictionaries — which the append-only story does *not* cover. Two devices independently creating the same `Product.code` will violate the `uq_products_code_active` partial unique index on first sync, and naive "last-write-wins by client `updated_at`" is unreliable because client wall-clocks drift. This needs an explicit product decision (server-authoritative vs. LWW-by-server-timestamp) and is the top open decision for the roadmapper to surface. Secondary risks are all preventable with discipline: never ship the derived stock/batch caches; relax the append-only trigger only column-scoped to `synced_at`; give every install a unique `device_id`; and stand up real PostgreSQL in CI early to catch SQLite-permissiveness traps (batch-mode migrations, Cyrillic case-folding shadow columns).
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependency. The existing FastAPI / SQLAlchemy 2.0 / SQLite (WAL, busy_timeout=5000) / Alembic / Jinja2 / HTMX stack fully covers this feature: a new mapped class, a new migration with append-only triggers (copied from alembic/versions/0001_initial_schema.py), and a couple of new routes/templates following the exact shape already used by writeoffs.py. Money stays Integer cents (no Decimal/Numeric, no money library); no accounting/double-entry library; no caching/locking library (SQLite WAL plus busy_timeout already handle single-writer concurrency); no charting or scheduling library (out of this milestone scope).
+The v1/v2 stack (Python 3.13, FastAPI 0.139, SQLAlchemy 2.0 sync, SQLite+WAL, HTMX 2.0.10 vendored, Jinja2, Alembic, uv, Ruff) is settled and unchanged. v3.0 adds only what sync + auth + a server require, and the existing models are already dialect-portable (String UUIDs, integer cents, TEXT timestamps, partial indexes carrying both `sqlite_where` and `postgresql_where`). One model set and one Alembic history serve both dialects; `render_as_batch` and trigger DDL become dialect-gated.
 
-**Core technologies (reused, unchanged):**
-- SQLAlchemy 2.0.51 - new CashMovement mapped class, same declarative style as Operation/Batch
-- Alembic 1.18.5 - one new migration adding cash_movements plus its own BEFORE UPDATE/DELETE ... RAISE(ABORT, ...) triggers
-- SQLite WAL plus busy_timeout (already configured in app/db.py) - no new PRAGMA needed; unlimited readers, one writer, already the correct config for balance read often, written on every sale
-- FastAPI plus Jinja2 plus HTMX 2.0.10 (vendored) - new Finansy section using only hx-get/hx-post/hx-target/hx-swap, already exercised throughout the app
+**Core technologies (new for v3.0):**
+- **psycopg 3 (3.3.4, `postgresql+psycopg://`)**: PostgreSQL driver for the server engine — server-only optional dependency group; clients keep SQLite. Native SQLAlchemy 2.0 dialect.
+- **pwdlib[argon2] (0.3.0 + argon2-cffi 25.1.0)**: password hashing (Argon2id, OWASP first choice) — explicitly chosen over passlib, which is unmaintained and depends on the stdlib `crypt` module removed in Python 3.13 (PEP 594).
+- **Starlette SessionMiddleware + itsdangerous 2.2.0**: signed-cookie login session — already in the tree via FastAPI; stateless, no session table. Declare `itsdangerous` explicitly (middleware asserts it at startup).
+- **httpx 0.28.1 (sync `httpx.Client`)**: client→server push/pull transport — promote from dev-only TestClient to a runtime dependency; sync matches the all-sync codebase.
+- **stdlib `json` → NDJSON + pydantic `SyncEnvelope`**: one serialization format for BOTH online HTTP body and offline USB file — no marshmallow, no custom binary format.
 
 ### Expected Features
 
-**Must have (table stakes, v1.3 launch):**
-- Current cash balance display (live SUM of the ledger)
-- Auto-credit on every sale (hook into register_sale(), single write path)
-- Auto-debit on sale-linked return - not explicitly in PROJECT.md stated list but flagged as a hard gap: without it the balance drifts from reality the first time a return happens
-- Manual withdrawal with mandatory category (supplier / salary / other) plus comment
-- Movement history (reuse existing list/pagination/filter infrastructure from Phase 14)
-- Insufficient-balance warning on withdrawal - warn-and-allow-override, matching the app existing oversell/min-price convention, never a hard block
-- Separate Finansy UI nav section
+The milestone splits cleanly into Auth/Roles/Attribution and Sync (online + USB), on top of the fixed v1/v2 foundation. Multi-currency is explicitly out of scope.
 
-**Should have (pull into v1.3 or immediate follow-up, recommended, not just nice later):**
-- Manual balance correction / opening-balance entry (bidirectional manual-movement form, credit plus debit) - without it, balance starts wrong on day one for any operator with existing cash on hand, and a mistyped entry has no fix path (append-only trigger blocks UPDATE/DELETE)
-- Cash flow reports (period in/out by category) - reuse existing Reports period-filter helper
-- CSV export of cash movements - reuse existing export.py BOM/semicolon/formula-escape convention
+**Must have (table stakes):**
+- Login/logout + Argon2 hashing + signed session; first-run admin bootstrap (no shipped default credentials).
+- Admin user management (create / assign role / deactivate — never delete / reset password); two fixed roles (administrator, operator).
+- Server-side route guards on every protected route (the real boundary) PLUS role-based menu hiding (cosmetic) — both, guards non-optional.
+- Real `created_by` = logged-in user, stamped at the single `record_operation()` choke point; operator column in History.
+- Single versioned exchange format + idempotent UUID merge + `rebuild_stock()` recompute; USB export/import; online push/pull with manual «Синхронизировать» button, status, last-sync time, plain-language result.
+- Offline-safe failure (sync error never blocks local work); mobile parity for login and sync trigger.
 
-**Defer (v2+):**
-- Structured link: withdrawal to specific goods receipt (deferred-payment tracking)
-- Multiple cash accounts/tills, shift/period reconciliation, scheduled/recurring expenses, budget categories/limits
-- Full double-entry bookkeeping, tax/VAT tracking, invoicing/payment-gateway integration, bank reconciliation, multi-currency, user roles/approval workflow, receipt photo/OCR - all explicit anti-features for a single-operator cash-box tracker
+**Should have (competitive):**
+- "What will change" dry-run preview before applying a USB import (undo-anxiety killer).
+- Unsynced-count badge; optional automatic/interval background sync (opt-in, degrades silently offline).
+- Filter Reports (not just History) by operator; USB exchange integrity/version check.
+
+**Defer (v3.x / v4+):**
+- Third "report-viewer" role (deferred AUTH-V2-01); optional idle session timeout/auto-lock; multi-currency (out of scope).
+
+**Do NOT build (anti-features):** interactive per-row conflict-resolution UI, real-time/continuous multi-master sync, syncing stock quantities directly, password policies/rotation/lockout/2FA/email reset, self-service registration, dynamic permission matrix/custom roles, hard-deleting users, selective/partial sync, aggressive idle timeout.
 
 ### Architecture Approach
 
-A new app/services/finance.py module, sibling to ledger.py (not a submodule of it), owns the single write path for a new cash_movements table: record_cash_movement(), register_manual_debit() (validation mirrors writeoffs.register_writeoff), compute_balance() (live SUM, mirrors ledger.compute_stock), and a history view (mirrors operations.history_view, reusing pagination.py). sales.py register_sale() calls finance.py directly inside its existing transaction (one more commit=False call before the existing trailing session.commit()), never from the route layer, since there are already two callers (desktop plus mobile) that must both get the credit for free. The same discipline applies symmetrically to returns.py register_return().
+Two-tier replication over one model set. **Tier A (append-only ledgers: `operations`, `cash_movements`)** replicates by log-shipping + idempotent verbatim replay keyed by UUID — nothing to reconcile because rows never change. **Tier B (mutable reference rows: products, customers, warehouses, batches, dictionaries)** replicates by last-write-wins on a *server-authoritative* version/timestamp, with soft-delete tombstones. The derived caches (`Product.quantity`, `Batch.quantity`) are never shipped — they are recomputed by `rebuild_stock()` after every merge. The `sync/` package is transport-agnostic by construction: pure `serialize.py` + `ingest.py` + `collect.py`, with `client.py` (HTTP) and `usb.py` (file) as thin callers, so "USB reuses the online format" is true by design, not discipline.
 
 **Major components:**
-1. CashMovement model (app/models.py) - append-only row, UUID PK, signed amount_cents, category, nullable sale_id FK, device_id/seq/created_at/created_by (same sync-ready shape as Operation)
-2. app/services/finance.py - single write path plus compute_balance() plus history view (new)
-3. sales.py / returns.py - each gets exactly one new call into finance.py inside its existing commit block (modified, not rewritten)
-4. app/routes/finance.py plus pages/finance.html plus partials/finance_history.html - thin routes, dashboard, bidirectional manual-movement form (new)
-5. alembic/versions/00XX_cash_movements.py - new table plus two append-only triggers mirroring migration 0001 (new)
+1. `ingest_batch()` (NEW) — verbatim replay + dedup-by-UUID + FK-ordered insert; a *separate* write path from `record_operation()`.
+2. `record_operation()` (MODIFIED) — now stamps `user_id` from the authenticated session instead of `settings.operator_name`; `device_id` still from per-install config.
+3. Auth layer (NEW) — `SessionMiddleware` + `require_user`/`require_admin` router-level dependencies applied across both desktop and mobile trees; `users` table (UUID PK, login, password_hash, role).
+4. Sync client + server API (NEW) — `/sync/push`, `/sync/pull` with per-device token; watermark/cursor tracking (`synced_at` push high-water, `sync_state` pull-per-device).
+5. `rebuild_stock()` (REUSED) — the correctness backstop; asserts the stock invariant after every merge.
+6. One Alembic history / two dialects (MODIFIED) — dialect-gated `render_as_batch` and trigger DDL; PG engine builder without the SQLite PRAGMA listener.
 
 ### Critical Pitfalls
 
-1. **Bolting cash onto the operations table** - Operation.product_id is NOT NULL with a hard FK; forcing cash through it requires either a dummy product or relaxing an invariant every stock report/guard depends on. Avoid: dedicated cash_movements table with its own single-write-path function and triggers.
-2. **Auto-credit wired into sales.py but not symmetrically into returns.py** - these are separate service modules; if the debit is not added to register_return in the same phase as the sale credit, returns silently inflate the balance forever. Ship both together; test: sell then fully return then assert balance returns to pre-sale value.
-3. **Matching a return against the original credit row instead of computing independently** - mirror the existing D-06/D-07 pattern: the return debit equals qty_returned times origin frozen unit_price_cents, computed fresh, never looked up/reconciled against a prior movement.
-4. **Cached balance updated outside the writing transaction** - either do not cache (live SUM, recommended at this scale) or use the exact SQL-side atomic-increment-in-same-transaction pattern Product.quantity already uses, plus a rebuild_cash_balance() repair function from day one.
-5. **No opening balance / no correction path** - a debit-only manual form makes the first negative-balance warning a false alarm and leaves mistyped entries permanently unfixable (append-only trigger blocks edits). Ship a bidirectional (credit plus debit) manual-movement form with a Korrektirovka/opening-balance category from the start.
+1. **Replaying synced rows through `record_operation()`** — double-counts stock, mints new IDs (defeats dedup), destroys origin device/author. Build a dedicated verbatim `ingest_batch()`; never reuse `record_operation()` for merge.
+2. **Mutable master-data conflict (top open decision)** — `Product.code` collisions violate `uq_products_code_active` on first multi-device sync; the append-only story does nothing here. Decide server-authoritative vs. server-timestamp LWW per table, with a defined `code`-collision rule, BEFORE writing merge code.
+3. **Static `device_id="device-01"` / `created_by="operator"`** — every unmodified install collides on `UNIQUE(device_id, seq)` at first sync. Generate a persistent unique `device_id` (UUID) at first run; take `created_by` from the session user.
+4. **Auth gating only the desktop tree** — the mirrored `/m/` mobile routers plus `export`/`backup` stay public (role escalation, full-dataset exfiltration). Enforce a global-default gate and a test that enumerates every router in `main.py`.
+5. **Over-broad append-only trigger relaxation** — dropping the trigger to write `synced_at` reopens the ledger to tampering. Use a column-scoped `WHEN` clause (only `synced_at` NULL→value), mirrored on PostgreSQL, with a test proving `qty_delta`/`amount_cents` updates still ABORT. Never ship the derived caches; recompute via `rebuild_stock()`. Don't trust client wall-clocks for ordering — use `(device_id, seq)`.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on combined research, six dependency-ordered phases. **Reconciling the build-order tension:** ARCHITECTURE recommends Auth first (identity unblocks attribution, fully testable on one SQLite client before any server exists); PITFALLS emphasizes the shared merge engine as the highest-risk artifact and pushes device-identity + merge-engine to the front. Both agree on the load-bearing constraint — **the shared idempotent merge engine must be built and hardened in isolation before either transport.** The reconciliation: Auth and device-identity are *independent* of the merge engine, cheap, and locally testable, so they come first and unblock correct attribution that the merge core will carry verbatim; PostgreSQL portability is proven next (the server cannot exist until the one model set provably runs on PG); then the merge core is built and hardened as pure functions with no transport; only then do the server API and the two transports layer on. This satisfies both researchers: identity-first (Architecture) AND engine-before-transports with device-identity done up front (Pitfalls).
 
-### Phase 1: Cash ledger foundation (schema plus auto-credit/debit)
-**Rationale:** This is the foundational, hardest-to-reverse data-model decision (Pitfall 1) and must ship the sale-credit/return-debit symmetry together (Pitfall 2/3): splitting these across phases leaves a window where returns silently break the balance.
-**Delivers:** cash_movements table plus triggers, app/services/finance.py (record_cash_movement, compute_balance), sales.py auto-credit wiring, returns.py auto-debit wiring, unit tests proving atomicity (rolled-back sale gives zero cash rows) and return symmetry (sell then return then balance restored).
-**Addresses:** Auto-credit on sale, auto-debit on return (table stakes plus gap)
-**Avoids:** Pitfalls 1, 2, 3, 4 (schema shape plus live-SUM balance plus independent-computation debit)
+### Phase 1: Auth, Roles & Identity Foundation
+**Rationale:** First security boundary and the identity every downstream row is attributed to; fully testable on one SQLite client before any server. Device identity is fixed here because Pitfall 3 is a pre-flight for all sync.
+**Delivers:** `users` table; Argon2 hashing; `/login` + `SessionMiddleware` + session rotation + CSRF on HTMX POSTs; `require_user`/`require_admin` classified across every desktop AND mobile router (+ `export`/`backup` admin-gated); first-run admin bootstrap; per-install unique `device_id`; `user_id` added to `operations`/`cash_movements`/`sales` and threaded through `record_operation()`.
+**Addresses:** login/logout, bootstrap, user CRUD, two roles + guards, real `created_by`, operator column in History.
+**Avoids:** P3 (static device_id/created_by), P9 (unguarded mobile/export/backup), P10 (password/session/CSRF).
 
-### Phase 2: Finansy UI - balance, bidirectional manual movement, history
-**Rationale:** Depends on Phase 1 ledger and write path existing; UI-level warn-and-allow validation and manual-entry design are a distinct, well-precedented concern (mirrors oversell/min-price and writeoffs UX exactly).
-**Delivers:** app/routes/finance.py, pages/finance.html, partials/finance_history.html, nav link, bidirectional manual-movement form (credit for opening-balance/correction, debit for supplier/salary/other with mandatory category plus note), insufficient-balance warn-with-confirm guard, paginated/filterable history view.
-**Uses:** pagination.py (Phase 14 infra), existing warn-but-allow UX contract from sales.py/writeoffs.py
-**Implements:** finance.py service methods register_manual_debit/credit, history view mirroring operations.history_view
+### Phase 2: PostgreSQL Portability
+**Rationale:** The server cannot exist until one model set + one Alembic history provably runs on PostgreSQL. No sync logic yet.
+**Delivers:** Dialect-conditional `render_as_batch`; dialect-branched append-only trigger DDL (plpgsql `RAISE EXCEPTION`); dialect-guarded connect-event PRAGMAs; PG engine builder (`postgresql+psycopg://`); `psycopg[binary]` server-only group; real Postgres in CI running the full Alembic history + Cyrillic search parity tests.
+**Uses:** psycopg 3, dialect-gated Alembic env.py.
+**Avoids:** P11 (SQLite→Postgres portability traps found only on a live server).
 
-### Phase 3: Reports and export extension (optional, should-have)
-**Rationale:** Lower priority (P2); adds value once a few weeks of movement history exist, but not blocking for launch.
-**Delivers:** Cash flow report (period in/out by category, reusing existing period-filter helper) and/or CSV export of cash movements (reusing export.py BOM/semicolon/formula-escape convention).
-**Addresses:** Cash flow reports, CSV export (differentiators)
+### Phase 3: Shared Merge Core (highest-risk artifact)
+**Rationale:** The single implementation both transports depend on — build and harden in isolation as pure functions, no HTTP, no file I/O. This is where the milestone's correctness lives.
+**Delivers:** NDJSON `SyncEnvelope` format; `serialize.py`/`collect.py`; `ingest_batch()` verbatim replay + UUID dedup + FK-ordered insert covering BOTH ledgers atomically; `rebuild_stock()` after merge; `sale_id` reconciliation check; the explicit **mutable-master-data conflict policy** (Tier-B LWW by server-authoritative timestamp + `Product.code` collision rule + soft-delete tombstones).
+**Implements:** Tier-A/Tier-B two-tier replication; verbatim-ingest-is-separate-path pattern.
+**Avoids:** P1 (replay via record_operation), P2 (caches not recomputed), P4 (dual-ledger inconsistency), P6 (mutable master conflicts), P7 (clock trust).
+
+### Phase 4: Server Sync API + Trigger Relaxation
+**Rationale:** Needs the merge core (3) and identity/token (1). Wires the shared core to HTTP endpoints.
+**Delivers:** `/sync/push` (ingest + ack watermark), `/sync/pull` (other-device rows since watermark), per-device token auth; the column-scoped append-only UPDATE-trigger relaxation migration (SQLite + PG, `synced_at`-only); client `sync_state` cursor table.
+**Avoids:** P8 (over-broad trigger relaxation).
+
+### Phase 5: Online Client Sync
+**Rationale:** Wires the client to the API from (4).
+**Delivers:** `sync/client.py` collect→push→stamp `synced_at`, watermark→pull→ingest→recompute; manual «Синхронизировать» button + status/last-sync/result UI (desktop + mobile parity); offline-safe failure handling; idempotent retry after dropped connections.
+**Addresses:** manual sync button, status, last-sync time, plain-language result, offline-safe failure.
+
+### Phase 6: Offline USB Sync
+**Rationale:** Pure reuse of the core (3) — smallest increment, built last because the format and watermark semantics must be final. Depends on nothing new except file plumbing (reuse VACUUM-INTO mechanics).
+**Delivers:** `sync/usb.py` export/import of the same NDJSON envelope through the same `ingest_batch()`; single all-or-nothing import transaction; schema-version header + integrity checksum/signed manifest + re-run write-path validations; optional "what will change" dry-run preview.
+**Avoids:** P5 (partial USB apply), P12 (untrusted exchange file).
 
 ### Phase Ordering Rationale
-
-- Schema-first ordering matches this codebase own established convention (schema then service then route then template, per ARCHITECTURE.md Build Order) and is non-negotiable because the table shape (Pitfall 1) is the hardest thing to change once real financial rows exist.
-- Sale-credit and return-debit are grouped into the same phase specifically because PITFALLS.md identifies their separation as a critical, easy-to-miss regression (Pitfall 2): the roadmap must not schedule these as sequential, independently-closeable phases.
-- The manual-movement UI is deliberately scoped bidirectional (not debit-only, despite the milestone description emphasizing debit) to close the opening-balance and correction gaps (Pitfalls 7/8) at the same time the debit form is built, rather than as a late patch.
-- Reports/export is pushed to a later, explicitly optional phase since FEATURES.md scores it P2 and none of the P1 table-stakes features depend on it.
+- **Dependencies:** identity (1) → PG proof (2) → shared core (3) → API needs core+identity (4) → online needs API (5) → USB reuses core (6). Each phase's prerequisites are fully satisfied by earlier ones.
+- **Architecture grouping:** the transport-agnostic `sync/` core is deliberately isolated in Phase 3 so both transports (5, 6) are thin callers — one merge algorithm, never two.
+- **Pitfall avoidance:** device-identity and auth-coverage are front-loaded (pre-flights for everything); the riskiest code (merge engine) is hardened alone before any transport; USB (highest-risk transport, untrusted input) ships last on a proven engine.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- None flagged: this is an internal integration project; all four research files are grounded in direct codebase inspection (HIGH confidence), not ecosystem survey.
+Phases likely needing `--research-phase` during planning:
+- **Phase 3 (Shared Merge Core):** the mutable master-data conflict policy is the top open decision — needs a concrete per-table resolution rule and `Product.code` collision handling before implementation. Highest design uncertainty in the milestone.
+- **Phase 6 (Offline USB Sync):** exchange-file trust model (signed manifest vs. checksum-only), schema-version compatibility rule, and re-running write-path validations on the bulk path warrant a focused pass.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1:** Directly mirrors ledger.py/Operation already-proven, in-repo pattern - no external research needed.
-- **Phase 2:** Directly mirrors writeoffs.py validation shape and the existing oversell/min-price warn-and-allow UX - no external research needed.
-- **Phase 3:** Directly mirrors reports.py period-filter helper and export.py CSV convention - no external research needed.
+- **Phase 1 (Auth):** well-documented — Starlette SessionMiddleware + pwdlib + router dependencies are established; the work is classification + coverage tests, not novel design.
+- **Phase 2 (PG portability):** mechanical — dialect gating in Alembic/db.py; the models are already portable.
+- **Phase 4 / Phase 5:** standard request/response wiring once the core exists.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; conclusion rests on direct codebase inspection plus cross-checked practitioner sources on integer-cents money handling and SQLite WAL concurrency |
-| Features | MEDIUM-HIGH | PROJECT.md scope is a HIGH-confidence first-party source; broader petty-cash/POS feature-landscape claims rest on MEDIUM-confidence web sources (multiple cross-checked listings) |
-| Architecture | HIGH | Entirely derived from direct inspection of this repository existing services/models/migrations - a project-specific integration design, not a generic survey |
-| Pitfalls | HIGH (architecture-grounded) / MEDIUM (general financial-ledger practitioner findings) | Codebase-specific pitfalls (1-8) read directly from ledger.py/sales.py/returns.py/db.py; Pitfall 9 cash-vs-profit confusion claim is corroborated by MEDIUM-confidence external sources |
+| Stack | HIGH | All versions verified against PyPI JSON on 2026-07-18; passlib-vs-pwdlib rationale (PEP 594) verified. |
+| Features | MEDIUM-HIGH | Web-informed UX best practices + established auth/RBAC/local-first patterns; no exotic libraries; foundation facts codebase-grounded (HIGH). |
+| Architecture | HIGH | Grounded directly in the current codebase — the sync foundation (UUID PKs, `device_id`/`seq`, `synced_at`, append-only triggers) was seeded deliberately since v1.0. |
+| Pitfalls | HIGH (codebase) / MEDIUM (sync-design consensus) | Tied to this app's real structures; sync-design recommendations are practitioner consensus. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
-
-- Return auto-debit is not explicitly in PROJECT.md stated v1.3 target feature list (FEATURES.md/PITFALLS.md both flag it as a gap, not a stated requirement): confirm with the user/PROJECT.md owner before roadmap lock-in that it is in scope for v1.3 rather than a fast-follow; all four research files strongly recommend including it in the foundation phase regardless.
-- Bidirectional manual-movement form (credit direction for opening balance/correction) is also not explicitly stated in PROJECT.md wording (the debit categories text reads debit-only): same treatment, flag explicitly in the roadmap/requirements rather than silently deciding scope during execution.
-- Idempotency / duplicate-sale-submission risk (Pitfall 5) is a pre-existing app-wide gap that becomes financially visible with cash tracking: decide during roadmap planning whether this phase adds only a UI-level submit-guard (hx-disabled-elt) or whether a full idempotency-key mechanism is named as an explicit Future/Out-of-Scope item.
-- Whether CSV export / reports scope includes cash movements is currently undecided: PITFALLS.md flags this must be a stated decision, not an oversight, whichever way it goes.
+- **Mutable master-data conflict policy (top gap):** must be decided explicitly in Phase 3 — server-authoritative vs. server-timestamp LWW per Tier-B table, plus a concrete `Product.code` cross-device collision rule (reject/rename loser vs. globally coordinated codes) and soft-delete tombstone propagation. Do NOT event-source Tier-B now (YAGNI); note the latent upgrade path.
+- **USB exchange-file trust model:** signed manifest vs. checksum-only, and how to bind claimed `created_by`/`device_id` to a trusted origin when there is no authenticating server in the loop — resolve during Phase 6 planning.
+- **Collect vs. full-snapshot for Tier-B:** whether to walk referenced entities (`collect.py`) or ship full Tier-B snapshots per sync (cheap at this data scale). Decide in Phase 3; snapshot is the simpler fallback.
+- **CSRF mechanism for the all-HTMX UI:** per-session token via `hx-headers` vs. hidden field — pin during Phase 1.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct inspection of this repository: app/models.py, app/services/ledger.py, app/services/sales.py, app/services/returns.py, app/services/writeoffs.py, app/services/operations.py, app/services/reports.py, app/routes/sales.py, app/routes/__init__.py, app/main.py, app/config.py, app/core.py, app/db.py, alembic/versions/0001_initial_schema.py, app/templates/base.html
-- E:\dev\myorishop\CLAUDE.md - prior validated stack research (versions, integer-cents rule, WAL/busy_timeout rationale)
-- .planning/PROJECT.md - v1.3 milestone scope, target features, existing architecture Key Decisions
+- Codebase — `app/models.py` (UUID PKs, `device_id`/`seq` UNIQUE, `synced_at`, portable partial indexes, integer cents), `app/db.py:16-21` (APPEND_ONLY_TRIGGERS + "v2 sync relaxes UPDATE trigger" note), `app/services/ledger.py` (`record_operation`, `next_seq`, `rebuild_stock`, IN-01 guard), `app/main.py` (~40 routers, desktop + mobile trees, no auth), `app/config.py` (static `device_id`/`operator_name`), `alembic/env.py` (`render_as_batch=True`).
+- PyPI JSON (verified 2026-07-18) — psycopg 3.3.4, pwdlib 0.3.0, argon2-cffi 25.1.0, itsdangerous 2.2.0, httpx 0.28.1, bcrypt 5.0.0, passlib 1.7.4 (unmaintained since 2020).
+- `.planning/PROJECT.md` — v3.0 scope, admin/operator split, append-only-ledger sync decisions (D-05..D-11); `CLAUDE.md` Stack Patterns by Variant.
+- PEP 594 (removal of `crypt` in Python 3.13); OWASP Password Storage (Argon2id first choice).
 
 ### Secondary (MEDIUM confidence)
-- SQLite concurrent writes and database is locked errors (tenthousandmeters.com) - WAL single-writer model, busy_timeout mitigation
-- Precision Matters: cents vs floating point for money (hackerone.com) - integer-minor-units practitioner consensus
-- Petty-cash/POS feature landscape: Pleo, Zoho Expense, Weel, Shopify POS, KORONA POS, Fit Small Business (multiple cross-checked listings)
-- The Idempotent Ledger (medium.com), Formance - What Is a Ledger - idempotency and standalone-balance-field risks
-- Accu-Tax, GrowthForce - cash-vs-profit confusion pattern
+- Local-first / offline-first sync UX sources (manual trigger, status badges, last-sync, non-technical conflict handling) — Medium (J. Topic), DEV, Evil Martians, Hasura, daily.dev.
+- Practitioner consensus — idempotent-merge-by-UUID, delta-sync cursor, server-authoritative vs. client-clock LWW, OWASP session-fixation/CSRF guidance.
+
+### Tertiary (LOW confidence)
+- None — all findings trace to verified versions, the live codebase, or multi-source consensus.
 
 ---
-*Research completed: 2026-07-14*
+*Research completed: 2026-07-18*
 *Ready for roadmap: yes*

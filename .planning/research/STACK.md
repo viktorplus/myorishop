@@ -1,241 +1,165 @@
 # Stack Research
 
-**Domain:** Cash-balance / money-movement ledger ("Касса" / "Финансы" module) — v1.3 milestone
-**Researched:** 2026-07-14
-**Confidence:** HIGH
+**Domain:** Local-first inventory app gaining a central PostgreSQL server, online + offline-USB sync of an append-only ledger, and mandatory auth with roles (v3.0)
+**Researched:** 2026-07-18
+**Confidence:** HIGH (all versions verified against PyPI JSON on 2026-07-18; architecture recommendations MEDIUM-HIGH)
 
-> Scope note: this file is scoped to the v1.3 milestone (auto-credit on sale, debit with
-> mandatory reason/category, movement history, current balance, a dedicated "Финансы" UI
-> section). The full base stack rationale (FastAPI/SQLAlchemy/SQLite/HTMX/Jinja2/uv/Alembic,
-> versions, "what not to use") is preserved verbatim in the project's `CLAUDE.md` "Technology
-> Stack" section and is not repeated here — it is unchanged and not re-researched per milestone
-> instructions. This file supersedes the v1.1-scoped `STACK.md` that previously occupied this
-> path (that content is preserved in git history / `.planning/research/.cache/`).
+> Scope note: the v1/v2 stack (Python 3.13, FastAPI 0.139, SQLAlchemy 2.0 sync, SQLite+WAL, HTMX 2.0.10 vendored, Jinja2, Alembic, uv, Ruff) is **settled and unchanged**. This file only covers the **NEW** additions v3.0 needs. Nothing here replaces an existing choice.
 
-## Bottom Line
+---
 
-**No new runtime dependency is needed.** A cash-balance ledger is a smaller, simpler version of
-a pattern this codebase already runs in production: the append-only `operations` table plus
-`record_operation()`'s "SQL-side atomic increment in the same transaction, recompute-from-ledger
-as the repair path" design (`app/services/ledger.py`, `app/services/stock.py`). The existing
-FastAPI / SQLAlchemy 2.0 / SQLite (WAL) / Alembic / Jinja2 / HTMX stack fully covers it. Money
-stays integer minor units (cents) — no `Decimal`/`Numeric` column, no money or accounting
-library, no new locking or scheduling library, no charting library (not in this milestone's
-target features).
+## Recommended Stack
 
-## Recommended Stack (unchanged — reused, not added)
+### Core Technologies (new for v3.0)
 
-### Core Technologies
-
-| Technology | Version (pinned, unchanged) | Purpose for v1.3 | Why no change needed |
-|------------|------|---------|-----------------|
-| SQLAlchemy | 2.0.* (2.0.51 validated) | New `cash_movements` table + service functions | Same 2.0 declarative style (`Mapped[]`/`mapped_column()`) already used for `Operation`, `Batch`, etc. — a new mapped class, nothing exotic |
-| Alembic | 1.18.* (1.18.5 validated) | Migration adding `cash_movements` (+ append-only triggers) | Already the sole schema-change tool; `render_as_batch=True` already configured for SQLite |
-| SQLite + WAL + `busy_timeout` (`app/db.py`, unchanged) | bundled, already configured: `PRAGMA journal_mode=WAL`, `PRAGMA foreign_keys=ON`, `PRAGMA busy_timeout=5000`, per-connection | Durable storage + concurrency safety for a value read often (dashboard) and written on every sale | This is already the correct configuration for "many readers, one occasional writer" — see Concurrency section below. No new PRAGMA needed. |
-| FastAPI + Jinja2 3.1.6 + HTMX 2.0.10 (vendored) | 0.139.*/3.1.6/2.0.10 | New "Финансы" section: balance display, debit-entry form (reason/category), movement history list | Same server-rendered + `hx-get`/`hx-post` partial-swap pattern used by every other module (sales, receipts, history) — a balance number, a form, and a list need no new frontend primitive |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| **psycopg** (psycopg 3) | 3.3.4 | PostgreSQL driver for the **server** SQLAlchemy engine | The modern, actively-maintained Postgres adapter; SQLAlchemy 2.0 ships a first-class dialect for it (`postgresql+psycopg://`). Server-only: clients keep SQLite, so this installs on the VPS, not on operator machines. Install `psycopg[binary]` to avoid a local C/libpq build on the server. **Confidence: HIGH** (PyPI 3.3.4, requires-python >=3.10, released 2026-05-01) |
+| **pwdlib** (with argon2 extra) | 0.3.0 | Password hashing for login | The FastAPI-recommended successor to passlib. Defaults to **Argon2id** (current OWASP first choice), tiny surface, sync API that fits `def` endpoints. `pwdlib[argon2]` pulls `argon2-cffi`. Passlib is unmaintained (last release 2020) and leans on the stdlib `crypt` module, **removed in Python 3.13 (PEP 594)** — a hard reason not to use it here. **Confidence: HIGH** (version), **HIGH** (passlib-vs-pwdlib rationale) |
+| **argon2-cffi** | 25.1.0 | Argon2 backend used by pwdlib | Pulled automatically by `pwdlib[argon2]` (declared range `>=23.1.0,<26`, so 25.1.0 fits). The actual hashing implementation. **Confidence: HIGH** |
+| **Starlette `SessionMiddleware`** | bundled (Starlette 1.3.1 via FastAPI 0.139) | Signed-cookie login session | Already in the tree — no new framework. Stores a small signed session (`user_id`, `role`) in an itsdangerous-signed cookie. Stateless (no session table, works across uvicorn workers), which is the simplest safe fit for a server-rendered HTMX app. **Confidence: HIGH** |
+| **itsdangerous** | 2.2.0 | Cookie signing backend for SessionMiddleware | `SessionMiddleware` **requires** it (raises `AssertionError` at startup if missing) — declare it explicitly rather than relying on it being transitively present. Also the right tool if you later sign a USB-export file or a device sync token. **Confidence: HIGH** |
+| **httpx** | 0.28.1 | Client -> server sync HTTP transport | Already a **dev** dependency (TestClient) — promote it to a runtime dependency. Use the **sync** `httpx.Client` to match the all-sync codebase (`def` endpoints, sync Session). Timeouts, retries, TLS, and streaming uploads for large ledger batches, all in one lib. **Confidence: HIGH** |
 
 ### Supporting Libraries
 
-**None required.** Specifically considered and rejected:
-
-| Considered | Verdict | Reason |
-|------------|---------|--------|
-| `py-moneyed` / `python-money` or any currency-aware `Money` value-object library | Not needed | Project is explicitly single-currency (CLAUDE.md constraint); the whole app already stores money as `Integer` cents columns with plain Python arithmetic. A money library would introduce a second, inconsistent money representation next to every existing `*_cents` column. |
-| `Decimal`/`Numeric` columns (stdlib `decimal` is free, but not needed) | Not needed | Integer cents + integer arithmetic (`+`, `-`, `SUM()`) is exact for this use case — amounts are always already whole cents, no rounding step ever occurs. Switching representations for one new table would break the established `Integer`-cents convention used everywhere else. |
-| `sqlalchemy-continuum` / `sqlalchemy-history` or any generic audit-trail library | Not needed | The app already hand-rolls immutable history via `CREATE TRIGGER ... BEFORE UPDATE/DELETE ... RAISE(ABORT, ...)` (`alembic/versions/0001_initial_schema.py`) plus a single-write-path service function (`record_operation`). A generic library would duplicate and could conflict with this already-battle-tested mechanism. |
-| `filelock` / `portalocker` or any app-level locking library | Not needed | SQLite's WAL mode already serializes writers itself (one writer at a time; readers never block/are never blocked). Single Uvicorn process, single local operator — no multi-process writer scenario exists to guard against. The existing `busy_timeout=5000` already handles the rare same-instant double-write case (see Concurrency section). |
-| Chart.js / ApexCharts or any client-side charting library | Not needed this milestone | Target features are balance + reason-coded movement history, not trend charts. Adding one would also add an offline-vendoring burden (same CDN-ban reasoning as HTMX) for something not requested. Revisit only if a future milestone explicitly asks for charts. |
-| Celery / APScheduler or any background-job library | Not needed | Balance is computed synchronously (`SUM` on read) or updated synchronously in the same DB transaction as the ledger insert (mirrors `Product.quantity`). No async/scheduled work is involved. |
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| **stdlib `json`** | (Python 3.13) | Serialize the ledger exchange (NDJSON) for BOTH online HTTP and offline USB | No new dependency. Every ledger/entity column is already JSON-native (TEXT UUIDs, int cents, ISO-text timestamps, `payload` is already a `JSON` column). One serializer feeds both transports — see "Sync exchange format" below. **Confidence: HIGH** |
+| **pydantic** | 2.13.x (already present) | Type/validate the sync envelope + the login form | Already in the tree via pydantic-settings/FastAPI. Define one small `SyncEnvelope`/`OperationRow` model reused by push, pull, and USB import — no separate serialization lib (no marshmallow). **Confidence: HIGH** |
+| **pydantic-settings** | 2.14.x (already present) | Hold the new secrets: `secret_key`, `database_url`, `sync_server_url`, per-device `sync_token` | Extend the existing `Settings` class. Keeps the session secret and the Postgres URL in `.env`, never in code (CLAUDE.md safety rule). **Confidence: HIGH** |
+| **psycopg[binary]** | 3.3.4 | Server-only optional dependency group | Put Postgres behind an optional `[project.optional-dependencies] server` group so operator clients (`uv sync`) never install it. **Confidence: HIGH** |
 
 ### Development Tools
 
-No changes. Same `uv` / `ruff` / `pytest` workflow as every prior milestone.
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| uv | Env/dep manager (unchanged) | Add the runtime deps with `uv add`; add server-only Postgres as an optional group (`uv add --optional server "psycopg[binary]"`). |
+| Alembic (unchanged) | One migration history for BOTH dialects | Make batch mode conditional on the SQLite dialect and gate dialect-specific trigger DDL — see "Alembic: one history, two databases". |
+| A local Postgres for dev | Test the same migrations against Postgres before the VPS | Docker Postgres or a native install is fine **for the server/dev box only**; do NOT introduce Docker into the client run story (still `run.bat`). |
 
 ## Installation
 
 ```bash
-# No new packages. Existing environment is sufficient:
-uv sync
+# Client + shared runtime deps (all machines)
+uv add "pwdlib[argon2]==0.3.*" "itsdangerous==2.2.*" "httpx==0.28.*"
+
+# Server-only (the VPS running Postgres) — optional group, clients skip it
+uv add --optional server "psycopg[binary]==3.3.*"
+
+# Server connection string (SQLAlchemy 2.0 + psycopg 3 dialect):
+#   postgresql+psycopg://USER:PASSWORD@HOST:5432/myorishop
+# Client connection string stays:
+#   sqlite:///data/myorishop.db
+#
+# New .env keys (never commit real values):
+#   SECRET_KEY=<64+ random hex chars>       # SessionMiddleware cookie signing
+#   DATABASE_URL=postgresql+psycopg://...    # server only; clients keep db_path
+#   SYNC_SERVER_URL=https://your-vps/...     # client only
+#   SYNC_TOKEN=<per-device shared secret>    # client<->server auth for /sync
 ```
 
-No `uv add` is required for this milestone.
+## Integration Points (into the existing codebase)
 
-## Schema & Integration Design (the actual work, not a library choice)
+**(a) One SQLAlchemy 2.0 model set on both SQLite (client) and PostgreSQL (server)**
+- The models are **already portable** — `app/models.py` uses only dialect-neutral types (`String`, `Integer`, `JSON`, `ForeignKey`) and already writes partial indexes with *both* `sqlite_where=` and `postgresql_where=` (e.g. `uq_products_code_active`). No model rewrite needed.
+- `app/db.py` `build_engine()` is SQLite-specific (the PRAGMA `connect` listener). Add a sibling **server engine** built from `DATABASE_URL` with `postgresql+psycopg`; the PRAGMA listener must NOT be attached to it (guard on `engine.dialect.name == "sqlite"`).
+- Keep the generic `JSON` column type (works on both). Optionally map to `JSONB` on Postgres later via a type variant, but it is not required for correctness.
+- Money stays integer cents (already the rule); ISO-text UTC timestamps stay TEXT (portable to Postgres `text`; can migrate to `timestamptz` later without touching model code).
 
-This is what "no new dependency" cashes out to concretely, so the roadmap can plan phases
-against it.
+**(b) Auth for the FastAPI + HTMX server-rendered app**
+- New `User` model: `id` UUID TEXT PK (matches the house convention), `login` unique, `name`, `password_hash` (String), `role` (String), `created_at`. Follow the project's existing **service-layer allow-list** pattern for `role` (like `WRITEOFF_REASONS`/`CONTACT_KINDS`) — no DB CHECK on role; validate `role in {"admin", "operator"}` in the service.
+- Hash with `pwdlib.PasswordHash.recommended()` (Argon2id) at user-create and password-change; verify at login; use its `verify_and_update` to transparently re-hash on parameter changes.
+- Add `SessionMiddleware(secret_key=settings.secret_key, https_only=True, same_site="lax")` in `app/main.py`. On login success set `request.session["user_id"]` and `["role"]`; logout clears it.
+- Add two FastAPI dependencies — `require_login` and `require_admin` — that read the session and 303-redirect to `/login` (or 403) otherwise. Apply `require_admin` to admin-only routers (users, warehouses, dictionaries, settings, reports) and `require_login` everywhere else. This replaces the v1 "single local user, no auth" assumption.
+- `settings.operator_name` (currently a static config default stamped into `record_operation`'s `created_by`) should become **the logged-in user's name** — a small, contained change at the single ledger choke point.
 
-### 1. Don't reuse the `operations` table — add a sibling `cash_movements` table
+**(c) Append-only ledger sync — one format for online + USB**
+- The ledger is **already sync-ready**: `Operation`/`CashMovement` have UUID4 TEXT PKs, `device_id`+`seq` with `UNIQUE(device_id, seq)`, an unused `synced_at` cursor column, and DB triggers blocking UPDATE/DELETE. `record_operation()` is the single write path.
+- **Format: NDJSON** (one JSON object per line) of ledger rows — same bytes whether it is an HTTP request/response body (online) or a file on a USB stick (offline). No custom binary format, no shipping a second SQLite file.
+- **Merge = set union by UUID PK.** Because rows are immutable and globally unique, importing is an idempotent "insert if the `id` is not already present" — no conflict resolution, no last-writer-wins, no CRDT. `synced_at` marks which local rows have been pushed so the next push sends only the delta.
+- **The SQLite append-only triggers do NOT block importing remote rows** — they block UPDATE/DELETE only, so inserting synced rows is allowed. But the server (Postgres) needs **equivalent triggers**: `app/db.py:APPEND_ONLY_TRIGGERS` and migration `0001` carry a *frozen SQLite* `CREATE TRIGGER ... RAISE(ABORT ...)`. A new migration must add the **PostgreSQL** equivalent (`CREATE FUNCTION ... RAISE EXCEPTION` + `BEFORE UPDATE/DELETE` trigger), gated on dialect — see the flag below. The `db.py` comment already anticipates a "v2 sync milestone relaxes the UPDATE trigger" — treat that DDL constant as append-only itself.
 
-`Operation.product_id` is `nullable=False` with a hard FK to `products`, and
-`STOCK_AFFECTING_TYPES` logic in `app/services/ledger.py` requires a mandatory `batch_id` for
-every stock-affecting row. A cash movement for "оплата заказа поставщику" or "зарплата" has no
-product and no batch — forcing it through `operations` would mean relaxing NOT-NULL/FK
-invariants that `record_operation`, the batch-ownership guard, and `STOCK_AFFECTING_TYPES` all
-currently depend on. A dedicated `cash_movements` table keeps both ledgers' invariants
-independently reasoned-about — the same tradeoff the codebase already made keeping `Sale`
-headers separate from `Operation` lines.
+**(d) HTTP client for push/pull**
+- New FastAPI routes on the **server**: `POST /sync/push` (accept NDJSON ledger delta) and `GET /sync/pull?since_seq=&device_id=` (return rows the client lacks). No new server framework — same FastAPI/Starlette.
+- New **client** module using sync `httpx.Client`: read un-synced rows (`synced_at IS NULL`), POST them, GET peers' rows, insert locally, stamp `synced_at`. Authenticate `/sync/*` with the per-device `SYNC_TOKEN` header (simplest device auth; not a user login).
 
-Mirror the existing `Operation` shape:
-- `id` (UUID `String(36)` PK, matching every other table)
-- `type` discriminator (e.g. `sale_credit`, `expense_supplier`, `expense_salary`,
-  `expense_other`, `correction`)
-- `amount_cents` (signed `Integer` — credit positive, debit negative; same signed-delta
-  convention as `Operation.qty_delta`)
-- `reason` (text — the mandatory justification for debits: "pay supplier order" / "salary" /
-  "other" + comment; nullable only for `sale_credit` rows, which are self-explanatory via
-  `sale_id`)
-- `sale_id` (nullable FK -> `sales.id` — links an auto-credit row back to its `Sale`, same
-  nullable-link precedent as `Operation.sale_id`)
-- `device_id` + per-device `seq` (future-sync provenance, same precedent as `Operation`)
-- `created_at` / `created_by` (same audit convention as `Operation`)
+## Alembic: one history, two databases
 
-Reuse the exact append-only trigger pattern from `alembic/versions/0001_initial_schema.py`
-(`CREATE TRIGGER cash_movements_no_update` / `cash_movements_no_delete`, `BEFORE
-UPDATE`/`DELETE ... RAISE(ABORT, ...)`), created via **native** DDL in the new migration (not
-`batch_alter_table`, which is irrelevant here since this is a brand-new table, not an
-`ALTER` on an existing triggered table).
-
-### 2. Auto-credit on sale: same transaction as the sale's `Operation` rows
-
-`register_sale` (`app/services/sales.py`) already writes N `Operation` rows in one DB
-transaction via `record_operation(..., commit=False)` and a single trailing `session.commit()`
-(the WR-03 pattern documented in `ledger.py`). Add the cash-credit insert as one more
-`commit=False` call inside that same transaction (a new `record_cash_movement()` function in a
-new `app/services/cash.py`), so a crash mid-sale can never leave stock debited but cash
-uncredited, or vice versa — the same all-or-nothing guarantee the ledger already gives stock,
-batches, and sales.
-
-### 3. Balance: compute from the ledger; never trust a bare mutable counter without a recompute path
-
-Follow the exact precedent of `compute_stock()`/`rebuild_stock()` in `app/services/stock.py` —
-the ledger (`SUM(cash_movements.amount_cents)`) is the ground truth, not a cache. Two valid
-implementations; pick based on read frequency once the dashboard exists:
-
-- **Recommended to start:** compute the balance with
-  `select(func.coalesce(func.sum(CashMovement.amount_cents), 0))` on every dashboard read. At
-  single-operator local-app volume (low thousands of rows/year) this is sub-millisecond — no
-  caching needed, and there is zero drift risk because there is no cache to drift.
-- **If a cached counter is ever wanted later** (e.g. a `balance_cents` column on a new one-row
-  `cash_account` table, updated via the same SQL-side atomic
-  `UPDATE ... SET balance_cents = balance_cents + ?` technique `record_operation` already uses
-  for `Product.quantity` — the project's documented `IN-02` "no stale-ORM-value window"
-  pattern): pair it with a `compute_cash_balance()` recompute function as the audit/repair path,
-  exactly mirroring `rebuild_stock()`. Never add a cached counter without its recompute-and-assert
-  counterpart — that pairing, not the cache itself, is what keeps the number trustworthy.
-
-### 4. "Финансы" UI section
-
-Pure read/write-side, no new pattern: a balance display (server-rendered from the compute
-function above), a debit-entry form (`hx-post`, category `<select>` + mandatory reason/comment
-field, following the same warn-or-reject validation shape already used by
-`app/services/sales.py`'s oversell/min-price checks), and a movement-history list — same
-pagination/filter/sort helper already shared across every other list page
-(`app/services/pagination.py`, delivered in Phase 14). No new frontend primitive is required.
-
-## Concurrency: does SQLite need anything new for a value read often and written on every sale?
-
-**No.** The existing `app/db.py` configuration is already the correct setup and already covers
-this feature:
-
-- SQLite WAL mode allows unlimited concurrent **readers** and exactly **one writer** at a time;
-  readers never block the writer and the writer never blocks readers (readers see the
-  last-committed snapshot). A "Финансы" dashboard polling/refreshing the balance will never be
-  blocked by, or block, a sale being recorded.
-- Writes are still fully serialized (WAL does not give true multi-writer concurrency) — but this
-  app runs one local Uvicorn process for one operator, so there is no realistic multi-writer
-  contention to design around.
-- `PRAGMA busy_timeout=5000` (already set, per-connection) is exactly the community-recommended
-  mitigation (5-10s) for the one edge case that matters — two write transactions landing at the
-  same instant — letting the second writer wait briefly instead of immediately failing with
-  `SQLITE_BUSY`/"database is locked".
-- The one real discipline to carry over (already practiced in `record_operation`): keep the
-  ledger-insert + balance-update in a **single short transaction**, and avoid "read-then-write"
-  transaction upgrades — SQLite's deferred-BEGIN-then-upgrade-to-write is the actual common cause
-  of `SQLITE_BUSY` under contention per current SQLite concurrency guidance.
-  `record_operation`'s `commit=False`/single-trailing-`commit()` shape already does this
-  correctly, and `record_cash_movement()` should follow the identical shape.
-
-No new PRAGMA, no application-level lock, and no queueing library is warranted for a
-single-operator local app.
+| Concern | Do this |
+|---------|---------|
+| `render_as_batch` | Make it **conditional**: `render_as_batch = connection.dialect.name == "sqlite"` in `env.py`. Batch mode is a SQLite-only workaround; forcing it on Postgres is wrong. |
+| Dialect-specific DDL (append-only triggers) | Inside migrations, branch on `op.get_bind().dialect.name` — emit `RAISE(ABORT ...)` SQLite triggers vs a plpgsql `RAISE EXCEPTION` function+trigger for Postgres. |
+| Connection string | Same migration files, both databases: `alembic upgrade head` runs against SQLite locally and Postgres on the server; only `sqlalchemy.url` differs (read from `DATABASE_URL`). |
+| Multidb template | **Not needed** — that template is for one process migrating several DBs at once. Here each machine migrates its own single DB. |
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|--------------------------|
-| Plain `Integer` cents, no money library | `Decimal`/`Numeric` columns via a dedicated money library | If the project ever needs true multi-currency with exchange-rate math (planned for out-of-scope v2.0) — even then, prefer stdlib `decimal.Decimal` for conversion math over a third-party money library, keeping storage as integer minor units per currency. |
-| Balance computed from `SUM(cash_movements.amount_cents)` on read | Cached `balance_cents` counter, atomically incremented (mirrors `Product.quantity`) | Once/if the "Финансы" dashboard is hit frequently enough that a `SUM()` over a large table becomes measurably slow — unlikely at this app's scale; the upgrade path already exists in this codebase (`Product.quantity` + `compute_stock`/`rebuild_stock`) if needed later. |
-| New sibling `cash_movements` table | Extend `operations` table with new `type` values | Only if `Operation.product_id`/`batch_id` were made nullable app-wide — not recommended, since `STOCK_AFFECTING_TYPES` and the batch-ownership guard in `record_operation` assume every row is product-scoped. Would require touching and re-verifying every existing caller for no real benefit. |
+|-------------|-------------|-------------------------|
+| psycopg 3 (`postgresql+psycopg`) | psycopg2 (`postgresql+psycopg2`) | Only if a dependency forces psycopg2. It is in maintenance-only mode; psycopg3 has better typing, native async (unused here) and is the forward path. No reason to pick it for a greenfield server. |
+| pwdlib[argon2] | bcrypt (5.0.0) used directly | Perfectly fine and slightly fewer layers if you prefer bcrypt; call `bcrypt.hashpw`/`checkpw` yourself. pwdlib is recommended because it defaults to Argon2id and gives a stable verify/needs-update API for free. |
+| Argon2id | bcrypt | bcrypt is acceptable and battle-tested; choose it if you want the smallest possible dependency. Argon2id is the current OWASP first recommendation, hence the default. |
+| Starlette SessionMiddleware (signed cookie) | Server-side session store (DB/Redis) | Only if you must invalidate sessions server-side instantly or store large session state. For a handful of operators with `user_id`+`role` in the cookie, stateless signed cookies are simpler and sufficient. |
+| NDJSON over HTTP + USB file | Ship a whole SQLite `.db` file for USB sync | Copying a `.db` file is easy for full backup, but it conflates "backup" with "merge" and can't be reused by the online transport. NDJSON is one format for both paths and merges row-by-row. |
+| Per-device shared-secret token for `/sync` | OAuth2 / JWT for sync | Overkill for a closed set of trusted operator devices talking to one owner-run server. A signed token header is enough; revisit only if untrusted third-party clients appear. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
-|-------|-----|--------------|
-| `FLOAT`/`REAL` for `cash_movements.amount_cents` | SQLite has no true DECIMAL; floats corrupt money math (already a documented project-wide "What NOT to Use") | `Integer` minor units, exactly like every existing `*_cents` column |
-| A generic Python accounting/double-entry-bookkeeping library | Overkill for "one balance, credits from sales, debits with a reason code" — adds a foreign data model and learning surface for a beginner project that doesn't need double-entry accounting | The existing single-table append-only ledger pattern (`Operation`-style), applied to `cash_movements` |
-| A caching/memoization library for the balance number | Not a caching problem — the ledger table is small and `SUM()` is cheap at this scale; caching before there's a measured performance issue adds an invalidation-correctness risk, the exact class of bug `compute_stock`/`rebuild_stock` exists to guard against | Compute-on-read (`SUM`) first; add the atomic-increment + recompute pair later only if actually needed |
-| Reusing `operations.product_id` as nullable to shoehorn cash rows in | Breaks invariants several existing guards depend on (see Schema & Integration Design §1) | A dedicated `cash_movements` table |
-| `filelock`/`portalocker` or any app-level write lock | SQLite's own WAL single-writer model + `busy_timeout=5000` already handle this; adding a second locking layer is redundant and can itself introduce deadlock risk | Rely on the existing `app/db.py` PRAGMAs, keep transactions short |
+|-------|-----|-------------|
+| **passlib** | Unmaintained since 2020; relies on the stdlib `crypt` module, **removed in Python 3.13 (PEP 594)** — the project runs 3.13 | `pwdlib[argon2]` (or `bcrypt` directly) |
+| **fastapi-users** | Heavy, async-first, brings its own DB models/registration/OAuth flows — triples the auth surface for a 2-role, server-rendered app | A tiny `User` model + pwdlib + SessionMiddleware + two `Depends` guards |
+| **python-jose / JWT for user login** | Hand-rolled JWT in a server-rendered app is more code and more footguns than a signed session cookie; no SPA/API consumer needs a bearer token | Starlette `SessionMiddleware` signed cookie |
+| **Celery / RQ / APScheduler + Redis/RabbitMQ** | No background job infrastructure is justified; sync is a request/response the operator triggers (button or simple timer). Adds a broker, a worker process, ops burden | A `def` sync function called from a route (online) or a menu action (USB) |
+| **Kafka / Debezium / logical replication / CDC** | Enterprise streaming/CDC for 1–handful of operators is absurd overkill | NDJSON delta over `httpx` / USB, merged by UUID |
+| **CRDT libraries (automerge, y-py, pycrdt)** | The ledger is append-only, immutable, UUID-keyed — merge is a set union with zero conflicts, so a CRDT solves a problem you don't have | Insert-if-absent by `id` |
+| **psycopg2** on the server | Maintenance-only; weaker typing than psycopg3 | psycopg 3 |
+| **asyncpg / async SQLAlchemy / `async_sessionmaker`** | Would fork the entire sync codebase (sync Session + `def` endpoints) for no throughput need at this scale | Sync `psycopg` + sync `Session` |
+| **Alembic multidb template** | For migrating several DBs in one run; here each node migrates its own single DB | One history + `DATABASE_URL` + dialect-conditional batch/DDL |
+| **SQLModel** | Already rejected in v1 (lags SQLAlchemy, thin docs); no reason to revisit | SQLAlchemy 2.0 declarative (unchanged) |
+| **A second serialization lib (marshmallow, custom binary)** | pydantic + stdlib `json` already cover the sync envelope | pydantic `SyncEnvelope` + `json` |
+| **Docker/pgbouncer on the client** | Clients stay SQLite + `run.bat`; no Postgres, no pooler there | Client engine unchanged |
 
 ## Stack Patterns by Variant
 
-**If the "Финансы" dashboard later needs trend charts or export:**
-- Reuse the existing CSV export pattern (`app/services/export.py`) for a `cash_movements` CSV —
-  same BOM + `;` delimiter + formula-injection-escape convention already used for
-  products/sales/customers exports. No new export library.
-- Only add a charting library at that point, and vendor it locally (same offline-first rule as
-  HTMX) rather than pulling from a CDN.
+**If deploying the central server (VPS):**
+- Install the `[server]` optional group (`psycopg[binary]`), set `DATABASE_URL=postgresql+psycopg://...`, run `alembic upgrade head` against Postgres, and add the plpgsql append-only trigger via the dialect-gated migration.
+- Do NOT attach the SQLite PRAGMA `connect` listener to the Postgres engine.
 
-**If v2.0 multi-currency lands later:**
-- Add a `currency` column to `cash_movements` (and every other money table) rather than
-  switching representation; keep amounts as integer minor units per currency. This is a schema
-  change, not a stack change — no money library is required even then.
+**If running an operator client (Windows, offline-capable):**
+- Nothing changes about the DB layer — still `sqlite:///data/myorishop.db`, WAL, PRAGMAs, `run.bat`. It gains only the login screen, the `httpx` push/pull module, and a USB export/import action. `psycopg` is never installed here.
 
-**If v2.0 multi-operator sync lands later:**
-- `cash_movements.device_id`/`seq` (already planned into the schema above) carry across devices
-  exactly like every other UUID-keyed, device-scoped table in this codebase — no rework needed
-  specifically for cash.
+**If online sync is available:** `httpx.Client` push/pull against `/sync/*` with the `SYNC_TOKEN` header.
+
+**If offline (USB) only:** the same NDJSON serializer writes to / reads from a file on the flash drive; import runs the identical insert-if-absent merge. No transport-specific code beyond "bytes from HTTP body" vs "bytes from file".
 
 ## Version Compatibility
 
-No new packages, so no new compatibility matrix entries. This feature is fully covered by the
-existing pins already recorded in `CLAUDE.md`:
-
 | Package A | Compatible With | Notes |
-|-----------|------------------|-------|
-| sqlalchemy 2.0.51 | alembic 1.18.5 | Unchanged; a new `cash_movements` table + its two append-only triggers use the same patterns already exercised by `operations` in `0001` |
-| fastapi 0.139.* / jinja2 3.1.6 / htmx 2.0.10 (vendored) | new "Финансы" routes/templates | No htmx feature beyond `hx-post`/`hx-get`/`hx-target`/`hx-swap`, already exercised throughout the app, is required |
+|-----------|-----------------|-------|
+| sqlalchemy 2.0.x | psycopg 3.3.4 | Dialect `postgresql+psycopg` is native to SQLAlchemy 2.0. Verified requires-python >=3.10. **HIGH** |
+| fastapi 0.139.0 | starlette 1.3.1 | Installed in the venv; `SessionMiddleware` ships in Starlette. **HIGH** |
+| starlette SessionMiddleware | itsdangerous 2.2.0 | Middleware asserts itsdangerous is importable at startup. **HIGH** |
+| pwdlib 0.3.0 | argon2-cffi 25.1.0 | `pwdlib[argon2]` requires `argon2-cffi >=23.1.0,<26` — 25.1.0 fits. **HIGH** |
+| pwdlib 0.3.0 (bcrypt extra) | bcrypt 5.0.0 | `pwdlib[bcrypt]` requires `bcrypt >=4.1.2,<6` — 5.0.0 fits (only if you pick bcrypt over argon2). **HIGH** |
+| httpx 0.28.1 | Python 3.13 | Already used as the TestClient backend; promote to runtime. **HIGH** |
+| psycopg 3.3.4 | Python 3.13 | requires-python >=3.10. `[binary]` avoids a libpq build on the server. **HIGH** |
+| passlib 1.7.4 | Python 3.13 | **INCOMPATIBLE in spirit** — relies on stdlib `crypt`, removed in 3.13 (PEP 594); unmaintained since 2020. Do not add. **HIGH** |
 
 ## Sources
 
-- Direct inspection of the existing codebase (`app/db.py`, `app/models.py`,
-  `app/services/ledger.py`, `app/services/stock.py`, `app/services/sales.py`,
-  `alembic/versions/0001_initial_schema.py`) — HIGH confidence, ground truth for what already
-  exists and what conventions/invariants a new module must match.
-- `E:\dev\myorishop\CLAUDE.md` — prior validated stack research (versions, integer-cents rule,
-  WAL/busy_timeout/foreign_keys rationale, "no async needed for single-user SQLite" rationale).
-  HIGH confidence (already-verified project research, dated 2026-07-08).
-- `.planning/PROJECT.md` — v1.3 milestone scope and target features (auto-credit on sale, debit
-  with mandatory reason/category, movement history, balance, "Финансы" UI section). HIGH
-  confidence (first-party project doc).
-- [SQLite concurrent writes and "database is locked" errors](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) —
-  confirms WAL = one writer at a time, readers never block the writer, `busy_timeout` (5-10s
-  recommended) as the standard mitigation, and "read-then-write transaction upgrade" as the
-  common real cause of `SQLITE_BUSY`. MEDIUM confidence (community technical blog, cross-checked
-  against SQLite's own documented WAL semantics).
-- [What to do about SQLITE_BUSY errors despite setting a timeout](https://berthub.eu/articles/posts/a-brief-post-on-sqlite3-database-locked-despite-timeout/) —
-  corroborates `busy_timeout` as a per-connection setting and the single-writer WAL model. MEDIUM
-  confidence.
-- [Precision Matters: Why Using Cents Instead of Floating Point for Transaction Amounts is Crucial](https://www.hackerone.com/blog/precision-matters-why-using-cents-instead-floating-point-transaction-amounts-crucial)
-  and [Still Using Python float for Money? Here's Why That's Dangerous](https://medium.com/the-pythonworld/still-using-python-float-for-money-heres-why-that-s-dangerous-c761b994c526) —
-  corroborate integer-minor-units as standard practitioner choice for transactional money
-  storage, consistent with the project's already-established rule. MEDIUM confidence.
-- No external package research beyond the concurrency/money-handling sanity checks above was
-  needed: the conclusion — zero new runtime dependencies — makes version verification of a *new*
-  package moot. The already-pinned technologies named in this doc are carried over unchanged
-  from `CLAUDE.md` and were not re-verified per milestone instructions ("DO NOT re-research the
-  existing stack").
+- https://pypi.org/pypi/psycopg/json — 3.3.4, requires-python >=3.10, released 2026-05-01 (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/pwdlib/json — 0.3.0; extras `argon2` (argon2-cffi >=23.1.0,<26), `bcrypt` (bcrypt >=4.1.2,<6) (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/argon2-cffi/json — 25.1.0 (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/itsdangerous/json — 2.2.0 (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/httpx/json — 0.28.1 (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/bcrypt/json — 5.0.0 (verified 2026-07-18, HIGH)
+- https://pypi.org/pypi/passlib/json — 1.7.4, last release 2020; unmaintained (verified 2026-07-18, HIGH)
+- Installed venv introspection — starlette 1.3.1 / fastapi 0.139.0 (verified 2026-07-18, HIGH)
+- Codebase read — `app/models.py` (UUID PK, device_id/seq, synced_at, portable partial indexes), `app/db.py` (SQLite PRAGMA listener, `APPEND_ONLY_TRIGGERS`, frozen migration-0001 copy), `app/services/ledger.py` (`record_operation` single write path, `created_by` from settings), `app/config.py` (pydantic-settings) (verified 2026-07-18, HIGH)
+- PEP 594 (removal of `crypt`/`spwd` in Python 3.13) and OWASP Password Storage guidance (Argon2id first choice) — general/standards knowledge (MEDIUM-HIGH)
 
 ---
-*Stack research for: MyOriShop v1.3 — Финансы / Касса*
-*Researched: 2026-07-14*
+*Stack research for: v3.0 central server + sync + auth additions to a mature FastAPI/SQLAlchemy/SQLite local-first app*
+*Researched: 2026-07-18*
