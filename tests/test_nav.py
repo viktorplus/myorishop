@@ -57,6 +57,22 @@ def test_desktop_nav_operator_hides_settings_but_has_logout(anon_client, session
     assert "Пользователь op · Выйти" in html  # logout control shows the user
 
 
+def test_finance_report_activates_finance_not_settings(anon_client, session, login):
+    # Plan 25-09 (ROLE-03 gap): the operator-visible /finance/report highlights
+    # «Финансы» (owns the whole /finance subtree), NOT the admin «Настройки» tab;
+    # /settings still highlights «Настройки». Seed an administrator so both
+    # admin-visible pages render. Active-state (CSS class) only — no access change.
+    _seed(session, login="boss", password="pw", role="administrator")
+    assert login(anon_client, "boss", "pw").status_code == 303
+
+    report_html = anon_client.get("/finance/report").text
+    assert '<a href="/finance" class="active">Финансы</a>' in report_html
+    assert '<a href="/settings" class="active">Настройки</a>' not in report_html
+
+    settings_html = anon_client.get("/settings").text
+    assert '<a href="/settings" class="active">Настройки</a>' in settings_html
+
+
 def test_mobile_nav_carries_csrf_and_logout(anon_client, session, login):
     # Mobile chrome (mobile_base.html) carries the CSRF header + a «Выйти»
     # affordance for the logged-in user.
