@@ -26,7 +26,11 @@
      htmx and price-cue lines above. #}
   <script src="/static/sale-total.js" defer></script>
 </head>
-<body>
+{# AUTH-05: duplicated here because mobile_base.html is a standalone file that
+   does NOT inherit from base.html (same reasoning as the duplicated htmx-config
+   meta above) — one hx-headers line carries the session CSRF token to every
+   hx-post/hx-put/hx-delete on the page. #}
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   {% block tabbar %}
   <nav class="mobile-tabbar">
     <a href="/m/"{% if request.url.path == "/m/" %} class="active"{% endif %}>Главная</a>
@@ -40,6 +44,12 @@
   {% endblock %}
   <main class="mobile-shell">
     {% block back %}<a class="mobile-back" href="/m/">← Главная</a>{% endblock %}
+    {# AUTH-05: logout affordance — POST, CSRF-carried via the body hx-headers.
+       Reuses .mobile-back (min-height:44px touch target); pushed right with
+       margin-left:auto (no new CSS). display_name autoescaped, never |safe. #}
+    {% if current_user %}
+    <a class="mobile-back" style="margin-left:auto;cursor:pointer" hx-post="/logout">{{ current_user.display_name }} · Выйти</a>
+    {% endif %}
     {% block step_indicator %}{% endblock %}
     {% block content %}{% endblock %}
   </main>
