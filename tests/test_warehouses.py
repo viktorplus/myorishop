@@ -29,6 +29,7 @@ def test_migration_0007_creates_and_seeds_default_warehouse(tmp_path, monkeypatc
     """Migration 0007: fresh upgrade creates warehouses table + one seed row."""
     db_file = tmp_path / "fresh.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0006")

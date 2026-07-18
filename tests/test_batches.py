@@ -320,6 +320,7 @@ def test_migration_0008_seeds_legacy_batches_and_preserves_triggers(
     """Migration 0008: legacy seed from the ledger SUM, triggers intact (D-13/D-10)."""
     db_file = tmp_path / "migrate.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     # Upgrade to just before batches, then seed pre-batch data.
@@ -381,6 +382,7 @@ def test_migration_0008_downgrade_reverses_cleanly(tmp_path, monkeypatch):
     """downgrade() drops batches + operations.batch_id, leaving 0007 schema."""
     db_file = tmp_path / "downgrade.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0007")
@@ -562,6 +564,7 @@ def test_migration_0009_adds_batch_name_column(tmp_path, monkeypatch):
     """
     db_file = tmp_path / "migrate_0009.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0008")

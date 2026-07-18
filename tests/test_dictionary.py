@@ -179,6 +179,7 @@ def test_migration_0012_adds_name_lc_and_backfills_cyrillic(tmp_path, monkeypatc
     mirrors migration 0002's frozen products.name_lc precedent)."""
     db_file = tmp_path / "fresh.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0011")

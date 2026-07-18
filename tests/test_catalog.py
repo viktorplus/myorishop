@@ -254,6 +254,7 @@ def test_migration_0002_fresh_db_and_backfill(tmp_path, monkeypatch):
     # settings is a module-level singleton instantiated at import time —
     # patch the attribute, NOT the environment variable.
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0001")
@@ -316,6 +317,7 @@ def test_migration_0005_adds_threshold_columns(tmp_path, monkeypatch):
     """Migration 0005: fresh upgrade adds NULL low_stock_threshold/stale_days."""
     db_file = tmp_path / "fresh.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0004")
@@ -902,6 +904,7 @@ def test_migration_0006_adds_min_sale_cents_column(tmp_path, monkeypatch):
     """Migration 0006: fresh upgrade adds a NULL min_sale_cents column."""
     db_file = tmp_path / "fresh.db"
     monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
     cfg = Config("alembic.ini")
 
     command.upgrade(cfg, "0005")

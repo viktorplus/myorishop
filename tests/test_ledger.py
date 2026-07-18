@@ -241,6 +241,7 @@ def test_migration_0004_preserves_append_only_triggers(tmp_path, monkeypatch):
 
     db_path = str(tmp_path / "mig.db")
     monkeypatch.setattr(settings, "db_path", db_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_path}")
 
     cfg = Config("alembic.ini")
     command.upgrade(cfg, "head")
