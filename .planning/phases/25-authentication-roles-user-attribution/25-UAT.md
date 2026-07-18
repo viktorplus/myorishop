@@ -51,16 +51,18 @@ notes: |
 ## Summary
 
 total: 2
-passed: 1
-issues: 1
+passed: 2
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
+resolved: 1
 
 ## Gaps
 
 - truth: "The operator-visible finance report (/finance/report) must not highlight the administrator-only «Настройки» nav tab in base.html."
-  status: failed
+  status: resolved
+  resolved_by: "25-09 (commits 842bf30, 607076d) — «Финансы» now owns the whole /finance subtree; «Настройки» active only for /settings. Proven by render tests in test_nav.py + test_finance_reports.py."
   reason: "User confirmed finance report is intentionally operator-visible; the active-state logic in base.html incorrectly highlights the «Настройки» admin tab when /finance/report is open."
   severity: cosmetic
   test: 1
