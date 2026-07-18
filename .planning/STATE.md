@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-07-18T22:43:13.285Z"
+last_updated: "2026-07-18T22:48:44.392Z"
 last_activity: 2026-07-18 -- Phase 26 execution started
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 17
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 26 (postgresql-portability-append-only-parity) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-18 -- Phase 26 execution started
 
@@ -72,6 +72,7 @@ Progress: [██████████] 100%
 | Phase 25 P08 | 25 min | 3 tasks | 6 files |
 | Phase 25 P09 | 5min | 1 tasks | 2 files |
 | Phase 26 P01 | ~12min | 2 tasks | 4 files |
+| Phase 26 P02 | ~3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Phase 25-09: /finance/report nav highlight moved from admin «Настройки» to «Финансы» (operator-visible per UAT test 1); active-state CSS-class only, no route/gate change
 - [Phase 26]: settings.database_url is the single DB-URL source of truth (sqlite default filled in _resolve_local_identity; DATABASE_URL env wins), read by alembic/env.py and app/db.py in Plan 03; no PG credential hardcoded (T-26-02)
 - [Phase 26]: PG-parity tests match append-only rejection on the message SUBSTRING 'append-only' (PG raises a driver exception, not SQLite IntegrityError); tests/test_pg_parity.py skips on SQLite, RED in CI until Plans 02-03
+- [Phase ?]: Phase 26-02: append-only trigger DDL is dialect-branched IN-PLACE inside frozen migrations 0001/0013 via op.get_bind().dialect.name (PL/pgSQL RAISE EXCEPTION on PG, unchanged SQLite RAISE(ABORT) path); trigger names + 'append-only' message substrings identical across dialects (WR-06 additive-only)
 
 ### Pending Todos
 
@@ -144,7 +146,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T22:43:13.265Z
+Last session: 2026-07-18T22:47:44.309Z
 Stopped at: Completed 26-01-PLAN.md
 Resume file: None
 
