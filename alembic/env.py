@@ -14,7 +14,11 @@ config = context.config
 # Single source of truth (SRV-01/SRV-02, Phase 26): both the app (app/db.py) and
 # Alembic read settings.database_url. sqlite:///… by default; a
 # postgresql+psycopg://… DATABASE_URL retargets the whole migration chain to PG.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Escape literal '%' as '%%': set_main_option stores the value in Alembic's
+# ConfigParser, which performs pyformat interpolation. An un-escaped '%' in a
+# PostgreSQL password would raise an interpolation error at migration time
+# (WR-02).
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # SQLite can't create the db file if its parent directory is missing (fresh
 # clone, gitignored data/) — mirrors app/db.py. Meaningless for a PG target, so
