@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-07-19T19:35:12.936Z"
+last_updated: "2026-07-19T19:55:02.957Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 28 (central-server-hosting-sync-api) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-19
 
-Progress: [████████░░] 77%
+Progress: [████████░░] 82%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -79,6 +79,7 @@ Progress: [████████░░] 77%
 | Phase 27 P03 | ~18min | 2 tasks | 2 files |
 | Phase 27 P04 | ~9min | 2 tasks | 2 files |
 | Phase 28 P01 | ~35min | 3 tasks | 5 files |
+| Phase 28 P02 | ~20min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 27]: Phase 27-04 (SYNC-02/04/05): new tests/test_merge_pg.py proves the ONE engine portable on PostgreSQL — merge-twice==once idempotency (portable pre-select set-difference, not a dialect on_conflict) + Product.code collision rename against PG's postgresql_where partial index uq_products_code_active. Reuses the Phase 26 harness (module skipif on settings.database_url, _engine/_upgrade_head, sessionmaker + try/finally engine.dispose); literal-constant/fixed-UUID seeds only (V5) so it re-runs against a standing PG server (ledger rows never DELETEd → set-difference finds them present); idempotency asserted on a snapshot of derived state + report2 inserted==0/skipped==1, not on fresh-vs-rerun counts. The existing pg-parity CI job (postgres:17) got ONE new step running the slice with DATABASE_URL set — no new job, no engine/ledger change, no migration. Phase 27 COMPLETE (4/4); Phases 28/30 are thin callers of a both-dialects-proven engine
 - [Phase 27]: Phase 27-03 (SYNC-05): apply_merge now upserts reference rows insert-if-new + ROW-level server-wins (existing UUID discarded, never field-merged/resurrected/deleted from client input), in FK order (warehouses→products→customers→dictionary→batches→sales) driven by KIND before the ledger — a shuffled file merges identically, a missing parent fails the child FK and the caller rolls back all-or-nothing. Inline deleted_at tombstones: a new soft-deleted row inserts, a server row is never flipped. Cross-device Product.code duplicate → RENAME the incoming loser deterministically (_suffix_code = base truncated + '~' + first 4 hex of the losing UUID, ≤ String(20)), KEEP its UUID (ops stay valid), incumbent keeps the clean code, reported in MergeReport.conflicts; re-merge renames identically. Shared _partition_new set-difference backs both _insert_new + _upsert_reference; _reference_row zeroes wire quantity (recompute is truth). Insert-only + portability grep gates == 0. NOT done: same-batch two-new-same-code tie-break (hits the uq_products_code_active DB backstop → rollback; deferred to Phase 28/29 admin reconciliation)
 - [Phase ?]: Phase 28-01 (SRV-02/SYNC-01): the two ledger *_no_update triggers are now COLUMN-SCOPED via migration 0018 — a value-based FOR EACH ROW WHEN guard enumerating every immutable column (14 ops / 10 cash), so synced_at can be stamped while a mixed 'SET synced_at=..., qty_delta=99' statement is still rejected wholesale (value-based, NOT 'UPDATE OF', which fires on mention and would leave that smuggling path open). DELETE triggers untouched. PG guard MUST cast NEW.payload::text (sa.JSON -> pg json has no equality operator; uncast raises 'operator does not exist: json = json'). The 0001/0013 PL/pgSQL functions are reused, never dropped. LOCKSTEP: app/db.py::APPEND_ONLY_TRIGGERS (the live source for tests/conftest.py fixtures, which never use Alembic) must move in the SAME commit as any trigger migration; tests/test_append_only_cursor.py carries two tripwires (schema-derived + DDL-derived) so a future ledger column fails loudly instead of silently escaping the guard. Verified on postgres:17 locally. Note: an append-only probe written as 'SET col = col' is now a permitted no-op and false-greens (fixed in test_batches.py 0008 case).
+- [Phase ?]: SHA-256 (not Argon2) for device tokens: 256-bit CSPRNG entropy makes a slow KDF pointless while adding ~50-100ms per sync request (RESEARCH A1)
+- [Phase ?]: No token expiry — revocation-only; token_prefix is a non-secret index key for one-read verification
 
 ### Pending Todos
 
@@ -158,7 +161,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T19:35:12.909Z
+Last session: 2026-07-19T19:54:53.113Z
 Stopped at: Completed 28-01-PLAN.md
 Resume file: None
 

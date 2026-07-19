@@ -50,7 +50,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [ ] **SYNC-06**: The sync UI shows sync status, last-sync time, and a plain-language result; a sync failure never blocks local work.
 - [ ] **SYNC-07**: The app shows a badge with the count of local operations not yet synced to the server.
 - [ ] **SYNC-08**: The operator can enable an optional interval-based automatic sync that runs in the background and silently stops attempting while offline; when disabled, only the manual button syncs.
-- [ ] **SYNC-09**: The client authenticates to the server's sync endpoints with a per-device token.
+- [x] **SYNC-09**: The client authenticates to the server's sync endpoints with a per-device token.
 
 ### Offline Data Transfer (OFF)
 
@@ -140,7 +140,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SYNC-04 | Phase 27 | Complete (one engine proven on SQLite + PostgreSQL in the pg-parity CI job, 27-04) |
 | SYNC-05 | Phase 27 | Done |
 | SRV-04 | Phase 28 | Pending |
-| SYNC-09 | Phase 28 | Pending |
+| SYNC-09 | Phase 28 | Complete |
 | SYNC-01 | Phase 29 | Complete |
 | SYNC-06 | Phase 29 | Pending |
 | SYNC-07 | Phase 29 | Pending |
