@@ -527,3 +527,48 @@ class User(Base):
     is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
+
+
+class DeviceToken(Base):
+    """Per-device sync credential (SYNC-09): prefix lookup + SHA-256 digest.
+
+    Tokens are NEVER hard-deleted — revocation is `is_active = 0` plus a
+    `revoked_at` stamp, mirroring `User`'s soft-disable, so a compromised
+    device keeps its audit trail (`device_id`/`user_id` survive revocation).
+
+    `token_prefix` is NOT a secret: it is the first 12 characters of the
+    plaintext, stored solely so verification is one indexed row read instead
+    of a table scan that hashes every row. It is unique so a prefix resolves
+    to at most one candidate row.
+
+    `token_hash` holds the SHA-256 hex digest of the full plaintext. The
+    plaintext is returned by `devices.mint_token` exactly once and is never
+    stored anywhere — not in this table, not in logs (the hasher rationale
+    lives in `app/services/devices.py`).
+
+    There is deliberately NO expiry column. On a 1-3 device single-reseller
+    app an expiring token creates a silent-failure mode (sync quietly stops)
+    for negligible security gain; revocation is the control.
+    """
+
+    __tablename__ = "device_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # The per-install UUID (settings.device_id). NOT unique — a device may be
+    # re-issued a token after its previous one was revoked.
+    device_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)  # «Ноутбук Ольги»
+    token_prefix: Mapped[str] = mapped_column(
+        String(12), nullable=False, index=True, unique=True
+    )  # NON-SECRET lookup key
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)  # sha256 hex
+    # Bare column in the migration; the ForeignKey lives only in the ORM
+    # (insert ordering + PostgreSQL portability) — Operation.author_id precedent.
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", name="fk_device_tokens_user_id_users"), index=True
+    )
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
+    # Stamped on each successful verification so a stale token is visible.
+    last_used_at: Mapped[str | None] = mapped_column(String(32))
+    revoked_at: Mapped[str | None] = mapped_column(String(32))
