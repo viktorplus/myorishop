@@ -17,6 +17,7 @@ from app.routes import (
     categories,
     corrections,
     customers,
+    devices,
     dictionary,
     export,
     finance,
@@ -135,6 +136,13 @@ app.include_router(
 # USER-01..04 / ROLE-03: the admin user-management surface at /settings/users.
 app.include_router(
     users.router, dependencies=[Depends(require_role("administrator"))]
+)
+# SYNC-09: the admin device-token surface at /settings/devices. Admin-only for
+# security, not tidiness — revocation is the ONLY mitigation for a stolen device
+# token (there is no expiry, by decision), so an operator must not be able to
+# mint or revoke device credentials. Same server-side boundary as /settings/users.
+app.include_router(
+    devices.router, dependencies=[Depends(require_role("administrator"))]
 )
 # SYNC-09: the token-authenticated sync tree. NO `dependencies=` here — unlike the
 # admin routers above it is NOT gated by the app-level auth_guard (security.py
