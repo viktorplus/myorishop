@@ -361,10 +361,20 @@ def test_migration_0008_seeds_legacy_batches_and_preserves_triggers(
         ).fetchone()[0]
         assert trigger_count == 2
 
-        # (d) an UPDATE on operations still ABORTs (ledger immutable). RAISE(ABORT)
-        # surfaces as IntegrityError through the raw sqlite3 driver.
+        # (d) an UPDATE that CHANGES an immutable column still ABORTs (ledger
+        # immutable). RAISE(ABORT) surfaces as IntegrityError through the raw
+        # sqlite3 driver.
+        #
+        # Phase 28 (migration 0018) made these triggers column-scoped and
+        # VALUE-based, so the former probe here — `SET qty_delta = qty_delta` —
+        # is now a permitted no-op self-assignment and no longer fires. The
+        # probe therefore writes a genuinely different value; the invariant
+        # under test (an immutable ledger column cannot be changed) is
+        # unchanged. Full coverage of the relaxed guard, including the
+        # synced_at stamp and mixed-column rejection, lives in
+        # tests/test_append_only_cursor.py.
         with pytest.raises(sqlite3.IntegrityError) as exc:
-            conn.execute("UPDATE operations SET qty_delta = qty_delta")
+            conn.execute("UPDATE operations SET qty_delta = qty_delta + 1")
         assert "append-only" in str(exc.value)
 
         # operations.batch_id column exists and is indexed.

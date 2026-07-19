@@ -14,15 +14,43 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 # Live source of the append-only trigger DDL (FND-01) for TEST FIXTURES.
-# Migration 0001 carries its own FROZEN copy (WR-06: migrations must never
-# import mutable app code). v1 blocks ALL updates (synced_at unused); the
-# v2 sync milestone relaxes the UPDATE trigger with a WHEN clause in a NEW
-# migration — never edit this constant's DDL semantics in place without
-# also adding that migration.
+# Migrations 0001/0013 carry their own FROZEN v1 copies, and migration
+# 0018_sync_cursor_trigger_relaxation.py carries the frozen v2 copy of the
+# two *_no_update triggers below (WR-06: migrations must never import
+# mutable app code).
+#
+# LOCKSTEP RULE — this constant and migration 0018 must ALWAYS move together.
+# tests/conftest.py builds every test DB from Base.metadata.create_all plus
+# this constant, never via Alembic; if the two drift, the whole suite tests
+# the old triggers while production runs the new ones. Any future change to
+# these triggers needs a NEW migration and a matching edit here in the SAME
+# commit.
+#
+# v2 (Phase 28, SRV-02/SYNC-01): the *_no_update triggers are column-scoped —
+# they fire only when an IMMUTABLE column actually changes, so the sync
+# cursor `synced_at` can be stamped on a ledger row. Value-based `WHEN`
+# rather than `UPDATE OF` on purpose: a statement setting synced_at AND an
+# immutable column in one go is still rejected. The *_no_delete triggers are
+# unchanged — DELETE stays unconditionally blocked.
 APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
     """
     CREATE TRIGGER operations_no_update
     BEFORE UPDATE ON operations
+    FOR EACH ROW WHEN
+         NEW.id               IS NOT OLD.id
+      OR NEW.type             IS NOT OLD.type
+      OR NEW.product_id       IS NOT OLD.product_id
+      OR NEW.qty_delta        IS NOT OLD.qty_delta
+      OR NEW.unit_cost_cents  IS NOT OLD.unit_cost_cents
+      OR NEW.unit_price_cents IS NOT OLD.unit_price_cents
+      OR NEW.payload          IS NOT OLD.payload
+      OR NEW.sale_id          IS NOT OLD.sale_id
+      OR NEW.batch_id         IS NOT OLD.batch_id
+      OR NEW.author_id        IS NOT OLD.author_id
+      OR NEW.device_id        IS NOT OLD.device_id
+      OR NEW.seq              IS NOT OLD.seq
+      OR NEW.created_at       IS NOT OLD.created_at
+      OR NEW.created_by       IS NOT OLD.created_by
     BEGIN SELECT RAISE(ABORT, 'operations ledger is append-only'); END
     """,
     """
@@ -33,6 +61,17 @@ APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
     """
     CREATE TRIGGER cash_movements_no_update
     BEFORE UPDATE ON cash_movements
+    FOR EACH ROW WHEN
+         NEW.id           IS NOT OLD.id
+      OR NEW.category     IS NOT OLD.category
+      OR NEW.amount_cents IS NOT OLD.amount_cents
+      OR NEW.note         IS NOT OLD.note
+      OR NEW.sale_id      IS NOT OLD.sale_id
+      OR NEW.author_id    IS NOT OLD.author_id
+      OR NEW.device_id    IS NOT OLD.device_id
+      OR NEW.seq          IS NOT OLD.seq
+      OR NEW.created_at   IS NOT OLD.created_at
+      OR NEW.created_by   IS NOT OLD.created_by
     BEGIN SELECT RAISE(ABORT, 'cash ledger is append-only'); END
     """,
     """
