@@ -22,6 +22,7 @@ arrives in Plans 02-03; the dataclasses ``Conflict``/``MergeReport`` are declare
 now so the contract is stable for those plans.
 """
 
+import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
@@ -140,7 +141,73 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     missing header, and a float money value. ``synced_at`` is forced to None
     (server-owned, never trusted from the wire).
     """
-    raise NotImplementedError  # Implemented in Task 2.
+    non_header_kinds = RECORD_KINDS - {"header"}
+    header: dict | None = None
+    records: list[ExchangeRecord] = []
+
+    for index, raw in enumerate(lines):
+        if raw is None or not str(raw).strip():
+            continue  # skip blank / whitespace-only lines
+        try:
+            obj = json.loads(raw)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ValueError(f"malformed NDJSON line: {index}") from exc
+        if not isinstance(obj, dict):
+            raise ValueError(f"malformed NDJSON line: {index} (not a JSON object)")
+
+        kind = obj.get("kind")
+
+        # The FIRST non-blank line MUST be the header envelope.
+        if header is None:
+            if kind != "header":
+                raise ValueError("missing header: first line must be a header record")
+            version = obj.get("format_version")
+            if version != FORMAT_VERSION:
+                raise ValueError(f"unsupported format_version: {version!r}")
+            header = obj
+            continue
+
+        # Every subsequent line is a typed record (never a second header).
+        if kind == "header":
+            raise ValueError("duplicate header record")
+        if kind not in non_header_kinds:
+            raise ValueError(f"unknown record kind: {kind!r}")
+
+        data = {key: value for key, value in obj.items() if key != "kind"}
+
+        # Required identity: every record carries a non-empty string id.
+        record_id = data.get("id")
+        if not isinstance(record_id, str) or not record_id:
+            raise ValueError(f"{kind} record missing a non-empty string id")
+
+        # Ledger records also carry the full append-only provenance set.
+        if kind in _LEDGER_KINDS:
+            for required in _LEDGER_REQUIRED:
+                if data.get(required) is None:
+                    raise ValueError(f"{kind} record missing required field {required!r}")
+            if not isinstance(data["seq"], int) or isinstance(data["seq"], bool):
+                raise ValueError(f"{kind} record seq must be an integer")
+
+        # Money is integer cents only — a float value is a type-confusion attack (V5).
+        for money_key in _money_fields(kind):
+            if isinstance(data.get(money_key), float):
+                raise ValueError(f"money field {money_key!r} must be int cents, not float")
+
+        # synced_at is server-owned — never trusted from the wire (DD-6).
+        if "synced_at" in data:
+            data["synced_at"] = None
+
+        records.append(ExchangeRecord(kind=kind, data=data))
+
+    if header is None:
+        raise ValueError("missing header: empty or headerless batch")
+
+    return ExchangeBatch(
+        format_version=header["format_version"],
+        schema_version=header.get("schema_version") or "",
+        source_device_id=header.get("source_device_id"),
+        records=records,
+    )
 
 
 def serialize_exchange(
@@ -158,4 +225,21 @@ def serialize_exchange(
     any record list ``R``, ``parse_exchange(serialize_exchange(R, ...)).records``
     equals ``R`` field-for-field.
     """
-    raise NotImplementedError  # Implemented in Task 2.
+    materialized = list(records)
+
+    counts: dict[str, int] = {}
+    for record in materialized:
+        counts[record.kind] = counts.get(record.kind, 0) + 1
+
+    header = {
+        "kind": "header",
+        "format_version": FORMAT_VERSION,
+        "schema_version": schema_version,
+        "source_device_id": source_device_id,
+        "generated_at": generated_at,
+        "counts": counts,
+    }
+    yield json.dumps(header, ensure_ascii=False)
+
+    for record in materialized:
+        yield json.dumps({"kind": record.kind, **record.data}, ensure_ascii=False)
