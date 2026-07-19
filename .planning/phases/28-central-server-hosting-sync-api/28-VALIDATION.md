@@ -5,7 +5,7 @@ status: approved
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-19 (checker warnings W-1..W-5 applied)
 ---
 
 # Phase 28 — Validation Strategy
@@ -55,9 +55,9 @@ The PostgreSQL half runs in the existing GitHub Actions `pg-parity` job on `post
 | 28-03-01 | 03 | 3 | SYNC-09 | T-28-02 / T-28-03 / T-28-06 | Bypass prefix is exactly `/api/sync/`; `PUBLIC_PATHS` stays exact-match; 401 + `WWW-Authenticate` | integration | `uv run pytest -q` | ✅ (edit) | ⬜ pending |
 | 28-03-02 | 03 | 3 | SYNC-09 | T-28-04 / T-28-12 / T-28-19 / T-28-07 | 413 body cap, 429 rate limit, one `session.begin()`, zero `session.commit()`, no logging | integration | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
 | 28-03-03 | 03 | 3 | SYNC-09 (SC-2) | T-28-02 / T-28-03 / T-28-04 / T-28-12 | 401 not 303 without token; **both** cross-auth negatives; idempotent replay; all-or-nothing rollback | integration | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
-| 28-04-01 | 04 | 4 | SYNC-09 | T-28-20 / T-28-21 / T-28-22 | Reference kinds only; `>=` cursor; per-kind cursor column; pure module | unit | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
-| 28-04-02 | 04 | 4 | SYNC-09 | T-28-02 / T-28-12 / T-28-22 | Token-gated read-only NDJSON; clamped limit; 400 on a bad cursor | integration | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
-| 28-04-03 | 04 | 4 | **SRV-04** / SYNC-09 (SC-1, SC-2) | T-28-20 / T-28-23 | `/` and `/m/` both 200 from one app; pull excludes ledger kinds; body round-trips through `parse_exchange` | integration | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
+| 28-04-01 | 04 | 4 | SYNC-09 | T-28-20 / T-28-21 / T-28-22 / **T-28-32** | Reference kinds only; composite `(cursor, id)` cursor, inclusive on the timestamp and terminating across identical stamps; per-kind cursor column; pure module | unit | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
+| 28-04-02 | 04 | 4 | SYNC-09 | T-28-02 / T-28-12 / T-28-22 / **T-28-32** | Token-gated read-only NDJSON; clamped limit; 400 on a bad cursor; **both** `X-Sync-Next-Since` and `X-Sync-Next-After-Id` emitted; Phase 27 engine untouched across the phase | integration | `uv run pytest tests/test_sync_api.py -x -q` && `git log --oneline 785ccf2..HEAD -- app/services/merge.py` empty | ❌ W0 | ⬜ pending |
+| 28-04-03 | 04 | 4 | **SRV-04** / SYNC-09 (SC-1, SC-2) | T-28-20 / T-28-23 / **T-28-32** | `/` and `/m/` both 200 from one app; pull excludes ledger kinds; body round-trips through `parse_exchange`; **pagination terminates** across `limit + 1` rows sharing one `updated_at` (`test_pull_paginates_past_identical_timestamps`, hard iteration cap) | integration | `uv run pytest tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
 | 28-05-01 | 05 | 5 | SYNC-09 | T-28-24 / T-28-07 | Admin-only on all three verbs; plaintext never touches the session | integration | `uv run pytest tests/test_devices_ui.py -x -q` | ❌ W0 | ⬜ pending |
 | 28-05-02 | 05 | 5 | SYNC-09 | T-28-25 / T-28-26 / T-28-06 | No `\|safe`; `token_hash`/`token_prefix` never rendered; CSRF via base chrome | integration | `uv run pytest tests/test_devices_ui.py -x -q` | ❌ W0 | ⬜ pending |
 | 28-05-03 | 05 | 5 | SYNC-09 | T-28-01 / T-28-07 / T-28-24 / T-28-18 | Show-once proven by a reload assertion; operator 403 on GET+POST+revoke; revoke ≠ delete | integration | `uv run pytest tests/test_devices_ui.py -x -q` | ❌ W0 | ⬜ pending |
@@ -81,7 +81,7 @@ Test files that do not yet exist and are created by the task that first needs th
 
 - [ ] `tests/test_append_only_cursor.py` — SC-3 on SQLite incl. the schema-derived fail-open guard (created by 28-01-02)
 - [ ] `tests/test_devices.py` — SYNC-09 token service unit coverage (created by 28-02-03)
-- [ ] `tests/test_sync_api.py` — SYNC-09 endpoint auth, both cross-auth negatives, SC-2 push/pull/idempotency/rollback, SRV-04 both-UIs (created by 28-03-03, extended by 28-04-03)
+- [ ] `tests/test_sync_api.py` — SYNC-09 endpoint auth, both cross-auth negatives, SC-2 push/pull/idempotency/rollback, pull-pagination termination (T-28-32), SRV-04 both-UIs (created by 28-03-03, extended by 28-04-03)
 - [ ] `device_client` fixture in `tests/conftest.py` — the ONLY correct base for token tests; the default `client` fixture overrides `auth_guard` wholesale and cannot exercise the bypass (created by 28-03-01)
 - [ ] `tests/test_devices_ui.py` — SYNC-09 admin surface (created by 28-05-03)
 - [ ] New cases appended to `tests/test_pg_parity.py` — SC-3 on PostgreSQL (created by 28-01-03)
