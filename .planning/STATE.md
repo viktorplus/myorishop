@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-07-19T19:55:02.957Z"
+last_updated: "2026-07-19T20:26:37.529Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 28 (central-server-hosting-sync-api) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-19
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 86%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -80,6 +80,7 @@ Progress: [████████░░] 82%
 | Phase 27 P04 | ~9min | 2 tasks | 2 files |
 | Phase 28 P01 | ~35min | 3 tasks | 5 files |
 | Phase 28 P02 | ~20min | 3 tasks | 4 files |
+| Phase 28 P03 | 23min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Phase 28-01 (SRV-02/SYNC-01): the two ledger *_no_update triggers are now COLUMN-SCOPED via migration 0018 — a value-based FOR EACH ROW WHEN guard enumerating every immutable column (14 ops / 10 cash), so synced_at can be stamped while a mixed 'SET synced_at=..., qty_delta=99' statement is still rejected wholesale (value-based, NOT 'UPDATE OF', which fires on mention and would leave that smuggling path open). DELETE triggers untouched. PG guard MUST cast NEW.payload::text (sa.JSON -> pg json has no equality operator; uncast raises 'operator does not exist: json = json'). The 0001/0013 PL/pgSQL functions are reused, never dropped. LOCKSTEP: app/db.py::APPEND_ONLY_TRIGGERS (the live source for tests/conftest.py fixtures, which never use Alembic) must move in the SAME commit as any trigger migration; tests/test_append_only_cursor.py carries two tripwires (schema-derived + DDL-derived) so a future ledger column fails loudly instead of silently escaping the guard. Verified on postgres:17 locally. Note: an append-only probe written as 'SET col = col' is now a permitted no-op and false-greens (fixed in test_batches.py 0008 case).
 - [Phase ?]: SHA-256 (not Argon2) for device tokens: 256-bit CSPRNG entropy makes a slow KDF pointless while adding ~50-100ms per sync request (RESEARCH A1)
 - [Phase ?]: No token expiry — revocation-only; token_prefix is a non-secret index key for one-read verification
+- [Phase ?]: Plan 28-03: require_device in security.py keeps devices.py FastAPI-free; route rolls back the expire_on_commit read txn before with session.begin()
 
 ### Pending Todos
 
@@ -161,7 +163,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T19:54:53.113Z
+Last session: 2026-07-19T20:26:24.422Z
 Stopped at: Completed 28-01-PLAN.md
 Resume file: None
 
