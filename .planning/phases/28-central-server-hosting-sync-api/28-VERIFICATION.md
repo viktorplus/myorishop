@@ -1,8 +1,9 @@
 ---
 phase: 28-central-server-hosting-sync-api
-verified: 2026-07-19T21:57:49Z
-status: human_needed
-score: 3/3 must-haves verified (SQLite + code); SC-3 PostgreSQL half awaits CI proof
+verified: 2026-07-19T22:15:00Z
+status: passed
+score: 3/3 must-haves verified (code + SQLite + PostgreSQL CI GREEN — SC-3 PG half closed via UAT)
+resolution: "SC-3 PostgreSQL half CLOSED — CI run 29705703575 (job 88242189180) GREEN on ci/phase-28-pg-parity @ becc31f: SQLite suite + test_pg_parity.py + test_merge_pg.py all pass on postgres:17. Recorded in 28-UAT.md (status: passed). Code review blocker CR-01 fixed; phase secured (28-SECURITY.md, threats_open: 0)."
 overrides_applied: 0
 re_verification:
   previous_status: none

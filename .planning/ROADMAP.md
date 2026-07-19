@@ -266,6 +266,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
-| 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete   | 2026-07-19 |
+| 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
