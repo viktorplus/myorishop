@@ -171,13 +171,29 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
   3. A ledger row's `synced_at` cursor can be stamped, but any attempt to change an immutable ledger column (`qty_delta`, `amount_cents`, author) is still rejected at the database — on both SQLite and PostgreSQL — enabling the sync cursor (SYNC-01) without weakening the append-only guarantee.
 
 **Plans**: 6 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 28-01-PLAN.md — Append-only trigger relaxation: migration 0018 + APPEND_ONLY_TRIGGERS lockstep + SQLite/PostgreSQL SC-3 proof (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 28-02-PLAN.md — Device-token core: DeviceToken model + migration 0019 + mint/verify/revoke service (SYNC-09) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 28-03-PLAN.md — /api/sync/ guard bypass + require_device Bearer dependency + POST /api/sync/push (SYNC-09, SC-2) (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 28-04-PLAN.md — GET /api/sync/pull cursor service + route + SRV-04 both-UIs-one-app assertion (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 28-05-PLAN.md — Admin device-token surface at /settings/devices (mint show-once, revoke, operator 403) (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 28-06-PLAN.md — PostgreSQL-safety guards (backup dialect gate, session Secure flag) + provider-agnostic deploy/ runbook (SRV-04) (wave 6)
 
 > **Open user decision (does not gate the phase):** the VPS provider, plan size and domain name (RESEARCH OQ-1) are deliberately NOT chosen by these plans. All deployment artifacts are provider-agnostic and every success criterion is provable locally and in CI.
