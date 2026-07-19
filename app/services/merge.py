@@ -26,6 +26,9 @@ import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
+from sqlalchemy import insert, select
+from sqlalchemy.orm import Session
+
 from app.models import (
     Batch,
     CashMovement,
@@ -36,6 +39,7 @@ from app.models import (
     Sale,
     Warehouse,
 )
+from app.services.ledger import recompute_derived
 
 # The engine-understood wire version (header ``format_version``); a mismatch is
 # rejected by parse_exchange (feeds OFF-07's schema-version gate in Phase 30).
@@ -208,6 +212,99 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
         source_device_id=header.get("source_device_id"),
         records=records,
     )
+
+
+# SQLite caps a statement at ~999 bound parameters; chunk id-membership probes
+# well under it so a large upload's WHERE id IN (...) never overflows (Pitfall 3).
+_IN_CHUNK: int = 500
+
+# The two append-only ledgers, inserted in this order (both after the Plan 03
+# reference-upsert stage). Cash has no FK on operations, so order is a courtesy.
+_LEDGER_INSERT_ORDER: tuple[str, ...] = ("operation", "cash_movement")
+
+
+def _insert_new(session: Session, model: type, rows: list[dict]) -> tuple[int, int]:
+    """Portable idempotent bulk insert-if-new by UUID PK (SYNC-02 core).
+
+    ``rows`` are full column dicts keyed incl. ``id``. Pre-select the ids
+    already present (chunked for SQLite's bound-param cap), filter them out as a
+    Python set-difference, and bulk-insert the remainder with a generic Core
+    ``insert(model)`` — portable across SQLite and PostgreSQL. Returns
+    ``(inserted, skipped)``. Re-running the same rows finds every id present, so
+    ``inserted == 0`` — replay is a true no-op (idempotency). NO dialect SQL, NO
+    upsert clause, NO raw SQL (Pitfall 2, CLAUDE.md portability rule).
+    """
+    if not rows:
+        return 0, 0
+    incoming_ids = [row["id"] for row in rows]
+    existing: set = set()
+    for start in range(0, len(incoming_ids), _IN_CHUNK):
+        chunk = incoming_ids[start : start + _IN_CHUNK]
+        existing.update(session.scalars(select(model.id).where(model.id.in_(chunk))).all())
+    new_rows = [row for row in rows if row["id"] not in existing]
+    if new_rows:
+        session.execute(insert(model), new_rows)
+    return len(new_rows), len(rows) - len(new_rows)
+
+
+def _ledger_row(kind: str, data: dict) -> dict:
+    """Build a verbatim column dict for a ledger record (DD-6).
+
+    Restrict to the model's own columns (schema-derived) so a stray wire field
+    can't reach the insert, carry every origin value unchanged
+    (``id``/``device_id``/``seq``/``author_id``/``created_by``/``created_at`` +
+    the type-specific fields), and force ``synced_at`` to None — the sync cursor
+    is server-owned and never trusted from the wire (Phase 28 territory).
+    """
+    row = {column: data.get(column) for column in KIND_TO_FIELDS[kind]}
+    row["synced_at"] = None
+    return row
+
+
+def apply_merge(session: Session, batch: ExchangeBatch, *, server_now: str) -> MergeReport:
+    """Merge a parsed batch into the DB: idempotent ledger append + recompute.
+
+    PURE w.r.t. HTTP/disk and — critically — NEVER commits: the caller wraps the
+    whole call in one transaction so a mid-batch failure rolls back cleanly
+    (all-or-nothing, OFF-05 groundwork). This plan (27-02) handles the two
+    append-only ledgers; the FK-ordered reference-upsert stage slots in ahead of
+    the ledger appends in Plan 03 (see the seam below).
+
+    Ledger rows are inserted verbatim by their origin UUID via the portable
+    set-difference (:func:`_insert_new`) — never re-minting identity through the
+    interactive write path (Pitfall 1). After the appends, derived stock is
+    recomputed from the merged ledger (:func:`recompute_derived`); cash balance
+    is a live SUM (``finance.compute_balance``) and needs nothing stored. The
+    recompute's invariant ValueError propagates so an internally inconsistent
+    batch is rejected (Pitfall 6) — the caller's rollback undoes the appends.
+    """
+    report = MergeReport()
+
+    # --- (1) Reference-upsert stage — Plan 03 -------------------------------
+    # Plan 03 inserts the FK-ordered, insert-if-new + server-wins reference
+    # upserts (warehouses -> products -> customers -> dictionary -> batches ->
+    # sales) HERE, BEFORE the ledger appends, plus the Product.code collision
+    # rename. This plan assumes referenced rows already exist (tests seed them
+    # via fixtures) and leaves this seam empty on purpose. ``server_now`` is
+    # threaded through for that stage (unused by the pure ledger append).
+
+    # --- (2) Ledger append stage (SYNC-02) ----------------------------------
+    buckets: dict[str, list[dict]] = {kind: [] for kind in _LEDGER_INSERT_ORDER}
+    for record in batch.records:
+        if record.kind in buckets:
+            buckets[record.kind].append(_ledger_row(record.kind, record.data))
+
+    report.operations_inserted, report.operations_skipped = _insert_new(
+        session, Operation, buckets["operation"]
+    )
+    report.cash_inserted, report.cash_skipped = _insert_new(
+        session, CashMovement, buckets["cash_movement"]
+    )
+
+    # --- (3) Derived-state recompute (SYNC-03) ------------------------------
+    recompute_derived(session)
+
+    return report
 
 
 def serialize_exchange(
