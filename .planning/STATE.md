@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
-stopped_at: Completed 27-03-PLAN.md
-last_updated: "2026-07-19T12:40:00.000Z"
-last_activity: 2026-07-19 -- Completed 27-03-PLAN.md (reference upsert server-wins + FK-order + Product.code collision rename, SYNC-05)
+stopped_at: Completed 27-04-PLAN.md (Phase 27 complete)
+last_updated: "2026-07-19T13:00:00.000Z"
+last_activity: 2026-07-19 -- Completed 27-04-PLAN.md (PostgreSQL portability slice + pg-parity CI wiring — one engine proven on both dialects, SYNC-02/04/05); Phase 27 COMPLETE
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 16
-  completed_plans: 15
-  percent: 41
+  completed_plans: 16
+  percent: 44
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 27 — shared-idempotent-merge-core
+**Current focus:** Phase 28 — Central Server: Hosting & Sync API (Phase 27 complete)
 
 ## Current Position
 
-Phase: 27 (shared-idempotent-merge-core) — EXECUTING
-Plan: 4 of 4
-Status: Executing Phase 27 (27-01, 27-02, 27-03 complete)
-Last activity: 2026-07-19 -- Completed 27-03-PLAN.md (reference upsert server-wins + FK-order + Product.code collision rename, SYNC-05)
+Phase: 27 (shared-idempotent-merge-core) — COMPLETE
+Plan: 4 of 4 (all complete)
+Status: Phase 27 complete (27-01, 27-02, 27-03, 27-04 done) — next: Phase 28 (Central Server — Hosting & Sync API)
+Last activity: 2026-07-19 -- Completed 27-04-PLAN.md (PostgreSQL portability slice + pg-parity CI wiring — one engine proven on both dialects, SYNC-02/04/05)
 
-Progress: [████████··] 75% (3 of 4 plans)
+Progress: [██████████] 100% (4 of 4 plans)
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -77,6 +77,7 @@ Progress: [████████··] 75% (3 of 4 plans)
 | Phase 27 P01 | ~14min | 2 tasks | 2 files |
 | Phase 27 P02 | ~20min | 2 tasks | 3 files |
 | Phase 27 P03 | ~18min | 2 tasks | 2 files |
+| Phase 27 P04 | ~9min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 26]: Phase 26-03: settings.database_url wired through build_engine_from_url (app/db.py) + alembic/env.py; PRAGMA listener, parent-dir mkdir, render_as_batch dialect-gated to sqlite; CI pg-parity job on postgres:17 proves SRV-01/SRV-02 (build_engine(db_path) signature preserved, conftest untouched)
 - [Phase 27]: Phase 27-01: the ONE NDJSON exchange format (SYNC-04) lives in app/services/merge.py — header-first, per-line `kind`, verbatim carriage of origin id/device_id/seq/author_id/created_by; parse_exchange rejects malformed/bad-version/unknown-kind/missing-header/float-money before any DB touch (ASVS V5) and forces wire synced_at→None (server-owned); money-field float guard is schema-derived from model.__mapper__.columns (no hand-maintained list). Pure module (no HTTP/file/dialects). Conflict/MergeReport dataclasses declared now, populated in Plans 02-03
 - [Phase 27]: Phase 27-02: apply_merge (SYNC-02/03) appends operations+cash_movements VERBATIM by origin UUID via a PORTABLE pre-select set-difference (_insert_new, chunked at 500) — no sqlalchemy.dialects, no on_conflict, no re-mint through the write path; synced_at forced None. It NEVER commits (caller owns the all-or-nothing transaction — a poisoned record rolls back to 0 rows). recompute_derived(session) extracted from rebuild_stock (non-committing, invariant-asserting); rebuild_stock delegates then commits (behavior-preserving). Post-merge Product.quantity/Batch.quantity recomputed from the ledger; cash balance stays a live SUM. Reference-upsert seam left BEFORE the ledger stage for Plan 03. merge-twice==once proven byte-identical
+- [Phase 27]: Phase 27-04 (SYNC-02/04/05): new tests/test_merge_pg.py proves the ONE engine portable on PostgreSQL — merge-twice==once idempotency (portable pre-select set-difference, not a dialect on_conflict) + Product.code collision rename against PG's postgresql_where partial index uq_products_code_active. Reuses the Phase 26 harness (module skipif on settings.database_url, _engine/_upgrade_head, sessionmaker + try/finally engine.dispose); literal-constant/fixed-UUID seeds only (V5) so it re-runs against a standing PG server (ledger rows never DELETEd → set-difference finds them present); idempotency asserted on a snapshot of derived state + report2 inserted==0/skipped==1, not on fresh-vs-rerun counts. The existing pg-parity CI job (postgres:17) got ONE new step running the slice with DATABASE_URL set — no new job, no engine/ledger change, no migration. Phase 27 COMPLETE (4/4); Phases 28/30 are thin callers of a both-dialects-proven engine
 - [Phase 27]: Phase 27-03 (SYNC-05): apply_merge now upserts reference rows insert-if-new + ROW-level server-wins (existing UUID discarded, never field-merged/resurrected/deleted from client input), in FK order (warehouses→products→customers→dictionary→batches→sales) driven by KIND before the ledger — a shuffled file merges identically, a missing parent fails the child FK and the caller rolls back all-or-nothing. Inline deleted_at tombstones: a new soft-deleted row inserts, a server row is never flipped. Cross-device Product.code duplicate → RENAME the incoming loser deterministically (_suffix_code = base truncated + '~' + first 4 hex of the losing UUID, ≤ String(20)), KEEP its UUID (ops stay valid), incumbent keeps the clean code, reported in MergeReport.conflicts; re-merge renames identically. Shared _partition_new set-difference backs both _insert_new + _upsert_reference; _reference_row zeroes wire quantity (recompute is truth). Insert-only + portability grep gates == 0. NOT done: same-batch two-new-same-code tie-break (hits the uq_products_code_active DB backstop → rollback; deferred to Phase 28/29 admin reconciliation)
 
 ### Pending Todos
@@ -154,12 +156,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T12:40:00.000Z
-Stopped at: Completed 27-03-PLAN.md
+Last session: 2026-07-19T13:00:00.000Z
+Stopped at: Completed 27-04-PLAN.md (Phase 27 complete)
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first v3.0 phase with `/gsd-plan-phase 25` (Authentication, Roles & User Attribution)
-- Phases 27 and 30 are research-flagged — expect a `--research-phase` pass at their plan time
+- Phase 27 (Shared Idempotent Merge Core) is COMPLETE — the one merge engine is proven portable on SQLite + PostgreSQL. Next: `/gsd-plan-phase 28` (Central Server — Hosting & Sync API)
+- Phase-gate follow-up: push and confirm the GitHub Actions `pg-parity` job is GREEN including the new `PostgreSQL merge portability` step (postgres:17) — CI is the deliverable proof of the merge PG slice
+- Phase 30 is research-flagged — expect a `--research-phase` pass at its plan time
 - Optional, non-blocking: a short manual browser pass on Phase 22's 4 unconfirmed items (see Blockers/Concerns above)
