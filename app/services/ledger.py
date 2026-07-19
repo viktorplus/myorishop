@@ -168,7 +168,7 @@ def compute_batch_stock(session: Session, batch: Batch) -> int:
     return total
 
 
-def rebuild_stock(session: Session) -> None:
+def recompute_derived(session: Session) -> None:
     """Repair every cached quantity from the ledger and assert the invariant.
 
     Two passes (D-11): (1) recompute each Product.quantity (the batch-agnostic
@@ -176,6 +176,12 @@ def rebuild_stock(session: Session) -> None:
     product that Product.quantity == SUM(its batch quantities) PLUS the
     uncaptured NULL bucket — the latter added only for products the migration
     seeded NO legacy batch for (ledger stock <= 0, D-13). Raises on mismatch.
+
+    Does NOT commit — this is the non-committing recompute the merge engine
+    (SYNC-03) runs inside the caller's single all-or-nothing transaction. The
+    invariant ValueError propagates so an internally inconsistent synced batch
+    is rejected (RESEARCH Pitfall 6). rebuild_stock delegates here then commits,
+    so every interactive caller sees identical behavior.
     """
     for product in session.scalars(select(Product)).all():
         product.quantity = compute_stock(session, product.id)
@@ -203,6 +209,16 @@ def rebuild_stock(session: Session) -> None:
         if product.quantity != expected:
             raise ValueError(f"stock invariant violated for product {product.id!r}")
 
+
+def rebuild_stock(session: Session) -> None:
+    """Repair every cached quantity from the ledger, assert the invariant, commit.
+
+    Behavior-preserving wrapper: delegates the two recompute passes + invariant
+    assert to recompute_derived(session), then commits — so every existing
+    caller (rebuild scripts, tests) sees the identical recompute + commit +
+    raise-on-mismatch it always did.
+    """
+    recompute_derived(session)
     session.commit()
 
 

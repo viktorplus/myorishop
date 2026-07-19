@@ -11,6 +11,7 @@ import json
 import pytest
 
 from app.services import merge
+from app.services.ledger import recompute_derived, record_operation
 
 
 def record_line(kind: str, **fields) -> dict:
@@ -249,3 +250,33 @@ def test_blank_lines_skipped():
     padded = [lines[0], "", "   ", lines[1], ""]
     batch = merge.parse_exchange(padded)
     assert len(batch.records) == 1
+
+
+# --- SYNC-03 building block: recompute_derived is non-committing --------------
+
+
+def test_recompute_derived_does_not_commit(session, product, batch):
+    """recompute_derived repairs the cache in-session but NEVER commits.
+
+    Seed a real ledger receipt, then commit a DELIBERATELY WRONG cached
+    Product.quantity. recompute_derived must repair it in-session (proving it
+    recomputes) yet a rollback must revert to the wrong committed value
+    (proving it did not persist the repair — the merge owns the transaction).
+    """
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=10,
+        unit_cost_cents=1000,
+        batch_id=batch.id,
+    )
+    # Persist a corrupted cache value (products are not append-only guarded).
+    product.quantity = 999
+    session.commit()
+
+    recompute_derived(session)
+    assert product.quantity == 10  # repaired in-session from the ledger
+
+    session.rollback()
+    assert product.quantity == 999  # repair was NOT committed by recompute_derived
