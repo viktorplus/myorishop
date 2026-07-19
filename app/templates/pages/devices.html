@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Устройства</h1>
+
+{# base.html carries the CSRF token header on <body>, so this page does NOT need
+   the scoped wrapper that users.html still carries for historical reasons —
+   every descendant hx-post inherits that token automatically. #}
+<form class="stacked-form" method="post" action="/settings/devices"
+      hx-post="/settings/devices" hx-target="#devices-table" hx-swap="outerHTML"
+      hx-disabled-elt="find button">
+  <h2>Создать токен</h2>
+  <div class="field">
+    <label for="label">Название устройства</label>
+    <input type="text" id="label" name="label" required autofocus>
+  </div>
+  <div class="field">
+    <label for="device_id">Идентификатор устройства</label>
+    <input type="text" id="device_id" name="device_id" required>
+  </div>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="form-actions">
+    <button type="submit">Создать токен</button>
+  </div>
+</form>
+
+{% include "partials/device_rows.html" %}
+{% endblock %}

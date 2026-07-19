@@ -1,0 +1,59 @@
+{# Device-tokens table (SYNC-09) — the single swappable #devices-table block,
+   reused for the mint-success refresh and the revoke swap. Columns:
+   Название / Устройство / Статус / Последнее использование / Действия.
+   Autoescape only — label and device_id are untrusted-at-rest text; never marked
+   safe (T-05-18 / T-28-26 precedent). The stored digest and lookup prefix are
+   never rendered into any cell — only user-facing fields appear below. #}
+<div id="devices-table">
+  {% if notice %}<p>{{ notice }}</p>{% endif %}
+  {% if errors %}
+    {% for field, message in errors.items() %}
+    <p class="error">{{ message }}</p>
+    {% endfor %}
+  {% endif %}
+  {% if new_token_plaintext %}
+  {# SHOW-ONCE: this plaintext exists ONLY in the response that created it — it is
+     not stored, not re-fetchable, and absent from every later render. That is why
+     the warning tells the operator to copy it now (T-28-07). #}
+  <p>{{ token_warning }}</p>
+  <p><code>{{ new_token_plaintext }}</code></p>
+  {% endif %}
+  <table>
+    <thead>
+      <tr>
+        <th>Название</th>
+        <th>Устройство</th>
+        <th>Статус</th>
+        <th>Последнее использование</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if not tokens %}
+      <tr>
+        <td colspan="5" class="empty-state muted">Токенов устройств пока нет.</td>
+      </tr>
+      {% else %}
+      {% for t in tokens %}
+      <tr id="device-row-{{ t.id }}">
+        <td>{{ t.label }}</td>
+        <td>{{ t.device_id }}</td>
+        <td>{% if t.is_active %}Активен{% else %}<span class="muted">Отозван</span>{% endif %}</td>
+        <td>{% if t.last_used_at %}{{ t.last_used_at | local_dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {% if t.is_active %}
+          {# Revoke only — never a delete control; revoked rows stay for audit
+             (T-28-18). Revocation is the only mitigation for a stolen token. #}
+          <button type="button" class="danger"
+                  hx-post="/settings/devices/{{ t.id }}/revoke"
+                  hx-target="#devices-table" hx-swap="outerHTML"
+                  hx-confirm="Отозвать токен устройства „{{ t.label }}“? Это устройство немедленно перестанет синхронизироваться.">
+            Отозвать</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
