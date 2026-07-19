@@ -1,8 +1,8 @@
 ---
 phase: 27
 slug: shared-idempotent-merge-core
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-19
 ---
@@ -64,11 +64,11 @@ created: 2026-07-19
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies *(plan-checker D8a: confirmed)*
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify *(plan-checker D8c: ≥2/3 per wave)*
+- [x] Wave 0 covers all MISSING references *(plan-checker D8d: `tests/test_merge.py` scaffolded in 27-01 Task 1)*
+- [x] No watch-mode flags *(plan-checker D8b: confirmed)*
+- [x] Feedback latency < 30s *(quick command `pytest tests/test_merge.py -q`)*
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-19 (plan-time validation-contract sign-off; `wave_0_complete` flips true when 27-01 Task 1 lands the test scaffold during execution)

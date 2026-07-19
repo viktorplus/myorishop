@@ -480,7 +480,9 @@ def test_merge_twice_equals_once(session, batch_ndjson):
 | A8 | No Alembic migration needed (engine on existing schema; `ingest_batch` deferred to Phase 28/30) | Module structure / Open Q 4 | Low-Medium — if the plan pulls forward whole-upload dedup/all-or-nothing tracking, a migration appears |
 | A9 | Product/Batch `quantity` carried in the wire is ignored (recomputed) | NDJSON format | Low — matches out-of-scope "never sync caches"; may drop the field entirely |
 
-## Open Questions
+## Open Questions (RESOLVED — deferred to Phase 28/29/30 transport)
+
+> All four are genuine cross-phase (transport-layer) concerns, not Phase 27 engine gaps. Each carries a Recommendation the Phase 27 plans honor as an explicit scope fence: Q1 is tested both complete and missing-parent (all-or-nothing abort); Q2 (`author_id → users`) is deferred to Phase 28; Q3 (dictionary global-`code` collision) is excluded from the client push by default with skip-and-report fixed in transport; Q4 (`ingest_batch`) is out of Phase 27 scope. The pure-function engine's correctness does not depend on any of them.
 
 1. **FK completeness of a push batch (referenced parents must be present).**
    - What we know: `operations.product_id` is NOT NULL; `batch_id`/`sale_id` nullable; every FK is enforced on both dialects. A push must include every reference row its ledger references that the server doesn't already have.
