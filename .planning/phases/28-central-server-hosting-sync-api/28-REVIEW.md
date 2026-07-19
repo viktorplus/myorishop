@@ -33,6 +33,14 @@ findings:
   info: 2
   total: 6
 status: issues_found
+resolved:
+  - CR-01 (fixed: 5a90e1c code, 75ad4e8 regression test)
+  - WR-03 (fixed: f093268)
+deferred:
+  - WR-01 (unauth flood relies on upstream Caddy rate limit — proxy ships in Plan 06)
+  - WR-02 (in-memory body cap relies on Caddy max_size — proxy ships in Plan 06)
+  - IN-01 (session_https_only default — documented deploy step)
+  - IN-02 (cosmetic size label for 0-byte file)
 ---
 
 # Phase 28: Code Review Report
