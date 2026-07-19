@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
-status: executing
+status: verifying
 stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-07-19T21:10:21.628Z"
+last_updated: "2026-07-19T21:26:59.735Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 21
-  percent: 50
+  completed_plans: 22
+  percent: 67
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 Phase: 28 (central-server-hosting-sync-api) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-19
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -83,6 +83,7 @@ Progress: [██████████] 95%
 | Phase 28 P03 | 23min | 3 tasks | 7 files |
 | Phase 28 P04 | ~30min | 3 tasks | 3 files |
 | Phase 28 P05 | ~13min | 3 tasks | 6 files |
+| Phase 28 P06 | ~22min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Plan 28-03: require_device in security.py keeps devices.py FastAPI-free; route rolls back the expire_on_commit read txn before with session.begin()
 - [Phase ?]: Pull cursor is composite (cursor_column, id): inclusive on timestamp, id tie-break guarantees termination; resume kind recovered by after_id PK membership probe (28-04)
 - [Phase ?]: SYNC-09 admin surface /settings/devices mirrors /settings/users verbatim; no new design tokens (no-UI-SPEC phase decision)
+- [Phase ?]: Phase 28-06 (SRV-04): startup_backup() gains an explicit engine.dialect.name != sqlite early return (OQ-6) so a PostgreSQL boot can never reach VACUUM INTO; the regression test forces settings.db_path to an EXISTING file so the file-missing accident cannot mask the guard. session_https_only (env SESSION_HTTPS_ONLY, default False) wires the session-cookie Secure flag into SessionMiddleware, true only on the server (T-28-27). deploy/ ships a provider-agnostic systemd unit (ExecStartPre alembic upgrade head mirroring run.bat, uvicorn bound 127.0.0.1), Caddyfile (TLS at proxy, max_size 32MB twin of MAX_PUSH_BYTES), a daily pg_dump timer (Persistent, 30-day retention) and a 269-line DEPLOY.md — no VPS provider, tier, real domain or public IP chosen.
 
 ### Pending Todos
 
@@ -167,7 +169,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T21:10:07.476Z
+Last session: 2026-07-19T21:26:12.794Z
 Stopped at: Completed 28-01-PLAN.md
 Resume file: None
 

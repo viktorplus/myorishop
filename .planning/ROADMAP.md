@@ -91,7 +91,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 - [x] **Phase 25: Authentication, Roles & User Attribution** - Mandatory login over the whole app (desktop + mobile + export/backup), two roles, user management, and per-user attribution of every operation (completed 2026-07-18)
 - [x] **Phase 26: PostgreSQL Portability & Append-Only Parity** - One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee (completed 2026-07-18)
 - [x] **Phase 27: Shared Idempotent Merge Core** - The single server-side merge engine and exchange format: UUID-idempotent ledger replay, post-merge recompute, and server-authoritative reference-data conflict policy, proven portable on SQLite + PostgreSQL in CI (completed 2026-07-19)
-- [ ] **Phase 28: Central Server — Hosting & Sync API** - The VPS PostgreSQL server hosting both online interfaces plus token-authenticated push/pull sync endpoints and the column-scoped trigger relaxation
+- [x] **Phase 28: Central Server — Hosting & Sync API** - The VPS PostgreSQL server hosting both online interfaces plus token-authenticated push/pull sync endpoints and the column-scoped trigger relaxation (completed 2026-07-19)
 - [ ] **Phase 29: Online Client Sync** - «Синхронизировать» push/pull, sync status + last-sync time, unsynced-count badge, optional interval sync, offline-safe failure
 - [ ] **Phase 30: Offline Self-Uploading File** - Upload-only USB path: export not-yet-uploaded work to a self-contained file that authenticates, previews, and uploads itself through the same merge engine
 
@@ -194,7 +194,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 28-06-PLAN.md — PostgreSQL-safety guards (backup dialect gate, session Secure flag) + provider-agnostic deploy/ runbook (SRV-04) (wave 6)
+- [x] 28-06-PLAN.md — PostgreSQL-safety guards (backup dialect gate, session Secure flag) + provider-agnostic deploy/ runbook (SRV-04) (wave 6)
 
 > **Open user decision (does not gate the phase):** the VPS provider, plan size and domain name (RESEARCH OQ-1) are deliberately NOT chosen by these plans. All deployment artifacts are provider-agnostic and every success criterion is provable locally and in CI.
 
@@ -266,6 +266,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
-| 28. Central Server — Hosting & Sync API | v3.0 | 5/6 | In Progress|  |
+| 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete   | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
