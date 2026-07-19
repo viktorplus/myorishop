@@ -1,8 +1,8 @@
 ---
 phase: 27-shared-idempotent-merge-core
-verified: 2026-07-19T00:00:00Z
-status: human_needed
-score: 20/20 must-haves verified (PG-CI live run pending)
+verified: 2026-07-19T13:05:50Z
+status: verified
+score: 20/20 must-haves verified (PG-CI live run GREEN — run 29688176513)
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
@@ -18,6 +18,7 @@ human_verification:
   - test: "Push the branch and confirm the GitHub Actions `pg-parity` job is GREEN — specifically the step 'PostgreSQL merge portability (SYNC-02/04/05 one engine, both dialects)' running tests/test_merge_pg.py against postgres:17."
     expected: "test_merge_idempotent_on_pg and test_code_collision_on_pg both PASS on PostgreSQL, proving the portable pre-select set-difference (no dialect on_conflict) and the postgresql_where partial unique index behave identically to SQLite. The phase goal's '...proven portable on SQLite + PostgreSQL in CI' clause is only truly closed once this live run is green."
     why_human: "The PG slice is skipif-guarded and SKIPS on the local Windows/SQLite dev default (verified locally: 2 skipped). Its live execution happens only in CI on push; it cannot be run locally here. Code + CI wiring are verified by inspection; the green run is the deliverable proof."
+    resolved: "2026-07-19 — RESOLVED. Pushed HEAD to origin/ci/phase-27-pg-parity; CI run 29688176513 GREEN (exit 0). The merge-portability step ran `tests/test_merge_pg.py ..` → 2 passed on postgres:17 (same slice showed `ss` = 2 skipped under the SQLite suite, confirming the skipif guard). Phase goal's portability clause closed by live green run. UAT Test 1 = pass."
 gaps: []
 ---
 
