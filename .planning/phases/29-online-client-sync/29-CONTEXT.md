@@ -98,6 +98,42 @@ server-side merge/endpoint changes (done in 27–28), mobile UI (server-only).
   - Never synced: `Ещё не синхронизировано`
   - Badge: show only when `> 0`; hide at zero.
 
+### Sync topology — resolved open questions (Area 5, resolved 2026-07-20)
+_Resolved with the user after research surfaced two correctness gaps in the
+"ops+cash only" framing (verified against `app/services/merge.py`,
+`app/services/sync.py`, and the local creation routes `POST /sales`,
+`/receipts`, `/products`, `/customers`)._
+- **D-13:** The push body MUST include the locally-authored **reference rows**
+  that unsynced ledger rows transitively reference (`product`, `customer`,
+  `batch`, `sale` — collected in FK-dependency order), not just operations +
+  cash movements. This **supersedes the "ops + cash only" framing** in
+  D-01/SYNC-01: an operator who sells or receives goods offline creates local
+  `Sale`/`Batch` rows, so pushing operations without their FK parents fails the
+  server's all-or-nothing merge (`test_push_all_or_nothing`). The server's
+  `merge.apply_merge` reference upsert is idempotent (insert-if-new,
+  server-wins), so over-including reference rows is safe. The exact collection
+  mechanism is planner's discretion; the recommended minimal set is the
+  transitive closure of the FK parents of the unsynced `Operation` +
+  `CashMovement` rows. (Reference tables have no `synced_at` marker, so this
+  closure — not a `synced_at IS NULL` query — is how "unsynced" reference rows
+  are identified.)
+- **D-14:** The client pull-apply MUST apply server **UPDATES** to existing
+  reference rows — "server-authoritative reference data down" means the server
+  wins on the client. The server-side `merge.apply_merge` reference stage is
+  insert-if-new / keep-existing (which on the client means client-wins-on-update
+  and silently drops server edits like a changed product price), so it **MUST
+  NOT be reused as-is for the pull**. A small dedicated client-side reference
+  upsert that overwrites an existing row (matched by UUID) with the server's
+  version is required. New-row inserts keep the existing insert behavior; only
+  the update-existing path is new. Ledger rows are still insert-only/idempotent.
+- **D-15:** The auto-sync **toggle + interval** are stored as two columns on the
+  single-row `sync_state` table (`auto_enabled` INTEGER default `0`,
+  `auto_interval_seconds` INTEGER default `300`), **extending D-10's** three
+  result columns — one migration covers all five columns. They are read **fresh
+  at the top of each loop tick** (D-08) so flipping the toggle / changing the
+  interval takes effect on the next tick. `.env` is unsuitable (static, cannot
+  flip at runtime). Interval range clamped in the service (recommend 60–3600 s).
+
 ### Claude's Discretion
 - Exact `httpx.Timeout` values, spinner styling, the interval default (N
   seconds/minutes) and its allowed range, and the internal shape of the
