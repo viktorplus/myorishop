@@ -222,29 +222,97 @@ _IN_CHUNK: int = 500
 # reference-upsert stage). Cash has no FK on operations, so order is a courtesy.
 _LEDGER_INSERT_ORDER: tuple[str, ...] = ("operation", "cash_movement")
 
+# Reference kinds upserted BEFORE the ledger, in strict FK-dependency order
+# (Pitfall 4): a parent row must exist before a child's FK insert. The order is
+# driven by KIND, never by NDJSON line order — a shuffled file merges
+# identically. warehouses -> products -> customers -> dictionary -> batches ->
+# sales, THEN the ledger (operations -> cash_movements) in _LEDGER_INSERT_ORDER.
+_REFERENCE_INSERT_ORDER: tuple[str, ...] = (
+    "warehouse",  # FK parent of batches
+    "product",    # FK parent of batches + operations (code-collision pass here)
+    "customer",   # FK parent of sales
+    "dictionary",  # helper table, no inbound FK
+    "batch",      # FK parent of operations.batch_id; needs product + warehouse
+    "sale",       # FK parent of operations.sale_id / cash_movements.sale_id
+)
 
-def _insert_new(session: Session, model: type, rows: list[dict]) -> tuple[int, int]:
-    """Portable idempotent bulk insert-if-new by UUID PK (SYNC-02 core).
+# Reference kinds carrying a cached ``quantity`` projection that must NOT be
+# trusted from the wire — recompute_derived rebuilds it from the ledger after
+# the merge ("never trust a synced cache"). Product + Batch have the column.
+_CACHED_QUANTITY_KINDS: frozenset[str] = frozenset({"product", "batch"})
 
-    ``rows`` are full column dicts keyed incl. ``id``. Pre-select the ids
-    already present (chunked for SQLite's bound-param cap), filter them out as a
-    Python set-difference, and bulk-insert the remainder with a generic Core
-    ``insert(model)`` — portable across SQLite and PostgreSQL. Returns
-    ``(inserted, skipped)``. Re-running the same rows finds every id present, so
-    ``inserted == 0`` — replay is a true no-op (idempotency). NO dialect SQL, NO
-    upsert clause, NO raw SQL (Pitfall 2, CLAUDE.md portability rule).
+
+def _partition_new(
+    session: Session, model: type, rows: list[dict]
+) -> tuple[list[dict], int]:
+    """Split rows into (not-yet-present, already-present-count) by UUID PK.
+
+    Pre-select the ids already present (chunked for SQLite's ~999 bound-param
+    cap), then a Python set-difference keeps only the rows whose ``id`` is new.
+    Portable across SQLite and PostgreSQL (no dialect SQL, no upsert clause).
+    The shared dedup primitive behind both :func:`_insert_new` (ledger append)
+    and :func:`_upsert_reference` (reference upsert).
     """
-    if not rows:
-        return 0, 0
     incoming_ids = [row["id"] for row in rows]
     existing: set = set()
     for start in range(0, len(incoming_ids), _IN_CHUNK):
         chunk = incoming_ids[start : start + _IN_CHUNK]
         existing.update(session.scalars(select(model.id).where(model.id.in_(chunk))).all())
     new_rows = [row for row in rows if row["id"] not in existing]
+    return new_rows, len(rows) - len(new_rows)
+
+
+def _insert_new(session: Session, model: type, rows: list[dict]) -> tuple[int, int]:
+    """Portable idempotent bulk insert-if-new by UUID PK (SYNC-02 core).
+
+    ``rows`` are full column dicts keyed incl. ``id``. Filter out the ids
+    already present as a Python set-difference (:func:`_partition_new`), and
+    bulk-insert the remainder with a generic Core ``insert(model)`` — portable
+    across SQLite and PostgreSQL. Returns ``(inserted, skipped)``. Re-running
+    the same rows finds every id present, so ``inserted == 0`` — replay is a
+    true no-op (idempotency). NO dialect SQL, NO upsert clause, NO raw SQL
+    (Pitfall 2, CLAUDE.md portability rule).
+    """
+    if not rows:
+        return 0, 0
+    new_rows, skipped = _partition_new(session, model, rows)
     if new_rows:
         session.execute(insert(model), new_rows)
-    return len(new_rows), len(rows) - len(new_rows)
+    return len(new_rows), skipped
+
+
+def _reference_row(kind: str, data: dict) -> dict:
+    """Build a verbatim column dict for a reference record (SYNC-05 / DD-1b).
+
+    Restrict to the model's own schema-derived columns so a stray wire field
+    can't reach the insert, and carry every value — including an inline
+    ``deleted_at`` tombstone — unchanged (a product/warehouse created-then-
+    deleted offline inserts already soft-deleted). For the cached-quantity kinds
+    (product/batch) the wire ``quantity`` is DROPPED to 0: recompute_derived
+    rebuilds it from the merged ledger, so a synced cache is never trusted.
+    """
+    row = {column: data.get(column) for column in KIND_TO_FIELDS[kind]}
+    if kind in _CACHED_QUANTITY_KINDS:
+        row["quantity"] = 0
+    return row
+
+
+def _upsert_reference(session: Session, model: type, rows: list[dict]) -> tuple[int, int]:
+    """Reference upsert: insert-if-new, row-level server-wins (SYNC-05 / DD-1).
+
+    A NEW UUID inserts verbatim (including any inline ``deleted_at``); an
+    EXISTING UUID is DISCARDED — the server row is authoritative and wins at the
+    ROW level, never field-merged, never resurrected (``deleted_at``->NULL) and
+    never deleted from client input. Reuses the portable set-difference
+    (:func:`_partition_new`) and reports the discarded rows as ``server_wins``.
+    Returns ``(inserted, server_wins)``. Insert-only — no UPDATE, no DELETE.
+    """
+    if not rows:
+        return 0, 0
+    new_rows, server_wins = _partition_new(session, model, rows)
+    if new_rows:
+        session.execute(insert(model), new_rows)
+    return len(new_rows), server_wins
 
 
 def _ledger_row(kind: str, data: dict) -> dict:
@@ -266,9 +334,10 @@ def apply_merge(session: Session, batch: ExchangeBatch, *, server_now: str) -> M
 
     PURE w.r.t. HTTP/disk and — critically — NEVER commits: the caller wraps the
     whole call in one transaction so a mid-batch failure rolls back cleanly
-    (all-or-nothing, OFF-05 groundwork). This plan (27-02) handles the two
-    append-only ledgers; the FK-ordered reference-upsert stage slots in ahead of
-    the ledger appends in Plan 03 (see the seam below).
+    (all-or-nothing, OFF-05 groundwork). Stage (1) upserts the reference tables
+    in FK-dependency order (insert-if-new, row-level server-wins on an existing
+    UUID, Product.code collision rename), then stage (2) appends the two
+    append-only ledgers, then stage (3) recomputes derived stock.
 
     Ledger rows are inserted verbatim by their origin UUID via the portable
     set-difference (:func:`_insert_new`) — never re-minting identity through the
@@ -280,13 +349,27 @@ def apply_merge(session: Session, batch: ExchangeBatch, *, server_now: str) -> M
     """
     report = MergeReport()
 
-    # --- (1) Reference-upsert stage — Plan 03 -------------------------------
-    # Plan 03 inserts the FK-ordered, insert-if-new + server-wins reference
-    # upserts (warehouses -> products -> customers -> dictionary -> batches ->
-    # sales) HERE, BEFORE the ledger appends, plus the Product.code collision
-    # rename. This plan assumes referenced rows already exist (tests seed them
-    # via fixtures) and leaves this seam empty on purpose. ``server_now`` is
-    # threaded through for that stage (unused by the pure ledger append).
+    # --- (1) Reference-upsert stage (SYNC-05) -------------------------------
+    # FK-ordered, insert-if-new + row-level server-wins reference upserts
+    # (warehouses -> products -> customers -> dictionary -> batches -> sales),
+    # BEFORE the ledger appends. Bucket by KIND so a shuffled NDJSON file merges
+    # identically. A missing referenced parent (a product/batch/sale absent from
+    # both DB and this batch) makes the child ledger insert fail its FK below,
+    # and the caller's transaction rolls the whole batch back (all-or-nothing).
+    ref_buckets: dict[str, list[dict]] = {kind: [] for kind in _REFERENCE_INSERT_ORDER}
+    for record in batch.records:
+        if record.kind in ref_buckets:
+            ref_buckets[record.kind].append(_reference_row(record.kind, record.data))
+
+    for kind in _REFERENCE_INSERT_ORDER:
+        rows = ref_buckets[kind]
+        if not rows:
+            continue
+        inserted, server_wins = _upsert_reference(session, KIND_TO_MODEL[kind], rows)
+        if inserted:
+            report.reference_inserted[kind] = inserted
+        if server_wins:
+            report.reference_server_wins[kind] = server_wins
 
     # --- (2) Ledger append stage (SYNC-02) ----------------------------------
     buckets: dict[str, list[dict]] = {kind: [] for kind in _LEDGER_INSERT_ORDER}

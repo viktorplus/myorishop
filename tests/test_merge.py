@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Batch, CashMovement, Operation, Product, User
+from app.models import Batch, CashMovement, Operation, Product, User, Warehouse
 from app.services import merge
 from app.services.auth import hash_password
 from app.services.finance import compute_balance
@@ -490,3 +490,132 @@ def test_bad_record_rolls_back(session, product, batch):
     assert session.scalar(select(func.count()).select_from(Operation)) == 0
     session.refresh(product)
     assert product.quantity == 0
+
+
+# --- SYNC-05: reference upsert — server-wins, FK-order, tombstone -------------
+
+_REF_TS = "2026-07-19T10:00:00+00:00"
+
+
+def _product_rec(pid, *, code, name="Товар", deleted_at=None, sale_cents=None):
+    """Build a verbatim `product` NDJSON reference record (full column set)."""
+    return record_line(
+        "product",
+        id=pid,
+        code=code,
+        name=name,
+        name_lc=(name or "").lower(),
+        category=None,
+        cost_cents=None,
+        sale_cents=sale_cents,
+        min_sale_cents=None,
+        low_stock_threshold=None,
+        stale_days=None,
+        quantity=0,
+        created_at=_REF_TS,
+        updated_at=_REF_TS,
+        deleted_at=deleted_at,
+    )
+
+
+def _warehouse_rec(wid, *, name="Склад", deleted_at=None):
+    """Build a verbatim `warehouse` NDJSON reference record."""
+    return record_line(
+        "warehouse",
+        id=wid,
+        name=name,
+        address=None,
+        created_at=_REF_TS,
+        updated_at=_REF_TS,
+        deleted_at=deleted_at,
+    )
+
+
+def _batch_rec(bid, *, product_id, warehouse_id):
+    """Build a verbatim `batch` NDJSON reference record."""
+    return record_line(
+        "batch",
+        id=bid,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        expiry=None,
+        price_cents=None,
+        location=None,
+        comment=None,
+        name=None,
+        quantity=0,
+        is_legacy=0,
+        created_at=_REF_TS,
+        updated_at=_REF_TS,
+    )
+
+
+def test_server_wins_on_existing_reference(session, product):
+    """SYNC-05/DD-1: a client edit to an EXISTING reference UUID is discarded."""
+    report = _apply(
+        session,
+        [_product_rec(product.id, code="HACKED", name="Подменённый", sale_cents=1)],
+    )
+    session.commit()
+
+    session.refresh(product)
+    assert product.code == "TEST-001"  # server row untouched, row-level
+    assert product.name == "Тестовый товар"
+    assert product.sale_cents is None
+    assert report.reference_server_wins.get("product") == 1
+    assert "product" not in report.reference_inserted
+
+
+def test_fk_ordering(session):
+    """SYNC-05: ledger lines placed BEFORE their reference rows merge cleanly.
+
+    The reference stage re-orders by KIND (warehouse -> product -> batch), so a
+    shuffled NDJSON file — operation first, then its parents — inserts fine.
+    """
+    prod = _product_rec("p-fk", code="FK-1", name="FK")
+    wh = _warehouse_rec("w-fk", name="Склад-FK")
+    bat = _batch_rec("b-fk", product_id="p-fk", warehouse_id="w-fk")
+    op = _op("op-fk", product_id="p-fk", batch_id="b-fk", seq=1, qty_delta=5)
+
+    # Ledger line FIRST, parents shuffled after it — kind-driven order fixes it.
+    report = _apply(session, [op, bat, prod, wh])
+    session.commit()
+
+    assert session.get(Product, "p-fk") is not None
+    assert session.get(Warehouse, "w-fk") is not None
+    assert session.get(Batch, "b-fk") is not None
+    assert session.get(Operation, "op-fk") is not None
+    assert report.reference_inserted == {"warehouse": 1, "product": 1, "batch": 1}
+
+
+def test_missing_parent_rejected(session):
+    """SYNC-05: an operation whose product is in neither DB nor batch rolls back."""
+    op = _op("op-orphan", product_id="ghost-product", batch_id=None, seq=1)
+    batch_obj = merge.parse_exchange(build_ndjson(records=[op]))
+
+    with pytest.raises(IntegrityError):
+        merge.apply_merge(session, batch_obj, server_now=_NOW)
+    session.rollback()
+
+    # All-or-nothing: nothing landed.
+    assert session.scalar(select(func.count()).select_from(Operation)) == 0
+    assert session.get(Product, "ghost-product") is None
+
+
+def test_tombstone_inline(session, product):
+    """SYNC-05/DD-1b: a new soft-deleted row inserts; a server row is never flipped."""
+    dead = _product_rec("p-dead", code="DEAD-1", name="Удалённый", deleted_at=_REF_TS)
+    # An EXISTING active server product carried by the client — must NOT flip.
+    ghost_delete = _product_rec(product.id, code="X", name="Y", deleted_at=_REF_TS)
+
+    report = _apply(session, [dead, ghost_delete])
+    session.commit()
+
+    new_p = session.get(Product, "p-dead")
+    assert new_p is not None
+    assert new_p.deleted_at == _REF_TS  # inline tombstone inserted verbatim
+
+    session.refresh(product)
+    assert product.deleted_at is None  # server row never resurrected/deleted
+    assert report.reference_inserted.get("product") == 1
+    assert report.reference_server_wins.get("product") == 1
