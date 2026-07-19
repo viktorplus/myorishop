@@ -22,12 +22,14 @@ CLAUDE.md safety: no CSRF token, password or secret is ever logged or printed.
 import contextvars
 import secrets
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_session
-from app.models import User
+from app.models import DeviceToken, User
+from app.services import devices
 from app.services.auth import compare_token
 from app.services.users import count_users, get_active_user
 
@@ -36,8 +38,27 @@ from app.services.users import count_users, get_active_user
 # stays public automatically (RESEARCH Pattern 3).
 PUBLIC_PATHS = {"/login", "/logout", "/setup"}
 
+# SYNC-09 / threat T-28-03: the token-authenticated sync tree bypass.
+# THREE things this constant guarantees, read them before touching it:
+#   (1) PUBLIC_PATHS stays EXACT-match — this is a SEPARATE, prefix-matched
+#       constant, because the sync tree may grow paths (/api/sync/pull, ...) and
+#       an exact set would silently 303-redirect any new one to /login;
+#   (2) the prefix is exactly /api/sync/ and NOT the bare /api/ segment — a bare
+#       api prefix would un-authenticate every future API route (the single
+#       highest-consequence line in the phase, Pitfall 4);
+#   (3) this branch is NOT "unguarded": every route under the prefix declares
+#       Depends(require_device), a Bearer gate strictly NARROWER than a session
+#       cookie (a browser cannot forge an Authorization header).
+SYNC_PATH_PREFIX = "/api/sync/"
+
 # UI-SPEC Copywriting Contract (line 143): operator hits an admin route.
 ACCESS_DENIED_ERROR = "Доступ только для администратора."
+
+# SYNC-09 / threat T-28-02: the two 401 details on the sync tree. Both are
+# deliberately indistinguishable in KIND — neither reveals whether a presented
+# token is unknown versus revoked (V7); an attacker learns only "not accepted".
+DEVICE_TOKEN_REQUIRED_ERROR = "Требуется токен устройства."
+DEVICE_TOKEN_INVALID_ERROR = "Недействительный токен устройства."
 
 # Request-scoped current user for attribution at the single write paths (USER-05).
 # Default None keeps record_operation/record_cash_movement attribution unchanged
@@ -126,24 +147,32 @@ async def auth_guard(request: Request, session: Session = Depends(get_session)) 
     Steps (RESEARCH Pattern 3):
       1. issue a CSRF token FIRST (so public pages can render one);
       2. allow explicit public paths;
-      3. zero users → /setup (first-run, AUTH-04);
-      4. no active session user → clear + /login (AUTH-01, USER-03);
-      5. unsafe method → validate CSRF (AUTH-05);
-      6. attach the user to the contextvar + request.state for attribution.
+      3. allow the /api/sync/ tree (SYNC-09) — a Bearer-authenticated surface
+         guarded per-route by require_device, so it returns BEFORE the session
+         and CSRF checks. CSRF is deliberately NOT applied here: a browser never
+         auto-attaches an Authorization header, so a Bearer endpoint is not
+         CSRF-vulnerable, while enforcing CSRF would make it impossible for a
+         session-less client to ever call the endpoint (threat T-28-06);
+      4. zero users → /setup (first-run, AUTH-04);
+      5. no active session user → clear + /login (AUTH-01, USER-03);
+      6. unsafe method → validate CSRF (AUTH-05);
+      7. attach the user to the contextvar + request.state for attribution.
     """
     issue_csrf(request)  # (1)
     if request.url.path in PUBLIC_PATHS:  # (2)
         return
-    if count_users(session) == 0:  # (3) AUTH-04 first-run
+    if request.url.path.startswith(SYNC_PATH_PREFIX):  # (3) SYNC-09 Bearer tree
+        return
+    if count_users(session) == 0:  # (4) AUTH-04 first-run
         raise NotAuthenticated(redirect="/setup")
-    user_id = request.session.get("user_id")  # (4)
+    user_id = request.session.get("user_id")  # (5)
     user = get_active_user(session, user_id) if user_id else None
     if user is None:
         request.session.pop("user_id", None)
         raise NotAuthenticated(redirect="/login")
-    if request.method not in ("GET", "HEAD", "OPTIONS"):  # (5) AUTH-05
+    if request.method not in ("GET", "HEAD", "OPTIONS"):  # (6) AUTH-05
         await require_csrf(request)
-    _current_user.set(user)  # (6)
+    _current_user.set(user)  # (7)
     request.state.user = user
 
 
@@ -165,3 +194,44 @@ def require_role(role: str):
             raise HTTPException(status_code=403, detail=ACCESS_DENIED_ERROR)
 
     return _role_guard
+
+
+# --- Per-device Bearer gate for the /api/sync/ tree (SYNC-09) ----------------
+
+# auto_error=False so THIS code — not FastAPI's default 403/"Not authenticated"
+# — owns the RU message, the 401 status and the WWW-Authenticate header.
+_bearer = HTTPBearer(auto_error=False)
+
+
+def require_device(
+    credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
+    session: Session = Depends(get_session),
+) -> DeviceToken:
+    """Per-route gate for the /api/sync/ tree: resolve a Bearer device token.
+
+    Placed HERE (beside require_role and the SYNC_PATH_PREFIX bypass it
+    compensates for) rather than in app/services/devices.py — a reviewer reading
+    the auth_guard bypass finds the compensating gate in the SAME file, and
+    devices.py stays FastAPI-free so it remains a pure, unit-testable service
+    (deviation from 28-RESEARCH.md, recorded in the SUMMARY).
+
+    A missing credential or a wrong/unknown/revoked token both raise 401 with a
+    WWW-Authenticate: Bearer header (T-28-02). The two RU messages do NOT
+    distinguish unknown from revoked (V7). On success the token's last_used_at is
+    stamped (staleness signal) and the row is returned.
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail=DEVICE_TOKEN_REQUIRED_ERROR,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = devices.lookup_active_token(session, credentials.credentials)
+    if token is None:
+        raise HTTPException(
+            status_code=401,
+            detail=DEVICE_TOKEN_INVALID_ERROR,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    devices.touch_last_used(session, token)
+    return token

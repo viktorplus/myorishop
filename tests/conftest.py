@@ -218,6 +218,47 @@ def anon_client(engine, session, monkeypatch):
 
 
 @pytest.fixture()
+def device_client(engine, session, monkeypatch):
+    """TestClient with the REAL guard active PLUS a minted device token (SYNC-09).
+
+    Built on the SAME body as `anon_client` — the real `auth_guard` runs, only
+    `get_session` + `backup_on_startup` are overridden (the backup monkeypatch is
+    mandatory: `with TestClient(app)` runs the real lifespan, which would VACUUM
+    the developer's DB). It additionally mints ONE active device token via
+    `devices.mint_token` and yields a `(client, token)` pair so a test can send
+    `Authorization: Bearer <token.plaintext>` against the `/api/sync/` tree while
+    still exercising the genuine bypass. Does NOT touch `client` / `anon_client`.
+    """
+    from collections import namedtuple
+
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+    from app.db import get_session
+    from app.main import app
+    from app.services import devices
+
+    monkeypatch.setattr(settings, "backup_on_startup", False)
+
+    result, errors = devices.mint_token(
+        session, device_id=new_id(), label="Тест устройство"
+    )
+    assert errors == {}
+    row, plaintext = result
+
+    def override_get_session():
+        yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    DeviceClient = namedtuple("DeviceClient", ["client", "plaintext", "prefix"])
+    try:
+        with TestClient(app) as test_client:
+            yield DeviceClient(test_client, plaintext, row.token_prefix)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture()
 def login():
     """Helper: POST /login on a test client, returning the response.
 
