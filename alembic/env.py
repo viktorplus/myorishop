@@ -2,6 +2,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import make_url
 
 from alembic import context
 from app.config import settings
@@ -22,9 +23,12 @@ config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"
 
 # SQLite can't create the db file if its parent directory is missing (fresh
 # clone, gitignored data/) — mirrors app/db.py. Meaningless for a PG target, so
-# gate it to the sqlite dialect.
+# gate it to the sqlite dialect. Derive the directory from the resolved URL
+# (not settings.db_path) so an explicit DATABASE_URL override is honored (WR-01).
 if settings.database_url.startswith("sqlite"):
-    Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
+    db_file = make_url(settings.database_url).database
+    if db_file:
+        Path(db_file).parent.mkdir(parents=True, exist_ok=True)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
