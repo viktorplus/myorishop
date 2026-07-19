@@ -98,6 +98,17 @@ def startup_backup(engine: Engine | None = None) -> Path | None:
         from app import db
 
         engine = db.engine
+    # Dialect gate (OQ-6, Plan 06): create_backup issues `VACUUM INTO`, a
+    # SQLite-only statement. Today a PostgreSQL deployment survives boot only
+    # BY ACCIDENT — settings.db_path happens to name a file that does not exist
+    # on the server, so the file-missing skip above fires first. If that file
+    # ever exists (a stray copy, a shared volume, a developer's .env), the
+    # accident evaporates and create_backup would run `VACUUM INTO` against the
+    # PostgreSQL engine, raising inside lifespan and taking the whole server
+    # down on boot. The dialect is the REAL condition; the missing file is an
+    # accident. This guard makes the skip explicit and unconditional on Postgres.
+    if engine.dialect.name != "sqlite":
+        return None
     if not _db_has_data(engine):
         return None
     path = create_backup(engine, Path(settings.backup_dir))

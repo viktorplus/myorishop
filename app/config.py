@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # explicit SECRET_KEY in .env wins; otherwise a stable per-install key is
     # persisted below so a restart does not invalidate every session cookie.
     secret_key: str = ""
+    # T-28-27 (Plan 06, ASVS V3): the session cookie must carry `Secure` on an
+    # internet-facing HTTPS deployment so it is never sent over plain HTTP. The
+    # default MUST stay False — a `Secure` cookie is not transmitted over http,
+    # so flipping this on would break every local run.bat client and the entire
+    # test suite (both plain HTTP). It is set true ONLY in the server's
+    # /etc/myorishop.env (env var SESSION_HTTPS_ONLY=true). Never hardcode True.
+    session_https_only: bool = False
     # Sync pre-flight (A2 / Pitfall 6): the static "device-01" sentinel is
     # replaced by a persisted per-install UUID resolved below.
     device_id: str = "device-01"

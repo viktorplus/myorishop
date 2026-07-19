@@ -74,12 +74,15 @@ app = FastAPI(
     dependencies=[Depends(auth_guard)],
 )
 # AUTH-03: itsdangerous-signed session cookie (survives refresh; offline). Only
-# user_id + csrf are ever stored. same_site=lax; https_only=False for localhost.
+# user_id + csrf are ever stored. same_site=lax stays; https_only is now
+# environment-driven (T-28-27) — False for localhost/run.bat and the test suite
+# (plain HTTP), True on the VPS via SESSION_HTTPS_ONLY=true so the cookie carries
+# the Secure flag on the public HTTPS domain.
 app.add_middleware(
     SessionMiddleware,
     secret_key=config_settings.secret_key,
     same_site="lax",
-    https_only=False,
+    https_only=config_settings.session_https_only,
 )
 
 

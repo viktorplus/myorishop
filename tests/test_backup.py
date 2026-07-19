@@ -195,6 +195,53 @@ def test_startup_backup_creates_and_prunes_when_enabled(
     assert remaining[-1].name == path.name
 
 
+def test_startup_backup_skips_non_sqlite_dialect(tmp_path, monkeypatch):
+    """The DIALECT guard — not the file-missing accident — skips backup on PG.
+
+    OQ-6 / Plan 06: create_backup issues `VACUUM INTO` (SQLite-only). A
+    PostgreSQL deployment must never reach it. We build a non-sqlite engine;
+    SQLAlchemy resolves the dialect WITHOUT connecting, so no PostgreSQL server
+    is required and this stays green in the default SQLite run. Crucially we
+    monkeypatch settings.db_path to a file that DOES exist, so the file-missing
+    skip cannot be what saves us — the `engine.dialect.name != "sqlite"` guard
+    must be what returns None.
+    """
+    from sqlalchemy import create_engine
+
+    existing_db = tmp_path / "exists.db"
+    existing_db.write_bytes(b"stray file that happens to exist on the server")
+    backup_dir = tmp_path / "backups"
+    monkeypatch.setattr(settings, "backup_on_startup", True)
+    monkeypatch.setattr(settings, "backup_dir", str(backup_dir))
+    monkeypatch.setattr(settings, "db_path", str(existing_db))
+    pg_engine = create_engine("postgresql+psycopg://user:pw@localhost:5432/none")
+    assert pg_engine.dialect.name != "sqlite"
+    assert startup_backup(engine=pg_engine) is None
+    assert not backup_dir.exists() or list(backup_dir.glob("*.db")) == []
+
+
+def test_session_cookie_secure_flag_follows_setting():
+    """The session cookie Secure flag is environment-driven, never hardcoded.
+
+    Limitation: SessionMiddleware reads `https_only` at registration time (app
+    import), so flipping settings.session_https_only after the app object exists
+    has no live effect. We therefore assert the WIRING — the constructed
+    middleware's `https_only` option equals settings.session_https_only — which
+    fails if main.py ever hardcodes a literal again instead of passing the
+    setting through. We also pin the default to False so localhost/run.bat and
+    the whole suite (plain HTTP) keep working (a Secure cookie is not sent over
+    http).
+    """
+    from starlette.middleware.sessions import SessionMiddleware
+
+    from app.main import app
+
+    session_mw = [mw for mw in app.user_middleware if mw.cls is SessionMiddleware]
+    assert len(session_mw) == 1
+    assert session_mw[0].kwargs["https_only"] == settings.session_https_only
+    assert settings.session_https_only is False
+
+
 def test_web_lifespan_invokes_startup_backup(monkeypatch):
     from fastapi.testclient import TestClient
 
