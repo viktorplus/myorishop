@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-07-19T08:16:12.277Z"
-last_activity: 2026-07-19 -- Phase 27 planning complete
+stopped_at: Completed 27-01-PLAN.md
+last_updated: "2026-07-19T10:50:00.000Z"
+last_activity: 2026-07-19 -- Completed 27-01-PLAN.md (NDJSON exchange format)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 16
-  completed_plans: 12
+  completed_plans: 13
   percent: 33
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 26 — postgresql-portability-append-only-parity
+**Current focus:** Phase 27 — shared-idempotent-merge-core
 
 ## Current Position
 
-Phase: 26 (postgresql-portability-append-only-parity) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-19 -- Phase 27 planning complete
+Phase: 27 (shared-idempotent-merge-core) — EXECUTING
+Plan: 2 of 4
+Status: Executing Phase 27 (27-01 complete)
+Last activity: 2026-07-19 -- Completed 27-01-PLAN.md (NDJSON exchange format)
 
-Progress: [██████████] 100%
+Progress: [██▌·······] 25% (1 of 4 plans)
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -74,6 +74,7 @@ Progress: [██████████] 100%
 | Phase 26 P01 | ~12min | 2 tasks | 4 files |
 | Phase 26 P02 | ~3min | 2 tasks | 2 files |
 | Phase 26 P03 | ~6min | 3 tasks | 3 files |
+| Phase 27 P01 | ~14min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 26]: PG-parity tests match append-only rejection on the message SUBSTRING 'append-only' (PG raises a driver exception, not SQLite IntegrityError); tests/test_pg_parity.py skips on SQLite, RED in CI until Plans 02-03
 - [Phase ?]: Phase 26-02: append-only trigger DDL is dialect-branched IN-PLACE inside frozen migrations 0001/0013 via op.get_bind().dialect.name (PL/pgSQL RAISE EXCEPTION on PG, unchanged SQLite RAISE(ABORT) path); trigger names + 'append-only' message substrings identical across dialects (WR-06 additive-only)
 - [Phase 26]: Phase 26-03: settings.database_url wired through build_engine_from_url (app/db.py) + alembic/env.py; PRAGMA listener, parent-dir mkdir, render_as_batch dialect-gated to sqlite; CI pg-parity job on postgres:17 proves SRV-01/SRV-02 (build_engine(db_path) signature preserved, conftest untouched)
+- [Phase 27]: Phase 27-01: the ONE NDJSON exchange format (SYNC-04) lives in app/services/merge.py — header-first, per-line `kind`, verbatim carriage of origin id/device_id/seq/author_id/created_by; parse_exchange rejects malformed/bad-version/unknown-kind/missing-header/float-money before any DB touch (ASVS V5) and forces wire synced_at→None (server-owned); money-field float guard is schema-derived from model.__mapper__.columns (no hand-maintained list). Pure module (no HTTP/file/dialects). Conflict/MergeReport dataclasses declared now, populated in Plans 02-03
 
 ### Pending Todos
 
@@ -148,8 +150,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-18T23:01:56.049Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-07-19T10:50:00.000Z
+Stopped at: Completed 27-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

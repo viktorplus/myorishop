@@ -137,7 +137,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SRV-02 | Phase 26 | Complete |
 | SYNC-02 | Phase 27 | Pending |
 | SYNC-03 | Phase 27 | Pending |
-| SYNC-04 | Phase 27 | Pending |
+| SYNC-04 | Phase 27 | In Progress (format half done in 27-01; merge engine in 27-02/03) |
 | SYNC-05 | Phase 27 | Pending |
 | SRV-04 | Phase 28 | Pending |
 | SYNC-09 | Phase 28 | Pending |
