@@ -26,15 +26,15 @@ expected: test_merge_idempotent_on_pg and test_code_collision_on_pg both PASS on
 result: [pending]
 
 ### 2. Ratify CR-01 intra-batch Product.code deferral (accept as planned scope, or require fix now)
-expected: Confirm two NEW products with the same active `code` in ONE batch and no DB incumbent are NOT resolved against each other, so they hit uq_products_code_active → IntegrityError → whole-batch rollback (a LOUD atomic reject, never silent data loss/corruption). Not reachable from a single well-formed device push nor the planned Phase 28/29 online push or Phase 30 offline self-upload. Plan 27-03 explicitly scoped this tie-break OUT. Decision: ACCEPT (record override) or FIX NOW (re-plan with --gaps).
-result: [pending]
+expected: Confirm two NEW products with the same active `code` in ONE batch and no DB incumbent are NOT resolved against each other, so they hit uq_products_code_active → IntegrityError → whole-batch rollback. Decision: ACCEPT (record override) or FIX NOW (re-plan with --gaps).
+result: [resolved] Maintainer chose FIX NOW. Fixed in commit c921c8b — _resolve_code_collisions now resolves Product.code collisions among NEW in-batch rows (deterministic order by id; first claimant keeps the clean code; losers renamed via _suffix_code keeping their UUIDs, reported as product_code Conflicts; idempotent on replay). Also fixed WR-01 (strict int money), WR-02 (loud duplicate-origin-UUID reject), WR-03 (widened rename suffix entropy). 7 regression tests added; verifier confirmed DD-2 conformance; full suite 1015 passed / 7 skipped.
 
 ## Summary
 
 total: 2
-passed: 0
+passed: 1
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
 blocked: 0
 
