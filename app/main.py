@@ -10,8 +10,6 @@ from starlette.middleware.sessions import SessionMiddleware
 # Aliased to config_settings so it does not collide with the `settings` route
 # submodule imported below (app/routes/settings.py).
 from app.config import settings as config_settings
-from app.services.security import NotAuthenticated, auth_guard, require_role
-
 from app.routes import (
     auth,
     backup,
@@ -43,6 +41,7 @@ from app.routes import (
     returns,
     sales,
     settings,
+    sync,
     transfers,
     users,
     warehouses,
@@ -52,6 +51,7 @@ from app.routes import (
 # Module-qualified import: tests monkeypatch backup_service.startup_backup
 # as ONE seam (PD-13).
 from app.services import backup as backup_service
+from app.services.security import NotAuthenticated, auth_guard, require_role
 
 
 @asynccontextmanager
@@ -136,6 +136,12 @@ app.include_router(
 app.include_router(
     users.router, dependencies=[Depends(require_role("administrator"))]
 )
+# SYNC-09: the token-authenticated sync tree. NO `dependencies=` here — unlike the
+# admin routers above it is NOT gated by the app-level auth_guard (security.py
+# returns early for the SYNC_PATH_PREFIX), but it is NOT unguarded: every route
+# declares Depends(require_device), a per-device Bearer gate strictly NARROWER
+# than a session cookie (a browser cannot forge an Authorization header).
+app.include_router(sync.router)
 app.include_router(mobile_home.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)
