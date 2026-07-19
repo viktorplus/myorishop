@@ -1,0 +1,45 @@
+# MyOriShop — systemd service unit (Plan 28-06, SRV-04).
+#
+# Install to /etc/systemd/system/myorishop.service on the VPS, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now myorishop
+#   journalctl -u myorishop -f
+#
+# Every host-specific value is a placeholder — see deploy/DEPLOY.md. This unit
+# names no provider, domain or IP.
+
+[Unit]
+Description=MyOriShop
+# PostgreSQL runs on the same box, bound to localhost; wait for it and the network.
+After=network.target postgresql.service
+
+[Service]
+# Dedicated non-root system user (created in DEPLOY.md). Never run as root.
+User=myorishop
+WorkingDirectory=/srv/myorishop
+# All secrets and host config live ONLY in this chmod-600 file, never in git.
+# It supplies four variables (see deploy/DEPLOY.md for the exact shapes):
+#   - the PostgreSQL connection URL (localhost only)
+#   - the session signing key (generated once on the server, never printed)
+#   - the session Secure-cookie flag, set true for the public HTTPS domain (Plan 06 Task 1)
+#   - the startup-backup flag, set false because the SQLite VACUUM INTO backup is
+#     meaningless on PostgreSQL and Task 1's dialect guard already skips it anyway.
+# No value is written here — this unit only references the file.
+EnvironmentFile=/etc/myorishop.env
+# Run migrations on every start, mirroring run.bat's `alembic upgrade head`. A
+# failed migration makes ExecStartPre fail, so systemd never starts the app on a
+# half-upgraded schema — identical abort-on-failure behaviour on both targets.
+ExecStartPre=/usr/local/bin/uv run alembic upgrade head
+# Bind to 127.0.0.1 ONLY. The reverse proxy (Caddy/nginx) is the sole
+# internet-facing listener; uvicorn must never bind a public/all-interfaces
+# address or terminate TLS itself.
+ExecStart=/usr/local/bin/uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Do NOT add `--forwarded-allow-ips "*"`. uvicorn's default trusts 127.0.0.1,
+# which is exactly where the same-host proxy connects from. Widening it to a
+# wildcard on an internet-facing box lets a client forge its own source IP in
+# the logs.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

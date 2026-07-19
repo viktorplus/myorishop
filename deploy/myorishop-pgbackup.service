@@ -1,0 +1,16 @@
+# MyOriShop — pg_dump backup, oneshot unit driven by myorishop-pgbackup.timer.
+# Install to /etc/systemd/system/myorishop-pgbackup.service (Plan 28-06, T-28-30).
+
+[Unit]
+Description=MyOriShop nightly pg_dump backup
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+# Same non-root service user as the app.
+User=myorishop
+# Supplies the libpq connection variables (PGHOST/PGPORT/PGUSER/PGDATABASE and a
+# password source) plus optional BACKUP_DIR / KEEP_DAYS. chmod 600, never in git.
+EnvironmentFile=/etc/myorishop.env
+ExecStart=/srv/myorishop/deploy/myorishop-pgbackup.sh

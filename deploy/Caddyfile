@@ -1,0 +1,28 @@
+# MyOriShop — Caddy reverse proxy with automatic HTTPS (Plan 28-06).
+#
+# Caddy is chosen for zero-config TLS: it obtains and renews the certificate
+# automatically. Install to /etc/caddy/Caddyfile, then `sudo systemctl reload caddy`.
+#
+# ALTERNATIVE: an operator whose VPS already runs nginx can use nginx + certbot
+# instead — a `proxy_pass http://127.0.0.1:8000;` server block plus
+# `client_max_body_size 32m;` and `certbot --nginx`. This file does NOT configure
+# nginx; it is mentioned only so you know the swap is supported. Pick one proxy.
+#
+# Automatic HTTPS (certificate issuance and renewal) REQUIRES the domain's DNS
+# A/AAAA record to already point at THIS server before the first reload —
+# otherwise the ACME challenge fails and no certificate is issued.
+
+# Replace shop.example.com with YOUR real domain (a subdomain of a domain you
+# already own avoids a new registration). This is the ONLY line to edit.
+shop.example.com {
+	# TLS terminates HERE, at the proxy. The app stays plain-HTTP on localhost.
+	reverse_proxy 127.0.0.1:8000
+
+	# Proxy-side body cap — the twin of app/routes/sync.py::MAX_PUSH_BYTES
+	# (32 * 1024 * 1024). The application-side cap is authoritative; this is
+	# defence in depth at the edge. If you ever change MAX_PUSH_BYTES, move
+	# THIS value in the same commit — both must stay in lockstep.
+	request_body {
+		max_size 32MB
+	}
+}

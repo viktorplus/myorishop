@@ -1,0 +1,16 @@
+# MyOriShop — daily schedule for the pg_dump backup (Plan 28-06, T-28-30).
+# Install to /etc/systemd/system/myorishop-pgbackup.timer, then:
+#   sudo systemctl enable --now myorishop-pgbackup.timer
+#   systemctl list-timers            # confirm the next run is scheduled
+
+[Unit]
+Description=Run MyOriShop pg_dump backup daily
+
+[Timer]
+OnCalendar=daily
+# Persistent=true so a run missed while the server was down still fires on the
+# next boot, rather than silently skipping that day's backup.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
