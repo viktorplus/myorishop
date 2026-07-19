@@ -72,6 +72,30 @@ _SEED_CASH = (
 )
 
 
+# --- Phase 28 SC-3 seeds: dedicated rows for the relaxed-trigger cases -----
+# These rows are used by NO other case in this file. Ledger rows can never be
+# DELETEd once the triggers are live, so each SC-3 case owns a fixed UUID and
+# stamps a FIXED literal timestamp — a re-run against a standing PG server
+# re-stamps the same value, which the value-based WHEN guard permits as a
+# no-op, keeping the harness idempotent (WR-03).
+_SEED_PRODUCT_SC3 = (
+    "INSERT INTO products (id, name, quantity, created_at, updated_at) "
+    "VALUES ('pg-sc3-p', 'Тест', 0, '2026-07-19T00:00:00+00:00', "
+    "'2026-07-19T00:00:00+00:00') ON CONFLICT DO NOTHING"
+)
+_SEED_OP_SC3 = (
+    "INSERT INTO operations (id, type, product_id, qty_delta, device_id, seq, "
+    "created_at, created_by) VALUES ('pg-sc3-op', 'receipt', 'pg-sc3-p', 5, "
+    "'pg-dev', 30, '2026-07-19T00:00:00+00:00', 'seed') ON CONFLICT DO NOTHING"
+)
+_SEED_CASH_SC3 = (
+    "INSERT INTO cash_movements (id, category, amount_cents, device_id, seq, "
+    "created_at, created_by) VALUES ('pg-sc3-cash', 'sale', 1000, 'pg-dev', 30, "
+    "'2026-07-19T00:00:00+00:00', 'seed') ON CONFLICT DO NOTHING"
+)
+_SC3_STAMP = "2026-07-19T12:00:00+00:00"
+
+
 def _engine():
     """Engine from the single-source-of-truth URL (postgresql+psycopg://…)."""
     return create_engine(settings.database_url)
@@ -188,5 +212,125 @@ def test_cash_movements_immutable():
             with pytest.raises(Exception, match="append-only"):
                 with engine.begin() as conn:
                     conn.execute(text(sql))
+    finally:
+        engine.dispose()
+
+
+# --- Phase 28 SC-3: the relaxed (column-scoped) UPDATE triggers -------------
+# The PostgreSQL half of the trigger-relaxation proof introduced by migration
+# 0018. The SQLite half lives in tests/test_append_only_cursor.py.
+
+
+def test_pg_synced_at_stamp_allowed():
+    """SYNC-01: stamping the sync cursor on an operations row succeeds on PG.
+
+    Migration 0018 relaxed operations_no_update to fire only when an IMMUTABLE
+    column actually changes, so a client can record that it pushed a row.
+    """
+    _upgrade_head()
+    engine = _engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(_SEED_PRODUCT_SC3))
+            conn.execute(text(_SEED_OP_SC3))
+            conn.execute(
+                text(
+                    "UPDATE operations SET synced_at = '2026-07-19T12:00:00+00:00' "
+                    "WHERE id = 'pg-sc3-op'"
+                )
+            )
+        with engine.connect() as conn:
+            stamped = conn.execute(
+                text("SELECT synced_at FROM operations WHERE id = 'pg-sc3-op'")
+            ).scalar()
+        assert stamped == _SC3_STAMP
+    finally:
+        engine.dispose()
+
+
+def test_pg_payload_tamper_rejected():
+    """Pitfall 1 regression: the `payload` guard needs an explicit ::text cast.
+
+    `operations.payload` is sa.JSON → PostgreSQL `json`, which has NO equality
+    operator. Without `NEW.payload::text IS DISTINCT FROM OLD.payload::text` in
+    the trigger's WHEN clause, this UPDATE fails with
+    `operator does not exist: json = json` — which does NOT match `append-only`
+    and so fails this test loudly. Passing proves the cast both compiles and
+    actually discriminates.
+    """
+    _upgrade_head()
+    engine = _engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(_SEED_PRODUCT_SC3))
+            conn.execute(text(_SEED_OP_SC3))
+        with pytest.raises(Exception, match="append-only"):
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE operations SET payload = '{\"tampered\": true}'::json "
+                        "WHERE id = 'pg-sc3-op'"
+                    )
+                )
+    finally:
+        engine.dispose()
+
+
+def test_pg_immutable_columns_still_rejected():
+    """SRV-02 holds after the relaxation: immutable columns stay immutable.
+
+    Includes the mixed-statement case — setting synced_at AND an immutable
+    column in one UPDATE is rejected, so the cursor stamp cannot become a
+    smuggling channel for ledger edits (this is what a value-based WHEN buys
+    over `UPDATE OF`).
+    """
+    _upgrade_head()
+    engine = _engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(_SEED_PRODUCT_SC3))
+            conn.execute(text(_SEED_OP_SC3))
+        for sql in (
+            "UPDATE operations SET qty_delta = 99 WHERE id = 'pg-sc3-op'",
+            "UPDATE operations SET created_by = 'attacker' WHERE id = 'pg-sc3-op'",
+            "UPDATE operations SET synced_at = '2026-07-19T12:00:00+00:00', "
+            "qty_delta = 99 WHERE id = 'pg-sc3-op'",
+            "DELETE FROM operations WHERE id = 'pg-sc3-op'",
+        ):
+            with pytest.raises(Exception, match="append-only"):
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+    finally:
+        engine.dispose()
+
+
+def test_pg_cash_synced_at_stamp_allowed():
+    """SYNC-01: the cash_movements equivalent — stamp allowed, tamper rejected."""
+    _upgrade_head()
+    engine = _engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(_SEED_CASH_SC3))
+            conn.execute(
+                text(
+                    "UPDATE cash_movements SET "
+                    "synced_at = '2026-07-19T12:00:00+00:00' "
+                    "WHERE id = 'pg-sc3-cash'"
+                )
+            )
+        with engine.connect() as conn:
+            stamped = conn.execute(
+                text("SELECT synced_at FROM cash_movements WHERE id = 'pg-sc3-cash'")
+            ).scalar()
+        assert stamped == _SC3_STAMP
+
+        with pytest.raises(Exception, match="append-only"):
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE cash_movements SET amount_cents = 99 "
+                        "WHERE id = 'pg-sc3-cash'"
+                    )
+                )
     finally:
         engine.dispose()
