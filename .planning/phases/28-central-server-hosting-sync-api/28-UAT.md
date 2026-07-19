@@ -1,9 +1,9 @@
 ---
-status: testing
+status: passed
 phase: 28-central-server-hosting-sync-api
 source: [28-VERIFICATION.md]
 started: 2026-07-19T00:00:00Z
-updated: 2026-07-19T00:00:00Z
+updated: 2026-07-19T22:13:00Z
 ---
 
 ## Current Test
@@ -19,20 +19,20 @@ expected: |
   database on PostgreSQL — including the `payload::text` json-cast case. This closes the
   "on both SQLite and PostgreSQL" clause of Success Criterion 3. Same gate that closed
   Phase 27 (run over `ci/phase-27-pg-parity`).
-awaiting: user response
+awaiting: none — passed
 
 ## Tests
 
 ### 1. SC-3 PostgreSQL parity — append-only trigger relaxation proven on postgres:17 in CI
 expected: GitHub Actions `pg-parity` job GREEN on a branch at current HEAD — SQLite suite + `test_pg_parity.py` + `test_merge_pg.py` all pass against postgres:17, proving `synced_at` is stampable while every immutable column stays locked on PostgreSQL.
-result: [pending]
+result: passed — CI run 29705703575 (job 88242189180) GREEN in 1m37s over `ci/phase-28-pg-parity` @ becc31f; all three steps (SQLite suite, PostgreSQL parity, PostgreSQL merge portability) passed on postgres:17.
 
 ## Summary
 
 total: 1
-passed: 0
+passed: 1
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
