@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-07-19T20:26:37.529Z"
+last_updated: "2026-07-19T20:52:48.027Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 28 (central-server-hosting-sync-api) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-19
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 91%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -81,6 +81,7 @@ Progress: [█████████░] 86%
 | Phase 28 P01 | ~35min | 3 tasks | 5 files |
 | Phase 28 P02 | ~20min | 3 tasks | 4 files |
 | Phase 28 P03 | 23min | 3 tasks | 7 files |
+| Phase 28 P04 | ~30min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: SHA-256 (not Argon2) for device tokens: 256-bit CSPRNG entropy makes a slow KDF pointless while adding ~50-100ms per sync request (RESEARCH A1)
 - [Phase ?]: No token expiry — revocation-only; token_prefix is a non-secret index key for one-read verification
 - [Phase ?]: Plan 28-03: require_device in security.py keeps devices.py FastAPI-free; route rolls back the expire_on_commit read txn before with session.begin()
+- [Phase ?]: Pull cursor is composite (cursor_column, id): inclusive on timestamp, id tie-break guarantees termination; resume kind recovered by after_id PK membership probe (28-04)
 
 ### Pending Todos
 
@@ -163,7 +165,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T20:26:24.422Z
+Last session: 2026-07-19T20:52:34.459Z
 Stopped at: Completed 28-01-PLAN.md
 Resume file: None
 
