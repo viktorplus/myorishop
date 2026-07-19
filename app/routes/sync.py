@@ -55,8 +55,13 @@ def sync_push(
     runs this in the threadpool. Reading the body via a `Body(...)` parameter
     rather than `await request.body()` is what keeps the handler synchronous.
     """
-    # (1) Rate limit on the NON-SECRET token prefix (T-28-12).
-    if not check_rate_limit(device.token_prefix):
+    # (1) Rate limit on the NON-SECRET token prefix (T-28-12). require_device
+    # already committed the last_used_at stamp; with SQLAlchemy's default
+    # expire_on_commit that commit EXPIRED `device`, so reading token_prefix here
+    # reloads it and autobegins a read-only transaction (step 5 clears it before
+    # the merge opens the single owned write transaction).
+    rate_key = device.token_prefix
+    if not check_rate_limit(rate_key):
         raise HTTPException(status_code=429, detail=RATE_LIMITED_ERROR)
 
     # (2) Size cap (T-28-04) — check the declared Content-Length first (reject
@@ -88,7 +93,10 @@ def sync_push(
         raise HTTPException(status_code=400, detail=MALFORMED_BATCH_ERROR) from exc
 
     # (5) The route owns the ONE transaction: apply_merge never commits, so a
-    # mid-batch failure rolls the WHOLE batch back (all-or-nothing).
+    # mid-batch failure rolls the WHOLE batch back (all-or-nothing). Discard the
+    # stray read-only transaction the step-1 attribute reload may have autobegun
+    # (a no-op if none is open) so this begin() opens the single owned write txn.
+    session.rollback()
     with session.begin():
         report = apply_merge(session, batch, server_now=utcnow_iso())
 
