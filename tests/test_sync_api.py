@@ -441,6 +441,62 @@ def test_pull_paginates_past_identical_timestamps(device_client, session):
     assert len(collected) == len(seeded)  # and no duplicates
 
 
+def _seed_warehouse(session, *, name, updated_at=None):
+    warehouse = Warehouse(id=new_id(), name=name)
+    if updated_at is not None:
+        warehouse.updated_at = updated_at
+    session.add(warehouse)
+    session.commit()
+    return warehouse
+
+
+def test_pull_paginates_across_kind_boundary_no_omissions(device_client, session):
+    # CR-01 regression: on a paging continuation, kinds AFTER the resume kind must
+    # be full-scanned (no lower bound). Here a LATER kind (product) holds a row
+    # whose updated_at is EARLIER than the advanced `since` that pagination resumes
+    # with. The pre-fix `elif since is not None:` lower-bounded later kinds by that
+    # unrelated advanced cursor and silently dropped the early-timestamped product.
+    #
+    # PULL_KINDS order is (warehouse, product, ...): warehouse is the resume kind,
+    # product the later kind. With limit=2 the pull resumes into products carrying
+    # since=2026-06-02 — p1@2026-03-01 predates it and would be lost pre-fix.
+    warehouses = {
+        _seed_warehouse(session, name="W1", updated_at="2026-06-01T00:00:00+00:00").id,
+        _seed_warehouse(session, name="W2", updated_at="2026-06-02T00:00:00+00:00").id,
+        _seed_warehouse(session, name="W3", updated_at="2026-06-03T00:00:00+00:00").id,
+    }
+    p1 = _seed_product(session, code="XK-1", updated_at="2026-03-01T00:00:00+00:00")
+    p2 = _seed_product(session, code="XK-2", updated_at="2026-07-01T00:00:00+00:00")
+    seeded = warehouses | {p1.id, p2.id}
+
+    limit = 2
+    collected: list[str] = []
+    since: str | None = "2026-01-01T00:00:00+00:00"  # first incremental page
+    after_id: str | None = None
+    terminated = False
+    for _ in range(10):  # hard cap: a non-terminating cursor blows past it
+        resp = _pull(device_client, since=since, after_id=after_id, limit=limit)
+        assert resp.status_code == 200
+        page_ids = [
+            ln["id"]
+            for ln in _pull_lines(resp)
+            if ln.get("kind") in ("warehouse", "product")
+        ]
+        collected.extend(page_ids)
+        if len(page_ids) < limit:
+            terminated = True
+            break
+        since = resp.headers["x-sync-next-since"]
+        after_id = resp.headers["x-sync-next-after-id"]
+
+    assert terminated, "pull pagination did not terminate within the iteration cap"
+    # The early-timestamped product in the later kind MUST survive the cross-kind
+    # boundary — the whole seeded set is delivered with no omissions.
+    assert p1.id in collected
+    assert set(collected) == seeded
+    assert len(collected) == len(seeded)  # and no duplicates
+
+
 def test_pull_round_trips_through_parse_exchange(device_client, session):
     # SYNC-04: the server emits EXACTLY the format the Phase 29 client parses —
     # one wire implementation, proven by feeding the raw body back through the
