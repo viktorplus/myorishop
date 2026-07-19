@@ -41,3 +41,8 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
         run: uv run pytest tests/test_pg_parity.py -x
+
+      - name: PostgreSQL merge portability (SYNC-02/04/05 one engine, both dialects)
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+        run: uv run pytest tests/test_merge_pg.py -x
