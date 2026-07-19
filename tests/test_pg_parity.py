@@ -13,6 +13,11 @@ Seed rule: every INSERT names all NOT NULL columns of its target table
 (authoritative source: app/models.py) or the INSERT itself would fail on PG
 before the append-only trigger can fire. Only literal constant seed values are
 used — no external data is f-stringed into any SQL text (Security V5, T-26-03).
+
+Seeds are idempotent (WR-03): append-only ledger inserts use `ON CONFLICT DO
+NOTHING` (their rows can never be DELETEd once the triggers are live), and the
+Cyrillic product rows are purged before re-insert. The harness can therefore be
+re-run against a standing PostgreSQL server without duplicate-key failures.
 """
 
 import pytest
@@ -37,12 +42,12 @@ pytestmark = pytest.mark.skipif(
 _SEED_PRODUCT_UPD = (
     "INSERT INTO products (id, name, quantity, created_at, updated_at) "
     "VALUES ('pg-op-upd-p', 'Тест', 0, '2026-07-18T00:00:00+00:00', "
-    "'2026-07-18T00:00:00+00:00')"
+    "'2026-07-18T00:00:00+00:00') ON CONFLICT DO NOTHING"
 )
 _SEED_PRODUCT_DEL = (
     "INSERT INTO products (id, name, quantity, created_at, updated_at) "
     "VALUES ('pg-op-del-p', 'Тест', 0, '2026-07-18T00:00:00+00:00', "
-    "'2026-07-18T00:00:00+00:00')"
+    "'2026-07-18T00:00:00+00:00') ON CONFLICT DO NOTHING"
 )
 
 # operations row (NOT NULL: id, type, product_id, qty_delta, device_id, seq,
@@ -50,12 +55,12 @@ _SEED_PRODUCT_DEL = (
 _SEED_OP_UPD = (
     "INSERT INTO operations (id, type, product_id, qty_delta, device_id, seq, "
     "created_at, created_by) VALUES ('pg-op-upd', 'receipt', 'pg-op-upd-p', 1, "
-    "'pg-dev', 1, '2026-07-18T00:00:00+00:00', 'seed')"
+    "'pg-dev', 1, '2026-07-18T00:00:00+00:00', 'seed') ON CONFLICT DO NOTHING"
 )
 _SEED_OP_DEL = (
     "INSERT INTO operations (id, type, product_id, qty_delta, device_id, seq, "
     "created_at, created_by) VALUES ('pg-op-del', 'receipt', 'pg-op-del-p', 1, "
-    "'pg-dev', 2, '2026-07-18T00:00:00+00:00', 'seed')"
+    "'pg-dev', 2, '2026-07-18T00:00:00+00:00', 'seed') ON CONFLICT DO NOTHING"
 )
 
 # cash_movements row (NOT NULL: id, category, amount_cents, device_id, seq,
@@ -63,7 +68,7 @@ _SEED_OP_DEL = (
 _SEED_CASH = (
     "INSERT INTO cash_movements (id, category, amount_cents, device_id, seq, "
     "created_at, created_by) VALUES ('pg-cash-1', 'sale', 1000, 'pg-dev', 1, "
-    "'2026-07-18T00:00:00+00:00', 'seed')"
+    "'2026-07-18T00:00:00+00:00', 'seed') ON CONFLICT DO NOTHING"
 )
 
 
@@ -106,6 +111,11 @@ def test_cyrillic_search_parity():
     factory = sessionmaker(bind=engine)
     try:
         with factory() as session:
+            # Idempotent seed: products carry no append-only trigger, so purge
+            # any rows left by a prior run before re-inserting (WR-03).
+            session.execute(
+                text("DELETE FROM products WHERE id IN ('pg-cyr-1', 'pg-cyr-2')")
+            )
             session.add_all(
                 [
                     Product(
