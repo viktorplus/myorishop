@@ -170,7 +170,17 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
   2. The server exposes push and pull sync endpoints that a client authenticates to with a per-device token; a request without a valid token is rejected. (SYNC-09)
   3. A ledger row's `synced_at` cursor can be stamped, but any attempt to change an immutable ledger column (`qty_delta`, `amount_cents`, author) is still rejected at the database — on both SQLite and PostgreSQL — enabling the sync cursor (SYNC-01) without weakening the append-only guarantee.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 28-01-PLAN.md — Append-only trigger relaxation: migration 0018 + APPEND_ONLY_TRIGGERS lockstep + SQLite/PostgreSQL SC-3 proof (wave 1)
+- [ ] 28-02-PLAN.md — Device-token core: DeviceToken model + migration 0019 + mint/verify/revoke service (SYNC-09) (wave 2)
+- [ ] 28-03-PLAN.md — /api/sync/ guard bypass + require_device Bearer dependency + POST /api/sync/push (SYNC-09, SC-2) (wave 3)
+- [ ] 28-04-PLAN.md — GET /api/sync/pull cursor service + route + SRV-04 both-UIs-one-app assertion (wave 4)
+- [ ] 28-05-PLAN.md — Admin device-token surface at /settings/devices (mint show-once, revoke, operator 403) (wave 5)
+- [ ] 28-06-PLAN.md — PostgreSQL-safety guards (backup dialect gate, session Secure flag) + provider-agnostic deploy/ runbook (SRV-04) (wave 6)
+
+> **Open user decision (does not gate the phase):** the VPS provider, plan size and domain name (RESEARCH OQ-1) are deliberately NOT chosen by these plans. All deployment artifacts are provider-agnostic and every success criterion is provable locally and in CI.
 
 #### Phase 29: Online Client Sync
 
