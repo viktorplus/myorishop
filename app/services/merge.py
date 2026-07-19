@@ -142,12 +142,20 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     carrying ``format_version``; every later line is one record typed by its
     ``kind``. Rejects (ValueError, before any DB touch) a malformed/non-object
     line, an unsupported ``format_version``, an unknown/duplicate ``kind``, a
-    missing header, and a float money value. ``synced_at`` is forced to None
+    missing header, a duplicate origin id within one batch (same kind + id), and
+    a non-int money value (float/string/bool). ``synced_at`` is forced to None
     (server-owned, never trusted from the wire).
     """
     non_header_kinds = RECORD_KINDS - {"header"}
     header: dict | None = None
     records: list[ExchangeRecord] = []
+    # (kind, id) pairs already seen — a true intra-batch duplicate origin UUID is
+    # malformed input (a duplicated NDJSON line) that would otherwise become a
+    # duplicate-PK IntegrityError and roll the WHOLE batch back at insert time.
+    # Reject it loudly here (parse-time, before any DB touch) like every other
+    # malformed-input case, so the failure is a clear ValueError, not an opaque
+    # IntegrityError. Keyed by kind because each ORM table owns its own PK space.
+    seen_ids: set[tuple[str, str]] = set()
 
     for index, raw in enumerate(lines):
         if raw is None or not str(raw).strip():
@@ -184,6 +192,12 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
         if not isinstance(record_id, str) or not record_id:
             raise ValueError(f"{kind} record missing a non-empty string id")
 
+        # A duplicate origin UUID within one batch (same kind + id) is malformed
+        # input — reject loudly rather than let it become a duplicate-PK rollback.
+        if (kind, record_id) in seen_ids:
+            raise ValueError(f"duplicate {kind} record id: {record_id!r}")
+        seen_ids.add((kind, record_id))
+
         # Ledger records also carry the full append-only provenance set.
         if kind in _LEDGER_KINDS:
             for required in _LEDGER_REQUIRED:
@@ -192,10 +206,15 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
             if not isinstance(data["seq"], int) or isinstance(data["seq"], bool):
                 raise ValueError(f"{kind} record seq must be an integer")
 
-        # Money is integer cents only — a float value is a type-confusion attack (V5).
+        # Money is integer cents only — any non-int (float, JSON string, bool) is a
+        # type-confusion attack (V5). SQLite's dynamic typing would store a string
+        # verbatim into an Integer column, silently corrupting the cents invariant
+        # and diverging from PostgreSQL; reject strictly. bool is an int subclass,
+        # so exclude it explicitly (True/False must not slip through as 1/0).
         for money_key in _money_fields(kind):
-            if isinstance(data.get(money_key), float):
-                raise ValueError(f"money field {money_key!r} must be int cents, not float")
+            value = data.get(money_key)
+            if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+                raise ValueError(f"money field {money_key!r} must be int cents")
 
         # synced_at is server-owned — never trusted from the wire (DD-6).
         if "synced_at" in data:
@@ -298,24 +317,45 @@ def _reference_row(kind: str, data: dict) -> dict:
 
 
 # Product.code is String(20); a renamed collision loser must fit. The marker is
-# a "~" separator + a short deterministic slice of the losing UUID's hex.
+# a "~" separator + a deterministic slice of the losing UUID's hex. 8 hex chars
+# (~32 bits) is the starting width — wide enough that two distinct losers on the
+# same base code are astronomically unlikely to render the same resolved code
+# (the 4-char/~16-bit original was birthday-collision-prone in a busy catalog).
+# When even that collides against an already-claimed code the slice is widened
+# hex-char by hex-char until unique (see ``_suffix_code``), so the multi-loser
+# case (CR-01) can never emit two identical resolved codes.
 _CODE_MAX_LEN: int = 20
 _CODE_COLLISION_MARKER: str = "~"
-_CODE_SUFFIX_HEX_LEN: int = 4
+_CODE_SUFFIX_HEX_LEN: int = 8
 
 
-def _suffix_code(code: str, row_id: str) -> str:
+def _suffix_code(code: str, row_id: str, taken: set[str] | None = None) -> str:
     """Deterministically rename a Product.code collision loser to fit String(20).
 
-    The suffix is ``"~"`` + the first ``_CODE_SUFFIX_HEX_LEN`` hex chars of the
-    losing row's UUID (``row_id``) — deterministic in the UUID ONLY, with no
-    random and no time component (Pitfall 7), so re-merging the same payload
-    renames identically (idempotency-safe). The original ``code`` is truncated
-    so ``base + suffix`` never exceeds ``_CODE_MAX_LEN`` (Product.code length).
+    The suffix is ``"~"`` + a deterministic slice of the losing row's UUID hex
+    (``row_id``), starting at ``_CODE_SUFFIX_HEX_LEN`` chars — deterministic in
+    the UUID ONLY, with no random and no time component (Pitfall 7), so
+    re-merging the same payload renames identically (idempotency-safe). The
+    original ``code`` is truncated so ``base + suffix`` never exceeds
+    ``_CODE_MAX_LEN`` (Product.code length). If the candidate collides with an
+    already-``taken`` code (a second loser on the same base code, CR-01), the hex
+    slice is widened one char at a time until the result is unique — still fully
+    deterministic in ``(code, row_id, taken)``. The marker is capped at
+    ``_CODE_MAX_LEN`` chars so a wide slice never produces a negative base slice.
     """
-    marker = _CODE_COLLISION_MARKER + row_id.replace("-", "")[:_CODE_SUFFIX_HEX_LEN]
-    base = (code or "")[: _CODE_MAX_LEN - len(marker)]
-    return base + marker
+    hex_id = row_id.replace("-", "")
+    max_hex = min(len(hex_id), _CODE_MAX_LEN - len(_CODE_COLLISION_MARKER))
+    candidate = ""
+    for hex_len in range(_CODE_SUFFIX_HEX_LEN, max_hex + 1):
+        marker = _CODE_COLLISION_MARKER + hex_id[:hex_len]
+        base = (code or "")[: _CODE_MAX_LEN - len(marker)]
+        candidate = base + marker
+        if taken is None or candidate not in taken:
+            return candidate
+    # Exhausted the UUID hex and every candidate was taken (two UUIDs sharing all
+    # available hex — practically impossible): return the widest slice; the
+    # ``uq_products_code_active`` partial index stays the final DB backstop.
+    return candidate
 
 
 def _resolve_code_collisions(
@@ -326,34 +366,55 @@ def _resolve_code_collisions(
     ``product_rows`` are the product rows HEADING FOR INSERT (existing UUIDs
     already dropped by the set-difference). A row that is soft-deleted
     (``deleted_at`` set) or code-less cannot clash on the ``uq_products_code_active``
-    partial index — skip it. Otherwise probe for an ACTIVE incumbent with a
-    DIFFERENT UUID (mirror catalog.create_product's SELECT, but resolve
-    non-interactively — never raise the RU UX error). On a clash the INCOMING
-    row is the loser: mutate its ``code`` deterministically (keeping its UUID so
-    its operations/batches stay valid), leave the incumbent's clean code intact,
-    and append a ``product_code`` :class:`Conflict` for admin reconciliation.
-    The partial unique index remains the DB backstop.
+    partial index — skip it.
+
+    Collisions are resolved against BOTH the DB and the OTHER new rows in this
+    same batch (CR-01): two NEW active products minted on different devices can
+    carry the same ``code`` with no DB incumbent — each is legal under its own
+    local index, but together they violate the shared partial unique index. Rows
+    are processed in a deterministic order (sorted by ``id``) so replay renames
+    identically. The FIRST claimant of a clean ``code`` (the DB incumbent if one
+    exists, else the lexicographically smallest UUID in the batch) keeps it; every
+    later claimant is the loser — its ``code`` is mutated deterministically
+    (keeping its UUID so its operations/batches stay valid) and a ``product_code``
+    :class:`Conflict` is appended for admin reconciliation. ``claimed_by`` tracks
+    every active code already taken (DB incumbents + in-batch winners + prior
+    renames) so no two rows can end on the same resolved code. The partial unique
+    index remains the DB backstop.
     """
-    for row in product_rows:
+    # active code -> id of the row/incumbent that owns it (winners and renames).
+    claimed_by: dict[str, str] = {}
+    # Cache the per-code DB probe so N same-code rows cost ONE query, not N.
+    db_incumbent: dict[str, str | None] = {}
+    for row in sorted(product_rows, key=lambda r: r["id"]):
         code = row.get("code")
         if row.get("deleted_at") is not None or not code:
             continue
-        clash = session.scalar(
-            select(Product.id).where(
-                Product.code == code, Product.deleted_at.is_(None)
-            )
-        )
-        if clash is not None and clash != row["id"]:
-            row["code"] = _suffix_code(code, row["id"])
-            conflicts.append(
-                Conflict(
-                    kind="product_code",
-                    product_id=row["id"],
-                    original_code=code,
-                    resolved_code=row["code"],
-                    incumbent_id=clash,
+        if code not in db_incumbent:
+            db_incumbent[code] = session.scalar(
+                select(Product.id).where(
+                    Product.code == code, Product.deleted_at.is_(None)
                 )
             )
+        # A DB active incumbent (always a DIFFERENT UUID — existing UUIDs were
+        # already dropped by the set-difference) or an earlier in-batch winner
+        # owns this code. The row loses to whichever exists.
+        incumbent_id = db_incumbent[code] or claimed_by.get(code)
+        if incumbent_id is None:
+            claimed_by[code] = row["id"]  # first claimant keeps the clean code
+            continue
+        resolved = _suffix_code(code, row["id"], set(claimed_by))
+        row["code"] = resolved
+        claimed_by[resolved] = row["id"]
+        conflicts.append(
+            Conflict(
+                kind="product_code",
+                product_id=row["id"],
+                original_code=code,
+                resolved_code=resolved,
+                incumbent_id=incumbent_id,
+            )
+        )
 
 
 def _upsert_reference(

@@ -686,3 +686,122 @@ def test_collision_rename_is_deterministic(session):
     assert r2.reference_inserted.get("product") is None
     assert r2.reference_server_wins.get("product") == 1
     assert r2.conflicts == []  # existing UUID skipped before the collision pass
+
+
+# --- CR-01: intra-batch Product.code collision (NO DB incumbent) --------------
+
+# Deterministic UUIDs whose lexicographic order is the resolution order.
+_IB_A = "11111111-0000-0000-0000-000000000001"
+_IB_B = "22222222-0000-0000-0000-000000000002"
+_IB_C = "33333333-0000-0000-0000-000000000003"
+
+
+def _product_codes(session):
+    """Map every product id -> its (possibly renamed) code."""
+    return {p.id: p.code for p in session.scalars(select(Product)).all()}
+
+
+def test_intra_batch_code_collision_two_new(session):
+    """CR-01: two NEW active products sharing a code (no DB incumbent) merge.
+
+    The smallest UUID keeps the clean code; the other is renamed, reported, and
+    apply_merge does NOT raise — the old code hit uq_products_code_active and
+    rolled the whole batch back.
+    """
+    records = [
+        _product_rec(_IB_A, code="12345", name="A"),
+        _product_rec(_IB_B, code="12345", name="B"),
+    ]
+    report = _apply(session, records)
+    session.commit()
+
+    codes = _product_codes(session)
+    assert set(codes) == {_IB_A, _IB_B}  # both inserted, none lost to rollback
+    assert codes[_IB_A] == "12345"  # smallest UUID keeps the clean code
+    assert codes[_IB_B] != "12345"
+    assert codes[_IB_B].startswith("12345") and "~" in codes[_IB_B]
+    assert len(set(codes.values())) == 2  # distinct resolved codes
+    assert report.reference_inserted.get("product") == 2
+
+    # The rename is reported with the in-batch winner as incumbent.
+    assert len(report.conflicts) == 1
+    conflict = report.conflicts[0]
+    assert conflict.product_id == _IB_B
+    assert conflict.original_code == "12345"
+    assert conflict.resolved_code == codes[_IB_B]
+    assert conflict.incumbent_id == _IB_A
+
+
+def test_intra_batch_code_collision_re_merge_is_noop(session):
+    """CR-01: re-merging the same intra-batch-colliding payload is a byte-identical no-op."""
+    records = [
+        _product_rec(_IB_A, code="12345", name="A"),
+        _product_rec(_IB_B, code="12345", name="B"),
+    ]
+    _apply(session, records)
+    session.commit()
+    snap = _product_codes(session)
+
+    r2 = _apply(session, records)
+    session.commit()
+    assert _product_codes(session) == snap  # same resolved codes, deterministic
+    assert r2.reference_inserted.get("product") is None  # nothing new inserted
+    assert r2.reference_server_wins.get("product") == 2  # both existing UUIDs skipped
+    assert r2.conflicts == []  # existing UUIDs skipped before the collision pass
+
+
+def test_intra_batch_code_collision_three_new(session):
+    """CR-01/WR-03: three NEW products on one code → one clean, two DISTINCT renames."""
+    ids = [_IB_A, _IB_B, _IB_C]
+    records = [_product_rec(pid, code="777", name="P") for pid in ids]
+    report = _apply(session, records)
+    session.commit()
+
+    codes = _product_codes(session)
+    assert set(codes) == set(ids)  # all three inserted
+    assert codes[_IB_A] == "777"  # smallest UUID keeps the clean code
+    resolved = [codes[i] for i in ids]
+    assert resolved.count("777") == 1  # exactly one clean
+    assert len(set(resolved)) == 3  # no two identical resolved codes (WR-03)
+    assert all(len(c) <= 20 for c in resolved)
+    assert len(report.conflicts) == 2
+    assert all(c.original_code == "777" for c in report.conflicts)
+    assert all(c.incumbent_id == _IB_A for c in report.conflicts)
+
+
+# --- WR-01: non-int money values are rejected pre-DB --------------------------
+
+
+def test_string_money_rejected():
+    """WR-01: a JSON string money value is rejected pre-DB (integer cents only)."""
+    bad = record_line("product", id="p-str", code="99", name="X", cost_cents="500")
+    lines = build_ndjson(records=[bad])
+    with pytest.raises(ValueError, match="int cents"):
+        merge.parse_exchange(lines)
+
+
+def test_bool_money_rejected():
+    """WR-01: a bool money value (True → 1 on an int column) is rejected pre-DB."""
+    bad = record_line("product", id="p-bool", code="98", name="X", cost_cents=True)
+    lines = build_ndjson(records=[bad])
+    with pytest.raises(ValueError, match="int cents"):
+        merge.parse_exchange(lines)
+
+
+# --- WR-02: duplicate origin UUID within one batch is rejected loudly ---------
+
+
+def test_duplicate_ledger_uuid_rejected():
+    """WR-02: a duplicated operation UUID in one batch raises ValueError, not IntegrityError."""
+    op = _op("op-dup", product_id="p-1", batch_id=None, seq=1)
+    lines = build_ndjson(records=[op, dict(op)])
+    with pytest.raises(ValueError, match="duplicate"):
+        merge.parse_exchange(lines)
+
+
+def test_duplicate_reference_uuid_rejected():
+    """WR-02: a duplicated product UUID in one batch raises ValueError, not IntegrityError."""
+    rec = _product_rec("p-dup", code="D1", name="Dup")
+    lines = build_ndjson(records=[rec, dict(rec)])
+    with pytest.raises(ValueError, match="duplicate"):
+        merge.parse_exchange(lines)
