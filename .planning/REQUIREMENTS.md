@@ -46,7 +46,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [x] **SYNC-02**: The server merges the append-only ledgers by UUID with idempotent replay — re-syncing or re-uploading the same data twice changes nothing (no duplicated operations, no double-counted stock).
 - [x] **SYNC-03**: After any merge, derived stock quantities and cash balances are recomputed so counts and figures stay correct.
 - [ ] **SYNC-04**: Online sync and the offline self-upload file use one shared exchange format and one server-side merge engine (never two divergent implementations).
-- [ ] **SYNC-05**: The central server is the source of truth for mutable reference data (products, customers, warehouses, batches, dictionary) — conflicting edits from different devices resolve to the server's version, including a defined rule for duplicate `Product.code` created on two devices.
+- [x] **SYNC-05**: The central server is the source of truth for mutable reference data (products, customers, warehouses, batches, dictionary) — conflicting edits from different devices resolve to the server's version, including a defined rule for duplicate `Product.code` created on two devices.
 - [ ] **SYNC-06**: The sync UI shows sync status, last-sync time, and a plain-language result; a sync failure never blocks local work.
 - [ ] **SYNC-07**: The app shows a badge with the count of local operations not yet synced to the server.
 - [ ] **SYNC-08**: The operator can enable an optional interval-based automatic sync that runs in the background and silently stops attempting while offline; when disabled, only the manual button syncs.
@@ -138,7 +138,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SYNC-02 | Phase 27 | Complete |
 | SYNC-03 | Phase 27 | Complete |
 | SYNC-04 | Phase 27 | In Progress (format half done in 27-01; merge engine in 27-02/03) |
-| SYNC-05 | Phase 27 | Pending |
+| SYNC-05 | Phase 27 | Done |
 | SRV-04 | Phase 28 | Pending |
 | SYNC-09 | Phase 28 | Pending |
 | SYNC-01 | Phase 29 | Pending |

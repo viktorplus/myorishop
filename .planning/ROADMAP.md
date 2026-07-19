@@ -154,7 +154,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 
 - [x] 27-01-PLAN.md — NDJSON exchange format + parse/serialize (verbatim round-trip, strict validation) (wave 1)
 - [x] 27-02-PLAN.md — recompute_derived extraction + apply_merge idempotent ledger append + recompute (SYNC-02/03) (wave 2)
-- [ ] 27-03-PLAN.md — reference upsert (server-wins, FK-order, tombstone) + Product.code collision rename (SYNC-05) (wave 3)
+- [x] 27-03-PLAN.md — reference upsert (server-wins, FK-order, tombstone) + Product.code collision rename (SYNC-05) (wave 3)
 - [ ] 27-04-PLAN.md — PostgreSQL portability slice + pg-parity CI wiring (one engine, both dialects) (wave 4)
 
 > **Research flag (resolved):** The per-phase research pass ran (`27-RESEARCH.md`). The three flagged design decisions are resolved as researcher-recommended defaults (no `27-CONTEXT.md`): per-table = insert-if-new + server-wins-on-existing (row-level); `Product.code` collision = rename the incoming loser (keep UUID, incumbent keeps code, report); tombstones = inline `deleted_at`, never resurrect/delete a server row. Traced as DD-1/DD-2/DD-1b in the plans for later sign-off.
@@ -239,7 +239,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 24. Navigation Restructure & Settings | v2.0 | 7/7 | Complete    | 2026-07-17 |
 | 25. Authentication, Roles & User Attribution | v3.0 | 9/9 | Complete   | 2026-07-18 |
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
-| 27. Shared Idempotent Merge Core | v3.0 | 2/4 | In Progress | - |
+| 27. Shared Idempotent Merge Core | v3.0 | 3/4 | In Progress | - |
 | 28. Central Server — Hosting & Sync API | v3.0 | 0/TBD | Not started | - |
 | 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
