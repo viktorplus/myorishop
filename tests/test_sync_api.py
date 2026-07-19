@@ -24,7 +24,15 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core import new_id
-from app.models import DeviceToken, Operation, User
+from app.models import (
+    CashMovement,
+    DeviceToken,
+    Operation,
+    Product,
+    Sale,
+    User,
+    Warehouse,
+)
 from app.routes import sync as sync_route
 from app.services import auth, devices, merge, rate_limit
 
@@ -267,3 +275,214 @@ def test_successful_push_stamps_last_used_at(device_client, session):
     )
     assert row is not None
     assert row.last_used_at  # a non-empty ISO timestamp
+
+
+# --- SYNC-09: GET /api/sync/pull (reference-data-down) -----------------------
+
+
+def _pull(device_client, **params):
+    """GET /api/sync/pull with the fixture's Bearer token + optional cursor."""
+    return device_client.client.get(
+        "/api/sync/pull",
+        params={k: v for k, v in params.items() if v is not None} or None,
+        headers={"Authorization": f"Bearer {device_client.plaintext}"},
+    )
+
+
+def _pull_lines(resp) -> list[dict]:
+    """Parse an NDJSON pull body into a list of JSON objects (blank lines skipped)."""
+    return [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+
+
+def _seed_product(session, *, code, name="Товар", updated_at=None, deleted_at=None):
+    product = Product(id=new_id(), code=code, name=name, quantity=0)
+    if updated_at is not None:
+        product.updated_at = updated_at
+    if deleted_at is not None:
+        product.deleted_at = deleted_at
+    session.add(product)
+    session.commit()
+    return product
+
+
+def test_pull_requires_token(anon_client):
+    # T-28-02: the pull tree is Bearer-gated exactly like push; no session-cookie
+    # 303→/login leak on this surface (Pitfall 4).
+    resp = anon_client.get("/api/sync/pull", follow_redirects=False)
+    assert resp.status_code == 401
+    assert resp.status_code != 303
+
+
+def test_pull_returns_reference_records(device_client, session):
+    product = _seed_product(session, code="PULL-1")
+    warehouse = Warehouse(id=new_id(), name="Склад для выгрузки")
+    session.add(warehouse)
+    session.commit()
+
+    resp = _pull(device_client)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/x-ndjson")
+
+    lines = _pull_lines(resp)
+    assert lines[0]["kind"] == "header"
+    assert lines[0]["format_version"] == 1
+    product_ids = {ln["id"] for ln in lines if ln.get("kind") == "product"}
+    assert product.id in product_ids
+
+
+def test_pull_excludes_ledger_kinds(device_client, session, product, batch):
+    # T-28-20: pull is reference-only — a seeded operation AND cash movement must
+    # never appear in the body.
+    op = Operation(
+        id=new_id(),
+        type="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        batch_id=batch.id,
+        device_id="device-A",
+        seq=1,
+        created_at="2026-07-19T10:00:00+00:00",
+        created_by="operator",
+    )
+    cash = CashMovement(
+        id=new_id(),
+        category="sale",
+        amount_cents=1000,
+        device_id="device-A",
+        seq=1,
+        created_at="2026-07-19T10:00:00+00:00",
+        created_by="operator",
+    )
+    session.add_all([op, cash])
+    session.commit()
+
+    lines = _pull_lines(_pull(device_client))
+    kinds = {ln.get("kind") for ln in lines}
+    assert "operation" not in kinds
+    assert "cash_movement" not in kinds
+
+
+def test_pull_cursor_is_inclusive(device_client, session):
+    # Pitfall 7 regression: a row whose cursor == `since` must still be delivered.
+    # A strict `>` would return NEITHER of these two identical-timestamp rows.
+    ts = "2026-06-01T00:00:00+00:00"
+    p1 = _seed_product(session, code="INC-1", updated_at=ts)
+    p2 = _seed_product(session, code="INC-2", updated_at=ts)
+
+    lines = _pull_lines(_pull(device_client, since=ts))
+    product_ids = {ln["id"] for ln in lines if ln.get("kind") == "product"}
+    assert p1.id in product_ids
+    assert p2.id in product_ids
+
+
+def test_pull_sale_uses_created_at(device_client, session):
+    # Pitfall 8 regression: Sale has no updated_at, so it is paged by created_at.
+    # A uniform updated_at query would raise instead of returning the sale.
+    sale = Sale(
+        id=new_id(),
+        created_at="2026-06-01T00:00:00+00:00",
+        created_by="operator",
+    )
+    session.add(sale)
+    session.commit()
+
+    resp = _pull(device_client, since="2026-01-01T00:00:00+00:00")
+    assert resp.status_code == 200
+    sale_ids = {ln["id"] for ln in _pull_lines(resp) if ln.get("kind") == "sale"}
+    assert sale.id in sale_ids
+
+
+def test_pull_limit_and_next_since(device_client, session):
+    for i in range(4):
+        _seed_product(session, code=f"LIM-{i}")
+
+    resp = _pull(device_client, limit=2)
+    records = [ln for ln in _pull_lines(resp) if ln.get("kind") != "header"]
+    assert len(records) == 2
+    # BOTH cursor halves present and non-empty — a lone `since` cannot advance.
+    assert resp.headers.get("x-sync-next-since")
+    assert resp.headers.get("x-sync-next-after-id")
+
+
+def test_pull_paginates_past_identical_timestamps(device_client, session):
+    # W-1 termination regression: the documented bulk-edit case — more rows share
+    # one identical updated_at than `limit`. A single-column cursor loops forever;
+    # the composite (cursor, id) cursor advances by id and terminates.
+    ts = "2026-06-01T00:00:00+00:00"
+    limit = 2
+    seeded = {
+        _seed_product(session, code=f"BULK-{i}", updated_at=ts).id
+        for i in range(limit + 1)
+    }
+
+    collected: list[str] = []
+    since: str | None = None
+    after_id: str | None = None
+    first_page: set[str] = set()
+    terminated = False
+    for iteration in range(10):  # hard cap: a non-terminating cursor blows past it
+        resp = _pull(device_client, since=since, after_id=after_id, limit=limit)
+        assert resp.status_code == 200
+        page_ids = [ln["id"] for ln in _pull_lines(resp) if ln.get("kind") == "product"]
+        if iteration == 0:
+            first_page = set(page_ids)
+        elif iteration == 1:
+            # Page 2 must ADVANCE, never repeat page 1.
+            assert set(page_ids).isdisjoint(first_page)
+        collected.extend(page_ids)
+        if len(page_ids) < limit:
+            terminated = True
+            break
+        since = resp.headers["x-sync-next-since"]
+        after_id = resp.headers["x-sync-next-after-id"]
+
+    assert terminated, "pull pagination did not terminate within the iteration cap"
+    assert set(collected) == seeded  # no omissions
+    assert len(collected) == len(seeded)  # and no duplicates
+
+
+def test_pull_round_trips_through_parse_exchange(device_client, session):
+    # SYNC-04: the server emits EXACTLY the format the Phase 29 client parses —
+    # one wire implementation, proven by feeding the raw body back through the
+    # Phase 27 parser.
+    product = _seed_product(session, code="RT-1")
+
+    resp = _pull(device_client)
+    batch = merge.parse_exchange(resp.text.splitlines())
+    assert batch.format_version == 1
+    assert len(batch.records) == 1
+    assert batch.records[0].kind == "product"
+    assert batch.records[0].data["id"] == product.id
+
+
+def test_pull_rejects_bad_cursor(device_client):
+    resp = _pull(device_client, since="not-a-date")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == sync_route.INVALID_CURSOR_ERROR
+
+
+def test_pull_lone_after_id_accepted(device_client, session):
+    # A lone after_id with no `since` is meaningless and is IGNORED, not an error.
+    _seed_product(session, code="LONE-1")
+    resp = _pull(device_client, after_id="abc")
+    assert resp.status_code == 200
+
+
+# --- SRV-04 (ROADMAP Success Criterion 1): one app object, two UIs -----------
+
+
+def test_both_uis_one_app(client):
+    # Locks in that the mobile UI is SERVER-ONLY: one app object, one process, no
+    # second deployment, no local/offline mobile install (SRV-04; REQUIREMENTS
+    # "Explicitly out of scope": a local/offline mobile install). The default
+    # authenticated `client` fixture is correct here — this test is about hosting,
+    # not the device-token bypass.
+    desktop = client.get("/")
+    mobile = client.get("/m/")
+    assert desktop.status_code == 200
+    assert mobile.status_code == 200
+    # The two responses render DIFFERENT templates from the SAME app: the mobile
+    # tab-bar chrome is unique to mobile_base.html and absent from desktop.
+    assert "mobile-tabbar" in mobile.text
+    assert "mobile-tabbar" not in desktop.text
+    assert desktop.text != mobile.text
