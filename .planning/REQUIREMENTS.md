@@ -42,7 +42,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 ### Synchronization — Online & Core (SYNC)
 
-- [ ] **SYNC-01**: When internet is available, the local desktop client syncs with the central server via a manual «Синхронизировать» action — pushing its operations and cash movements up and pulling server-authoritative reference data down.
+- [x] **SYNC-01**: When internet is available, the local desktop client syncs with the central server via a manual «Синхронизировать» action — pushing its operations and cash movements up and pulling server-authoritative reference data down.
 - [x] **SYNC-02**: The server merges the append-only ledgers by UUID with idempotent replay — re-syncing or re-uploading the same data twice changes nothing (no duplicated operations, no double-counted stock).
 - [x] **SYNC-03**: After any merge, derived stock quantities and cash balances are recomputed so counts and figures stay correct.
 - [x] **SYNC-04**: Online sync and the offline self-upload file use one shared exchange format and one server-side merge engine (never two divergent implementations).
@@ -141,7 +141,7 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SYNC-05 | Phase 27 | Done |
 | SRV-04 | Phase 28 | Pending |
 | SYNC-09 | Phase 28 | Pending |
-| SYNC-01 | Phase 29 | Pending |
+| SYNC-01 | Phase 29 | Complete |
 | SYNC-06 | Phase 29 | Pending |
 | SYNC-07 | Phase 29 | Pending |
 | SYNC-08 | Phase 29 | Pending |
