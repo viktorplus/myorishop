@@ -103,9 +103,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS cash_movements_no_update")
-    op.execute("DROP TRIGGER IF EXISTS cash_movements_no_delete")
     if op.get_bind().dialect.name == "postgresql":
+        # PG grammar requires `DROP TRIGGER name ON table`; the SQLite-only
+        # form (no ON clause) raises a syntax error on PG (CR-01).
+        op.execute("DROP TRIGGER IF EXISTS cash_movements_no_update ON cash_movements")
+        op.execute("DROP TRIGGER IF EXISTS cash_movements_no_delete ON cash_movements")
         op.execute("DROP FUNCTION IF EXISTS cash_movements_append_only()")
+    else:
+        op.execute("DROP TRIGGER IF EXISTS cash_movements_no_update")
+        op.execute("DROP TRIGGER IF EXISTS cash_movements_no_delete")
     op.drop_index(op.f("ix_cash_movements_sale_id"), table_name="cash_movements")
     op.drop_table("cash_movements")
