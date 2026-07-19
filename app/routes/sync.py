@@ -145,6 +145,13 @@ def sync_pull(
     across a run of identical timestamps. A lone `after_id` with no `since` is
     meaningless and is ignored by `collect_reference_records`.
     """
+    # (0) Normalize a blank `?since=` to absent: an empty query value is a common
+    # client artifact (templating a blank cursor on the first pull), so treat it as
+    # "no cursor" — a first-page pull — rather than failing fromisoformat("") with a
+    # 400 (WR-03). `after_id` needs no such guard: a lone/blank after_id with no
+    # `since` is already ignored, and it is only ever an indexed PK equality probe.
+    since = since or None
+
     # (1) Rate limit on the NON-SECRET token prefix (T-28-12), exactly as push.
     if not check_rate_limit(device.token_prefix):
         raise HTTPException(status_code=429, detail=RATE_LIMITED_ERROR)
