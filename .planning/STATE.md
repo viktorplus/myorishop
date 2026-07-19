@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-07-19T10:50:00.000Z"
-last_activity: 2026-07-19 -- Completed 27-01-PLAN.md (NDJSON exchange format)
+stopped_at: Completed 27-02-PLAN.md
+last_updated: "2026-07-19T12:20:00.000Z"
+last_activity: 2026-07-19 -- Completed 27-02-PLAN.md (apply_merge idempotent ledger append + recompute)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 16
-  completed_plans: 13
-  percent: 33
+  completed_plans: 14
+  percent: 38
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 27 (shared-idempotent-merge-core) — EXECUTING
-Plan: 2 of 4
-Status: Executing Phase 27 (27-01 complete)
-Last activity: 2026-07-19 -- Completed 27-01-PLAN.md (NDJSON exchange format)
+Plan: 3 of 4
+Status: Executing Phase 27 (27-01, 27-02 complete)
+Last activity: 2026-07-19 -- Completed 27-02-PLAN.md (apply_merge idempotent ledger append + recompute)
 
-Progress: [██▌·······] 25% (1 of 4 plans)
+Progress: [█████·····] 50% (2 of 4 plans)
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -75,6 +75,7 @@ Progress: [██▌·······] 25% (1 of 4 plans)
 | Phase 26 P02 | ~3min | 2 tasks | 2 files |
 | Phase 26 P03 | ~6min | 3 tasks | 3 files |
 | Phase 27 P01 | ~14min | 2 tasks | 2 files |
+| Phase 27 P02 | ~20min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Phase 26-02: append-only trigger DDL is dialect-branched IN-PLACE inside frozen migrations 0001/0013 via op.get_bind().dialect.name (PL/pgSQL RAISE EXCEPTION on PG, unchanged SQLite RAISE(ABORT) path); trigger names + 'append-only' message substrings identical across dialects (WR-06 additive-only)
 - [Phase 26]: Phase 26-03: settings.database_url wired through build_engine_from_url (app/db.py) + alembic/env.py; PRAGMA listener, parent-dir mkdir, render_as_batch dialect-gated to sqlite; CI pg-parity job on postgres:17 proves SRV-01/SRV-02 (build_engine(db_path) signature preserved, conftest untouched)
 - [Phase 27]: Phase 27-01: the ONE NDJSON exchange format (SYNC-04) lives in app/services/merge.py — header-first, per-line `kind`, verbatim carriage of origin id/device_id/seq/author_id/created_by; parse_exchange rejects malformed/bad-version/unknown-kind/missing-header/float-money before any DB touch (ASVS V5) and forces wire synced_at→None (server-owned); money-field float guard is schema-derived from model.__mapper__.columns (no hand-maintained list). Pure module (no HTTP/file/dialects). Conflict/MergeReport dataclasses declared now, populated in Plans 02-03
+- [Phase 27]: Phase 27-02: apply_merge (SYNC-02/03) appends operations+cash_movements VERBATIM by origin UUID via a PORTABLE pre-select set-difference (_insert_new, chunked at 500) — no sqlalchemy.dialects, no on_conflict, no re-mint through the write path; synced_at forced None. It NEVER commits (caller owns the all-or-nothing transaction — a poisoned record rolls back to 0 rows). recompute_derived(session) extracted from rebuild_stock (non-committing, invariant-asserting); rebuild_stock delegates then commits (behavior-preserving). Post-merge Product.quantity/Batch.quantity recomputed from the ledger; cash balance stays a live SUM. Reference-upsert seam left BEFORE the ledger stage for Plan 03. merge-twice==once proven byte-identical
 
 ### Pending Todos
 
@@ -150,8 +152,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T10:50:00.000Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-07-19T12:20:00.000Z
+Stopped at: Completed 27-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
