@@ -19,21 +19,33 @@ submitted bytes back to the client (T-28-07 / V7).
 """
 
 import dataclasses
+from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core import utcnow_iso
 from app.db import get_session
 from app.models import DeviceToken
-from app.services.merge import apply_merge, parse_exchange
+from app.services.merge import apply_merge, parse_exchange, serialize_exchange
 from app.services.rate_limit import check_rate_limit
 from app.services.security import require_device
+from app.services.sync import (
+    DEFAULT_PULL_LIMIT,
+    collect_reference_records,
+    current_schema_version,
+)
 
 # RU error messages (UI-SPEC Copywriting Contract). HTML-free.
 PAYLOAD_TOO_LARGE_ERROR = "Слишком большой объём данных."
 RATE_LIMITED_ERROR = "Слишком много запросов. Попробуйте позже."
 MALFORMED_BATCH_ERROR = "Некорректный формат данных."
+INVALID_CURSOR_ERROR = "Некорректная метка синхронизации."
+
+# NDJSON media type for the pull stream (matches the push Content-Type).
+PULL_MEDIA_TYPE = "application/x-ndjson"
 
 # Belt-and-braces body cap: the Caddy `request_body { max_size 32MB }` twin lands
 # in Plan 06, but the app must be safe even if the proxy config is wrong or absent.
@@ -110,3 +122,68 @@ def sync_push(
         "reference_server_wins": report.reference_server_wins,
         "conflicts": [dataclasses.asdict(c) for c in report.conflicts],
     }
+
+
+@router.get("/api/sync/pull")
+def sync_pull(
+    since: str | None = None,
+    after_id: str | None = None,
+    limit: int = DEFAULT_PULL_LIMIT,
+    device: DeviceToken = Depends(require_device),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Stream one cursor-paged page of REFERENCE records as NDJSON (SYNC-09).
+
+    Plain `def` (NOT async): CLAUDE.md's locked sync-session rule runs this in the
+    threadpool. Read-only — it opens NO write transaction and never commits; the
+    server never stamps `synced_at` (locked semantic, see app/services/sync.py).
+    `require_device` already stamped `last_used_at`.
+
+    The cursor is COMPOSITE `(since, after_id)`: the client MUST echo BOTH the
+    `X-Sync-Next-Since` and `X-Sync-Next-After-Id` response headers back as the
+    `since` and `after_id` query parameters, or pagination will not terminate
+    across a run of identical timestamps. A lone `after_id` with no `since` is
+    meaningless and is ignored by `collect_reference_records`.
+    """
+    # (1) Rate limit on the NON-SECRET token prefix (T-28-12), exactly as push.
+    if not check_rate_limit(device.token_prefix):
+        raise HTTPException(status_code=429, detail=RATE_LIMITED_ERROR)
+
+    # (2) Validate `since` early: a non-empty ISO-8601 string. It is only ever a
+    # bound parameter in a select() (never interpolated into SQL), but rejecting
+    # garbage keeps the contract honest and the error RU (T-28-21).
+    if since is not None:
+        try:
+            datetime.fromisoformat(since)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=INVALID_CURSOR_ERROR) from exc
+
+    # (3) Pure query — `collect_reference_records` clamps `limit` itself.
+    page = collect_reference_records(
+        session, since=since, after_id=after_id, limit=limit
+    )
+
+    # (4) Serialize through the UNMODIFIED Phase 27 writer, one NDJSON line each.
+    lines = serialize_exchange(
+        page.records,
+        schema_version=current_schema_version(session),
+        source_device_id=settings.device_id,
+        generated_at=utcnow_iso(),
+    )
+
+    # (5) The two cursor halves travel as HTTP headers, NOT in the fixed NDJSON
+    # envelope (the Phase 27 engine is untouched). BOTH are emitted together (each
+    # omitted only when None): a client with only `since` cannot advance past a
+    # run of identical timestamps. StreamingResponse avoids materialising the page
+    # as one big string (T-28-12).
+    headers: dict[str, str] = {}
+    if page.next_since is not None:
+        headers["X-Sync-Next-Since"] = page.next_since
+    if page.next_after_id is not None:
+        headers["X-Sync-Next-After-Id"] = page.next_after_id
+
+    return StreamingResponse(
+        (f"{line}\n" for line in lines),
+        media_type=PULL_MEDIA_TYPE,
+        headers=headers,
+    )
