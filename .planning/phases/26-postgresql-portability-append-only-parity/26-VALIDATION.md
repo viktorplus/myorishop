@@ -1,10 +1,11 @@
 ---
 phase: 26
 slug: postgresql-portability-append-only-parity
-status: ready
+status: validated
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-07-18
+validated: 2026-07-19
 ---
 
 # Phase 26 — Validation Strategy
@@ -40,12 +41,12 @@ created: 2026-07-18
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 26-03-03 | 03 | 2 | SRV-01 | — | N/A (schema parity: full Alembic history applies to empty PG) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_full_history_applies -x` | ❌ W0 (26-01-02) | ⬜ pending |
-| 26-03-03 | 03 | 2 | SRV-01 | — | N/A (Cyrillic case-insensitive search returns identical rows on PG) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_cyrillic_search_parity -x` | ❌ W0 (26-01-02) | ⬜ pending |
-| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | UPDATE on `operations` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_operations_update_rejected -x` | ❌ W0 (26-01-02) | ⬜ pending |
-| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | DELETE on `operations` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_operations_delete_rejected -x` | ❌ W0 (26-01-02) | ⬜ pending |
-| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | UPDATE + DELETE on `cash_movements` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_cash_movements_immutable -x` | ❌ W0 (26-01-02) | ⬜ pending |
-| 26-02-01 | 02 | 1 | SRV-02 (regression) | T-26-01 | SQLite append-only triggers still ABORT after the 0001/0013 dialect-branch edit | unit (SQLite) | `uv run pytest tests/test_pragmas.py -x` | ✅ exists | ⬜ pending |
+| 26-03-03 | 03 | 2 | SRV-01 | — | N/A (schema parity: full Alembic history applies to empty PG) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_full_history_applies -x` | ✅ exists | ✅ green (CI) |
+| 26-03-03 | 03 | 2 | SRV-01 | — | N/A (Cyrillic case-insensitive search returns identical rows on PG) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_cyrillic_search_parity -x` | ✅ exists | ✅ green (CI) |
+| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | UPDATE on `operations` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_operations_update_rejected -x` | ✅ exists | ✅ green (CI) |
+| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | DELETE on `operations` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_operations_delete_rejected -x` | ✅ exists | ✅ green (CI) |
+| 26-03-03 | 03 | 2 | SRV-02 | T-26-01 | UPDATE + DELETE on `cash_movements` rejected at DB (append-only) | integration (PG) | `uv run pytest tests/test_pg_parity.py::test_cash_movements_immutable -x` | ✅ exists | ✅ green (CI) |
+| 26-02-01 | 02 | 1 | SRV-02 (regression) | T-26-01 | SQLite append-only triggers still ABORT after the 0001/0013 dialect-branch edit | unit (SQLite) | `uv run pytest tests/test_pragmas.py -x` | ✅ exists | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -58,9 +59,9 @@ created: 2026-07-18
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_pg_parity.py` — scaffold for the 5 SRV-01/SRV-02 assertions (`test_full_history_applies`, `test_cyrillic_search_parity`, `test_operations_update_rejected`, `test_operations_delete_rejected`, `test_cash_movements_immutable`); module-level `skipif` unless `DATABASE_URL` is PostgreSQL. Created in Plan 01 Task 2 (`26-01-02`).
-- [ ] `psycopg[binary]==3.3.*` dependency — required to import the `postgresql+psycopg://` driver; added in Plan 01 Task 1 (`26-01-01`).
-- [ ] `.github/workflows/ci.yml` — the `postgres:17` service job that sets `DATABASE_URL` and runs `tests/test_pg_parity.py` on real PG (the ONLY place the 5 PG tests execute non-skipped). Created in Plan 03 Task 3 (`26-03-03`).
+- [x] `tests/test_pg_parity.py` — scaffold for the 5 SRV-01/SRV-02 assertions (`test_full_history_applies`, `test_cyrillic_search_parity`, `test_operations_update_rejected`, `test_operations_delete_rejected`, `test_cash_movements_immutable`); module-level `skipif` unless `DATABASE_URL` is PostgreSQL. Created in Plan 01 Task 2 (`26-01-02`). **VERIFIED present** (5 test fns + `pytestmark` skipif).
+- [x] `psycopg[binary]==3.3.*` dependency — required to import the `postgresql+psycopg://` driver; added in Plan 01 Task 1 (`26-01-01`). **VERIFIED** (uv.lock 3.3.4).
+- [x] `.github/workflows/ci.yml` — the `postgres:17` service job that sets `DATABASE_URL` and runs `tests/test_pg_parity.py` on real PG (the ONLY place the 5 PG tests execute non-skipped). Created in Plan 03 Task 3 (`26-03-03`). **VERIFIED GREEN** — CI run [29677761455](https://github.com/viktorplus/myorishop/actions/runs/29677761455): 5 passed on `postgres:17`.
 
 *Existing SQLite infrastructure (`tests/conftest.py` fixtures, `tests/test_pragmas.py`, `tests/test_ledger.py`) already covers the SQLite side of parity — no new SQLite scaffold needed; those suites must stay green after the migration edits.*
 
@@ -84,3 +85,19 @@ created: 2026-07-18
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** approved 2026-07-19
+
+---
+
+## Validation Audit 2026-07-19
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+**Result:** NYQUIST-COMPLIANT. All 6 mapped verifications exist and pass — no auditor spawn needed (no MISSING/PARTIAL gaps).
+
+- 5 PG-parity tests (`tests/test_pg_parity.py`) skip on SQLite by design; proven **GREEN** against real `postgres:17` in CI run [29677761455](https://github.com/viktorplus/myorishop/actions/runs/29677761455) (`5 passed in 0.24s`; SRV-01 schema + Cyrillic parity, SRV-02 UPDATE/DELETE rejection on `operations` + `cash_movements`).
+- 1 SQLite append-only regression (`tests/test_pragmas.py`) verified green locally: `uv run pytest tests/test_pragmas.py tests/test_ledger.py tests/test_pg_parity.py -q` → **22 passed, 5 skipped**.
+- Wave 0 deliverables all present (test scaffold, `psycopg[binary]` dep, `.github/workflows/ci.yml`).
