@@ -176,6 +176,7 @@ def collect_reference_records(
     resume_kind: str | None = None
     if since is not None and after_id is not None:
         resume_kind = _resume_kind(session, after_id)
+    is_paging = resume_kind is not None  # continuation request, not a first page
 
     records: list[ExchangeRecord] = []
     next_since: str | None = None
@@ -201,9 +202,12 @@ def collect_reference_records(
                 or_(column > since, and_(column == since, model.id > after_id))
             )
             passed_resume = True
-        elif since is not None:
-            # First page with a since bound, or a kind after the resume kind on a
-            # since-carrying request: inclusive lower bound, never a bare `>`.
+        elif since is not None and not is_paging:
+            # FIRST incremental page only: lower-bound every kind by `since`.
+            # On a paging continuation, kinds after the resume kind have not started
+            # and must be full-scanned (no lower bound) — the advanced `since` belongs
+            # to the resume kind's timeline, not theirs. Over-delivery of already-known
+            # reference rows is safe: the Phase 27 reference upsert is idempotent.
             stmt = stmt.where(column >= since)
 
         rows = session.scalars(stmt).all()
