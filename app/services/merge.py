@@ -297,7 +297,72 @@ def _reference_row(kind: str, data: dict) -> dict:
     return row
 
 
-def _upsert_reference(session: Session, model: type, rows: list[dict]) -> tuple[int, int]:
+# Product.code is String(20); a renamed collision loser must fit. The marker is
+# a "~" separator + a short deterministic slice of the losing UUID's hex.
+_CODE_MAX_LEN: int = 20
+_CODE_COLLISION_MARKER: str = "~"
+_CODE_SUFFIX_HEX_LEN: int = 4
+
+
+def _suffix_code(code: str, row_id: str) -> str:
+    """Deterministically rename a Product.code collision loser to fit String(20).
+
+    The suffix is ``"~"`` + the first ``_CODE_SUFFIX_HEX_LEN`` hex chars of the
+    losing row's UUID (``row_id``) — deterministic in the UUID ONLY, with no
+    random and no time component (Pitfall 7), so re-merging the same payload
+    renames identically (idempotency-safe). The original ``code`` is truncated
+    so ``base + suffix`` never exceeds ``_CODE_MAX_LEN`` (Product.code length).
+    """
+    marker = _CODE_COLLISION_MARKER + row_id.replace("-", "")[:_CODE_SUFFIX_HEX_LEN]
+    base = (code or "")[: _CODE_MAX_LEN - len(marker)]
+    return base + marker
+
+
+def _resolve_code_collisions(
+    session: Session, product_rows: list[dict], conflicts: list[Conflict]
+) -> None:
+    """Rename cross-device Product.code losers in place (SYNC-05 / DD-2).
+
+    ``product_rows`` are the product rows HEADING FOR INSERT (existing UUIDs
+    already dropped by the set-difference). A row that is soft-deleted
+    (``deleted_at`` set) or code-less cannot clash on the ``uq_products_code_active``
+    partial index — skip it. Otherwise probe for an ACTIVE incumbent with a
+    DIFFERENT UUID (mirror catalog.create_product's SELECT, but resolve
+    non-interactively — never raise the RU UX error). On a clash the INCOMING
+    row is the loser: mutate its ``code`` deterministically (keeping its UUID so
+    its operations/batches stay valid), leave the incumbent's clean code intact,
+    and append a ``product_code`` :class:`Conflict` for admin reconciliation.
+    The partial unique index remains the DB backstop.
+    """
+    for row in product_rows:
+        code = row.get("code")
+        if row.get("deleted_at") is not None or not code:
+            continue
+        clash = session.scalar(
+            select(Product.id).where(
+                Product.code == code, Product.deleted_at.is_(None)
+            )
+        )
+        if clash is not None and clash != row["id"]:
+            row["code"] = _suffix_code(code, row["id"])
+            conflicts.append(
+                Conflict(
+                    kind="product_code",
+                    product_id=row["id"],
+                    original_code=code,
+                    resolved_code=row["code"],
+                    incumbent_id=clash,
+                )
+            )
+
+
+def _upsert_reference(
+    session: Session,
+    model: type,
+    rows: list[dict],
+    *,
+    conflicts: list[Conflict] | None = None,
+) -> tuple[int, int]:
     """Reference upsert: insert-if-new, row-level server-wins (SYNC-05 / DD-1).
 
     A NEW UUID inserts verbatim (including any inline ``deleted_at``); an
@@ -305,11 +370,17 @@ def _upsert_reference(session: Session, model: type, rows: list[dict]) -> tuple[
     ROW level, never field-merged, never resurrected (``deleted_at``->NULL) and
     never deleted from client input. Reuses the portable set-difference
     (:func:`_partition_new`) and reports the discarded rows as ``server_wins``.
-    Returns ``(inserted, server_wins)``. Insert-only — no UPDATE, no DELETE.
+    For ``Product`` (when ``conflicts`` is supplied) the to-insert rows pass
+    through :func:`_resolve_code_collisions` — a cross-device duplicate ``code``
+    renames the incoming loser (DD-2) — AFTER the set-difference and BEFORE the
+    bulk insert. Returns ``(inserted, server_wins)``. Insert-only — no UPDATE,
+    no DELETE.
     """
     if not rows:
         return 0, 0
     new_rows, server_wins = _partition_new(session, model, rows)
+    if model is Product and conflicts is not None:
+        _resolve_code_collisions(session, new_rows, conflicts)
     if new_rows:
         session.execute(insert(model), new_rows)
     return len(new_rows), server_wins
@@ -365,7 +436,9 @@ def apply_merge(session: Session, batch: ExchangeBatch, *, server_now: str) -> M
         rows = ref_buckets[kind]
         if not rows:
             continue
-        inserted, server_wins = _upsert_reference(session, KIND_TO_MODEL[kind], rows)
+        inserted, server_wins = _upsert_reference(
+            session, KIND_TO_MODEL[kind], rows, conflicts=report.conflicts
+        )
         if inserted:
             report.reference_inserted[kind] = inserted
         if server_wins:

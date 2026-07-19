@@ -619,3 +619,70 @@ def test_tombstone_inline(session, product):
     assert product.deleted_at is None  # server row never resurrected/deleted
     assert report.reference_inserted.get("product") == 1
     assert report.reference_server_wins.get("product") == 1
+
+
+# --- SYNC-05/DD-2: Product.code cross-device collision — rename the loser -----
+
+_INCUMBENT_ID = "aaaaaaaa-0000-0000-0000-000000000001"
+_LOSER_ID = "bbbbbbbb-1111-2222-3333-444455556666"
+
+
+def test_product_code_collision_renamed(session):
+    """SYNC-05/DD-2: a duplicate active code renames the incoming loser, keeps UUID."""
+    session.add(Product(id=_INCUMBENT_ID, code="12345", name="Инкумбент", quantity=0))
+    session.commit()
+
+    new_prod = _product_rec(_LOSER_ID, code="12345", name="Проигравший")
+    op = _op("op-loser", product_id=_LOSER_ID, batch_id=None, seq=1, qty_delta=3)
+    report = _apply(session, [new_prod, op])
+    session.commit()
+
+    # Incumbent keeps the clean code.
+    incumbent = session.get(Product, _INCUMBENT_ID)
+    assert incumbent.code == "12345"
+
+    # Loser inserted with a renamed code, ORIGINAL UUID preserved.
+    loser = session.get(Product, _LOSER_ID)
+    assert loser is not None
+    assert loser.code != "12345"
+    assert loser.code.startswith("12345")
+    assert "~" in loser.code
+    assert _LOSER_ID.replace("-", "")[:4] in loser.code
+    assert len(loser.code) <= 20
+
+    # The loser's operation inserted and references the preserved UUID.
+    op_row = session.get(Operation, "op-loser")
+    assert op_row is not None
+    assert op_row.product_id == _LOSER_ID
+
+    # The rename is reported for admin reconciliation.
+    assert len(report.conflicts) == 1
+    conflict = report.conflicts[0]
+    assert conflict.kind == "product_code"
+    assert conflict.product_id == _LOSER_ID
+    assert conflict.original_code == "12345"
+    assert conflict.resolved_code == loser.code
+    assert conflict.incumbent_id == _INCUMBENT_ID
+
+
+def test_collision_rename_is_deterministic(session):
+    """SYNC-05/DD-2: re-merging the colliding batch renames identically (idempotent)."""
+    session.add(Product(id=_INCUMBENT_ID, code="12345", name="Инкумбент", quantity=0))
+    session.commit()
+
+    records = [
+        _product_rec(_LOSER_ID, code="12345", name="Проигравший"),
+        _op("op-loser", product_id=_LOSER_ID, batch_id=None, seq=1, qty_delta=3),
+    ]
+    r1 = _apply(session, records)
+    session.commit()
+    first_code = session.get(Product, _LOSER_ID).code
+    assert r1.reference_inserted.get("product") == 1
+
+    # Second apply: same payload → same rename, 0 new inserts (idempotency held).
+    r2 = _apply(session, records)
+    session.commit()
+    assert session.get(Product, _LOSER_ID).code == first_code
+    assert r2.reference_inserted.get("product") is None
+    assert r2.reference_server_wins.get("product") == 1
+    assert r2.conflicts == []  # existing UUID skipped before the collision pass
