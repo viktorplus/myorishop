@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Phase 29 UI-SPEC approved
-last_updated: "2026-07-20T00:55:47.144Z"
-last_activity: 2026-07-20 -- Phase 29 planning complete
+last_updated: "2026-07-20T01:31:38.841Z"
+last_activity: 2026-07-20
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 27
-  completed_plans: 22
+  completed_plans: 23
   percent: 67
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 28 — central-server-hosting-sync-api
+**Current focus:** Phase 29 — online-client-sync
 
 ## Current Position
 
-Phase: 29
-Plan: Not started
+Phase: 29 (online-client-sync) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-20 -- Phase 29 planning complete
+Last activity: 2026-07-20
 
-Progress: [██████████] 100%
+Progress: [█████████░] 85%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -85,6 +85,7 @@ Progress: [██████████] 100%
 | Phase 28 P04 | ~30min | 3 tasks | 3 files |
 | Phase 28 P05 | ~13min | 3 tasks | 6 files |
 | Phase 28 P06 | ~22min | 3 tasks | 10 files |
+| Phase 29 P01 | 25min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Pull cursor is composite (cursor_column, id): inclusive on timestamp, id tie-break guarantees termination; resume kind recovered by after_id PK membership probe (28-04)
 - [Phase ?]: SYNC-09 admin surface /settings/devices mirrors /settings/users verbatim; no new design tokens (no-UI-SPEC phase decision)
 - [Phase ?]: Phase 28-06 (SRV-04): startup_backup() gains an explicit engine.dialect.name != sqlite early return (OQ-6) so a PostgreSQL boot can never reach VACUUM INTO; the regression test forces settings.db_path to an EXISTING file so the file-missing accident cannot mask the guard. session_https_only (env SESSION_HTTPS_ONLY, default False) wires the session-cookie Secure flag into SessionMiddleware, true only on the server (T-28-27). deploy/ ships a provider-agnostic systemd unit (ExecStartPre alembic upgrade head mirroring run.bat, uvicorn bound 127.0.0.1), Caddyfile (TLS at proxy, max_size 32MB twin of MAX_PUSH_BYTES), a daily pg_dump timer (Persistent, 30-day retention) and a 269-line DEPLOY.md — no VPS provider, tier, real domain or public IP chosen.
+- [Phase ?]: 29-01: sync_token is an .env-only secret (like secret_key), never a sync_state/DB column, so a copied myorishop.db cannot leak the device credential (T-29-01)
+- [Phase ?]: 29-01: sync_state uses an Integer singleton PK (id=1), a local-only never-synced table, exempt from the UUID-PK convention that targets synced entities
+- [Phase ?]: 29-01: auto-sync toggle/interval live on sync_state (runtime-mutable, D-15), not static .env
 
 ### Pending Todos
 
@@ -170,9 +174,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T00:35:50.699Z
+Last session: 2026-07-20T01:31:23.851Z
 Stopped at: Phase 29 UI-SPEC approved
-Resume file: .planning/phases/29-online-client-sync/29-UI-SPEC.md
+Resume file: None
 
 ## Operator Next Steps
 

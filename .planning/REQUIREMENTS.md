@@ -37,7 +37,7 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 - [x] **SRV-01**: The same data models and single Alembic migration history run unchanged on both SQLite (client) and PostgreSQL (server).
 - [x] **SRV-02**: The central server runs on PostgreSQL and enforces the same append-only ledger guarantee (UPDATE/DELETE of ledger rows blocked at the database) as the SQLite client.
-- [ ] **SRV-03**: The local desktop client keeps working fully offline on local SQLite; the central server is required only for sync/upload, never for day-to-day local work.
+- [x] **SRV-03**: The local desktop client keeps working fully offline on local SQLite; the central server is required only for sync/upload, never for day-to-day local work.
 - [x] **SRV-04**: The central server hosts two online web interfaces — a browser (desktop) UI and a mobile UI. The mobile version is server-only: there is no local/offline mobile install; mobile users always work against the server online.
 
 ### Synchronization — Online & Core (SYNC)
@@ -47,8 +47,8 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 - [x] **SYNC-03**: After any merge, derived stock quantities and cash balances are recomputed so counts and figures stay correct.
 - [x] **SYNC-04**: Online sync and the offline self-upload file use one shared exchange format and one server-side merge engine (never two divergent implementations).
 - [x] **SYNC-05**: The central server is the source of truth for mutable reference data (products, customers, warehouses, batches, dictionary) — conflicting edits from different devices resolve to the server's version, including a defined rule for duplicate `Product.code` created on two devices.
-- [ ] **SYNC-06**: The sync UI shows sync status, last-sync time, and a plain-language result; a sync failure never blocks local work.
-- [ ] **SYNC-07**: The app shows a badge with the count of local operations not yet synced to the server.
+- [x] **SYNC-06**: The sync UI shows sync status, last-sync time, and a plain-language result; a sync failure never blocks local work.
+- [x] **SYNC-07**: The app shows a badge with the count of local operations not yet synced to the server.
 - [ ] **SYNC-08**: The operator can enable an optional interval-based automatic sync that runs in the background and silently stops attempting while offline; when disabled, only the manual button syncs.
 - [x] **SYNC-09**: The client authenticates to the server's sync endpoints with a per-device token.
 
@@ -142,10 +142,10 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SRV-04 | Phase 28 | Complete |
 | SYNC-09 | Phase 28 | Complete |
 | SYNC-01 | Phase 29 | Complete |
-| SYNC-06 | Phase 29 | Pending |
-| SYNC-07 | Phase 29 | Pending |
+| SYNC-06 | Phase 29 | Complete |
+| SYNC-07 | Phase 29 | Complete |
 | SYNC-08 | Phase 29 | Pending |
-| SRV-03 | Phase 29 | Pending |
+| SRV-03 | Phase 29 | Complete |
 | OFF-01 | Phase 30 | Pending |
 | OFF-02 | Phase 30 | Pending |
 | OFF-03 | Phase 30 | Pending |
