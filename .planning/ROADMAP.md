@@ -220,7 +220,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 29-02-PLAN.md — Sync state + badge count + D-12 Russian result formatter + fresh auto-sync config read (wave 2)
+- [x] 29-02-PLAN.md — Sync state + badge count + D-12 Russian result formatter + fresh auto-sync config read (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -286,5 +286,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
-| 29. Online Client Sync | v3.0 | 1/5 | In Progress|  |
+| 29. Online Client Sync | v3.0 | 2/5 | In Progress|  |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |

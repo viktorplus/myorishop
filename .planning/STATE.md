@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Phase 29 UI-SPEC approved
-last_updated: "2026-07-20T01:31:38.841Z"
+last_updated: "2026-07-20T01:54:35.882Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 27
-  completed_plans: 23
+  completed_plans: 24
   percent: 67
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 29 (online-client-sync) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 89%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -86,6 +86,7 @@ Progress: [█████████░] 85%
 | Phase 28 P05 | ~13min | 3 tasks | 6 files |
 | Phase 28 P06 | ~22min | 3 tasks | 10 files |
 | Phase 29 P01 | 25min | 3 tasks | 7 files |
+| Phase 29 P02 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 29-01: sync_token is an .env-only secret (like secret_key), never a sync_state/DB column, so a copied myorishop.db cannot leak the device credential (T-29-01)
 - [Phase ?]: 29-01: sync_state uses an Integer singleton PK (id=1), a local-only never-synced table, exempt from the UUID-PK convention that targets synced entities
 - [Phase ?]: 29-01: auto-sync toggle/interval live on sync_state (runtime-mutable, D-15), not static .env
+- [Phase 29]: sync_client state+presentation layer (29-02): SyncResult, single-row sync_state persistence (D-10), fresh+clamped auto-sync config (D-08/D-15), unsynced badge (D-11), LOCKED D-12 RU formatter — built and unit-tested ahead of the Plan-03 network driver
 
 ### Pending Todos
 
@@ -174,7 +176,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T01:31:23.851Z
+Last session: 2026-07-20T01:54:13.614Z
 Stopped at: Phase 29 UI-SPEC approved
 Resume file: None
 
