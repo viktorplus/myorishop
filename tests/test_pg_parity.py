@@ -334,3 +334,42 @@ def test_pg_cash_synced_at_stamp_allowed():
                 )
     finally:
         engine.dispose()
+
+
+# --- Phase 29 Plan 01 (SRV-01): sync_state + unsynced partial indexes --------
+
+
+def test_sync_state_and_unsynced_indexes_on_pg():
+    """SRV-01: migration 0020's sync_state table + the two `synced_at IS NULL`
+    partial indexes build on PostgreSQL under the one shared migration history.
+
+    Proves the D-10/D-15 sync bookkeeping table and the D-11 unsynced-badge
+    indexes are portable — the sync cursor + badge work on the server too. Only
+    literal constant strings are used in SQL (no external data interpolated;
+    Security V5 / T-26-03), and the index-name IN-list uses bound parameters.
+    """
+    _upgrade_head()
+    engine = _engine()
+    try:
+        with engine.connect() as conn:
+            table = conn.execute(
+                text("SELECT to_regclass('sync_state')")
+            ).scalar()
+            assert table is not None, "missing table on PG: sync_state"
+
+            index_names = {
+                row[0]
+                for row in conn.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE indexname IN (:a, :b)"
+                    ),
+                    {"a": "ix_operations_unsynced", "b": "ix_cash_movements_unsynced"},
+                )
+            }
+        assert index_names == {
+            "ix_operations_unsynced",
+            "ix_cash_movements_unsynced",
+        }, f"missing unsynced partial indexes on PG: {index_names}"
+    finally:
+        engine.dispose()
