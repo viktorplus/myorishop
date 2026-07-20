@@ -535,6 +535,17 @@ def run_sync_tick() -> None:
                 last_result=message,
                 last_sync_at=last_sync_at,
             )
-            session.commit()
+            try:
+                session.commit()
+            except Exception:
+                # WR-03: on shutdown this tick runs in an offloaded worker thread
+                # that anyio waits for, but engine/app teardown can still race the
+                # final commit. Swallow any commit failure (and a best-effort
+                # rollback) so a detached worker never surfaces a stray unhandled
+                # exception — this entry point must never raise.
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
     finally:
         _run_lock.release()

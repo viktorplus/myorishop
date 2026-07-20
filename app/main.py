@@ -81,7 +81,15 @@ async def _auto_sync_iteration() -> int:
         with SessionLocal() as session:
             enabled, interval = sync_client.read_autosync_config(session)
         if enabled:
-            await anyio.to_thread.run_sync(sync_client.run_sync_tick)
+            # WR-03: abandon_on_cancel=False (also anyio's default, pinned here
+            # explicitly for intent) means that when the lifespan cancels this
+            # loop on shutdown, anyio does NOT abandon the worker thread — the
+            # awaiting task waits for run_sync_tick to finish its DB commit before
+            # the CancelledError propagates. That bounds the shutdown wait so a
+            # live sync_state commit never races engine teardown.
+            await anyio.to_thread.run_sync(
+                sync_client.run_sync_tick, abandon_on_cancel=False
+            )
     except Exception:
         # D-08: offline / transport / transient DB error → silently skip.
         pass
