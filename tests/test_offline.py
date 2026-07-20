@@ -586,3 +586,30 @@ def test_script_tag_escaping_round_trip_mixed_case(client, session, product, bat
         rec.data.get("name") for rec in batch_parsed.records if rec.kind == "product"
     ]
     assert "Крем</SCRIPT>и</Script>Ночной" in product_names
+
+
+def test_logic_script_block_has_no_raw_end_tag(client, monkeypatch):
+    """The self-uploading file's LOGIC <script> (preview/login/upload) must contain
+    no literal `</script` of any case in its own JS or comments.
+
+    HTML terminates a raw-text <script> element at the FIRST `</script` regardless
+    of JS-comment context, so a `</script` written inside this live block cuts the
+    login/upload/preview logic dead on every machine — the exact UAT blocker where
+    the CR-01 fix's own explanatory comments (`</script`, `</SCRIPT`, `</Script`)
+    silently broke the exported file. The existing round-trip tests only guard the
+    embedded DATA block; this guards the LOGIC block that must actually execute.
+    """
+    import re as _re
+
+    monkeypatch.setattr(settings, "sync_server_url", "https://sync.example.com")
+    resp = client.get("/offline/export")
+    assert resp.status_code == 200
+
+    # The logic block is the ONLY attribute-less `<script>` (the data block is
+    # `<script id="payload" type="application/x-ndjson">`). Slice its body up to its
+    # own closing tag and assert nothing inside could terminate it early.
+    open_tag = "<script>"
+    start = resp.text.index(open_tag) + len(open_tag)
+    end = resp.text.index("</script>", start)
+    logic_body = resp.text[start:end]
+    assert not _re.search(r"</script", logic_body, _re.IGNORECASE)

@@ -143,11 +143,13 @@
 
         // (1) On load: recover the ORIGINAL NDJSON, parse the header, render the
         // preview counts, and stage the ORIGINAL payload into the hidden field —
-        // BEFORE any network call. Reversing `<\/script` → `</script` makes the
-        // digest the server recomputes match byte-for-byte (T-30-08 / Pitfall 1).
-        // The reverse is case-INSENSITIVE and case-PRESERVING (the server escapes
-        // every case variant of </script; $1 restores the original tag word so
-        // </SCRIPT / </Script round-trip byte-for-byte, CR-01).
+        // BEFORE any network call. Reversing the escaped closing-tag marker back
+        // to the real closing tag makes the digest the server recomputes match
+        // byte-for-byte (T-30-08 / Pitfall 1). The reverse is case-INSENSITIVE and
+        // case-PRESERVING (the server escapes every case variant of the closing
+        // script tag; $1 restores the original tag word so mixed-case variants
+        // round-trip byte-for-byte, CR-01). NOTE: never write the literal closing
+        // script token in this live <script> block — it would terminate it early.
         try {
           var raw = document.getElementById("payload").textContent;
           var ndjson = raw.replace(/<\\\/(script)/gi, "</$1");
