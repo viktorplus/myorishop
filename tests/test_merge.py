@@ -183,6 +183,40 @@ def test_round_trip():
     assert parsed_op.data["created_by"] == "operator"
 
 
+def test_payload_digest_matches_serialized_record_lines():
+    """serialize_exchange emits a payload_sha256 over the record lines only (D-08)."""
+    originals = _to_exchange_records([_PRODUCT, _OPERATION, _CASH])
+    lines = list(
+        merge.serialize_exchange(
+            originals,
+            schema_version="0017",
+            source_device_id="dev-1",
+            generated_at="2026-07-19T10:00:00+00:00",
+        )
+    )
+    header = json.loads(lines[0])
+    record_lines = lines[1:]
+    # The header digest equals the ONE pure helper over the record lines only.
+    assert header["payload_sha256"] == merge.payload_digest(record_lines)
+
+
+def test_payload_digest_empty_is_sha256_of_empty_string():
+    """An empty record list digests to the SHA-256 of the empty string."""
+    import hashlib
+
+    empty_digest = hashlib.sha256(b"").hexdigest()
+    assert merge.payload_digest([]) == empty_digest
+    lines = list(
+        merge.serialize_exchange(
+            [],
+            schema_version="",
+            source_device_id=None,
+            generated_at="2026-07-19T10:00:00+00:00",
+        )
+    )
+    assert json.loads(lines[0])["payload_sha256"] == empty_digest
+
+
 def test_format_version_rejected():
     """A header carrying an unsupported format_version is rejected."""
     lines = build_ndjson(header_overrides={"format_version": 999}, records=[_PRODUCT])

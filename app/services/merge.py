@@ -22,6 +22,7 @@ arrives in Plans 02-03; the dataclasses ``Conflict``/``MergeReport`` are declare
 now so the contract is stable for those plans.
 """
 
+import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
@@ -524,6 +525,20 @@ def apply_merge(session: Session, batch: ExchangeBatch, *, server_now: str) -> M
     return report
 
 
+def payload_digest(record_lines: list[str]) -> str:
+    """SHA-256 hex of the LF-joined record lines (OFF-07 / D-08): the ONE digest.
+
+    PURE — no DB/file/network. The single integrity-checksum implementation shared
+    by ``serialize_exchange`` (emit side) and the 30-03 upload route (verify side),
+    so the two can never diverge (SYNC-04 applied to the checksum, D-08). Computed
+    over the record JSON lines ONLY (header excluded), in exact emission order,
+    joined with ``"\n"``. An empty record list yields the SHA-256 of the empty
+    string. The route canonicalizes CRLF via ``splitlines()`` before calling this,
+    so the digest stays newline-style-agnostic (Pitfall 1).
+    """
+    return hashlib.sha256("\n".join(record_lines).encode("utf-8")).hexdigest()
+
+
 def serialize_exchange(
     records: Iterable[ExchangeRecord],
     *,
@@ -534,16 +549,22 @@ def serialize_exchange(
     """Serialize records to NDJSON lines, header FIRST (PURE — no DB/file/network).
 
     Yields the header envelope (``kind`` == "header", ``format_version`` ==
-    FORMAT_VERSION, the envelope fields, and a ``counts`` map) then one
+    FORMAT_VERSION, the envelope fields, a ``counts`` map, and a ``payload_sha256``
+    integrity field over the record lines only, D-08) then one
     ``{"kind": rec.kind, **rec.data}`` line per record. Round-trip identity: for
     any record list ``R``, ``parse_exchange(serialize_exchange(R, ...)).records``
-    equals ``R`` field-for-field.
+    equals ``R`` field-for-field (``parse_exchange`` ignores unknown header keys).
     """
     materialized = list(records)
 
     counts: dict[str, int] = {}
     for record in materialized:
         counts[record.kind] = counts.get(record.kind, 0) + 1
+
+    record_lines = [
+        json.dumps({"kind": record.kind, **record.data}, ensure_ascii=False)
+        for record in materialized
+    ]
 
     header = {
         "kind": "header",
@@ -552,8 +573,9 @@ def serialize_exchange(
         "source_device_id": source_device_id,
         "generated_at": generated_at,
         "counts": counts,
+        "payload_sha256": payload_digest(record_lines),
     }
     yield json.dumps(header, ensure_ascii=False)
 
-    for record in materialized:
-        yield json.dumps({"kind": record.kind, **record.data}, ensure_ascii=False)
+    for line in record_lines:
+        yield line
