@@ -7,17 +7,14 @@ read, the D-11 unsynced badge, and the LOCKED D-12 Russian result strings.
 
 from sqlalchemy.orm import sessionmaker
 
-from app.config import settings
-from app.core import new_id, utcnow_iso
-from app.models import CashMovement, Operation, SyncState
+from app.core import utcnow_iso
+from app.models import SyncState
 from app.services import sync_client
 from app.services.sync_client import (
     DEFAULT_INTERVAL_SECONDS,
     MAX_INTERVAL_SECONDS,
     MIN_INTERVAL_SECONDS,
-    SyncResult,
 )
-
 
 # --- Task 1: state layer (get_or_create / record_sync_result / read_autosync_config) ---
 
