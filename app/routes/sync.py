@@ -22,13 +22,15 @@ import dataclasses
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import utcnow_iso
 from app.db import get_session
 from app.models import DeviceToken
+from app.routes import templates
+from app.services import sync_client
 from app.services.merge import apply_merge, parse_exchange, serialize_exchange
 from app.services.rate_limit import check_rate_limit
 from app.services.security import require_device
@@ -36,6 +38,13 @@ from app.services.sync import (
     DEFAULT_PULL_LIMIT,
     collect_reference_records,
     current_schema_version,
+)
+from app.services.sync_client import (
+    SyncResult,
+    format_sync_message,
+    get_or_create_sync_state,
+    record_sync_result,
+    unsynced_count,
 )
 
 # RU error messages (UI-SPEC Copywriting Contract). HTML-free.
@@ -194,3 +203,82 @@ def sync_pull(
         media_type=PULL_MEDIA_TYPE,
         headers=headers,
     )
+
+
+# ---------------------------------------------------------------------------
+# Manual sync trigger (Phase 29, Plan 04). Unlike the /api/sync/* routes above,
+# `/sync/run` is NOT under the SYNC_PATH_PREFIX bypass, so it stays behind the
+# app-level auth_guard: a normal logged-in operator (not just an admin) may
+# trigger sync (D-01), and the CSRF token is carried by the base.html body
+# hx-headers line (T-29-13). It renders the sync_status.html OOB partial.
+# ---------------------------------------------------------------------------
+
+
+def _render_sync_status(
+    result: SyncResult, session: Session, *, oob: bool = True
+) -> HTMLResponse:
+    """Render the OOB sync-status partial for `result` off the CURRENT state.
+
+    Reads the sync_state row + the live unsynced count FRESH from `session`, so
+    a post-commit render reflects the just-stamped rows. Only the LOCKED D-12
+    strings + the integer count cross into the HTML (T-29-07)."""
+    row = get_or_create_sync_state(session)
+    message, last_sync_line = format_sync_message(result, row, settings.display_tz)
+    html = templates.get_template("partials/sync_status.html").render(
+        oob=oob,
+        sync_message=message,
+        last_sync_line=last_sync_line,
+        unsynced=unsynced_count(session),
+    )
+    return HTMLResponse(html)
+
+
+@router.post("/sync/run")
+def sync_run(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Run one manual push+pull sync and return the OOB status/badge partial.
+
+    Plain `def` (D-04): FastAPI runs it in the threadpool (CLAUDE.md sync-session
+    rule). ALWAYS returns 200 — a network failure surfaces as a plain RU D-12
+    partial, never a 5xx that base.html's htmx-config would refuse to swap
+    (SYNC-06). D-09: the shared `_run_lock` is acquired non-blocking, so a fast
+    double-click / an overlapping tick yields the `locked` partial instead of a
+    second run. The token and raw exception text are never rendered (T-29-07)."""
+    # D-09: single-run guard. A second concurrent caller gets the locked partial.
+    if not sync_client._run_lock.acquire(blocking=False):
+        return _render_sync_status(SyncResult(status="locked"), session)
+    try:
+        # SRV-03 no-op: a fresh install with no server configured never hits the
+        # network — render the not-configured state without building a client.
+        if not settings.sync_server_url or not settings.sync_token:
+            return _render_sync_status(SyncResult(status="not_configured"), session)
+
+        client = sync_client.build_sync_client()
+        try:
+            # The driver is offline-safe (never raises httpx); the broad guard is
+            # belt-and-braces so NOTHING can turn into a 5xx (SYNC-06).
+            result = sync_client.run_sync_once(session, client=client)
+        except Exception:
+            result = SyncResult(status="error")
+        finally:
+            client.close()
+
+        row = get_or_create_sync_state(session)
+        last_sync_at = (
+            utcnow_iso()
+            if result.status in ("ok", "partial")
+            else row.last_sync_at
+        )
+        message, _ = format_sync_message(result, row, settings.display_tz)
+        record_sync_result(
+            session,
+            status=result.status,
+            last_result=message,
+            last_sync_at=last_sync_at,
+        )
+        session.commit()
+        return _render_sync_status(result, session)
+    finally:
+        sync_client._run_lock.release()

@@ -1,0 +1,16 @@
+{# Header sync surface (SYNC-06/07, D-01/D-02). Mirrors partials/cash_balance.html:
+   each id'd element carries hx-swap-oob="true" ONLY when rendered with oob=True,
+   so the SAME template serves base.html's first paint (oob unset) and the
+   POST /sync/run in-place refresh. Copy is the LOCKED D-12 Russian strings from
+   format_sync_message — only fixed strings + integer counts ever reach the DOM,
+   never the token or a raw server error byte (T-29-07).
+
+   No new CSS token (UI-SPEC hard rule): `.muted` (style.css:272) is the existing
+   14px caption class; the badge reuses the locked price-cue amber pair
+   (#b45309 text on #fef9e7 tint, style.css:341) with the UI-SPEC badge geometry
+   (padding 4px 8px, radius 4px, 14px/600) inline — the base.html inline-style
+   precedent (logout link, line 56). #sync-badge is ALWAYS emitted so an OOB swap
+   can clear a stale badge when the count drops to 0; the visible count span is
+   present only when unsynced > 0 (D-12 "hide at 0"). #}
+<span id="sync-status" class="muted"{% if oob %} hx-swap-oob="true"{% endif %}>{{ sync_message }}{% if last_sync_line %}<br>{{ last_sync_line }}{% endif %}</span>
+<span id="sync-badge"{% if oob %} hx-swap-oob="true"{% endif %}>{% if unsynced and unsynced > 0 %}<span class="sync-badge-count" style="font-size:14px;font-weight:600;color:#b45309;background:#fef9e7;padding:4px 8px;border-radius:4px">{{ unsynced }}</span>{% endif %}</span>
