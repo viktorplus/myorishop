@@ -368,3 +368,193 @@ def test_run_sync_once_not_configured(session, monkeypatch):
     result = sync_client.run_sync_once(session, client=_mock_client(handler))
 
     assert result.status == "not_configured"
+
+
+# --- Plan-03 Task 2: pull D-14 server-wins + offline mapping + run_sync_tick ---
+
+
+def test_pull_applies_server_update(sync_driver_pair, session):
+    """D-14: a reference row already on the client (matched by UUID) whose fields
+    changed on the server is OVERWRITTEN with the server's version (server wins)."""
+    pair = sync_driver_pair
+    pid = new_id()
+    session.add(Product(id=pid, code="P-1", name="Старое имя", quantity=0))
+    session.commit()
+    pair.server_session.add(
+        Product(id=pid, code="P-1", name="Новое имя", quantity=0)
+    )
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    session.expire_all()
+    assert session.get(Product, pid).name == "Новое имя"  # server wins (D-14)
+
+
+def test_pull_inserts_new_server_rows(sync_driver_pair, session):
+    """A NEW server reference row the client lacks is inserted on pull (D-14 keeps
+    the existing insert behavior for new rows)."""
+    pair = sync_driver_pair
+    pid = new_id()
+    pair.server_session.add(
+        Product(id=pid, code="NEW-1", name="Только на сервере", quantity=0)
+    )
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    assert result.pulled >= 1
+    assert session.get(Product, pid) is not None
+
+
+def test_pull_does_not_clobber_local_quantity(sync_driver_pair, session, warehouse):
+    """The server's cached `quantity` must NOT overwrite local stock: after a pull,
+    Product/Batch quantity is recomputed from the LOCAL ledger (Pitfall 2/D-14)."""
+    pair = sync_driver_pair
+    pid, bid = new_id(), new_id()
+    session.add(Product(id=pid, code="Q-1", name="Товар", quantity=0))
+    session.commit()
+    session.add(Batch(id=bid, product_id=pid, warehouse_id=warehouse.id, quantity=0))
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=pid,
+        qty_delta=8,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        batch_id=bid,
+    )
+    assert session.get(Product, pid).quantity == 8
+    # The server offers the same product with a bogus cached quantity + new name.
+    pair.server_session.add(
+        Product(id=pid, code="Q-1", name="Товар с сервера", quantity=99)
+    )
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    session.expire_all()
+    updated = session.get(Product, pid)
+    assert updated.name == "Товар с сервера"  # master data: server wins
+    assert updated.quantity == 8  # stock stays local-ledger-derived
+
+
+def test_offline_returns_offline_not_raise(session, stocked_product, monkeypatch):
+    """SYNC-06: a transport error (ConnectError) → status='offline'; never raised."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+
+    def handler(request):
+        raise httpx.ConnectError("no route to host")
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "offline"
+    assert sync_client.unsynced_count(session) > 0  # nothing stamped
+
+
+def test_push_ok_pull_fail_is_partial(session, stocked_product, monkeypatch):
+    """A push that landed but a pull that failed → status='partial'; the push is
+    durable (the pushed rows stay stamped)."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+
+    def handler(request):
+        if request.url.path == "/api/sync/push":
+            return httpx.Response(200, json=_MERGE_REPORT_JSON)
+        return httpx.Response(500, text="pull boom")
+
+    before = sync_client.unsynced_count(session)
+    assert before > 0
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "partial"
+    assert result.pushed == before
+    assert sync_client.unsynced_count(session) == 0  # push landed → stamped
+
+
+def test_local_work_unaffected_when_unconfigured(session, warehouse, monkeypatch):
+    """SRV-03: local writes succeed with the server down / URL blank, and the local
+    write path (ledger) imports nothing from the network driver."""
+    import inspect
+
+    from app.services import ledger as ledger_module
+
+    monkeypatch.setattr(settings, "sync_server_url", "")
+    monkeypatch.setattr(settings, "sync_token", "")
+    pid, bid = new_id(), new_id()
+    session.add(Product(id=pid, code="LW-1", name="Товар", quantity=0))
+    session.commit()
+    session.add(Batch(id=bid, product_id=pid, warehouse_id=warehouse.id, quantity=0))
+    session.commit()
+
+    op = record_operation(
+        session,
+        type_="receipt",
+        product_id=pid,
+        qty_delta=3,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        batch_id=bid,
+    )
+
+    assert op.id is not None
+    assert session.get(Product, pid).quantity == 3
+    assert "sync_client" not in inspect.getsource(ledger_module)
+
+
+def test_run_sync_tick_respects_toggle(sync_driver_pair, engine, monkeypatch):
+    """D-15: run_sync_tick with auto OFF does nothing; with auto ON it runs the
+    driver and records a result (D-09/D-10)."""
+    pair = sync_driver_pair
+    tick_sessions = sessionmaker(bind=engine)
+    monkeypatch.setattr(sync_client, "SessionLocal", tick_sessions)
+    monkeypatch.setattr(sync_client, "build_sync_client", lambda: pair.client)
+
+    # Auto OFF → no sync, no recorded result.
+    sync_client.run_sync_tick()
+    with tick_sessions() as check:
+        row = check.get(SyncState, 1)
+        assert row is None or row.last_status is None
+
+    # Enable auto → the tick runs the driver and records a result.
+    with tick_sessions() as setup:
+        state = sync_client.get_or_create_sync_state(setup)
+        state.auto_enabled = 1
+        setup.commit()
+
+    sync_client.run_sync_tick()
+    with tick_sessions() as check:
+        row = check.get(SyncState, 1)
+        assert row is not None
+        assert row.last_status in ("ok", "partial")
+
+
+def test_run_sync_tick_offline_is_swallowed(engine, monkeypatch):
+    """D-08: an offline tick is swallowed into the recorded result — the loop
+    primitive never raises."""
+    tick_sessions = sessionmaker(bind=engine)
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+    monkeypatch.setattr(sync_client, "SessionLocal", tick_sessions)
+
+    def handler(request):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(
+        sync_client, "build_sync_client", lambda: _mock_client(handler)
+    )
+    with tick_sessions() as setup:
+        state = sync_client.get_or_create_sync_state(setup)
+        state.auto_enabled = 1
+        setup.commit()
+
+    sync_client.run_sync_tick()  # must NOT raise
+
+    with tick_sessions() as check:
+        assert check.get(SyncState, 1).last_status == "offline"
