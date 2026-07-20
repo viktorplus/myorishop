@@ -92,7 +92,7 @@ Full phase details archived in `.planning/milestones/v2.0-ROADMAP.md`.
 - [x] **Phase 26: PostgreSQL Portability & Append-Only Parity** - One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee (completed 2026-07-18)
 - [x] **Phase 27: Shared Idempotent Merge Core** - The single server-side merge engine and exchange format: UUID-idempotent ledger replay, post-merge recompute, and server-authoritative reference-data conflict policy, proven portable on SQLite + PostgreSQL in CI (completed 2026-07-19)
 - [x] **Phase 28: Central Server — Hosting & Sync API** - The VPS PostgreSQL server hosting both online interfaces plus token-authenticated push/pull sync endpoints and the column-scoped trigger relaxation (completed 2026-07-19)
-- [ ] **Phase 29: Online Client Sync** - «Синхронизировать» push/pull, sync status + last-sync time, unsynced-count badge, optional interval sync, offline-safe failure
+- [x] **Phase 29: Online Client Sync** - «Синхронизировать» push/pull, sync status + last-sync time, unsynced-count badge, optional interval sync, offline-safe failure (completed 2026-07-20)
 - [ ] **Phase 30: Offline Self-Uploading File** - Upload-only USB path: export not-yet-uploaded work to a self-contained file that authenticates, previews, and uploads itself through the same merge engine
 
 #### Phase 25: Authentication, Roles & User Attribution
@@ -229,7 +229,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 29-04-PLAN.md — «Синхронизировать» button + header OOB status/badge partial + POST /sync/run + every-page context (wave 4)
-- [ ] 29-05-PLAN.md — Optional interval auto-sync lifespan loop + Settings auto-sync toggle/interval (wave 4)
+- [x] 29-05-PLAN.md — Optional interval auto-sync lifespan loop + Settings auto-sync toggle/interval (wave 4)
 
 **UI hint**: yes
 
@@ -286,5 +286,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
-| 29. Online Client Sync | v3.0 | 4/5 | In Progress|  |
+| 29. Online Client Sync | v3.0 | 5/5 | Complete   | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |

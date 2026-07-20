@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
-status: executing
+status: verifying
 stopped_at: Phase 29 UI-SPEC approved
-last_updated: "2026-07-20T02:44:47.267Z"
+last_updated: "2026-07-20T03:04:23.971Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 27
-  completed_plans: 26
-  percent: 67
+  completed_plans: 27
+  percent: 83
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 Phase: 29 (online-client-sync) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-20
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -89,6 +89,7 @@ Progress: [██████████] 96%
 | Phase 29 P02 | 15min | 2 tasks | 2 files |
 | Phase 29 P03 | 40min | 2 tasks | 3 files |
 | Phase 29 P04 | 40min | 2 tasks | 5 files |
+| Phase 29 P05 | 45min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 29]: sync_client state+presentation layer (29-02): SyncResult, single-row sync_state persistence (D-10), fresh+clamped auto-sync config (D-08/D-15), unsynced badge (D-11), LOCKED D-12 RU formatter — built and unit-tested ahead of the Plan-03 network driver
 - [Phase ?]: 29-03: D-14 client pull upsert uses Core update() with server values set explicitly so onupdate keeps the server's updated_at; id+quantity excluded and recompute_derived rebuilds stock from the local ledger — server wins on master data while local stock is preserved
 - [Phase ?]: 29-04: manual sync surface — POST /sync/run always-200 OOB handler (SYNC-06) + every-page context processor + base.html nav trigger/status/badge (D-01/D-02); unsynced badge styled inline with locked price-cue token values, no new CSS token
+- [Phase ?]: 29-05: interval auto-sync runs as a zero-dependency asyncio loop in the FastAPI lifespan (D-06); the blocking driver is offloaded via anyio.to_thread.run_sync with a fresh Session (D-07); the whole tick is broad-guarded so any error is swallowed and the loop never dies (D-08); cancelled cleanly on shutdown
+- [Phase ?]: 29-05: admin Settings «Синхронизация» control persists auto_enabled + interval clamped 60..3600 to sync_state (D-03/D-15); a bad interval is defaulted/clamped, never a 5xx; sync_token never surfaced (T-29-07)
 
 ### Pending Todos
 
@@ -180,7 +183,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T02:44:09.356Z
+Last session: 2026-07-20T03:04:10.310Z
 Stopped at: Phase 29 UI-SPEC approved
 Resume file: None
 
