@@ -228,7 +228,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 29-04-PLAN.md — «Синхронизировать» button + header OOB status/badge partial + POST /sync/run + every-page context (wave 4)
+- [x] 29-04-PLAN.md — «Синхронизировать» button + header OOB status/badge partial + POST /sync/run + every-page context (wave 4)
 - [ ] 29-05-PLAN.md — Optional interval auto-sync lifespan loop + Settings auto-sync toggle/interval (wave 4)
 
 **UI hint**: yes
@@ -286,5 +286,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
-| 29. Online Client Sync | v3.0 | 3/5 | In Progress|  |
+| 29. Online Client Sync | v3.0 | 4/5 | In Progress|  |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
