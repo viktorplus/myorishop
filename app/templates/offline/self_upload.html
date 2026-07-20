@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Загрузка данных MyOriShop</title>
+  {# OFF-03 self-containment: NO <link>, NO @import, NO web-font, NO CDN, NO
+     external image — the internet PC may be firewalled to everything but the
+     server. The tokens below are inline-replicated VERBATIM from
+     app/static/style.css / the Phase 30 UI-SPEC §S1 table (zero new tokens). #}
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      background: #fafafa;
+      color: #222;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 16px 16px 32px;
+    }
+    h1 { font-size: 24px; font-weight: 600; line-height: 1.2; }
+    h2 { font-size: 20px; font-weight: 600; line-height: 1.2; }
+    label { display: block; font-size: 14px; margin-bottom: 4px; }
+    .field { margin-bottom: 16px; }
+    input {
+      padding: 8px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 8px 16px;
+      background: #2563eb;
+      color: #fff;
+      border: 1px solid #2563eb;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    :focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+    .muted { color: #6b7280; font-size: 14px; }
+    .error-block {
+      background: #fdecec;
+      color: #b91c1c;
+      padding: 8px 16px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+    .preview-panel {
+      background: #fff;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .preview-panel p { margin: 4px 0; }
+  </style>
+</head>
+{# server_url is embedded in an HTML attribute (autoescaped by Jinja2 — the
+   correct context) and read back by the inline JS via dataset, so the fetch
+   target never lives inside a JS string literal. #}
+<body data-server="{{ server_url }}">
+  <main>
+    <h1>Загрузка данных MyOriShop</h1>
+    <p class="muted">Этот файл собран в офлайн-режиме и содержит данные для отправки на сервер. Войдите под своим логином и паролем, проверьте, что будет отправлено, и подтвердите загрузку.</p>
+
+    {# (a) preview-with-counts / (b) preview-empty — rendered by JS from the
+       embedded header BEFORE any network call (OFF-06 / D-10). #}
+    <section id="preview">
+      <h2>Будет отправлено</h2>
+      <div class="preview-panel" id="preview-body"></div>
+    </section>
+
+    {# (c) creds-entry + (d) login-error. The login inputs are NOT part of the
+       upload <form>: they feed the step-1 fetch only, so no business data can
+       leave on a failed login (OFF-04). #}
+    <section id="login-step">
+      <div class="error-block" id="error" hidden></div>
+      <div class="field">
+        <label for="login">Логин</label>
+        <input type="text" id="login" name="login" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Пароль</label>
+        <input type="password" id="password" name="password" autocomplete="current-password">
+      </div>
+      <button type="button" id="verify">Проверить</button>
+    </section>
+
+    {# (e) authenticated / confirm-ready + (f) submitting. This top-level
+       navigation <form> is the ONLY control that POSTs the payload; it is
+       revealed only after a confirmed login and stays hidden until then
+       (OFF-06 / D-10). Nothing uploads before the "Отправить на сервер" click. #}
+    <form id="upload" method="post" enctype="multipart/form-data"
+          action="{{ server_url }}/api/offline/upload" hidden>
+      <input type="hidden" name="token" id="token">
+      <input type="hidden" name="payload" id="payload-field">
+      <button type="submit" id="confirm">Отправить на сервер</button>
+      <p class="muted">Ничего не отправляется, пока вы не нажмёте эту кнопку.</p>
+      <p class="muted" id="sending" hidden>Отправка…</p>
+    </form>
+
+    {# D-02 / T-30-08: the NDJSON lives in a NON-executable script block; the only
+       breakout vector (</script>) was already neutralized at render time, so
+       `| safe` is correct here (Pitfall 6). id comes BEFORE type so the JS marker
+       `type="application/x-ndjson">` sits immediately before the `>`. #}
+    <script id="payload" type="application/x-ndjson">{{ embedded | safe }}</script>
+
+    <script>
+      (function () {
+        "use strict";
+        // RU labels in the UI-SPEC §S1 display order (zero counts omitted).
+        var RU_LABELS = {
+          operation: "Операции",
+          product: "Товары",
+          customer: "Покупатели",
+          batch: "Партии",
+          sale: "Продажи",
+          cash_movement: "Движения кассы"
+        };
+        var server = document.body.dataset.server;
+        var previewBody = document.getElementById("preview-body");
+        var errorEl = document.getElementById("error");
+        var loginStep = document.getElementById("login-step");
+        var uploadForm = document.getElementById("upload");
+        var tokenField = document.getElementById("token");
+        var payloadField = document.getElementById("payload-field");
+        var confirmBtn = document.getElementById("confirm");
+        var sendingEl = document.getElementById("sending");
+        var hasData = false;
+
+        function showError(msg) {
+          errorEl.textContent = msg;
+          errorEl.hidden = false;
+        }
+
+        // (1) On load: recover the ORIGINAL NDJSON, parse the header, render the
+        // preview counts, and stage the ORIGINAL payload into the hidden field —
+        // BEFORE any network call. Reversing `<\/script` → `</script` makes the
+        // digest the server recomputes match byte-for-byte (T-30-08 / Pitfall 1).
+        try {
+          var raw = document.getElementById("payload").textContent;
+          var ndjson = raw.replace(/<\\\/script/g, "</script");
+          var header = JSON.parse(ndjson.split("\n")[0]);
+          var counts = header.counts || {};
+          var total = 0;
+          Object.keys(counts).forEach(function (k) { total += (counts[k] || 0); });
+          if (total > 0) {
+            hasData = true;
+            var html = "";
+            Object.keys(RU_LABELS).forEach(function (kind) {
+              var n = counts[kind] || 0;
+              if (n > 0) {
+                html += "<p>" + RU_LABELS[kind] + ": " + n + "</p>";
+              }
+            });
+            previewBody.innerHTML = html;
+            payloadField.value = ndjson;
+          } else {
+            previewBody.innerHTML =
+              "<p class='muted'>В файле нет данных для отправки.</p>";
+          }
+        } catch (e) {
+          previewBody.innerHTML =
+            "<p class='muted'>В файле нет данных для отправки.</p>";
+        }
+
+        // (2) Login: creds ONLY (OFF-04). x-www-form-urlencoded keeps it a CORS
+        // simple request (no preflight). On any failure the confirm step stays
+        // hidden and NO payload is transmitted.
+        document.getElementById("verify").addEventListener("click", function () {
+          errorEl.hidden = true;
+          var login = document.getElementById("login").value;
+          var password = document.getElementById("password").value;
+          fetch(server + "/api/offline/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ login: login, password: password })
+          }).then(function (resp) {
+            return resp.json().then(
+              function (data) { return { status: resp.status, data: data }; },
+              function () { return { status: resp.status, data: {} }; }
+            );
+          }).then(function (r) {
+            if (r.status === 200 && r.data.token) {
+              tokenField.value = r.data.token;
+              loginStep.hidden = true;
+              // Only reveal the upload control when there is something to send.
+              if (hasData) {
+                uploadForm.hidden = false;
+              }
+            } else if (r.status === 429) {
+              showError("Слишком много попыток. Подождите немного и попробуйте снова.");
+            } else {
+              showError("Неверный логин или пароль. Данные не отправлены.");
+            }
+          }).catch(function () {
+            showError("Не удалось связаться с сервером. Проверьте интернет и адрес сервера.");
+          });
+        });
+
+        // (3) Confirm: the native <form> submit is a top-level navigation that
+        // lands the operator on the S2 result page. Disable the button + show the
+        // no-graphic "Отправка…" caption (project convention: no spinner).
+        uploadForm.addEventListener("submit", function () {
+          confirmBtn.disabled = true;
+          sendingEl.hidden = false;
+        });
+      })();
+    </script>
+  </main>
+</body>
+</html>
