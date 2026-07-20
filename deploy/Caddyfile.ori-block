@@ -1,0 +1,24 @@
+# MyOriShop — Caddy site block for ori.viktorplus.com.
+#
+# Append this to the shared /opt/wgdashboard/Caddyfile on s1, then reload:
+#   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+# Matches the existing per-site style on that server (lesson.viktorplus.com,
+# build-or-kill.viktorplus.com — same reverse_proxy <container>:<port> shape).
+
+ori.viktorplus.com {
+    encode zstd gzip
+
+    @scanner {
+        path *.php* *.cgi* *xmlrpc* */wp-* *wordpress* *joomla* *drupal* *.git* *../* *..*
+    }
+    respond @scanner 404
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "interest-cohort=()"
+    }
+
+    reverse_proxy ori-app:8000
+}

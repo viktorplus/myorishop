@@ -1,0 +1,84 @@
+# MyOriShop — production stack for the shared s1 server.
+#
+# The HOST already runs ONE shared Caddy container (`caddy` on the external
+# `wgdashboard_default` network) that fronts every project on the box and does
+# Let's Encrypt automatically. This stack therefore ships ONLY app + db; the app
+# joins the shared Caddy network so Caddy can resolve `ori-app:8000` by DNS. A
+# private `ori-net` keeps the db reachable to the app but invisible to other
+# tenants. Container names use the `ori-*` prefix to avoid colliding with the
+# many pre-existing containers on s1 (signal-*, telega-*, bok-*, …).
+#
+# Env contract: .env.production lives next to this file at /opt/myorishop/ on the
+# server. NEVER committed; .env.production.example is the template.
+#
+# Server-side usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f ori-app
+#   docker compose -f docker-compose.prod.yml down        # stop, keep volumes
+#   docker compose -f docker-compose.prod.yml down -v      # stop AND wipe DB
+
+services:
+  ori-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: myorishop-app:latest
+    container_name: ori-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    # NO published ports — the shared host Caddy reaches this container by name
+    # over wgdashboard_default (`reverse_proxy ori-app:8000`).
+    expose:
+      - "8000"
+    depends_on:
+      ori-db:
+        condition: service_healthy
+    volumes:
+      # Persists the per-install device_id / secret_key fallback files so the
+      # server's device identity survives container rebuilds (app/config.py).
+      - ori-data:/app/data
+    healthcheck:
+      # Dependency-free TCP check: the ASGI port is accepting connections.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000), 2).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ori-net       # private link to ori-db
+      - caddy-shared  # so the host Caddy can resolve "ori-app"
+
+  ori-db:
+    image: postgres:17-alpine
+    container_name: ori-db
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    expose:
+      - "5432"
+    volumes:
+      - ori-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - ori-net  # private — NOT exposed to other tenants on caddy-shared
+
+volumes:
+  ori-postgres-data:
+  ori-data:
+
+networks:
+  ori-net:
+    driver: bridge
+  # External network = the existing shared bridge that the host Caddy lives on.
+  # Created and owned by the wgdashboard compose project; we just attach.
+  caddy-shared:
+    external: true
+    name: wgdashboard_default

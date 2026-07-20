@@ -1,0 +1,29 @@
+# Keep the build context small and secrets/local state out of the image.
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+
+# Local runtime state — must NEVER be baked into the image (device_id, secret_key,
+# the SQLite DB and its backups live here on a dev machine).
+data/
+backups/
+
+# Secrets and local env
+.env
+.env.*
+!.env.production.example
+
+# Dev-only / non-runtime
+tests/
+reports/
+scripts/__pycache__/
+# scripts/ IS kept: the one-off reference-catalog import (import_master_pricelist.py)
+# runs INSIDE the container after deploy. The master price-list xlsx under
+# catalogs/ is likewise kept; only the bulky per-catalog PDFs/price_lists are cut.
+catalogs/*.pdf
+catalogs/price_lists/
+*.md
+!deploy/*.md
+run.bat
