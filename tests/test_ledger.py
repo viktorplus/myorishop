@@ -270,7 +270,18 @@ def test_migration_0004_preserves_append_only_triggers(tmp_path, monkeypatch):
         assert "operations_no_update" in triggers
         assert "operations_no_delete" in triggers
 
-        product_id = conn.execute(text("SELECT id FROM products LIMIT 1")).scalar()
+        # Insert our own product — the DB now ships with ZERO seeded products
+        # (migration 0022 removed the demo placeholder), so this test must not
+        # rely on a pre-existing row.
+        product_id = new_id()
+        conn.execute(
+            text(
+                "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+                "VALUES (:id, 'TEST-1', 'Тест', 0, "
+                "'2026-07-09T00:00:00+00:00', '2026-07-09T00:00:00+00:00')"
+            ),
+            {"id": product_id},
+        )
         conn.execute(
             text(
                 "INSERT INTO operations "
