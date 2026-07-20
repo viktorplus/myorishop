@@ -13,9 +13,8 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import Batch, CashMovement, Operation, Product, Sale, SyncState
-from app.services import rate_limit
-from app.services.ledger import next_seq, record_operation
-from app.services import sync_client
+from app.services import rate_limit, sync_client
+from app.services.ledger import record_operation
 from app.services.sync_client import (
     DEFAULT_INTERVAL_SECONDS,
     MAX_INTERVAL_SECONDS,
