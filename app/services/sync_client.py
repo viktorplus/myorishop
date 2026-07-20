@@ -391,6 +391,16 @@ def run_sync_once(session: Session, *, client: httpx.Client) -> SyncResult:
         pulled = _pull_all(session, client)
     except httpx.HTTPError:
         return SyncResult(status="partial", pushed=pushed, pushed_total=pushed_total)
+    except Exception:
+        # WR-01 / D-10: a poisoned pull page can raise a NON-httpx error —
+        # `recompute_derived` raises ValueError on an invariant mismatch and a FK
+        # IntegrityError can escape `_apply_pull_page`. The `with session.begin()`
+        # around the page already rolled that page back; the durable push MUST
+        # still be credited (Pitfall 3) and this driver must never re-raise, so
+        # report `partial` just like the httpx path. A defensive rollback keeps
+        # the session clean for the caller's own record_sync_result + commit.
+        session.rollback()
+        return SyncResult(status="partial", pushed=pushed, pushed_total=pushed_total)
 
     return SyncResult(
         status="ok", pushed=pushed, pushed_total=pushed_total, pulled=pulled
@@ -504,6 +514,14 @@ def run_sync_tick() -> None:
             client = build_sync_client()
             try:
                 result = run_sync_once(session, client=client)
+            except Exception:
+                # WR-01 / D-10: the driver is offline-safe, but any unexpected
+                # error must STILL be recorded — not unwound past
+                # record_sync_result leaving last_status/last_sync_at stale on the
+                # background tick (the loop's outer guard would otherwise swallow
+                # it and skip the D-10 write entirely).
+                session.rollback()
+                result = SyncResult(status="error")
             finally:
                 client.close()
             row = get_or_create_sync_state(session)
