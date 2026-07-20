@@ -259,7 +259,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 30-03-PLAN.md — Server ingest: POST /api/offline/login (two-step, narrow CORS) + POST /api/offline/upload (integrity + schema gate + all-or-nothing apply_merge) + RU result pages (wave 2)
+- [x] 30-03-PLAN.md — Server ingest: POST /api/offline/login (two-step, narrow CORS) + POST /api/offline/upload (integrity + schema gate + all-or-nothing apply_merge) + RU result pages (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -305,4 +305,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
-| 30. Offline Self-Uploading File | v3.0 | 2/4 | In Progress|  |
+| 30. Offline Self-Uploading File | v3.0 | 3/4 | In Progress|  |

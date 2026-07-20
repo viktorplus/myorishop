@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Phase 30 UI-SPEC approved
-last_updated: "2026-07-20T15:05:51.755Z"
+last_updated: "2026-07-20T15:28:37.369Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
   percent: 83
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 30 (offline-self-uploading-file) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -93,6 +93,7 @@ Progress: [█████████░] 94%
 | Phase 29 P05 | 45min | 2 tasks | 5 files |
 | Phase 30 P01 | 8min | 2 tasks | 1 files |
 | Phase 30 P02 | ~12min | 3 tasks | 5 files |
+| Phase 30 P03 | ~20min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 30-01: Wave-0 offline scaffold pins the D-08 payload_sha256 (record-lines-only, LF-joined) + D-03 token contract (salt offline-upload, scope offline_upload) as the RED-test contract Waves 1-3 must satisfy; not-yet-built offline modules imported INSIDE test bodies so collection stays green
 - [Phase ?]: 30-02: payload_digest is the ONE integrity checksum shared by serialize_exchange emit + 30-03 upload verify (D-08)
 - [Phase ?]: 30-02: offline upload token = itsdangerous URLSafeTimedSerializer(secret_key, salt='offline-upload'), scope 'offline_upload', TTL 300s (D-03)
+- [Phase 30]: 30-03: offline ingest routes are thin callers of Phase-27 apply_merge; the only additions over sync_push are the SHA-256 integrity check (D-08) and the exact-match schema-version gate (D-09), both before any DB touch; in-body upload token means no CSRF and a single narrow ACAO scoped to /api/offline/login (D-05)
 
 ### Pending Todos
 
@@ -189,7 +191,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T15:05:36.506Z
+Last session: 2026-07-20T15:28:21.893Z
 Stopped at: Phase 30 UI-SPEC approved
 Resume file: None
 
