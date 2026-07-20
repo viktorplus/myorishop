@@ -108,6 +108,13 @@ def test_conventions_uuid_cents_utc(session, product, batch):
     # D-07: created_at is UTC ISO-8601 text
     assert datetime.fromisoformat(op.created_at).utcoffset() == timedelta(0)
 
+    # The UUID-PK convention (D-05) targets SYNCED business entities whose
+    # integer autoincrement IDs would collide across devices (CLAUDE.md). The
+    # Phase 29 `sync_state` table is a LOCAL-only singleton (always id=1, never
+    # pushed/pulled), so it deliberately uses an Integer PK — exempt it from the
+    # 36-char-String-UUID PK check below (it is still guarded for money/float).
+    _local_singleton_tables = {"sync_state"}
+
     # D-06 / Pitfall 3 guard: no Numeric/Float anywhere; *_cents are Integer
     for table in Base.metadata.tables.values():
         for column in table.columns:
@@ -118,6 +125,8 @@ def test_conventions_uuid_cents_utc(session, product, batch):
                 assert isinstance(
                     column.type, sqlalchemy.Integer
                 ), f"{table.name}.{column.name} must be Integer cents"
+        if table.name in _local_singleton_tables:
+            continue
         # D-05: every table's PK is a 36-char String UUID
         for pk_column in table.primary_key.columns:
             assert isinstance(pk_column.type, String)
