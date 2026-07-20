@@ -114,3 +114,92 @@ def offline_login(
     # (3) Success: mint the upload-scoped token (D-03). Never logged (CLAUDE.md).
     token = offline_service.mint_offline_token(user.id)
     return JSONResponse({"token": token}, headers=_ACAO)
+
+
+@router.post("/api/offline/upload")
+def offline_upload(
+    request: Request,
+    token: str = Form(...),
+    payload: str = Form(...),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Ingest a self-uploaded NDJSON bundle (OFF-05 / OFF-07).
+
+    A near-verbatim mirror of sync_push: the ONLY additions are the SHA-256
+    integrity check (gate 4, D-08) and the schema-version gate (gate 5, D-09), both
+    BEFORE parse_exchange/apply_merge — never inside the pure engine. Plain `def`
+    (CLAUDE.md sync-session rule) → FastAPI threadpool. Every rejection lands on a
+    fixed RU result page; raw uploaded bytes are NEVER rendered (T-28-07 / V7).
+    """
+    # (1) Token gate (T-30-04): expired / tampered / wrong-scope → expired page.
+    try:
+        offline_service.verify_offline_token(token)
+    except (SignatureExpired, BadSignature):
+        return _result(request, "expired", status=401)
+
+    # (2) Size cap (T-30-09): belt-and-braces DoS guard, independent of any proxy.
+    if len(payload.encode("utf-8")) > MAX_OFFLINE_BYTES:
+        return _result(request, "corrupted", status=413)
+
+    # (3) Canonicalize newlines: splitlines() strips CRLF and LF alike, so a form
+    # navigation's CRLF normalization yields the SAME record bytes the digest was
+    # computed over (Pitfall 1). An empty body is malformed input.
+    lines = payload.splitlines()
+    if not lines:
+        return _result(request, "corrupted", status=400)
+
+    # (4) Integrity (D-08): the digest is over the RECORD lines only (header
+    # excluded), so it must match header.payload_sha256 before any DB touch. Never
+    # echo the raw bytes — a malformed header or a mismatch both land on «повреждён».
+    try:
+        header = json.loads(lines[0])
+    except json.JSONDecodeError:
+        return _result(request, "corrupted", status=400)
+    if not isinstance(header, dict):
+        return _result(request, "corrupted", status=400)
+    record_lines = lines[1:]
+    if payload_digest(record_lines) != header.get("payload_sha256"):
+        return _result(request, "corrupted", status=400)
+
+    # (5) Schema gate (D-09): exact-match at the route layer, naming BOTH versions;
+    # an empty server schema (create_all fixture) skips the gate (Pitfall 7).
+    server_schema = current_schema_version(session)
+    file_schema = header.get("schema_version", "")
+    if not offline_service.schema_version_ok(file_schema, server_schema):
+        return _result(
+            request,
+            "incompatible",
+            status=409,
+            file_ver=file_schema,
+            server_ver=server_schema,
+        )
+
+    # (6) Structural validation (BEFORE any DB touch): parse_exchange enforces
+    # format_version + record shape. A bad format_version raises ValueError here.
+    try:
+        batch = parse_exchange(lines)
+    except ValueError:
+        return _result(request, "corrupted", status=400)
+
+    # (7) All-or-nothing merge (OFF-05, verbatim sync_push idiom): apply_merge
+    # never commits, so the route owns the ONE transaction and a poisoned record
+    # (e.g. a missing FK parent) rolls the WHOLE batch back. The IntegrityError is
+    # deliberately NOT swallowed — the tests assert zero rows persist. The
+    # origin-UUID replay IS the idempotency: re-uploading inserts nothing.
+    session.rollback()
+    with session.begin():
+        report = apply_merge(session, batch, server_now=utcnow_iso())
+
+    # reference_inserted is a dict[str, int] (per-kind counts) → sum the values.
+    total = (
+        report.operations_inserted
+        + report.cash_inserted
+        + sum(report.reference_inserted.values())
+    )
+    return _result(
+        request,
+        "success",
+        total=total,
+        ops=report.operations_inserted,
+        cash=report.cash_inserted,
+    )
