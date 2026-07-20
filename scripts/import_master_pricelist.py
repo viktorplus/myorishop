@@ -29,6 +29,7 @@ from app.core import new_id, to_cents  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import CatalogPrice, Dictionary  # noqa: E402
 from app.services.catalogs import to_json_code  # noqa: E402
+from app.services.rubrics import resolve_name, resolve_rubric  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILE = "catalogs/oriflame_prices_with_calculations_fixed.xlsx"
@@ -136,13 +137,16 @@ def main() -> None:
         session.query(Dictionary).delete()
         session.query(CatalogPrice).delete()
 
+        # CAT-06: assign the rubric and (for bad shade-only names) the corrected
+        # full name, both resolved from the code via app.services.rubrics.
         session.bulk_save_objects(
             [
                 Dictionary(
                     id=new_id(),
                     code=code,
-                    name=data["name"] or code,
+                    name=resolve_name(code, data["name"] or code)[:200],
                     catalogs=[to_json_code(data["year"], data["number"])],
+                    rubric=resolve_rubric(code, data["name"] or code),
                 )
                 for code, data in collected.items()
             ]
@@ -166,6 +170,12 @@ def main() -> None:
 
         after_dict = session.query(Dictionary).count()
         after_cp = session.query(CatalogPrice).count()
+        rubric_filled = (
+            session.query(Dictionary).filter(Dictionary.rubric.isnot(None)).count()
+        )
+        rubric_other = (
+            session.query(Dictionary).filter(Dictionary.rubric == "Прочее").count()
+        )
 
     print(f"Source: {src}")
     print(f"Sheet: {SHEET_NAME}")
@@ -178,6 +188,7 @@ def main() -> None:
     )
     print(f"Dictionary: {before_dict} -> {after_dict}")
     print(f"CatalogPrice: {before_cp} -> {after_cp}")
+    print(f"Rubric assigned: {rubric_filled}/{after_dict} (Прочее: {rubric_other})")
 
 
 if __name__ == "__main__":

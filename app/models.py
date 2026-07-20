@@ -295,6 +295,10 @@ class Dictionary(Base):
     # Phase 14 (LIST-02): lowercase shadow of name — SQLite lower()/LIKE
     # cannot fold Cyrillic.
     name_lc: Mapped[str | None] = mapped_column(String(200), index=True)
+    # CAT-06: coarse product rubric (one of app.services.rubrics.RUBRICS),
+    # assigned one-time from the product name / by web lookup of the code.
+    # Helper data only (D-24); NULL until the master price list is imported.
+    rubric: Mapped[str | None] = mapped_column(String(40), index=True)
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 
