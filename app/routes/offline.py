@@ -204,10 +204,15 @@ def offline_upload(
     if len(payload.encode("utf-8")) > MAX_OFFLINE_BYTES:
         return _result(request, "corrupted", status=413)
 
-    # (3) Canonicalize newlines: splitlines() strips CRLF and LF alike, so a form
-    # navigation's CRLF normalization yields the SAME record bytes the digest was
-    # computed over (Pitfall 1). An empty body is malformed input.
-    lines = payload.splitlines()
+    # (3) Canonicalize newlines on REAL newline styles ONLY (CRLF/CR/LF), NOT
+    # str.splitlines() — which also splits on \v/\f/\x1c-\x1e/\x85 and, critically,
+    # U+2028/U+2029, which serialize_exchange (json.dumps ensure_ascii=False) emits
+    # verbatim inside a record. Over-splitting would corrupt the SHA-256 recompute
+    # and permanently false-reject a legitimate bundle (WR-01). A form navigation's
+    # CRLF normalization still yields the SAME record bytes the digest was computed
+    # over (Pitfall 1). A blank/whitespace-only body lands on «повреждён» via the
+    # header JSON gate below.
+    lines = payload.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     if not lines:
         return _result(request, "corrupted", status=400)
 

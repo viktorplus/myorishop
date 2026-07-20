@@ -387,6 +387,23 @@ def test_crlf_payload_digest_matches(anon_client, session, product, batch):
     assert resp.status_code == 200
 
 
+def test_upload_unicode_line_separator_round_trips(anon_client, session, product, batch):
+    """A record field with U+2028 must NOT be false-rejected as corrupted. (WR-01)"""
+    token = _mint_offline_token("some-user-id")
+    rec = _op("op-u2028", product_id=product.id, batch_id=batch.id, seq=1)
+    # json.dumps(ensure_ascii=False) emits U+2028 raw inside the JSON line; the OLD
+    # splitlines() split that single record into two "lines", corrupting the digest.
+    rec["created_by"] = "operator line"
+    body = _offline_ndjson([rec])
+    assert " " in body  # the exotic separator really is on the wire
+    resp = anon_client.post(
+        "/api/offline/upload", data={"token": token, "payload": body}
+    )
+    # Splitting on real newline styles only keeps the record intact, so the SHA-256
+    # matches and the bundle is accepted rather than landing on «повреждён».
+    assert resp.status_code == 200
+
+
 # ===========================================================================
 # T-30-06: the auth-guard bypass is narrow (exact-prefix + session-guarded export)
 # ===========================================================================

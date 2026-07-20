@@ -533,8 +533,11 @@ def payload_digest(record_lines: list[str]) -> str:
     so the two can never diverge (SYNC-04 applied to the checksum, D-08). Computed
     over the record JSON lines ONLY (header excluded), in exact emission order,
     joined with ``"\n"``. An empty record list yields the SHA-256 of the empty
-    string. The route canonicalizes CRLF via ``splitlines()`` before calling this,
-    so the digest stays newline-style-agnostic (Pitfall 1).
+    string. The route canonicalizes on real newline styles only (CRLF/CR/LF ->
+    LF) — NOT ``str.splitlines()``, which would also split on U+2028/U+2029 and
+    other Unicode line boundaries this digest emits verbatim — so the digest stays
+    newline-style-agnostic without corrupting exotic in-field characters (Pitfall
+    1 / WR-01).
     """
     return hashlib.sha256("\n".join(record_lines).encode("utf-8")).hexdigest()
 
