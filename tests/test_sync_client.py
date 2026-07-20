@@ -7,14 +7,52 @@ read, the D-11 unsynced badge, and the LOCKED D-12 Russian result strings.
 
 from sqlalchemy.orm import sessionmaker
 
-from app.core import utcnow_iso
-from app.models import SyncState
+from app.config import settings
+from app.core import new_id, utcnow_iso
+from app.models import CashMovement, Operation, SyncState
 from app.services import sync_client
 from app.services.sync_client import (
     DEFAULT_INTERVAL_SECONDS,
     MAX_INTERVAL_SECONDS,
     MIN_INTERVAL_SECONDS,
+    SyncResult,
 )
+
+
+def _make_operation(session, product, *, synced_at=None):
+    """Insert one ledger Operation directly (INSERT is trigger-safe) referencing
+    the seeded product; unsynced unless `synced_at` is stamped."""
+    op = Operation(
+        id=new_id(),
+        type="sale",
+        product_id=product.id,
+        qty_delta=-1,
+        device_id=settings.device_id,
+        seq=session.query(Operation).count() + 1,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+        synced_at=synced_at,
+    )
+    session.add(op)
+    session.commit()
+    return op
+
+
+def _make_cash_movement(session, *, synced_at=None):
+    """Insert one CashMovement directly; unsynced unless `synced_at` is stamped."""
+    cash = CashMovement(
+        id=new_id(),
+        category="sale",
+        amount_cents=1000,
+        device_id=settings.device_id,
+        seq=session.query(CashMovement).count() + 1,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+        synced_at=synced_at,
+    )
+    session.add(cash)
+    session.commit()
+    return cash
 
 # --- Task 1: state layer (get_or_create / record_sync_result / read_autosync_config) ---
 
@@ -84,3 +122,76 @@ def test_read_autosync_config_fresh_and_clamped(session):
     row.auto_interval_seconds = 7200
     session.flush()
     assert sync_client.read_autosync_config(session) == (True, MAX_INTERVAL_SECONDS)
+
+
+# --- Task 2: unsynced badge (D-11) + D-12 Russian result formatter ---
+
+
+def test_unsynced_count(session, product):
+    """0 on an empty ledger; 2 unsynced ops + 1 unsynced cash → 3; a synced_at-
+    stamped row is NOT counted (D-11)."""
+    assert sync_client.unsynced_count(session) == 0
+
+    _make_operation(session, product)
+    _make_operation(session, product)
+    _make_cash_movement(session)
+    assert sync_client.unsynced_count(session) == 3
+
+    # A stamped (already-synced) row must be excluded from the badge.
+    _make_operation(session, product, synced_at=utcnow_iso())
+    assert sync_client.unsynced_count(session) == 3
+
+
+def test_result_messages(session):
+    """Every LOCKED D-12 Russian string renders byte-exact, plus the two secondary
+    UI-SPEC states and the never-synced last-sync line."""
+    tz = settings.display_tz  # Europe/Moscow
+
+    # No sync_state yet → never-synced line.
+    msg, last = sync_client.format_sync_message(
+        SyncResult(status="ok", pushed=12, pushed_total=12, pulled=5), None, tz
+    )
+    assert msg == "Синхронизировано: отправлено 12, получено 5"
+    assert last == "Ещё не синхронизировано"
+
+    # ok, no changes.
+    msg, _ = sync_client.format_sync_message(
+        SyncResult(status="ok", pushed=0, pulled=0), None, tz
+    )
+    assert msg == "Синхронизировано, изменений нет"
+
+    # partial.
+    msg, _ = sync_client.format_sync_message(
+        SyncResult(status="partial", pushed=8, pushed_total=12), None, tz
+    )
+    assert msg == "Синхронизировано частично: отправлено 8 из 12"
+
+    # offline.
+    msg, _ = sync_client.format_sync_message(SyncResult(status="offline"), None, tz)
+    assert msg == "Нет связи с сервером"
+
+    # error.
+    msg, _ = sync_client.format_sync_message(SyncResult(status="error"), None, tz)
+    assert msg == "Ошибка сервера, попробуйте позже"
+
+    # Secondary UI-SPEC states.
+    msg, _ = sync_client.format_sync_message(SyncResult(status="locked"), None, tz)
+    assert msg == "Синхронизация уже выполняется"
+    msg, _ = sync_client.format_sync_message(
+        SyncResult(status="not_configured"), None, tz
+    )
+    assert msg == "Синхронизация не настроена"
+
+
+def test_last_sync_line_in_moscow(session):
+    """The last-sync line renders a stored UTC ISO time in Europe/Moscow (D-12).
+
+    11:32 UTC on 2026-07-20 is 14:32 MSK (UTC+3)."""
+    row = sync_client.get_or_create_sync_state(session)
+    row.last_sync_at = "2026-07-20T11:32:00+00:00"
+    session.flush()
+
+    _, last = sync_client.format_sync_message(
+        SyncResult(status="ok", pushed=1, pulled=0), row, settings.display_tz
+    )
+    assert last == "Последняя синхронизация: 20.07.2026 14:32"
