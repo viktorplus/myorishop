@@ -422,9 +422,11 @@ yield from record_lines
 | A5 | 300s is an appropriate upload-token TTL. | Pattern 2 | Discretion (CONTEXT). Too short → operator re-logins; too long → wider keylogger window. Adjustable constant. |
 | A6 | No new Alembic migration is required. | (below) | If a `payload_sha256` DB column or a replay-dedup table were ever demanded, a migration would be needed — but D-07/D-08 place the checksum in the wire header and OFF-05 dedups by existing UUID PK, so none is. Confirmed from codebase. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Login transport: `fetch` + narrow CORS vs. a pure-navigation alternative?**
+> All three resolved during planning (Phase 30 plans 30-02..30-04): Q1 → 30-03 (urlencoded login + narrow ACAO on `/api/offline/login` only, OPTIONS added only if a preflight appears); Q2 → 30-02 (promote `_collect_push_records` → public `collect_push_records`); Q3 → 30-04 (optional read-only hint, never stamps `synced_at`, deferable to UAT).
+
+1. **[RESOLVED → 30-03] Login transport: `fetch` + narrow CORS vs. a pure-navigation alternative?**
    - What we know: the bulk upload must be a form navigation (D-01); the login must be a separate round-trip whose response the file reads (D-04), which implies `fetch` + one CORS header (D-05 provisions exactly this).
    - What's unclear: whether a preflight fires for the login fetch (A2).
    - Recommendation: send login as `application/x-www-form-urlencoded` (simple request); if a preflight appears in testing, add a minimal `OPTIONS /api/offline/login` returning the same ACAO header. Keep the header off `/api/sync/`.

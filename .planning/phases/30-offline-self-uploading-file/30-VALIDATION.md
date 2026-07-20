@@ -1,10 +1,11 @@
 ---
 phase: 30
 slug: offline-self-uploading-file
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-20
+finalized: 2026-07-20
 ---
 
 # Phase 30 — Validation Strategy
@@ -38,9 +39,19 @@ created: 2026-07-20
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| {N}-01-01 | 01 | 1 | OFF-{XX} | T-30-{XX} / — | {expected secure behavior or "N/A"} | unit | `{command}` | ❌ W0 | ⬜ pending |
+| 30-01-01 | 01 | 0 | OFF-01..07 | — | Shared fixtures/helpers: NDJSON body with a correct `payload_sha256`, direct token minter + expired variant, login-token helper | scaffold | `uv run pytest tests/test_offline.py --collect-only -q` | ❌ W0 | ⬜ pending |
+| 30-01-02 | 01 | 0 | OFF-01..07 | T-30-01..10 | RED test bodies for all reqs + token / bypass / `</script>`-escaping / CRLF / rate-limit | scaffold | `uv run pytest tests/test_offline.py --collect-only -q` | ❌ W0 | ⬜ pending |
+| 30-02-01 | 02 | 1 | OFF-07 | T-30-01 | `payload_sha256` header emitted over LF-joined record lines only (D-08) | unit | `uv run pytest tests/test_offline.py::test_export_header_counts_present tests/test_merge.py -x -q` | ❌ W0 | ⬜ pending |
+| 30-02-02 | 02 | 1 | OFF-01, OFF-02 | — | Promote `_collect_push_records` → public `collect_push_records` (one shared collector, SYNC-04) | unit | `uv run pytest tests/test_sync_client.py tests/test_sync_ui.py -x -q` | ❌ W0 | ⬜ pending |
+| 30-02-03 | 02 | 1 | OFF-04, OFF-07 | T-30-04, T-30-06, T-30-09, T-30-10 | `auth_guard` exact-prefix `/api/offline/` bypass + token minter/verifier (TTL+scope) + `schema_version_ok` | integration | `uv run pytest tests/test_offline.py::test_offline_bypass_is_narrow tests/test_sync_api.py -x -q` | ❌ W0 | ⬜ pending |
+| 30-03-01 | 03 | 2 | OFF-07 | — | `result.html` (S2, no-session shell) + RU constants + `offline.py` module shell | glue | `uv run python -c "import app.routes.offline; from app.routes import templates; templates.get_template('offline/result.html')"` | ❌ W0 | ⬜ pending |
+| 30-03-02 | 03 | 2 | OFF-04 | T-30-03, T-30-05, T-30-07 | `POST /api/offline/login`: creds→token, NO data on failure, narrow CORS, rate-limit | integration | `uv run pytest tests/test_offline.py::test_login_success_mints_token tests/test_offline.py::test_login_wrong_password_no_token tests/test_offline.py::test_login_rate_limited -x -q` | ❌ W0 | ⬜ pending |
+| 30-03-03 | 03 | 2 | OFF-05, OFF-07 | T-30-01, T-30-02, T-30-04, T-30-09 | `POST /api/offline/upload`: token → SHA-256 + schema gate → all-or-nothing `apply_merge` (idempotent) | integration | `uv run pytest tests/test_offline.py tests/test_merge.py -x -q` | ❌ W0 | ⬜ pending |
+| 30-04-01 | 04 | 3 | OFF-01, OFF-02 | T-30-06 | `GET /offline/export` session-guarded; FK-closure bundle; export reads only (no `synced_at` stamp) | integration | `uv run pytest tests/test_offline.py::test_export_html_contains_embedded_payload_and_form tests/test_offline.py::test_export_bundle_fk_closure_complete tests/test_offline.py::test_export_does_not_stamp_synced_at -x -q` | ❌ W0 | ⬜ pending |
+| 30-04-02 | 04 | 3 | OFF-03, OFF-06 | T-30-01, T-30-03, T-30-08 | `self_upload.html` standalone: inline CSS, embedded NDJSON, client preview + login + confirm + form-POST | integration | `uv run pytest tests/test_offline.py::test_export_html_contains_embedded_payload_and_form tests/test_offline.py::test_script_tag_escaping_round_trip -x -q` | ❌ W0 | ⬜ pending |
+| 30-04-03 | 04 | 3 | OFF-01, OFF-06 | — | S3 export CTA + empty-`sync_server_url` state + optional read-only hint (never stamps `synced_at`) | integration | `uv run pytest tests/test_offline.py -x -q` | ❌ W0 | ⬜ pending |
 
-*Populated by the planner + nyquist pass from the RESEARCH.md Requirements → Test Map (OFF-01..07 + token/bypass/escaping/CRLF/rate-limit rows).*
+*Populated from the plan task list + RESEARCH.md §Validation Architecture Requirements→Test Map. Task IDs are `{plan}-{task}` (e.g. 30-03-03 = plan 30-03, Task 3). `File Exists ❌ W0` = the test lands in Wave 0 (30-01) and is RED-by-design until its implementing wave turns it GREEN.*
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -68,11 +79,11 @@ created: 2026-07-20
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (30-01 seeds every test the impl waves reference)
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-20 (map finalized from plan tasks; `wave_0_complete` flips to true when Wave 0 lands during execution)
