@@ -51,6 +51,19 @@ PUBLIC_PATHS = {"/login", "/logout", "/setup"}
 #       cookie (a browser cannot forge an Authorization header).
 SYNC_PATH_PREFIX = "/api/sync/"
 
+# OFF-05 / D-05 / threat T-30-06: the token-authenticated offline-ingest bypass.
+# Same three guarantees as SYNC_PATH_PREFIX, read them before touching it:
+#   (1) prefix is EXACTLY /api/offline/ and NEVER the bare /api/ segment — a bare
+#       api prefix would un-authenticate every future API route (Pitfall 3);
+#   (2) the client export page /offline/export is DELIBERATELY NOT under this
+#       prefix — it stays session-guarded so a browser must log in to build a
+#       bundle; only the machine-to-machine ingest tree bypasses the session;
+#   (3) this branch is NOT "unguarded": each route under it self-gates in-body
+#       (rate-limit + password on /login, offline-token verify on /upload). CSRF
+#       is deliberately NOT applied here — the client presents an in-body token,
+#       never a session cookie, so the tree is not CSRF-vulnerable (T-30-10).
+OFFLINE_PATH_PREFIX = "/api/offline/"
+
 # UI-SPEC Copywriting Contract (line 143): operator hits an admin route.
 ACCESS_DENIED_ERROR = "Доступ только для администратора."
 
@@ -153,6 +166,11 @@ async def auth_guard(request: Request, session: Session = Depends(get_session)) 
          auto-attaches an Authorization header, so a Bearer endpoint is not
          CSRF-vulnerable, while enforcing CSRF would make it impossible for a
          session-less client to ever call the endpoint (threat T-28-06);
+      3b. allow the /api/offline/ tree (OFF-05, D-05) — the token-authenticated
+         offline-ingest surface, self-gated per-route (rate-limit + password on
+         /login, offline-token verify on /upload); CSRF likewise not applied
+         (in-body token, no cookie, T-30-10). The /offline/export page is NOT
+         under this prefix and stays session-guarded;
       4. zero users → /setup (first-run, AUTH-04);
       5. no active session user → clear + /login (AUTH-01, USER-03);
       6. unsafe method → validate CSRF (AUTH-05);
@@ -162,6 +180,8 @@ async def auth_guard(request: Request, session: Session = Depends(get_session)) 
     if request.url.path in PUBLIC_PATHS:  # (2)
         return
     if request.url.path.startswith(SYNC_PATH_PREFIX):  # (3) SYNC-09 Bearer tree
+        return
+    if request.url.path.startswith(OFFLINE_PATH_PREFIX):  # (3b) OFF-05 token tree
         return
     if count_users(session) == 0:  # (4) AUTH-04 first-run
         raise NotAuthenticated(redirect="/setup")
