@@ -23,6 +23,7 @@ autoescaped.
 """
 
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import JSONResponse
@@ -30,15 +31,22 @@ from itsdangerous import BadSignature, SignatureExpired
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core import utcnow_iso
 from app.db import get_session
 from app.models import User
 from app.routes import templates
 from app.services import offline as offline_service
 from app.services.auth import verify_password
-from app.services.merge import apply_merge, parse_exchange, payload_digest
+from app.services.merge import (
+    apply_merge,
+    parse_exchange,
+    payload_digest,
+    serialize_exchange,
+)
 from app.services.rate_limit import check_rate_limit
 from app.services.sync import current_schema_version
+from app.services.sync_client import collect_push_records
 
 # Belt-and-braces body cap independent of any proxy config (clone of
 # sync.MAX_PUSH_BYTES, T-30-09). Kept module-level so the oversized-body test can
@@ -71,6 +79,55 @@ def _result(request: Request, state: str, *, status: int = 200, **ctx) -> Respon
         "offline/result.html",
         {"state": state, **ctx},
         status_code=status,
+    )
+
+
+@router.get("/offline/export")
+def offline_export(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    """Session-guarded client export (OFF-01/OFF-02/OFF-03): build ONE self-contained
+    HTML file the operator saves to a USB drive.
+
+    This route is deliberately NOT under `/api/offline/` (the ingest bypass, D-05):
+    it stays behind the app-level session guard, exactly like `/sync/run` — only a
+    logged-in operator can produce the file (Pitfall 3 / T-30-06). It ONLY reads the
+    ledger: `collect_push_records` selects the unsynced rows + their D-13 FK closure,
+    and the returned ids are IGNORED — the offline path NEVER stamps `synced_at`
+    (D-07); that is cleared only by a confirmed online 2xx.
+
+    Pitfall 5: a never-configured client (`sync_server_url == ""`) would emit a file
+    that posts to nowhere, so we refuse and re-render the export page with the RU
+    error-block instead of downloading a dead file.
+    """
+    # Pitfall 5: no server URL → no valid form action; refuse, don't emit a dead file.
+    if not settings.sync_server_url:
+        return templates.TemplateResponse(
+            request, "pages/export.html", {"sync_configured": False}
+        )
+
+    # OFF-01 / D-07: read-only collect (ids IGNORED — never stamp synced_at).
+    records, _ids = collect_push_records(session)
+    body = "\n".join(
+        serialize_exchange(
+            records,
+            schema_version=current_schema_version(session),
+            source_device_id=settings.device_id,
+            generated_at=utcnow_iso(),
+        )
+    )
+
+    # Pitfall 2: neutralize the ONLY HTML-parser breakout vector before embedding.
+    # The browser-side JS reverses this before parsing/submitting, and the digest is
+    # computed over the ORIGINAL (unescaped) NDJSON on both sides (T-30-08).
+    embedded = body.replace("</script", "<\\/script")
+    filename = f"myorishop-offline-{datetime.now(timezone.utc):%Y%m%d-%H%M}.html"
+    return templates.TemplateResponse(
+        request,
+        "offline/self_upload.html",
+        {"embedded": embedded, "server_url": settings.sync_server_url},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
