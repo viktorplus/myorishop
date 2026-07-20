@@ -1,7 +1,10 @@
 """FastAPI application entry point: lifespan backup + static mount + routers."""
 
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +13,10 @@ from starlette.middleware.sessions import SessionMiddleware
 # Aliased to config_settings so it does not collide with the `settings` route
 # submodule imported below (app/routes/settings.py).
 from app.config import settings as config_settings
+
+# Module-qualified import: tests monkeypatch backup_service.startup_backup
+# as ONE seam (PD-13).
+from app.db import SessionLocal
 from app.routes import (
     auth,
     backup,
@@ -48,11 +55,44 @@ from app.routes import (
     warehouses,
     writeoffs,
 )
-
-# Module-qualified import: tests monkeypatch backup_service.startup_backup
-# as ONE seam (PD-13).
 from app.services import backup as backup_service
+from app.services import sync_client
 from app.services.security import NotAuthenticated, auth_guard, require_role
+
+
+async def _auto_sync_iteration() -> int:
+    """Run ONE auto-sync tick decision; return the interval to sleep (seconds).
+
+    D-08: the on/off toggle + interval are read FRESH from `sync_state` at the
+    top of every iteration (never captured once at startup) so flipping the
+    toggle takes effect on the next tick. D-07: when auto-sync is enabled the
+    blocking driver `sync_client.run_sync_tick` (which opens its OWN fresh
+    Session and holds the shared `_run_lock`, D-09) is offloaded OFF the event
+    loop via `anyio.to_thread.run_sync` — the sync Session never runs on the
+    loop. D-08: any error (offline / httpx transport) is swallowed so the loop
+    just silently skips this tick and never dies (no log spam).
+    """
+    with SessionLocal() as session:
+        enabled, interval = sync_client.read_autosync_config(session)
+    try:
+        if enabled:
+            await anyio.to_thread.run_sync(sync_client.run_sync_tick)
+    except Exception:
+        # D-08: offline / transport error → silently skip this tick.
+        pass
+    return interval
+
+
+async def _auto_sync_loop() -> None:
+    """The D-06 optional interval auto-sync loop.
+
+    Zero-dependency asyncio loop (no APScheduler/Celery/Redis) started in the
+    lifespan so it keeps syncing with the browser tab closed. Each pass reads
+    the config fresh, offloads the tick, then sleeps for the (clamped) interval.
+    """
+    while True:
+        interval = await _auto_sync_iteration()
+        await asyncio.sleep(interval)
 
 
 @asynccontextmanager
@@ -60,7 +100,18 @@ async def lifespan(app: FastAPI):
     # D-09: snapshot the DB BEFORE serving requests; the sync call is
     # intentional — startup must block until the backup finishes.
     backup_service.startup_backup()
-    yield
+    # D-06: start the optional interval auto-sync AFTER the startup backup. The
+    # loop reads its on/off toggle fresh each tick (D-08), so a fresh install
+    # (auto_enabled default 0) simply idles until an admin enables it.
+    auto_sync_task = asyncio.create_task(_auto_sync_loop())
+    try:
+        yield
+    finally:
+        # D-08: cancel the background loop cleanly on shutdown (suppress the
+        # expected CancelledError so shutdown never raises or hangs).
+        auto_sync_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await auto_sync_task
 
 
 # AUTH-01/ROLE-02: a SINGLE app-level dependency guards every current + future
