@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Phase 30 UI-SPEC approved
-last_updated: "2026-07-20T14:45:21.717Z"
+last_updated: "2026-07-20T15:05:51.755Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
   percent: 83
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 ## Current Position
 
 Phase: 30 (offline-self-uploading-file) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-20
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 94%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -92,6 +92,7 @@ Progress: [█████████░] 90%
 | Phase 29 P04 | 40min | 2 tasks | 5 files |
 | Phase 29 P05 | 45min | 2 tasks | 5 files |
 | Phase 30 P01 | 8min | 2 tasks | 1 files |
+| Phase 30 P02 | ~12min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 29-05: interval auto-sync runs as a zero-dependency asyncio loop in the FastAPI lifespan (D-06); the blocking driver is offloaded via anyio.to_thread.run_sync with a fresh Session (D-07); the whole tick is broad-guarded so any error is swallowed and the loop never dies (D-08); cancelled cleanly on shutdown
 - [Phase ?]: 29-05: admin Settings «Синхронизация» control persists auto_enabled + interval clamped 60..3600 to sync_state (D-03/D-15); a bad interval is defaulted/clamped, never a 5xx; sync_token never surfaced (T-29-07)
 - [Phase ?]: 30-01: Wave-0 offline scaffold pins the D-08 payload_sha256 (record-lines-only, LF-joined) + D-03 token contract (salt offline-upload, scope offline_upload) as the RED-test contract Waves 1-3 must satisfy; not-yet-built offline modules imported INSIDE test bodies so collection stays green
+- [Phase ?]: 30-02: payload_digest is the ONE integrity checksum shared by serialize_exchange emit + 30-03 upload verify (D-08)
+- [Phase ?]: 30-02: offline upload token = itsdangerous URLSafeTimedSerializer(secret_key, salt='offline-upload'), scope 'offline_upload', TTL 300s (D-03)
 
 ### Pending Todos
 
@@ -186,7 +189,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T14:45:12.586Z
+Last session: 2026-07-20T15:05:36.506Z
 Stopped at: Phase 30 UI-SPEC approved
 Resume file: None
 
