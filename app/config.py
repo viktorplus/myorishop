@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     # Sync pre-flight (A2 / Pitfall 6): the static "device-01" sentinel is
     # replaced by a persisted per-install UUID resolved below.
     device_id: str = "device-01"
+    # Phase 29 (SYNC-06/SRV-03): outbound online-sync client config, resolved
+    # from `.env` ONLY. `sync_server_url` is the central server base URL
+    # (e.g. https://sync.example.com); `sync_token` is the per-device Bearer
+    # secret the driver authenticates with. `sync_token` is a SECRET — like
+    # `secret_key` it lives in `.env`, is NEVER a `sync_state`/DB column (a
+    # copied myorishop.db must not carry the device credential), and is NEVER
+    # logged/printed (CLAUDE.md safety). Both default to "" so a fresh install
+    # runs fully offline until the operator configures them (offline-first).
+    # The auto-sync toggle/interval are NOT here — they must be runtime-mutable
+    # (D-15) and live in the `sync_state` table, not static `.env`.
+    sync_server_url: str = ""
+    sync_token: str = ""
     display_tz: str = "Europe/Moscow"
     # BCK-01 (D-08/D-09/D-10): startup + manual VACUUM INTO backups.
     # backup_on_startup exists as a flag so the TEST SUITE can disable the
