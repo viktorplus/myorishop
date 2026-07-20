@@ -13,12 +13,12 @@ from app.models import (
     OPERATION_TYPE_LABELS,
     ROLES,
     WRITEOFF_REASONS,
+    SyncState,
 )
 from app.services.security import session_csrf
 from app.services.sync_client import (
     SyncResult,
     format_sync_message,
-    get_or_create_sync_state,
     unsynced_count,
 )
 
@@ -53,16 +53,23 @@ def _sync_status_context(request: Request) -> dict:
     read here (T-29-07)."""
     try:
         with SessionLocal() as session:
-            row = get_or_create_sync_state(session)
+            # WR-02: READ-ONLY on the render path — never INSERT the sync_state
+            # singleton here. get_or_create_sync_state did add()+flush() on a fresh
+            # install, taking a SQLite write/reserved lock on EVERY page render
+            # (the session then rolls back, so it never even persisted) and
+            # contending with the background tick's writes. A missing row simply
+            # means "never synced".
+            row = session.get(SyncState, 1)
             unsynced = unsynced_count(session)
             # First paint shows the LAST stored result string (already a fixed D-12
             # message, T-29-07); the last-sync line is derived from the row (the
-            # dummy status does not affect it — see format_sync_message).
+            # dummy status does not affect it — see format_sync_message, which
+            # treats a None row as "Ещё не синхронизировано").
             _, last_sync_line = format_sync_message(
                 SyncResult(status="ok"), row, _config_settings.display_tz
             )
             return {
-                "sync_message": row.last_result or "",
+                "sync_message": (row.last_result if row else "") or "",
                 "last_sync_line": last_sync_line,
                 "unsynced": unsynced,
             }
