@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings as _config_settings
 from app.core import format_cents, format_ru_date, iso_to_local
+from app.db import SessionLocal
 from app.models import (
     CASH_BUCKET_LABELS,
     CASH_CATEGORIES,
@@ -14,6 +15,12 @@ from app.models import (
     WRITEOFF_REASONS,
 )
 from app.services.security import session_csrf
+from app.services.sync_client import (
+    SyncResult,
+    format_sync_message,
+    get_or_create_sync_state,
+    unsynced_count,
+)
 
 
 def _auth_context(request: Request) -> dict:
@@ -30,8 +37,46 @@ def _auth_context(request: Request) -> dict:
     }
 
 
+def _sync_status_context(request: Request) -> dict:
+    """Inject the sync surface (message + last-sync line + badge) into EVERY page.
+
+    Phase 29 (D-01/D-02): base.html renders `partials/sync_status.html` on first
+    paint for both roles, so `sync_message`, `last_sync_line` and `unsynced` must
+    be present on every render without each route re-passing them (mirrors
+    `_auth_context`). Opens its own short-lived `SessionLocal()` session (the
+    Plan-01 partial index keeps the count cheap) and reads the stored last result
+    (`last_result`) + last-sync time; the never-synced row yields an empty message
+    and the "Ещё не синхронизировано" line.
+
+    SRV-03: any error (missing DB / sync_state hiccup) is swallowed to a neutral
+    default so a sync problem can NEVER break page rendering. The token is never
+    read here (T-29-07)."""
+    try:
+        with SessionLocal() as session:
+            row = get_or_create_sync_state(session)
+            unsynced = unsynced_count(session)
+            # First paint shows the LAST stored result string (already a fixed D-12
+            # message, T-29-07); the last-sync line is derived from the row (the
+            # dummy status does not affect it — see format_sync_message).
+            _, last_sync_line = format_sync_message(
+                SyncResult(status="ok"), row, _config_settings.display_tz
+            )
+            return {
+                "sync_message": row.last_result or "",
+                "last_sync_line": last_sync_line,
+                "unsynced": unsynced,
+            }
+    except Exception:
+        return {
+            "sync_message": "",
+            "last_sync_line": "Ещё не синхронизировано",
+            "unsynced": 0,
+        }
+
+
 templates = Jinja2Templates(
-    directory="app/templates", context_processors=[_auth_context]
+    directory="app/templates",
+    context_processors=[_auth_context, _sync_status_context],
 )
 # D-07: store UTC, display local; D-06: cents rendered only via helper.
 # Aliased to _config_settings (not `settings`) so this package's own

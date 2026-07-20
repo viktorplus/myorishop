@@ -48,12 +48,23 @@
       {% if current_user and current_user.role == "administrator" %}
       <a href="/settings"{% if request.url.path.startswith("/settings") %} class="active"{% endif %}>Настройки</a>
       {% endif %}
-      {# AUTH-05: logout is a state-change → POST, CSRF-carried via the body
-         hx-headers above. Right-aligned via margin-left:auto (no new CSS token),
-         accent text from the existing `a` rule. display_name is autoescaped —
-         never |safe (T-25-06-03). #}
+      {# Phase 29 (D-01/D-02, SYNC-01/06/07): the «Синхронизировать» trigger + the
+         live status/badge partial, glanceable in the header on EVERY desktop page
+         for BOTH roles (Settings is admin-gated, so sync status must NOT be
+         Settings-only). hx-post carries the body-level CSRF header; hx-indicator
+         reveals the muted «Синхронизация…» text during the request via htmx's
+         built-in .htmx-indicator opacity rule (no spinner graphic, no new CSS —
+         UI-SPEC). Right-aligned via the existing margin-left:auto idiom (no new
+         layout token). Only shown to a logged-in user (sync is app chrome, like
+         logout below). #}
       {% if current_user %}
-      <a hx-post="/logout" style="margin-left:auto;cursor:pointer">{{ current_user.display_name }} · Выйти</a>
+      <a hx-post="/sync/run" hx-indicator="#sync-inflight" style="margin-left:auto;cursor:pointer">Синхронизировать</a>
+      <span id="sync-inflight" class="htmx-indicator muted">Синхронизация…</span>
+      {% include "partials/sync_status.html" %}
+      {# AUTH-05: logout is a state-change → POST, CSRF-carried via the body
+         hx-headers above. accent text from the existing `a` rule. display_name is
+         autoescaped — never |safe (T-25-06-03). #}
+      <a hx-post="/logout" style="cursor:pointer">{{ current_user.display_name }} · Выйти</a>
       {% endif %}
     </nav>
     {% block content %}{% endblock %}
