@@ -145,9 +145,12 @@
         // preview counts, and stage the ORIGINAL payload into the hidden field —
         // BEFORE any network call. Reversing `<\/script` → `</script` makes the
         // digest the server recomputes match byte-for-byte (T-30-08 / Pitfall 1).
+        // The reverse is case-INSENSITIVE and case-PRESERVING (the server escapes
+        // every case variant of </script; $1 restores the original tag word so
+        // </SCRIPT / </Script round-trip byte-for-byte, CR-01).
         try {
           var raw = document.getElementById("payload").textContent;
-          var ndjson = raw.replace(/<\\\/script/g, "</script");
+          var ndjson = raw.replace(/<\\\/(script)/gi, "</$1");
           var header = JSON.parse(ndjson.split("\n")[0]);
           var counts = header.counts || {};
           var total = 0;

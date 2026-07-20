@@ -533,3 +533,39 @@ def test_script_tag_escaping_round_trip(client, session, product, batch, monkeyp
         rec.data.get("name") for rec in batch_parsed.records if rec.kind == "product"
     ]
     assert "Крем</script>Ночной" in product_names
+
+
+def test_script_tag_escaping_round_trip_mixed_case(client, session, product, batch, monkeypatch):
+    """MIXED-CASE </SCRIPT> / </Script> are neutralized case-insensitively and round-trip. (CR-01)"""
+    import re as _re
+
+    monkeypatch.setattr(settings, "sync_server_url", "https://sync.example.com")
+    product.name = "Крем</SCRIPT>и</Script>Ночной"
+    session.add(product)
+    _seed_unsynced_op(session, product_id=product.id, batch_id=batch.id)
+    session.commit()
+
+    resp = client.get("/offline/export")
+    assert resp.status_code == 200
+
+    # Extract the embedded NDJSON block (its real close is the template's LOWERCASE
+    # </script>; every embedded case variant has been escaped to <\/... , so none
+    # of them can be the closing tag we cut on).
+    marker = 'type="application/x-ndjson">'
+    start = resp.text.index(marker) + len(marker)
+    end = resp.text.index("</script>", start)
+    embedded = resp.text[start:end]
+
+    # No LIVE raw-text end-tag of ANY case survives inside the embed: HTML closes
+    # <script> at </script case-insensitively, so a case-sensitive escape would
+    # leave </SCRIPT live and break out (the exact CR-01 defect).
+    assert not _re.search(r"</script", embedded, _re.IGNORECASE)
+
+    # Reverse the escape exactly as the browser JS does (case-insensitive,
+    # case-preserving) and re-parse: the name round-trips byte-for-byte.
+    ndjson = _re.sub(r"<\\/(script)", r"</\1", embedded, flags=_re.IGNORECASE)
+    batch_parsed = merge.parse_exchange(ndjson.strip().splitlines())
+    product_names = [
+        rec.data.get("name") for rec in batch_parsed.records if rec.kind == "product"
+    ]
+    assert "Крем</SCRIPT>и</Script>Ночной" in product_names

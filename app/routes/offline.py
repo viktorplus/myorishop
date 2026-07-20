@@ -23,6 +23,7 @@ autoescaped.
 """
 
 import json
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -119,9 +120,14 @@ def offline_export(
     )
 
     # Pitfall 2: neutralize the ONLY HTML-parser breakout vector before embedding.
-    # The browser-side JS reverses this before parsing/submitting, and the digest is
-    # computed over the ORIGINAL (unescaped) NDJSON on both sides (T-30-08).
-    embedded = body.replace("</script", "<\\/script")
+    # HTML ends a `script` raw-text element case-INSENSITIVELY (</script, </SCRIPT,
+    # </Script, ...), so the escape must match every case variant while PRESERVING
+    # the matched case, so the browser-side JS can reverse it to the byte-identical
+    # ORIGINAL NDJSON — the digest is recomputed over that original on both sides
+    # (T-30-08 / CR-01). m.group(0)[2:] keeps the tag word (e.g. "SCRIPT") intact.
+    embedded = re.sub(
+        r"</script", lambda m: "<\\/" + m.group(0)[2:], body, flags=re.IGNORECASE
+    )
     filename = f"myorishop-offline-{datetime.now(timezone.utc):%Y%m%d-%H%M}.html"
     return templates.TemplateResponse(
         request,
