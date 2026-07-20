@@ -58,6 +58,7 @@ from app.routes import (
 from app.services import backup as backup_service
 from app.services import sync_client
 from app.services.security import NotAuthenticated, auth_guard, require_role
+from app.services.sync_client import DEFAULT_INTERVAL_SECONDS
 
 
 async def _auto_sync_iteration() -> int:
@@ -69,16 +70,20 @@ async def _auto_sync_iteration() -> int:
     blocking driver `sync_client.run_sync_tick` (which opens its OWN fresh
     Session and holds the shared `_run_lock`, D-09) is offloaded OFF the event
     loop via `anyio.to_thread.run_sync` — the sync Session never runs on the
-    loop. D-08: any error (offline / httpx transport) is swallowed so the loop
-    just silently skips this tick and never dies (no log spam).
+    loop. D-08: the WHOLE iteration (config read + tick) is wrapped in a broad
+    guard so ANY error — offline / httpx transport / a transient DB hiccup —
+    is swallowed and the loop just silently skips this tick and never dies (no
+    log spam). On such an error the default interval is returned so the loop
+    retries later.
     """
-    with SessionLocal() as session:
-        enabled, interval = sync_client.read_autosync_config(session)
+    interval = DEFAULT_INTERVAL_SECONDS
     try:
+        with SessionLocal() as session:
+            enabled, interval = sync_client.read_autosync_config(session)
         if enabled:
             await anyio.to_thread.run_sync(sync_client.run_sync_tick)
     except Exception:
-        # D-08: offline / transport error → silently skip this tick.
+        # D-08: offline / transport / transient DB error → silently skip.
         pass
     return interval
 

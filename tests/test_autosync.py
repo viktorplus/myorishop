@@ -116,3 +116,137 @@ def test_lifespan_starts_and_cancels_loop_cleanly(engine, session, monkeypatch):
             pass
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Task 2: the Settings «Синхронизация» control (D-03/D-15)
+# ---------------------------------------------------------------------------
+
+
+def test_save_autosync_persists_enabled_and_interval(session):
+    """`save_autosync_config` persists `(True, 120)` to the single sync_state row."""
+    from app.services.settings import save_autosync_config
+    from app.services.sync_client import read_autosync_config
+
+    save_autosync_config(session, enabled=True, interval_seconds=120)
+
+    enabled, interval = read_autosync_config(session)
+    assert enabled is True
+    assert interval == 120
+
+
+def test_save_autosync_clamps_low_interval(session):
+    """An out-of-range low interval is clamped to MIN_INTERVAL_SECONDS (60), D-15."""
+    from app.services.settings import save_autosync_config
+    from app.services.sync_client import read_autosync_config
+
+    save_autosync_config(session, enabled=True, interval_seconds=10)
+
+    _, interval = read_autosync_config(session)
+    assert interval == 60
+
+
+def test_save_autosync_clamps_high_interval(session):
+    """An out-of-range high interval is clamped to MAX_INTERVAL_SECONDS (3600)."""
+    from app.services.settings import save_autosync_config
+    from app.services.sync_client import read_autosync_config
+
+    save_autosync_config(session, enabled=True, interval_seconds=99999)
+
+    _, interval = read_autosync_config(session)
+    assert interval == 3600
+
+
+def test_save_autosync_disabled_persists_false(session):
+    """Saving with auto-sync unchecked persists `False`."""
+    from app.services.settings import save_autosync_config
+    from app.services.sync_client import read_autosync_config
+
+    save_autosync_config(session, enabled=True, interval_seconds=120)
+    save_autosync_config(session, enabled=False, interval_seconds=120)
+
+    enabled, _ = read_autosync_config(session)
+    assert enabled is False
+
+
+def test_web_settings_shows_sync_section(client):
+    """The Settings page shows the «Синхронизация» section, default OFF / 300."""
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    assert "Автоматическая синхронизация" in response.text
+    assert "Интервал синхронизации (секунды)" in response.text
+    # Default: toggle OFF (no `checked`), interval 300.
+    assert 'value="300"' in response.text
+
+
+def test_web_settings_post_sync_persists(client, session):
+    """POST /settings/sync with `auto_enabled=on` + interval persists (True, 120)."""
+    from app.services.sync_client import read_autosync_config
+
+    response = client.post(
+        "/settings/sync",
+        data={"auto_enabled": "on", "auto_interval_seconds": "120"},
+    )
+
+    assert response.status_code == 200
+    assert "Настройки сохранены" in response.text
+    enabled, interval = read_autosync_config(session)
+    assert enabled is True
+    assert interval == 120
+
+
+def test_web_settings_post_sync_clamps_out_of_range(client, session):
+    """A too-small interval is clamped to 60, never a 5xx (D-15)."""
+    from app.services.sync_client import read_autosync_config
+
+    response = client.post(
+        "/settings/sync",
+        data={"auto_enabled": "on", "auto_interval_seconds": "10"},
+    )
+
+    assert response.status_code == 200
+    _, interval = read_autosync_config(session)
+    assert interval == 60
+
+
+def test_web_settings_post_sync_unparseable_interval_defaults(client, session):
+    """A non-numeric interval falls back to a valid value, never a 5xx."""
+    from app.services.sync_client import read_autosync_config
+
+    response = client.post(
+        "/settings/sync",
+        data={"auto_enabled": "on", "auto_interval_seconds": "abc"},
+    )
+
+    assert response.status_code == 200
+    _, interval = read_autosync_config(session)
+    assert 60 <= interval <= 3600
+
+
+def test_web_settings_post_sync_unchecked_persists_false(client, session):
+    """Posting without `auto_enabled` persists disabled (checkbox unchecked)."""
+    from app.services.settings import save_autosync_config
+    from app.services.sync_client import read_autosync_config
+
+    save_autosync_config(session, enabled=True, interval_seconds=120)
+
+    response = client.post(
+        "/settings/sync",
+        data={"auto_interval_seconds": "120"},
+    )
+
+    assert response.status_code == 200
+    enabled, _ = read_autosync_config(session)
+    assert enabled is False
+
+
+def test_web_settings_never_renders_token(client, monkeypatch):
+    """T-29-07: the sync token is NEVER rendered on the Settings page."""
+    monkeypatch.setattr(settings, "sync_token", "SUPER-SECRET-TOKEN")
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync.example.com")
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    assert "SUPER-SECRET-TOKEN" not in response.text

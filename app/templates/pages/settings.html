@@ -16,4 +16,31 @@
   <a class="button" href="/settings/devices">Устройства</a>
   <p class="muted">Токены синхронизации устройств</p>
 </div>
+
+<h2>Синхронизация</h2>
+<form class="stacked-form" method="post" action="/settings/sync"
+      hx-post="/settings/sync" hx-target="body" hx-swap="outerHTML">
+  <div class="field">
+    <label>
+      <input type="checkbox" name="auto_enabled"{% if auto_enabled %} checked{% endif %}>
+      Автоматическая синхронизация
+    </label>
+  </div>
+  <div class="field">
+    <label for="auto_interval_seconds">Интервал синхронизации (секунды)</label>
+    <input type="number" id="auto_interval_seconds" name="auto_interval_seconds"
+           min="60" max="3600" step="60" value="{{ auto_interval_seconds }}">
+  </div>
+  {% if sync_server_url %}
+  <div class="field">
+    <label for="sync_server_url">Адрес сервера синхронизации</label>
+    <input type="text" id="sync_server_url" value="{{ sync_server_url }}" readonly>
+  </div>
+  {% endif %}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="form-actions">
+    <button type="submit">Сохранить</button>
+  </div>
+  {% if sync_saved %}<p class="muted">Настройки сохранены</p>{% endif %}
+</form>
 {% endblock %}
