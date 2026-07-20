@@ -148,7 +148,7 @@ Reuse-first inventory. Every item maps to an existing analog (see 29-PATTERNS.md
 | `partials/sync_status.html` (NEW) | `partials/cash_balance.html` OOB idiom (`{% if oob %} hx-swap-oob="true"{% endif %}` on id'd elements) | Two id'd spans: `#sync-status` (message + last-sync line) and `#sync-badge` (count, hidden at 0). Same template serves first paint (`oob` unset) and OOB refresh (`oob=True`). |
 | «Синхронизировать» trigger | `base.html:56` logout `<a hx-post>` nav-link idiom | `<a hx-post="/sync/run" hx-indicator="#sync-status" style="cursor:pointer">`, placed in `<nav>`. CSRF carried by the existing `<body hx-headers>` line. |
 | In-flight indicator | htmx `hx-indicator` + existing `.muted` | Text `Синхронизация…` shown during the request (no spinner graphic, no new CSS animation). `button:disabled { cursor: wait }` (style.css:241) applies if a `<button>` variant is used. |
-| Unsynced badge | Inline `<span>`; amber attention tint `#fef9e7` / `#b45309` (existing price-cue pair) | 14px/600 count, `padding: 2px 8px` (sm-scale), `border-radius: 4px` (existing radius). Absent from DOM when count is 0. |
+| Unsynced badge | Inline `<span>`; amber attention tint `#fef9e7` / `#b45309` (existing price-cue pair) | 14px/600 count, `padding: 4px 8px` (xs vertical / sm horizontal), `border-radius: 4px` (existing radius). Absent from DOM when count is 0. |
 | Settings auto-sync form | `.field`, `label`, `input`, `form.stacked-form`, `.form-actions`, `<button>` | Checkbox + number input + save; standard stacked form. |
 | Last-sync line formatting | `| local_dt` filter (settings.html:10) | Renders `sync_state.last_sync_at` in Europe/Moscow as `дд.мм.гггг чч:мм`. |
 
