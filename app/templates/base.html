@@ -58,7 +58,13 @@
          layout token). Only shown to a logged-in user (sync is app chrome, like
          logout below). #}
       {% if current_user %}
-      <a hx-post="/sync/run" hx-indicator="#sync-inflight" style="margin-left:auto;cursor:pointer">Синхронизировать</a>
+      {# CR-01: /sync/run returns an ALL-OOB response (both #sync-status and
+         #sync-badge carry hx-swap-oob), so its "main" fragment is empty. Without
+         hx-swap="none" htmx swaps that empty fragment into this <a>'s innerHTML
+         and erases the «Синхронизировать» label after the first click. Matches
+         the codebase's all-OOB idiom (pages/product_form.html:50, the
+         correction/receipt lookups). #}
+      <a hx-post="/sync/run" hx-swap="none" hx-indicator="#sync-inflight" style="margin-left:auto;cursor:pointer">Синхронизировать</a>
       <span id="sync-inflight" class="htmx-indicator muted">Синхронизация…</span>
       {% include "partials/sync_status.html" %}
       {# AUTH-05: logout is a state-change → POST, CSRF-carried via the body
