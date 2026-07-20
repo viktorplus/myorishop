@@ -259,6 +259,93 @@ def device_client(engine, session, monkeypatch):
 
 
 @pytest.fixture()
+def sync_driver_pair(engine, session, tmp_path, monkeypatch):
+    """`(client, server_session, plaintext)` for the Plan-03 network driver tests.
+
+    The LOCAL client DB is the standard `session`/`engine`. A SEPARATE server DB
+    (its own engine + append-only triggers) backs the in-process app, reached over
+    an `httpx.ASGITransport`-bridged SYNC `httpx.Client` — so a push genuinely
+    transmits rows across the client→server boundary and the D-13 FK closure is
+    really exercised (the server starts empty; a missing parent would FK-fail).
+
+    A blocking portal drives the async ASGITransport from the driver's synchronous
+    `httpx.Client` (D-04 sync-Session rule): the sub-transport is `ASGITransport`,
+    wrapped so the sync client's `handle_request` runs it and buffers the response.
+    `settings.sync_token` / `settings.sync_server_url` are monkeypatched so the
+    driver targets the in-process app; the device token is minted in the SERVER DB
+    (require_device validates against the server's own `get_session`).
+    """
+    from collections import namedtuple
+
+    import anyio.from_thread
+    import httpx
+    from sqlalchemy.orm import sessionmaker
+
+    from app.config import settings
+    from app.db import APPEND_ONLY_TRIGGERS, build_engine, get_session
+    from app.main import app
+    from app.models import Base
+    from app.services import devices
+
+    monkeypatch.setattr(settings, "backup_on_startup", False)
+
+    # A SEPARATE server database so a push crosses a real boundary.
+    server_engine = build_engine(str(tmp_path / "server.db"))
+    Base.metadata.create_all(server_engine)
+    with server_engine.connect() as connection:
+        for statement in APPEND_ONLY_TRIGGERS:
+            connection.exec_driver_sql(statement)
+        connection.commit()
+    ServerSession = sessionmaker(bind=server_engine)
+    server_session = ServerSession()
+
+    # The Bearer token lives in the SERVER DB (require_device checks it there).
+    result, errors = devices.mint_token(
+        server_session, device_id=new_id(), label="Драйвер"
+    )
+    assert errors == {}
+    _, plaintext = result
+
+    monkeypatch.setattr(settings, "sync_token", plaintext)
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+
+    def override_get_session():
+        yield server_session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    class _SyncASGITransport(httpx.BaseTransport):
+        """Sync transport bridging to an async `httpx.ASGITransport` via a portal."""
+
+        def __init__(self, asgi_app, portal):
+            self._transport = httpx.ASGITransport(app=asgi_app)
+            self._portal = portal
+
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            async def _run():
+                response = await self._transport.handle_async_request(request)
+                body = await response.aread()
+                await response.aclose()
+                return response.status_code, response.headers, body
+
+            status_code, headers, body = self._portal.call(_run)
+            return httpx.Response(
+                status_code=status_code, headers=headers, content=body, request=request
+            )
+
+    Pair = namedtuple("SyncDriverPair", ["client", "server_session", "plaintext"])
+    try:
+        with anyio.from_thread.start_blocking_portal() as portal:
+            with httpx.Client(
+                transport=_SyncASGITransport(app, portal), base_url="http://sync"
+            ) as driver_client:
+                yield Pair(driver_client, server_session, plaintext)
+    finally:
+        app.dependency_overrides.clear()
+        server_session.close()
+
+
+@pytest.fixture()
 def login():
     """Helper: POST /login on a test client, returning the response.
 

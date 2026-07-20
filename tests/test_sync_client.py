@@ -5,11 +5,16 @@ D-10 single-row `sync_state` persistence, the D-15 fresh/clamped auto-sync confi
 read, the D-11 unsynced badge, and the LOCKED D-12 Russian result strings.
 """
 
+import httpx
+import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import CashMovement, Operation, SyncState
+from app.models import Batch, CashMovement, Operation, Product, Sale, SyncState
+from app.services import rate_limit
+from app.services.ledger import next_seq, record_operation
 from app.services import sync_client
 from app.services.sync_client import (
     DEFAULT_INTERVAL_SECONDS,
@@ -17,6 +22,33 @@ from app.services.sync_client import (
     MIN_INTERVAL_SECONDS,
     SyncResult,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_buckets():
+    """Keep the shared sync rate-limit buckets from leaking across driver tests
+    (the ASGITransport driver hits the real rate-limited /api/sync/ routes)."""
+    rate_limit.reset_buckets()
+    yield
+    rate_limit.reset_buckets()
+
+
+def _mock_client(handler):
+    """A sync httpx.Client over a MockTransport (offline / 5xx / scripted)."""
+    return httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="http://sync"
+    )
+
+
+_MERGE_REPORT_JSON = {
+    "operations_inserted": 0,
+    "operations_skipped": 0,
+    "cash_inserted": 0,
+    "cash_skipped": 0,
+    "reference_inserted": {},
+    "reference_server_wins": {},
+    "conflicts": [],
+}
 
 
 def _make_operation(session, product, *, synced_at=None):
@@ -195,3 +227,145 @@ def test_last_sync_line_in_moscow(session):
         SyncResult(status="ok", pushed=1, pulled=0), row, settings.display_tz
     )
     assert last == "Последняя синхронизация: 20.07.2026 14:32"
+
+
+# --- Plan-03 Task 1: push driver + D-13 closure + stamp-after-200 + lock ------
+
+
+def _author_offline_sale(session, product, batch, customer):
+    """Author a fully local (offline) sale: receipt stock, a Sale header, a `sale`
+    operation linked to it, and a CashMovement — so the unsynced ledger rows
+    reference a locally-created Sale/Batch/Customer (the D-13 FK closure)."""
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        batch_id=batch.id,
+    )
+    sale = Sale(
+        id=new_id(),
+        customer_id=customer.id,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+        device_id=settings.device_id,
+    )
+    session.add(sale)
+    session.flush()
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-1,
+        unit_price_cents=1500,
+        sale_id=sale.id,
+        batch_id=batch.id,
+    )
+    cash = CashMovement(
+        id=new_id(),
+        category="sale",
+        amount_cents=1500,
+        sale_id=sale.id,
+        device_id=settings.device_id,
+        seq=session.query(CashMovement).count() + 1,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(cash)
+    session.commit()
+    return sale
+
+
+def test_push_marks_synced_and_pulls(sync_driver_pair, session, stocked_product):
+    """After run_sync_once every unsynced ledger row is synced_at-stamped and the
+    pushed operations are present on the SERVER DB (SYNC-01)."""
+    pair = sync_driver_pair
+    assert sync_client.unsynced_count(session) > 0
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    assert result.pushed >= 1
+    assert sync_client.unsynced_count(session) == 0  # every row stamped
+    server_ops = pair.server_session.scalars(select(Operation)).all()
+    assert len(server_ops) >= 1  # present on the server (crossed the boundary)
+
+
+def test_push_includes_referenced_reference_rows(
+    sync_driver_pair, session, product, batch, customer
+):
+    """D-13: an offline-authored sale (local Sale+Batch+Customer) pushes with NO FK
+    failure because the body carried the FK parents in FK-dependency order."""
+    pair = sync_driver_pair
+    sale = _author_offline_sale(session, product, batch, customer)
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"  # no IntegrityError / 4xx from the server merge
+    # The FK parents really landed on the (previously empty) server.
+    assert pair.server_session.get(Sale, sale.id) is not None
+    assert pair.server_session.get(Product, product.id) is not None
+    assert pair.server_session.get(Batch, batch.id) is not None
+
+
+def test_second_sync_is_noop(sync_driver_pair, session, stocked_product):
+    """Idempotency: a second run with nothing newly unsynced pushes 0 and the
+    server replay skips the already-merged rows (no duplicate operations)."""
+    pair = sync_driver_pair
+    sync_client.run_sync_once(session, client=pair.client)
+    server_ops_after_first = pair.server_session.scalars(select(Operation)).all()
+
+    second = sync_client.run_sync_once(session, client=pair.client)
+
+    assert second.pushed == 0  # nothing left unsynced
+    server_ops_after_second = pair.server_session.scalars(select(Operation)).all()
+    assert len(server_ops_after_second) == len(server_ops_after_first)  # no dupes
+
+
+def test_push_failure_does_not_stamp(session, stocked_product, monkeypatch):
+    """Pitfall 3: a non-2xx push leaves synced_at NULL — the rows re-push next time."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+    before = sync_client.unsynced_count(session)
+    assert before > 0
+
+    def handler(request):
+        return httpx.Response(500, text="boom")
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "error"
+    assert sync_client.unsynced_count(session) == before  # NOT stamped
+
+
+def test_single_run_lock_refuses_overlap(sync_driver_pair, monkeypatch):
+    """D-09: while _run_lock is held, run_sync_tick does not execute a second run —
+    build_sync_client (its first side effect) is never reached."""
+    def _boom():
+        raise AssertionError("run_sync_tick must not execute while the lock is held")
+
+    monkeypatch.setattr(sync_client, "build_sync_client", _boom)
+
+    acquired = sync_client._run_lock.acquire(blocking=False)
+    assert acquired
+    try:
+        # Must return immediately without raising (the lock is already held).
+        sync_client.run_sync_tick()
+    finally:
+        sync_client._run_lock.release()
+
+
+def test_run_sync_once_not_configured(session, monkeypatch):
+    """SRV-03: a blank server URL / token short-circuits to not_configured and never
+    touches the network."""
+    monkeypatch.setattr(settings, "sync_server_url", "")
+    monkeypatch.setattr(settings, "sync_token", "")
+
+    def handler(request):
+        raise AssertionError("the network must not be touched when unconfigured")
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "not_configured"
