@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# S2 no-session result page (D-01): the offline operator has NO cookie/session
+     on the server, so this is a STANDALONE shell mirroring auth_base.html — the
+     /static/style.css is available, but base.html's <nav>/sync chrome must NOT be
+     used (no current_user in scope). No htmx, no hx-headers: the operator arrives
+     here via a top-level <form> navigation, not an hx-post. #}
+  <title>MyOriShop</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="mobile-shell">
+    {% if state == "success" %}
+      <h1>Данные загружены</h1>
+      <p class="muted">Загружено записей: {{ total }}. Операций: {{ ops }}, движений кассы: {{ cash }}.</p>
+      <p class="muted">Повторная загрузка того же файла ничего не изменит.</p>
+    {% elif state == "wrong_password" %}
+      <h1>Доступ отклонён</h1>
+      <p class="error-block">Неверный логин или пароль. Данные не отправлены.</p>
+    {% elif state == "corrupted" %}
+      <h1>Файл повреждён</h1>
+      <p class="error-block">Файл повреждён, экспортируйте заново.</p>
+    {% elif state == "incompatible" %}
+      <h1>Несовместимая версия</h1>
+      {# Both version strings AUTOESCAPED — never | safe (T-30-08). #}
+      <p class="error-block">Файл собран для версии данных {{ file_ver }}, сервер ожидает {{ server_ver }} — обновите приложение.</p>
+    {% elif state == "expired" %}
+      <h1>Сессия истекла</h1>
+      <p class="error-block">Время на загрузку истекло. Войдите заново и повторите отправку.</p>
+    {% endif %}
+  </main>
+</body>
+</html>
