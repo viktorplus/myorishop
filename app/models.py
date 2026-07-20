@@ -334,7 +334,21 @@ class Operation(Base):
     """Append-only ledger row (D-08) — immutability enforced by DB triggers."""
 
     __tablename__ = "operations"
-    __table_args__ = (UniqueConstraint("device_id", "seq"),)
+    __table_args__ = (
+        UniqueConstraint("device_id", "seq"),
+        # D-11 (Phase 29): NON-unique partial index keeps the unsynced-count
+        # badge COUNT(*) WHERE synced_at IS NULL cheap as ledger history grows.
+        # Declared here (not only in migration 0020) because tests/conftest.py
+        # builds schema via create_all, not Alembic (Pitfall 5) — a
+        # migration-only index would be absent in tests. Portable to PostgreSQL
+        # via matching sqlite_where + postgresql_where (the 0003 idiom).
+        Index(
+            "ix_operations_unsynced",
+            "synced_at",
+            sqlite_where=text("synced_at IS NULL"),
+            postgresql_where=text("synced_at IS NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -473,7 +487,18 @@ class CashMovement(Base):
     """
 
     __tablename__ = "cash_movements"
-    __table_args__ = (UniqueConstraint("device_id", "seq"),)
+    __table_args__ = (
+        UniqueConstraint("device_id", "seq"),
+        # D-11 (Phase 29): partial index twin of ix_operations_unsynced — keeps
+        # the unsynced-count badge cheap across the cash ledger too. Declared in
+        # the model for create_all (Pitfall 5); portable via both *_where.
+        Index(
+            "ix_cash_movements_unsynced",
+            "synced_at",
+            sqlite_where=text("synced_at IS NULL"),
+            postgresql_where=text("synced_at IS NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     # A CASH_CATEGORIES key ("sale", "return", plus Phase 16's manual ones).
@@ -572,3 +597,37 @@ class DeviceToken(Base):
     # Stamped on each successful verification so a stale token is visible.
     last_used_at: Mapped[str | None] = mapped_column(String(32))
     revoked_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class SyncState(Base):
+    """Single-row online-sync bookkeeping (D-10 + D-15).
+
+    Exactly one row exists, always `id = 1` (a singleton). The D-10 result
+    columns (last_sync_at / last_status / last_result) are written after EVERY
+    sync attempt in a single exit point, so the failure path is recorded as
+    reliably as success and the header status survives an app restart. The D-15
+    config columns (auto_enabled / auto_interval_seconds) hold the
+    runtime-mutable auto-sync toggle + interval, read fresh at the top of each
+    background loop tick so flipping them takes effect on the next tick — `.env`
+    is unsuitable because it is static.
+
+    String/Integer only — portable to PostgreSQL under the shared migration
+    history (SRV-01). The sync TOKEN is deliberately NOT a column here: it is a
+    secret resolved from `.env` (settings.sync_token), never persisted in the
+    synced DB, so copying `myorishop.db` cannot clone the device credential.
+    """
+
+    __tablename__ = "sync_state"
+
+    # Singleton PK — always 1; the service seeds the single row explicitly.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_sync_at: Mapped[str | None] = mapped_column(String(32))  # UTC ISO text
+    last_status: Mapped[str | None] = mapped_column(String(16))  # ok|partial|error
+    last_result: Mapped[str | None] = mapped_column(String(300))  # RU message (D-12)
+    # D-15: auto-sync OFF by default; interval 300s. nullable=False mirrors the
+    # DeviceToken.is_active precedent (ORM default, no server default so the
+    # migration stays portable).
+    auto_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auto_interval_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=300
+    )
