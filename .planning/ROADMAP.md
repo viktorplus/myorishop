@@ -224,7 +224,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 29-03-PLAN.md — Sync driver core: push + D-13 reference closure + pull-apply with D-14 server-wins-on-update + offline-safe + single-run lock (wave 3)
+- [x] 29-03-PLAN.md — Sync driver core: push + D-13 reference closure + pull-apply with D-14 server-wins-on-update + offline-safe + single-run lock (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -286,5 +286,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
-| 29. Online Client Sync | v3.0 | 2/5 | In Progress|  |
+| 29. Online Client Sync | v3.0 | 3/5 | In Progress|  |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
