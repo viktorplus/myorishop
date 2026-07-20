@@ -1,10 +1,11 @@
 ---
 phase: 29
 slug: online-client-sync
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-20
+reviewed_at: 2026-07-20
 ---
 
 # Phase 29 — UI Design Contract
