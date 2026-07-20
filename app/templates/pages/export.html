@@ -6,4 +6,12 @@
 <p><a class="button" href="/export/products.csv">Скачать товары (CSV)</a></p>
 <p><a class="button" href="/export/sales.csv">Скачать продажи (CSV)</a></p>
 <p><a class="button" href="/export/customers.csv">Скачать покупателей (CSV)</a></p>
+
+<h2>Офлайн-экспорт</h2>
+{% if sync_configured %}
+<p><a class="button" href="/offline/export">Экспортировать офлайн-файл</a></p>
+<p class="muted">Соберёт всё, что ещё не отправлено на сервер, в один файл для USB-флешки. Файл откроется в браузере на компьютере с интернетом и загрузит себя сам.</p>
+{% else %}
+<p class="error-block">Сначала укажите адрес сервера в настройках, затем экспортируйте файл.</p>
+{% endif %}
 {% endblock %}
