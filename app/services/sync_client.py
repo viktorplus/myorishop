@@ -253,7 +253,7 @@ def _load_by_ids(session: Session, model: type, ids: set[str]) -> list:
     return rows
 
 
-def _collect_push_records(
+def collect_push_records(
     session: Session,
 ) -> tuple[list[merge.ExchangeRecord], dict[str, list[str]]]:
     """Collect the unsynced ledger rows + their D-13 reference closure to push.
@@ -348,7 +348,7 @@ def run_sync_once(session: Session, *, client: httpx.Client) -> SyncResult:
     if not settings.sync_server_url or not settings.sync_token:
         return SyncResult(status="not_configured")
 
-    records, ids = _collect_push_records(session)
+    records, ids = collect_push_records(session)
     pushed_total = len(ids["operation"]) + len(ids["cash_movement"])
     body = "\n".join(
         merge.serialize_exchange(
