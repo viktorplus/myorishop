@@ -66,7 +66,7 @@ The genuine build work is: (1) an **outbound httpx driver** that collects unsync
 | Collect unsynced rows, build push body | API/Backend (service) | Database | Reads local ledger, reuses `merge.serialize_exchange` — pure service logic |
 | Outbound HTTP push/pull | API/Backend (new sync driver) | — | The single new network egress point; must stay off the event loop (threadpool/anyio thread) |
 | Stamp `synced_at` after push | Database (write) | API/Backend | Local UPDATE; allowed by the 0018 column-scoped trigger |
-| Apply pulled reference data | API/Backend (merge engine) | Database | Reuse `merge.apply_merge` in one owned transaction (mirrors the push route) |
+| Apply pulled reference data | API/Backend (merge engine) | Database | Dedicated client-side **server-wins** upsert in one owned transaction (per **D-14** — NOT `merge.apply_merge`, whose insert-only/server-wins-by-discard semantics would drop server updates on rows the client already has) |
 | Manual sync request handling | Frontend Server (FastAPI `def` route) | API/Backend | Threadpool `def` handler, returns OOB partial |
 | Interval auto-sync scheduling | Frontend Server (lifespan asyncio task) | API/Backend | In-process background loop; offloads blocking work to a thread |
 | Sync status / badge display | Browser/Client (HTMX OOB swap) | Frontend Server | Header partial, `hx-swap-oob="true"` |
@@ -459,7 +459,9 @@ def unsynced_count(session) -> int:
 | A4 | Store `sync_token` in `.env` (like `secret_key`), server_url in `.env`/Settings | §Config | If user wants a Settings-page token field writing to a `data/` file instead, the storage location changes (still not the synced DB). |
 | A5 | Auto-sync toggle+interval stored in DB (extend `sync_state` or a config row) | Open Question 3 | Placement affects the migration column set (slightly extends D-10's locked three columns). |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **RESOLVED 2026-07-20 in 29-CONTEXT.md Area 5.** OQ1 → **D-13** (the client push includes the transitive FK reference closure — product/customer/batch/sale/warehouse in FK order). OQ2 → **D-14** (pull-apply MUST apply server updates via a dedicated client-side server-wins upsert — NOT a reuse of `apply_merge`'s insert-only reference stage). OQ3 (pull cursor persistence) → **D-15** (full pull each sync for now; cursor persistence deferred). The recommendations below are the original pre-resolution analysis, kept for traceability.
 
 1. **Does the client push include the reference rows its ledger transitively references?** (HIGHEST PRIORITY — correctness)
    - What we know: The locked scope (D-01/SYNC-01) says "push ops + cash movements." The server's `apply_merge` inserts operations AFTER reference upsert and FK-fails (whole-batch rollback) if `sale_id`/`batch_id`/`product_id` has no server-side parent (`test_push_all_or_nothing`). Reference tables have NO `synced_at` marker, so "unsynced reference rows" cannot be queried the way ledger rows can.

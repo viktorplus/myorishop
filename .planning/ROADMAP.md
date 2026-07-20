@@ -211,7 +211,26 @@ Plans:
   4. The operator can enable an optional interval-based automatic background sync that silently stops attempting while offline; with it disabled, only the manual button syncs. (SYNC-08)
   5. The desktop client keeps working fully offline on local SQLite — the central server is needed only for sync, never for day-to-day local work. (SRV-03)
 
-**Plans**: TBD
+**Plans**: 5 plans (4 waves)
+
+Plans:
+**Wave 1**
+
+- [ ] 29-01-PLAN.md — Foundation: httpx runtime dep + sync URL/token config + SyncState table + synced_at partial indexes + migration 0020 + PG parity (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 29-02-PLAN.md — Sync state + badge count + D-12 Russian result formatter + fresh auto-sync config read (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 29-03-PLAN.md — Sync driver core: push + D-13 reference closure + pull-apply with D-14 server-wins-on-update + offline-safe + single-run lock (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 29-04-PLAN.md — «Синхронизировать» button + header OOB status/badge partial + POST /sync/run + every-page context (wave 4)
+- [ ] 29-05-PLAN.md — Optional interval auto-sync lifespan loop + Settings auto-sync toggle/interval (wave 4)
+
 **UI hint**: yes
 
 #### Phase 30: Offline Self-Uploading File
@@ -267,5 +286,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 26. PostgreSQL Portability & Append-Only Parity | v3.0 | 3/3 | Complete   | 2026-07-18 |
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
-| 29. Online Client Sync | v3.0 | 0/TBD | Not started | - |
+| 29. Online Client Sync | v3.0 | 0/5 | Planned | - |
 | 30. Offline Self-Uploading File | v3.0 | 0/TBD | Not started | - |
