@@ -58,10 +58,10 @@ The offline path is upload-only: a local client with no internet accumulates wor
 
 - [x] **OFF-01**: When the local desktop client has no internet, it keeps recording operations normally and accumulates everything not yet uploaded to the server.
 - [x] **OFF-02**: The operator can export all not-yet-uploaded data to a single self-contained file on a USB flash drive with no internet connection.
-- [ ] **OFF-03**: The self-contained file requires NO application installation on the internet-connected computer — the operator opens it (leading approach: an HTML file opened in any browser; final mechanism decided in phase research) and it uploads its own data to the central server.
+- [x] **OFF-03**: The self-contained file requires NO application installation on the internet-connected computer — the operator opens it (leading approach: an HTML file opened in any browser; final mechanism decided in phase research) and it uploads its own data to the central server.
 - [x] **OFF-04**: The self-uploading file authenticates to the server with a login and password before uploading; a wrong credential is rejected with a clear message and no data is sent.
 - [x] **OFF-05**: The server ingests the uploaded file through the same idempotent UUID merge as online sync — uploading the same file twice changes nothing, and an interrupted upload never leaves a half-applied batch (all-or-nothing on the server).
-- [ ] **OFF-06**: Before uploading, the file shows the operator a preview of what will be sent (count of operations/records) and requires an explicit confirm.
+- [x] **OFF-06**: Before uploading, the file shows the operator a preview of what will be sent (count of operations/records) and requires an explicit confirm.
 - [x] **OFF-07**: The server validates every uploaded file (integrity checksum + schema-version compatibility) and rejects a tampered or incompatible file with a clear message.
 
 ### Reports (RPT)
@@ -148,10 +148,10 @@ Which phases cover which requirements. Each v3.0 requirement maps to exactly one
 | SRV-03 | Phase 29 | Complete |
 | OFF-01 | Phase 30 | Complete |
 | OFF-02 | Phase 30 | Complete |
-| OFF-03 | Phase 30 | Pending |
+| OFF-03 | Phase 30 | Complete |
 | OFF-04 | Phase 30 | Complete |
 | OFF-05 | Phase 30 | Complete |
-| OFF-06 | Phase 30 | Pending |
+| OFF-06 | Phase 30 | Complete |
 | OFF-07 | Phase 30 | Complete |
 
 **Phase → Requirements summary:**

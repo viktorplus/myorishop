@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
-status: executing
+status: verifying
 stopped_at: Phase 30 UI-SPEC approved
-last_updated: "2026-07-20T15:28:37.369Z"
+last_updated: "2026-07-20T15:51:37.988Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 31
-  completed_plans: 30
-  percent: 83
+  completed_plans: 31
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 Phase: 30 (offline-self-uploading-file) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-20
 
-Progress: [██████████] 97%
+Progress: [██████████] 100%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -94,6 +94,7 @@ Progress: [██████████] 97%
 | Phase 30 P01 | 8min | 2 tasks | 1 files |
 | Phase 30 P02 | ~12min | 3 tasks | 5 files |
 | Phase 30 P03 | ~20min | 3 tasks | 3 files |
+| Phase 30 P04 | 15min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 30-02: payload_digest is the ONE integrity checksum shared by serialize_exchange emit + 30-03 upload verify (D-08)
 - [Phase ?]: 30-02: offline upload token = itsdangerous URLSafeTimedSerializer(secret_key, salt='offline-upload'), scope 'offline_upload', TTL 300s (D-03)
 - [Phase 30]: 30-03: offline ingest routes are thin callers of Phase-27 apply_merge; the only additions over sync_push are the SHA-256 integrity check (D-08) and the exact-match schema-version gate (D-09), both before any DB touch; in-body upload token means no CSRF and a single narrow ACAO scoped to /api/offline/login (D-05)
+- [Phase ?]: Phase 30 offline export (GET /offline/export) is read-only — never stamps synced_at (D-07); client half ships OFF-01/02/03/06 with a self-contained self-uploading HTML file
 
 ### Pending Todos
 
@@ -191,7 +193,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T15:28:21.893Z
+Last session: 2026-07-20T15:50:59.254Z
 Stopped at: Phase 30 UI-SPEC approved
 Resume file: None
 
