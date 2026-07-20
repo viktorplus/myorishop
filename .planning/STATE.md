@@ -4,13 +4,13 @@ milestone: v3.0
 milestone_name: Multi-Operator Sync, Central Server & Roles
 status: executing
 stopped_at: Phase 30 UI-SPEC approved
-last_updated: "2026-07-20T13:59:24.787Z"
-last_activity: 2026-07-20 -- Phase 30 planning complete
+last_updated: "2026-07-20T14:45:21.717Z"
+last_activity: 2026-07-20
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
   percent: 83
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-18)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 29 — online-client-sync
+**Current focus:** Phase 30 — offline-self-uploading-file
 
 ## Current Position
 
-Phase: 30
-Plan: Not started
+Phase: 30 (offline-self-uploading-file) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-20 -- Phase 30 planning complete
+Last activity: 2026-07-20
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 **v3.0 phase map (Phases 25-30):**
 
@@ -91,6 +91,7 @@ Progress: [██████████] 100%
 | Phase 29 P03 | 40min | 2 tasks | 3 files |
 | Phase 29 P04 | 40min | 2 tasks | 5 files |
 | Phase 29 P05 | 45min | 2 tasks | 5 files |
+| Phase 30 P01 | 8min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 29-04: manual sync surface — POST /sync/run always-200 OOB handler (SYNC-06) + every-page context processor + base.html nav trigger/status/badge (D-01/D-02); unsynced badge styled inline with locked price-cue token values, no new CSS token
 - [Phase ?]: 29-05: interval auto-sync runs as a zero-dependency asyncio loop in the FastAPI lifespan (D-06); the blocking driver is offloaded via anyio.to_thread.run_sync with a fresh Session (D-07); the whole tick is broad-guarded so any error is swallowed and the loop never dies (D-08); cancelled cleanly on shutdown
 - [Phase ?]: 29-05: admin Settings «Синхронизация» control persists auto_enabled + interval clamped 60..3600 to sync_state (D-03/D-15); a bad interval is defaulted/clamped, never a 5xx; sync_token never surfaced (T-29-07)
+- [Phase ?]: 30-01: Wave-0 offline scaffold pins the D-08 payload_sha256 (record-lines-only, LF-joined) + D-03 token contract (salt offline-upload, scope offline_upload) as the RED-test contract Waves 1-3 must satisfy; not-yet-built offline modules imported INSIDE test bodies so collection stays green
 
 ### Pending Todos
 
@@ -184,9 +186,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T13:21:06.738Z
+Last session: 2026-07-20T14:45:12.586Z
 Stopped at: Phase 30 UI-SPEC approved
-Resume file: .planning/phases/30-offline-self-uploading-file/30-UI-SPEC.md
+Resume file: None
 
 ## Operator Next Steps
 

@@ -251,7 +251,7 @@ Plans:
 Plans:
 **Wave 0**
 
-- [ ] 30-01-PLAN.md — Nyquist test scaffold: tests/test_offline.py RED map + fixtures/helpers (OFF-01..07 + token/bypass/escaping/CRLF/rate-limit) (wave 0)
+- [x] 30-01-PLAN.md — Nyquist test scaffold: tests/test_offline.py RED map + fixtures/helpers (OFF-01..07 + token/bypass/escaping/CRLF/rate-limit) (wave 0)
 
 **Wave 1** *(blocked on Wave 0 completion)*
 
@@ -305,4 +305,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 27. Shared Idempotent Merge Core | v3.0 | 4/4 | Complete   | 2026-07-19 |
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
-| 30. Offline Self-Uploading File | v3.0 | 0/4 | Planned | - |
+| 30. Offline Self-Uploading File | v3.0 | 1/4 | In Progress|  |
