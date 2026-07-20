@@ -43,6 +43,7 @@ from app.routes import (
     mobile_search,
     mobile_transfers,
     mobile_writeoff,
+    offline,
     products,
     receipts,
     reports,
@@ -217,6 +218,12 @@ app.include_router(
 # declares Depends(require_device), a per-device Bearer gate strictly NARROWER
 # than a session cookie (a browser cannot forge an Authorization header).
 app.include_router(sync.router)
+# OFF-04/05/07: the offline self-upload ingest tree. Like the sync router it has
+# NO `dependencies=` — the app-level auth_guard returns early for the
+# /api/offline/ prefix (security.OFFLINE_PATH_PREFIX), and each ingest route gates
+# itself in-body with the short-lived upload token. The narrow ACAO header lives
+# only on these responses, so the /api/sync/ CORS posture stays untouched (D-05).
+app.include_router(offline.router)
 app.include_router(mobile_home.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)

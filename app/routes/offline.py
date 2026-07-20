@@ -72,3 +72,45 @@ def _result(request: Request, state: str, *, status: int = 200, **ctx) -> Respon
         {"state": state, **ctx},
         status_code=status,
     )
+
+
+@router.post("/api/offline/login")
+def offline_login(
+    login: str = Form(""),
+    password: str = Form(""),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Verify creds and mint a short-lived upload token (OFF-04 / D-04).
+
+    Declaring ONLY `login` + `password` (no payload/data field) is what literally
+    satisfies "no data sent on failure" — the business data never reaches this
+    endpoint. Plain `def` (CLAUDE.md sync-session rule) → FastAPI threadpool.
+
+    Every response carries the SINGLE narrow `_ACAO` header (D-05) and no cookies,
+    so the self-uploading file's null-origin JS can read the token without opening
+    the /api/sync/ CORS posture. The login body is `x-www-form-urlencoded`, a CORS
+    simple request → no preflight.
+    """
+    login = login.strip()
+
+    # (1) Rate-limit the login bucket FIRST (brute-force blunt, D-05 / T-30-07).
+    if not check_rate_limit(f"offline-login:{login}"):
+        return JSONResponse(
+            {"error": RATE_LIMITED_ERROR}, status_code=429, headers=_ACAO
+        )
+
+    # (2) One generic failure for unknown login / wrong password / deactivated —
+    # no enumeration oracle (V2 / T-25-04-05). NO token, NO data on failure (D-04).
+    user = session.scalar(select(User).where(User.login == login))
+    if (
+        user is None
+        or not verify_password(session, user, password)
+        or user.is_active != 1
+    ):
+        return JSONResponse(
+            {"error": BAD_CREDENTIALS_ERROR}, status_code=401, headers=_ACAO
+        )
+
+    # (3) Success: mint the upload-scoped token (D-03). Never logged (CLAUDE.md).
+    token = offline_service.mint_offline_token(user.id)
+    return JSONResponse({"token": token}, headers=_ACAO)
