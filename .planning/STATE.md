@@ -199,8 +199,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T15:50:59.254Z
-Stopped at: Phase 30 UI-SPEC approved
+Last session: 2026-07-21 (resumed)
+Stopped at: Session resumed, proceeding to milestone-closure chores (phase.complete 27 next)
 Resume file: None
 
 ## Operator Next Steps
