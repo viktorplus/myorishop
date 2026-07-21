@@ -39,10 +39,15 @@
                    hx-get="/products" hx-trigger="input changed delay:300ms"
                    hx-include="#product-rows input, #product-rows select"
                    hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true"></th>
-        <th><input type="text" name="category" placeholder="Фильтр…" value="{{ category }}"
-                   hx-get="/products" hx-trigger="input changed delay:300ms"
-                   hx-include="#product-rows input, #product-rows select"
-                   hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th><select name="category"
+                    hx-get="/products" hx-trigger="change"
+                    hx-include="#product-rows input, #product-rows select"
+                    hx-target="#product-rows" hx-swap="outerHTML" hx-push-url="true">
+              <option value="" {% if not category %}selected{% endif %}>Все категории</option>
+              {% for c in categories %}
+              <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select></th>
         <th></th>
         <th></th>
         <th></th>

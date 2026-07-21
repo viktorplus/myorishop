@@ -1206,6 +1206,20 @@ def test_web_products_filter_row_narrows_results(client, session):
     assert "Крем Для Рук" not in page.text
 
 
+def test_web_products_category_filter_is_a_select(client, session):
+    """Quick task 260721-f39: the category filter is a <select>, not a text
+    input, populated from distinct existing product categories."""
+    _create(session, "F3", "Тушь Для Ресниц", category="Макияж")
+    _create(session, "F4", "Крем Для Рук", category="Уход")
+
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert '<select name="category"' in page.text
+    assert 'option value="Макияж"' in page.text
+    assert 'option value="Уход"' in page.text
+    assert 'input type="text" name="category"' not in page.text
+
+
 def test_web_products_pagination_bar_shows_correct_total(client, session):
     """LIST-01: 25 active products -> two pages, page-of-total text rendered."""
     for i in range(25):

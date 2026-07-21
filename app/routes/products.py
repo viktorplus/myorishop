@@ -72,6 +72,7 @@ def _products_context(
         "code": result["code"],
         "name": result["name"],
         "category": result["category"],
+        "categories": category_options(session),
         "sort": result["sort"],
         "list_url": "/products",
         "rows_target_id": "product-rows",
