@@ -85,6 +85,8 @@ docker compose -f docker-compose.prod.yml exec ori-app \
 Скрипт делает full-replace обеих таблиц в одной транзакции; можно перезапускать.
 **`scripts/seed_demo_data.py` на сервере НЕ запускаем** — это тестовые данные.
 
+> ⚠️ **При ОБНОВЛЕНИИ справочника** (изменился мастер-xlsx или `app/services/rubric_overrides.json`): код и data-файлы `COPY`-запечены в образ `ori-app`, а не смонтированы томом — одного `git pull` мало. Сначала пересобери образ `docker compose -f docker-compose.prod.yml up -d --build`, дождись health и только потом запускай импорт выше, иначе контейнер перельёт СТАРЫЕ данные.
+
 ## 5. Caddy — маршрут для домена
 
 Добавь блок из `deploy/Caddyfile.ori-block` в общий Caddyfile и перезагрузи Caddy:
