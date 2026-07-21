@@ -14,6 +14,7 @@ from app.db import get_session
 from app.routes import templates
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
 from app.services.pagination import page_window
+from app.services.rubrics import RUBRICS
 
 router = APIRouter()
 
@@ -22,16 +23,23 @@ router = APIRouter()
 
 
 def _dictionary_context(
-    session: Session, *, code: str = "", name: str = "", sort: str = "", page: int = 0
+    session: Session,
+    *,
+    code: str = "",
+    name: str = "",
+    category: str = "",
+    sort: str = "",
+    page: int = 0,
 ) -> dict:
     """Shared filter/sort/page context for GET and the two POST handlers."""
-    result = list_entries(session, code=code, name=name, sort=sort, page=page)
+    result = list_entries(session, code=code, name=name, category=category, sort=sort, page=page)
     pw = page_window(result["page"], result["total_pages"])
     qs_parts = {
         k: v
         for k, v in {
             "code": result["code"],
             "name": result["name"],
+            "category": result["category"],
             "sort": result["sort"],
         }.items()
         if v
@@ -45,6 +53,8 @@ def _dictionary_context(
         "page_window": pw,
         "code": result["code"],
         "name": result["name"],
+        "category": result["category"],
+        "rubrics": RUBRICS,
         "sort": result["sort"],
         "list_url": "/dictionary",
         "rows_target_id": "dictionary-rows",
@@ -59,11 +69,14 @@ def dictionary_page(
     request: Request,
     code: str = "",
     name: str = "",
+    category: str = "",
     sort: str = "",
     page: int = 0,
     session: Session = Depends(get_session),
 ):
-    context = _dictionary_context(session, code=code, name=name, sort=sort, page=page)
+    context = _dictionary_context(
+        session, code=code, name=name, category=category, sort=sort, page=page
+    )
     is_hx = bool(request.headers.get("HX-Request"))
     if is_hx:
         return templates.TemplateResponse(request, "partials/dictionary_rows.html", context)
@@ -132,6 +145,7 @@ def dictionary_update(
     # with list_ to avoid colliding with the code/name Form fields above.
     list_code: str = "",
     list_name: str = "",
+    list_category: str = "",
     list_sort: str = "",
     list_page: int = 0,
     session: Session = Depends(get_session),
@@ -141,7 +155,12 @@ def dictionary_update(
         raise HTTPException(status_code=404, detail="unknown dictionary entry")
     context = {
         **_dictionary_context(
-            session, code=list_code, name=list_name, sort=list_sort, page=list_page
+            session,
+            code=list_code,
+            name=list_name,
+            category=list_category,
+            sort=list_sort,
+            page=list_page,
         ),
         "errors": errors,
         "form": {},

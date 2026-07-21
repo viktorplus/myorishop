@@ -463,7 +463,13 @@ def test_web_dictionary_category_filter_no_matches_shows_empty_state(client, ses
 
 
 def test_web_dictionary_renders_category_select(client, session):
-    """The list renders a <select name="category"> sourced from RUBRICS."""
+    """The list renders a <select name="category"> sourced from RUBRICS.
+
+    Filter-row selects only render alongside the table (existing code/name
+    idiom), so an entry is seeded to keep the assertion deterministic.
+    """
+    add_entry(session, code="1234", name="Помада")
+
     response = client.get("/dictionary")
     assert response.status_code == 200
     assert '<select name="category"' in response.text

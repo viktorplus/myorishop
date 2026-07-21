@@ -87,6 +87,7 @@ def list_entries(
     *,
     code: str = "",
     name: str = "",
+    category: str = "",
     sort: str = "",
     page: int = 0,
 ) -> dict:
@@ -100,14 +101,20 @@ def list_entries(
     Cyrillic and matched against the name_lc shadow column instead (SQLite
     lower()/LIKE cannot fold Cyrillic) — mirrors catalog.search_products.
     T-14-08: page is clamped into [0, total_pages - 1] before use in offset().
+
+    Quick task 260721-f39: category filters Dictionary.rubric by EXACT match
+    (not substring) — app.services.rubrics.RUBRICS is a closed vocabulary.
     """
     filters = []
     code = code.strip()
     name = name.strip()
+    category = category.strip()
     if code:
         filters.append(func.lower(Dictionary.code).contains(code.lower(), autoescape=True))
     if name:
         filters.append(Dictionary.name_lc.contains(name.lower(), autoescape=True))
+    if category:
+        filters.append(Dictionary.rubric == category)
 
     total = session.scalar(
         select(func.count()).select_from(Dictionary).where(*filters)
@@ -130,6 +137,7 @@ def list_entries(
         "page": page,
         "code": code,
         "name": name,
+        "category": category,
         "sort": sort,
     }
 
