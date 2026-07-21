@@ -25,7 +25,6 @@ from app.core import new_id
 from app.db import APPEND_ONLY_TRIGGERS, build_engine
 from app.models import (
     Base,
-    Batch,
     CashMovement,
     CustomerContact,
     Dictionary,
