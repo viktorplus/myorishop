@@ -21,6 +21,7 @@ from app.config import settings
 from app.models import Dictionary, Operation
 from app.services.catalog import create_product
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
+from app.services.rubrics import RUBRICS
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}  # D-01/Pitfall 4 (Phase 18 plan 02)
 
@@ -430,3 +431,41 @@ def test_web_dictionary_filtered_to_zero_shows_empty_filter_message(client, sess
     response = client.get("/dictionary", params={"code": "0000"})
     assert response.status_code == 200
     assert "Ничего не найдено по заданным фильтрам." in response.text
+
+
+# --- Quick task 260721-f39: category (rubric) filter ---
+
+
+def test_web_dictionary_category_filter_exact_match(client, session):
+    """category filters to entries whose rubric exactly matches (closed vocabulary)."""
+    matching, _ = add_entry(session, code="1234", name="Помада")
+    matching.rubric = "Макияж"
+    other, _ = add_entry(session, code="5678", name="Крем Для Рук")
+    other.rubric = "Уход за руками и ногами"
+    session.commit()
+
+    response = client.get("/dictionary", params={"category": "Макияж"})
+    assert response.status_code == 200
+    assert "Помада" in response.text
+    assert "Крем Для Рук" not in response.text
+
+
+def test_web_dictionary_category_filter_no_matches_shows_empty_state(client, session):
+    """A rubric with zero matching entries shows the shared filtered-empty copy."""
+    entry, _ = add_entry(session, code="1234", name="Помада")
+    entry.rubric = "Макияж"
+    session.commit()
+
+    other_rubric = next(r for r in RUBRICS if r != "Макияж")
+    response = client.get("/dictionary", params={"category": other_rubric})
+    assert response.status_code == 200
+    assert "Ничего не найдено по заданным фильтрам." in response.text
+
+
+def test_web_dictionary_renders_category_select(client, session):
+    """The list renders a <select name="category"> sourced from RUBRICS."""
+    response = client.get("/dictionary")
+    assert response.status_code == 200
+    assert '<select name="category"' in response.text
+    assert "Макияж" in response.text
+    assert "Уход за лицом" in response.text
