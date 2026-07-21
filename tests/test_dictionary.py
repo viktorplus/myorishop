@@ -314,9 +314,54 @@ def test_web_product_form_wired_for_autofill(client):
     response = client.get("/products/new")
     assert response.status_code == 200
     assert 'hx-get="/dictionary/lookup"' in response.text
-    assert "hx-include=\"[name='name']\"" in response.text
+    assert "hx-include=\"[name='name'], [name='category']\"" in response.text
     assert 'hx-target="#name-wrap"' in response.text
     assert "delay:300ms" in response.text
+
+
+def test_web_lookup_fills_category_when_empty(client, session):
+    """CAT-06: known code with a rubric + both name/category empty -> category OOB fill."""
+    entry, _ = add_entry(session, code="1234", name="Губная Помада")
+    entry.rubric = "Макияж"
+    session.commit()
+
+    response = client.get(
+        "/dictionary/lookup", params={"code": "1234", "name": "", "category": ""}
+    )
+    assert response.status_code == 200
+    assert 'id="category"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
+    assert "Макияж" in response.text
+
+
+def test_web_lookup_fills_category_only_when_name_already_present(client, session):
+    """Category fills independently of name already being set (no name autofill hint)."""
+    entry, _ = add_entry(session, code="1234", name="Губная Помада")
+    entry.rubric = "Макияж"
+    session.commit()
+
+    response = client.get(
+        "/dictionary/lookup",
+        params={"code": "1234", "name": "Уже заполнено", "category": ""},
+    )
+    assert response.status_code == 200
+    assert 'id="category"' in response.text
+    assert "Макияж" in response.text
+    assert "Название подставлено из справочника" not in response.text
+
+
+def test_web_lookup_does_not_overwrite_existing_category(client, session):
+    """Pitfall 5 mirrored for category: an operator-entered value is never overwritten."""
+    entry, _ = add_entry(session, code="1234", name="Губная Помада")
+    entry.rubric = "Макияж"
+    session.commit()
+
+    response = client.get(
+        "/dictionary/lookup",
+        params={"code": "1234", "name": "", "category": "Уже заполнено"},
+    )
+    assert response.status_code == 200
+    assert 'id="category"' not in response.text
 
 
 def test_web_dictionary_shows_rubric_column(client, session):
