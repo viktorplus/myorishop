@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import Batch, CashMovement, Operation, Product, Sale, SyncState
+from app.models import Batch, CashMovement, Dictionary, Operation, Product, Sale, SyncState
 from app.services import rate_limit, sync_client
 from app.services.ledger import record_operation
 from app.services.sync_client import (
@@ -441,6 +441,48 @@ def test_pull_does_not_clobber_local_quantity(sync_driver_pair, session, warehou
     updated = session.get(Product, pid)
     assert updated.name == "Товар с сервера"  # master data: server wins
     assert updated.quantity == 8  # stock stays local-ledger-derived
+
+
+def test_pull_dictionary_code_conflict_updates_local_row(sync_driver_pair, session):
+    """Quick fix 260721-ebn: a server Dictionary row whose `code` already exists
+    locally under a DIFFERENT `id` (independently-imported catalogs on each side)
+    must not crash the pull (no IntegrityError on the `code` UNIQUE constraint).
+    The local row is updated in place (server wins on name), keeping its own
+    local `id` and `code` — no duplicate row is created."""
+    pair = sync_driver_pair
+    local_id = new_id()
+    session.add(Dictionary(id=local_id, code="47518", name="Старое имя"))
+    session.commit()
+    server_id = new_id()
+    pair.server_session.add(Dictionary(id=server_id, code="47518", name="Новое имя"))
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"  # NOT "partial" — this is the regression closed here
+    session.expire_all()
+    rows = session.scalars(select(Dictionary).where(Dictionary.code == "47518")).all()
+    assert len(rows) == 1  # no duplicate row
+    assert rows[0].id == local_id  # local id preserved
+    assert rows[0].name == "Новое имя"  # server wins on master data
+
+
+def test_pull_dictionary_new_code_still_inserts(sync_driver_pair, session):
+    """A genuinely NEW dictionary code (absent locally under any id) is still
+    inserted as before, using the server's id verbatim."""
+    pair = sync_driver_pair
+    did = new_id()
+    pair.server_session.add(Dictionary(id=did, code="99999", name="Новый код"))
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    session.expire_all()
+    row = session.get(Dictionary, did)
+    assert row is not None
+    assert row.code == "99999"
+    assert row.name == "Новый код"
 
 
 def test_offline_returns_offline_not_raise(session, stocked_product, monkeypatch):
