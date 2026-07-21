@@ -139,18 +139,22 @@ def main() -> None:
 
         # CAT-06: assign the rubric and (for bad shade-only names) the corrected
         # full name, both resolved from the code via app.services.rubrics.
-        session.bulk_save_objects(
-            [
+        # name_lc is the lowercased shadow column the name filter matches on
+        # (LIST-02); set it here or bulk-imported rows are invisible to search.
+        dict_rows = []
+        for code, data in collected.items():
+            name = resolve_name(code, data["name"] or code)[:200]
+            dict_rows.append(
                 Dictionary(
                     id=new_id(),
                     code=code,
-                    name=resolve_name(code, data["name"] or code)[:200],
+                    name=name,
+                    name_lc=name.lower(),
                     catalogs=[to_json_code(data["year"], data["number"])],
                     rubric=resolve_rubric(code, data["name"] or code),
                 )
-                for code, data in collected.items()
-            ]
-        )
+            )
+        session.bulk_save_objects(dict_rows)
         session.bulk_save_objects(
             [
                 CatalogPrice(
