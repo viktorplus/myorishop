@@ -76,15 +76,26 @@ def dictionary_lookup(
     request: Request,
     code: str = "",
     name: str = "",
+    category: str = "",
     session: Session = Depends(get_session),
 ):
     # Pattern 2 (D-23): the SERVER decides fill vs no-op; htmx ignores 204.
-    # Pitfall 5: a non-empty operator name is never overwritten.
+    # Pitfall 5: a non-empty operator value is never overwritten — applied
+    # independently per field (CAT-06 quick task 260720-wqc).
     entry = lookup(session, code)
-    if entry is None or name.strip():
+    if entry is None:
         return Response(status_code=204)
-    context = {"name": entry.name, "autofilled": True}
-    return templates.TemplateResponse(request, "partials/name_input.html", context)
+    fill_name = not name.strip()
+    fill_category = bool(entry.rubric) and not category.strip()
+    if not fill_name and not fill_category:
+        return Response(status_code=204)
+    context = {
+        "name": entry.name if fill_name else name,
+        "autofilled": fill_name,
+        "fill_category": fill_category,
+        "category": entry.rubric if fill_category else category,
+    }
+    return templates.TemplateResponse(request, "partials/dictionary_lookup.html", context)
 
 
 @router.post("/dictionary")

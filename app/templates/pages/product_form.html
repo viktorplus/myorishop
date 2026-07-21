@@ -25,7 +25,7 @@
     <input type="text" id="code" name="code" value="{% if form %}{{ form.code or '' }}{% elif product %}{{ product.code or '' }}{% endif %}" required autofocus
            hx-get="/dictionary/lookup"
            hx-trigger="input changed delay:300ms"
-           hx-include="[name='name']"
+           hx-include="[name='name'], [name='category']"
            hx-target="#name-wrap"
            hx-swap="outerHTML"
            hx-sync="this:replace">

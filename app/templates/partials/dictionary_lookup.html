@@ -1,0 +1,9 @@
+{# CAT-06 (quick task 260720-wqc): combined response for GET /dictionary/lookup —
+   the name-wrap fragment (unchanged, PD-6 shared with /receipts/lookup) plus an
+   out-of-band Категория fill, mirroring the product_price_autofill.html OOB
+   pattern. Context: name, autofilled, fill_category, category. #}
+{% include "partials/name_input.html" %}
+{% if fill_category %}
+<input type="text" id="category" name="category" list="cat-options" value="{{ category }}"
+       hx-swap-oob="true">
+{% endif %}
