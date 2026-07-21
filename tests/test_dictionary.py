@@ -319,6 +319,20 @@ def test_web_product_form_wired_for_autofill(client):
     assert "delay:300ms" in response.text
 
 
+def test_web_dictionary_shows_rubric_column(client, session):
+    """CAT-06: the list renders a read-only Категория column (rubric or —)."""
+    with_rubric, _ = add_entry(session, code="1234", name="Помада")
+    with_rubric.rubric = "Макияж"
+    session.commit()
+    add_entry(session, code="5678", name="Тушь")
+
+    response = client.get("/dictionary")
+    assert response.status_code == 200
+    assert "Категория" in response.text
+    assert "Макияж" in response.text
+    assert "—" in response.text
+
+
 def test_web_nav_has_dictionary_link(client):
     """Phase 24: Справочник -> /dictionary moved from the top nav into the
     Товары page toolbar (D-01/D-04); verify reachability there instead."""

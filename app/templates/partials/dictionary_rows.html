@@ -31,6 +31,7 @@
       <tr>
         <th>Код</th>
         <th>Название</th>
+        <th>Категория</th>
         <th></th>
       </tr>
       <tr class="filter-row">
@@ -42,6 +43,7 @@
                    hx-get="/dictionary" hx-trigger="input changed delay:300ms"
                    hx-include="#dictionary-rows input, #dictionary-rows select"
                    hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true"></th>
+        <th></th>
         <th></th>
       </tr>
     </thead>
@@ -55,6 +57,7 @@
         {% endif %}
         <td><input type="text" name="code" value="{{ row.code }}" form="edit-{{ e.id }}"></td>
         <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ e.id }}"></td>
+        <td>{{ e.rubric or "—" }}</td>
         <td>
           <form id="edit-{{ e.id }}"
                 hx-post="/dictionary/{{ e.id }}?list_code={{ code|urlencode }}&list_name={{ name|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}"
