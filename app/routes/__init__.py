@@ -72,12 +72,14 @@ def _sync_status_context(request: Request) -> dict:
                 "sync_message": (row.last_result if row else "") or "",
                 "last_sync_line": last_sync_line,
                 "unsynced": unsynced,
+                "sync_configured": bool(_config_settings.sync_server_url),
             }
     except Exception:
         return {
             "sync_message": "",
             "last_sync_line": "Ещё не синхронизировано",
             "unsynced": 0,
+            "sync_configured": bool(_config_settings.sync_server_url),
         }
 
 

@@ -58,6 +58,11 @@
          layout token). Only shown to a logged-in user (sync is app chrome, like
          logout below). #}
       {% if current_user %}
+      {# quick-260721-egc: the sync widget is only meaningful on an instance
+         actually paired as a sync CLIENT (sync_server_url set). The central
+         server itself never has sync_server_url configured (SRV-03), so it
+         must not show a perpetually "not configured" widget. #}
+      {% if sync_configured %}
       {# CR-01: /sync/run returns an ALL-OOB response (both #sync-status and
          #sync-badge carry hx-swap-oob), so its "main" fragment is empty. Without
          hx-swap="none" htmx swaps that empty fragment into this <a>'s innerHTML
@@ -67,6 +72,7 @@
       <a hx-post="/sync/run" hx-swap="none" hx-indicator="#sync-inflight" style="margin-left:auto;cursor:pointer">Синхронизировать</a>
       <span id="sync-inflight" class="htmx-indicator muted">Синхронизация…</span>
       {% include "partials/sync_status.html" %}
+      {% endif %}
       {# AUTH-05: logout is a state-change → POST, CSRF-carried via the body
          hx-headers above. accent text from the existing `a` rule. display_name is
          autoescaped — never |safe (T-25-06-03). #}

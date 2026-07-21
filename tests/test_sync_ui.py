@@ -66,9 +66,14 @@ def _configure_server(monkeypatch):
 # --- Header wiring (D-01): trigger + status on every desktop page ------------
 
 
-def test_header_shows_sync_trigger_and_status(client, _ctx_session):
+def test_header_shows_sync_trigger_and_status(client, _ctx_session, monkeypatch):
     """Every desktop page carries the «Синхронизировать» trigger + #sync-status
-    (D-01) — glanceable header chrome, not Settings-only."""
+    (D-01) — glanceable header chrome, not Settings-only.
+
+    quick-260721-egc: the widget is now conditional on sync_server_url being
+    configured (a paired client), so this test must set it explicitly — the
+    test-suite default is "" (unconfigured, like the central server)."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
     html = client.get("/history").text
     assert 'hx-post="/sync/run"' in html  # the manual trigger posts to the route
     assert "Синхронизировать" in html  # D-01 CTA copy
@@ -76,18 +81,35 @@ def test_header_shows_sync_trigger_and_status(client, _ctx_session):
     assert 'id="sync-badge"' in html  # the badge OOB target is always present
 
 
-def test_badge_hidden_when_zero(client, _ctx_session):
+def test_header_hides_sync_trigger_when_not_configured(client, _ctx_session, monkeypatch):
+    """quick-260721-egc: on an instance with no sync_server_url (the central
+    server, or an unpaired client) the header must not show the sync widget —
+    it would otherwise render "Синхронизация не настроена" forever."""
+    monkeypatch.setattr(settings, "sync_server_url", "")
+    html = client.get("/history").text
+    assert "Синхронизировать" not in html
+    assert 'id="sync-status"' not in html
+
+
+def test_badge_hidden_when_zero(client, _ctx_session, monkeypatch):
     """SYNC-07 / D-12: with nothing unsynced the #sync-badge container renders but
-    the visible count span is absent (hidden at 0)."""
+    the visible count span is absent (hidden at 0).
+
+    quick-260721-egc: the badge lives inside the now-conditional sync widget, so
+    this needs a configured sync_server_url (paired client) to render at all."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
     html = client.get("/history").text
     assert 'id="sync-badge"' in html  # container present so an OOB swap can clear it
     assert "sync-badge-count" not in html  # no visible badge at 0
     assert "padding:4px 8px" not in html  # the badge geometry is not rendered
 
 
-def test_badge_visible_when_unsynced(client, session, product, _ctx_session):
+def test_badge_visible_when_unsynced(client, session, product, _ctx_session, monkeypatch):
     """SYNC-07 / D-11: an unsynced ledger row makes the amber count badge appear
-    with the numeric count."""
+    with the numeric count.
+
+    quick-260721-egc: needs sync_server_url configured, same as above."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
     _make_operation(session, product)  # one unsynced Operation → count == 1
     html = client.get("/history").text
     assert "sync-badge-count" in html  # visible badge span rendered
@@ -166,7 +188,12 @@ def test_lock_hit_returns_locked_partial(client, monkeypatch):
 
 def test_context_processor_never_breaks_page(client, monkeypatch):
     """SRV-03: a sync-state hiccup (SessionLocal raises) must not break page
-    rendering — the page still returns 200 with the neutral never-synced line."""
+    rendering — the page still returns 200 with the neutral never-synced line.
+
+    quick-260721-egc: needs sync_server_url configured so the (now-conditional)
+    widget is even rendered — otherwise this assertion couldn't distinguish the
+    exception path from the "not a sync client" path."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
 
     def _boom():
         raise RuntimeError("sync_state unavailable")
