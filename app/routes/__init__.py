@@ -50,7 +50,15 @@ def _sync_status_context(request: Request) -> dict:
 
     SRV-03: any error (missing DB / sync_state hiccup) is swallowed to a neutral
     default so a sync problem can NEVER break page rendering. The token is never
-    read here (T-29-07)."""
+    read here (T-29-07).
+
+    quick-260721-egc: also exposes is_server_db (SRV-01/02: the deployed central
+    server is the only role that ever runs on postgresql+..., every local client
+    defaults to sqlite:///) so base.html can style the nav distinctly. Computed
+    once up front — it's a pure string check on already-loaded settings, never
+    touches the DB, so it cannot itself raise the exception this fallback guards
+    against and must be identical in both branches below."""
+    is_server_db = _config_settings.database_url.startswith("postgresql")
     try:
         with SessionLocal() as session:
             # WR-02: READ-ONLY on the render path — never INSERT the sync_state
@@ -73,6 +81,7 @@ def _sync_status_context(request: Request) -> dict:
                 "last_sync_line": last_sync_line,
                 "unsynced": unsynced,
                 "sync_configured": bool(_config_settings.sync_server_url),
+                "is_server_db": is_server_db,
             }
     except Exception:
         return {
@@ -80,6 +89,7 @@ def _sync_status_context(request: Request) -> dict:
             "last_sync_line": "Ещё не синхронизировано",
             "unsynced": 0,
             "sync_configured": bool(_config_settings.sync_server_url),
+            "is_server_db": is_server_db,
         }
 
 

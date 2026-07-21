@@ -35,6 +35,22 @@ nav a.active {
   font-weight: 600;
 }
 
+/* Server-mode indicator (SRV-01/02): the PostgreSQL-backed central server gets
+   a visually distinct dark nav so it can never be mistaken for a local SQLite
+   client — both render this same base.html otherwise. */
+nav.server-mode {
+  background: #1e293b;
+  border-bottom-color: #0f172a;
+}
+
+nav.server-mode a {
+  color: #e2e8f0;
+}
+
+nav.server-mode a.active {
+  color: #ffffff;
+}
+
 /* Товары toolbar (Phase 24, D-01/D-04/D-05): always-visible two-group
    action toolbar reusing .form-actions/.button/.muted verbatim. */
 .toolbar {

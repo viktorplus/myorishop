@@ -34,7 +34,7 @@
    covers logout + every existing state-changing form). #}
 <body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   <main class="container">
-    <nav>
+    <nav{% if is_server_db %} class="server-mode"{% endif %}>
       <a href="/"{% if request.url.path == "/" %} class="active"{% endif %}>Главная</a>
       <a href="/products"{% if request.url.path.startswith("/products") %} class="active"{% endif %}>Товары</a>
       <a href="/sales/new"{% if request.url.path.startswith("/sales") %} class="active"{% endif %}>Продажи</a>

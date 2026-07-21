@@ -202,3 +202,23 @@ def test_context_processor_never_breaks_page(client, monkeypatch):
     resp = client.get("/history")
     assert resp.status_code == 200  # page still renders
     assert "Ещё не синхронизировано" in resp.text  # neutral default line
+
+
+# --- Nav server-mode indicator (SRV-01/02) ------------------------------------
+
+
+def test_nav_server_mode_on_postgres_db_url(client, _ctx_session, monkeypatch):
+    """quick-260721-egc: a PostgreSQL-backed database_url (the deployed central
+    server) renders the nav with the server-mode class so it can't be mistaken
+    for a local SQLite client."""
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://u:p@host/db")
+    html = client.get("/history").text
+    assert 'class="server-mode"' in html
+
+
+def test_nav_default_mode_on_sqlite_db_url(client, _ctx_session):
+    """quick-260721-egc: the normal test-suite condition (sqlite database_url,
+    unchanged) renders the nav with no server-mode class — every local client
+    stays pixel-identical to before this change."""
+    html = client.get("/history").text
+    assert 'class="server-mode"' not in html
