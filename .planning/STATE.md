@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 Phase: 30 (offline-self-uploading-file) — EXECUTING
 Plan: 4 of 4
 Status: Phase complete — ready for verification
-Last activity: 2026-07-21 - Completed quick task 260720-wqc: Категория column + autofill on /dictionary and product form
+Last activity: 2026-07-21 - Completed quick task 260721-doa: added missing Пользователи link on /settings
 
 Progress: [██████████] 100%
 
@@ -178,6 +178,7 @@ None yet.
 | 260714-fix | Catalog consumer price (ПЦ) now also autofills "Цена продажи" on product form and goods receipt (D-02 in receipts.py superseded); ДЦ still cost-only | 2026-07-14 | 53c3c92 | [260714-fix-catalog-sale-autofill](./quick/260714-fix-catalog-sale-autofill/) |
 | 260714-o1z | Kill stale server on port 8000 in run.bat before starting a new one (fixes /dictionary 500 caused by an old process serving stale code) | 2026-07-14 | 5014787 | [260714-o1z-kill-stale-server-port](./quick/260714-o1z-kill-stale-server-port/) |
 | 260720-wqc | Show read-only Категория column on /dictionary (Dictionary.rubric); autofill Product.category from rubric on product form's code lookup, independently of Название autofill | 2026-07-21 | 5faf403 | [260720-wqc-rubric](./quick/260720-wqc-rubric/) |
+| 260721-doa | Add missing «Пользователи» link on /settings pointing to /settings/users (route/page existed since Phase 25 but was never linked in the nav) | 2026-07-21 | 1c56366 | [260721-doa-add-a-users-link-to-settings-page](./quick/260721-doa-add-a-users-link-to-settings-page/) |
 
 ## Deferred Items
 
