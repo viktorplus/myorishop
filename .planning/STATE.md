@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 Phase: 30 (offline-self-uploading-file) — EXECUTING
 Plan: 4 of 4
 Status: Phase complete — ready for verification
-Last activity: 2026-07-21 - Completed quick task 260721-f39: category filter dropdowns on /products and /dictionary
+Last activity: 2026-07-21 - Completed quick task 260721-fu0: reset_business_data.py + load_test_data.py scripts
 
 Progress: [██████████] 100%
 
@@ -182,6 +182,7 @@ None yet.
 | 260721-ebn | Fix dictionary pull crash: local/server Dictionary rows independently imported (different UUIDs per code) caused a UNIQUE(code) IntegrityError degrading sync to 'partial' forever; now partitions/upserts the dictionary pull kind by code, not id | 2026-07-21 | c195ad8 | [260721-ebn-fix-dictionary-pull-crashing-on-code-bas](./quick/260721-ebn-fix-dictionary-pull-crashing-on-code-bas/) |
 | 260721-egc | Hide header «Синхронизировать» widget when sync_server_url is unconfigured (meaningless on the central server, which is never a sync client); give the top nav a dark server-mode style only when database_url resolves to PostgreSQL (the deployed server), so operators can't confuse it with a local SQLite client | 2026-07-21 | be59323 | [260721-egc-hide-header-sync-button-status-when-this](./quick/260721-egc-hide-header-sync-button-status-when-this/) |
 | 260721-f39 | Add category filter dropdown to /products (converted free-text input to a <select> sourced from category_options) and /dictionary (brand-new filter <select> sourced from the fixed RUBRICS list, exact match on Dictionary.rubric) | 2026-07-21 | b9c3bdb | [260721-f39-add-category-filter-dropdown-to-products](./quick/260721-f39-add-category-filter-dropdown-to-products/) |
+| 260721-fu0 | Add scripts/reset_business_data.py (dialect-aware wipe of products/customers/sales/operations/cash/batches only, typed-confirmation gated, no --force bypass, works on local SQLite and server PostgreSQL) and scripts/load_test_data.py (10 customers + exactly 10 operations of each of the 9 ledger types, service-layer only) | 2026-07-21 | 8061a99 | [260721-fu0-add-reset-business-data-and-load-test-da](./quick/260721-fu0-add-reset-business-data-and-load-test-da/) |
 
 ## Deferred Items
 
