@@ -14,10 +14,10 @@
 
   <div class="filter-bar">
     <div class="field">
-      <label for="sort">Сортировать по</label>
-      <select id="sort" name="sort"
+      <label for="dictionary-filter-sort">Сортировать по</label>
+      <select id="dictionary-filter-sort" name="sort"
               hx-get="/dictionary" hx-trigger="change"
-              hx-include="#dictionary-rows input, #dictionary-rows select"
+              hx-include="#dictionary-filter-sort, #dictionary-filter-code, #dictionary-filter-name, #dictionary-filter-category"
               hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true">
         <option value="" {% if not sort %}selected{% endif %}>Код (по возрастанию) (по умолчанию)</option>
         <option value="name" {% if sort == "name" %}selected{% endif %}>Название (А→Я)</option>
@@ -35,17 +35,17 @@
         <th></th>
       </tr>
       <tr class="filter-row">
-        <th><input type="text" name="code" value="{{ code }}" placeholder="Фильтр…"
+        <th><input type="text" id="dictionary-filter-code" name="code" value="{{ code }}" placeholder="Фильтр…"
                    hx-get="/dictionary" hx-trigger="input changed delay:300ms"
-                   hx-include="#dictionary-rows input, #dictionary-rows select"
+                   hx-include="#dictionary-filter-sort, #dictionary-filter-code, #dictionary-filter-name, #dictionary-filter-category"
                    hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true"></th>
-        <th><input type="text" name="name" value="{{ name }}" placeholder="Фильтр…"
+        <th><input type="text" id="dictionary-filter-name" name="name" value="{{ name }}" placeholder="Фильтр…"
                    hx-get="/dictionary" hx-trigger="input changed delay:300ms"
-                   hx-include="#dictionary-rows input, #dictionary-rows select"
+                   hx-include="#dictionary-filter-sort, #dictionary-filter-code, #dictionary-filter-name, #dictionary-filter-category"
                    hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true"></th>
-        <th><select name="category"
+        <th><select name="category" id="dictionary-filter-category"
                     hx-get="/dictionary" hx-trigger="change"
-                    hx-include="#dictionary-rows input, #dictionary-rows select"
+                    hx-include="#dictionary-filter-sort, #dictionary-filter-code, #dictionary-filter-name, #dictionary-filter-category"
                     hx-target="#dictionary-rows" hx-swap="outerHTML" hx-push-url="true">
               <option value="" {% if not category %}selected{% endif %}>Все категории</option>
               {% for r in rubrics %}
