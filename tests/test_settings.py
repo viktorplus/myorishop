@@ -15,6 +15,8 @@ def test_web_settings_page_renders(client):
     assert 'href="/warehouses"' in response.text
     assert 'href="/backup"' in response.text
     assert 'href="/finance/report"' in response.text
+    assert 'href="/settings/users"' in response.text
+    assert "Пользователи" in response.text
 
 
 def test_web_settings_shows_warehouse_count(client, session, warehouse):
