@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 Phase: 30 (offline-self-uploading-file) — EXECUTING
 Plan: 4 of 4
 Status: Phase complete — ready for verification
-Last activity: 2026-07-21 - Completed quick task 260721-fu0: reset_business_data.py + load_test_data.py scripts
+Last activity: 2026-07-21 - Completed quick task 260721-oti: merged 121 corrected dictionary names into rubric_overrides.json, re-imported locally + on s1
 
 Progress: [██████████] 100%
 
@@ -183,6 +183,7 @@ None yet.
 | 260721-egc | Hide header «Синхронизировать» widget when sync_server_url is unconfigured (meaningless on the central server, which is never a sync client); give the top nav a dark server-mode style only when database_url resolves to PostgreSQL (the deployed server), so operators can't confuse it with a local SQLite client | 2026-07-21 | be59323 | [260721-egc-hide-header-sync-button-status-when-this](./quick/260721-egc-hide-header-sync-button-status-when-this/) |
 | 260721-f39 | Add category filter dropdown to /products (converted free-text input to a <select> sourced from category_options) and /dictionary (brand-new filter <select> sourced from the fixed RUBRICS list, exact match on Dictionary.rubric) | 2026-07-21 | b9c3bdb | [260721-f39-add-category-filter-dropdown-to-products](./quick/260721-f39-add-category-filter-dropdown-to-products/) |
 | 260721-fu0 | Add scripts/reset_business_data.py (dialect-aware wipe of products/customers/sales/operations/cash/batches only, typed-confirmation gated, no --force bypass, works on local SQLite and server PostgreSQL) and scripts/load_test_data.py (10 customers + exactly 10 operations of each of the 9 ledger types, service-layer only) | 2026-07-21 | 8061a99 | [260721-fu0-add-reset-business-data-and-load-test-da](./quick/260721-fu0-add-reset-business-data-and-load-test-da/) |
+| 260721-oti | Merge 121 corrected product names from reports/dictionary_refresh_results.json into app/services/rubric_overrides.json (name field only, 1784 entries preserved, conf/rubric untouched); full-replace re-import applied locally (mismatch=0) and on s1 (git pull + docker compose up -d --build image rebuild + containerized import, since rubric_overrides.json is COPY-baked into the ori-app image, not volume-mounted) | 2026-07-21 | 5940b3f | [260721-oti-merge-121-dictionary-name-fixes-into-rub](./quick/260721-oti-merge-121-dictionary-name-fixes-into-rub/) |
 
 ## Deferred Items
 
