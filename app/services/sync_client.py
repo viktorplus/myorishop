@@ -419,6 +419,12 @@ def _apply_pull_page(session: Session, batch: merge.ExchangeBatch) -> int:
     existing rows) and is the one genuinely new algorithm in the phase. After the
     upserts, `recompute_derived` rebuilds Product/Batch quantity from the LOCAL
     ledger. Ledger rows are never touched on pull (pull is reference-only).
+
+    Quick fix 260721-ebn: the `dictionary` kind is special-cased to partition and
+    upsert by `code` instead of `id` — its independently-imported local/server
+    tables can carry the SAME `code` under a DIFFERENT `id` on each side, which
+    would otherwise crash the generic by-id path on the `code` UNIQUE
+    constraint. See the branch below for the full rationale.
     """
     buckets: dict[str, list[dict]] = {
         kind: [] for kind in merge._REFERENCE_INSERT_ORDER
@@ -433,6 +439,62 @@ def _apply_pull_page(session: Session, batch: merge.ExchangeBatch) -> int:
         if not rows:
             continue
         model = merge.KIND_TO_MODEL[kind]
+
+        if kind == "dictionary":
+            # Quick fix 260721-ebn: Dictionary.code carries a DB UNIQUE constraint
+            # (app/models.py), but the local and server dictionaries can each be
+            # independently seeded (scripts/import_master_pricelist.py mints a
+            # fresh UUID per row on every run) — the SAME code then has a
+            # DIFFERENT id on each side. Partitioning/upserting by the generic
+            # `id` treats such a row as "new" and the insert crashes on the
+            # `code` UNIQUE index. Match by `code` instead: a code with no local
+            # match inserts verbatim (existing behavior for genuinely new
+            # codes); a code that already exists locally is UPDATED in place
+            # (server wins on master data, D-14) — the LOCAL id/code are never
+            # touched so no duplicate row is ever created.
+            incoming_codes = [row["code"] for row in rows if row.get("code")]
+            existing_codes: set[str] = set()
+            for start in range(0, len(incoming_codes), merge._IN_CHUNK):
+                chunk = incoming_codes[start : start + merge._IN_CHUNK]
+                existing_codes.update(
+                    session.scalars(
+                        select(model.code).where(model.code.in_(chunk))
+                    ).all()
+                )
+
+            new_rows = [
+                row
+                for row in rows
+                if row.get("code") and row["code"] not in existing_codes
+            ]
+            conflict_rows = [
+                row
+                for row in rows
+                if row.get("code") and row["code"] in existing_codes
+            ]
+
+            if new_rows:
+                session.execute(
+                    insert(model),
+                    [merge._reference_row(kind, row) for row in new_rows],
+                )
+                applied += len(new_rows)
+
+            if conflict_rows:
+                # Exclude BOTH id (never adopt the server's differing PK) and
+                # code (the match key — always identical here already).
+                update_fields = merge.KIND_TO_FIELDS[kind] - {"id", "code"}
+                for row in conflict_rows:
+                    values = {field: row.get(field) for field in update_fields}
+                    session.execute(
+                        update(model)
+                        .where(model.code == row["code"])
+                        .values(**values)
+                    )
+                    applied += 1
+
+            continue
+
         new_rows, _ = merge._partition_new(session, model, rows)
         new_ids = {row["id"] for row in new_rows}
         existing_rows = [row for row in rows if row["id"] not in new_ids]
