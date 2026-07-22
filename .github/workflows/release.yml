@@ -1,0 +1,88 @@
+# SECURITY (threat T-31-02): this workflow NEVER holds the minisign SECRET key.
+# Stage A (here) only BUILDS and DRAFTS the release — the onedir archive, the
+# per-user installer, SHA256SUMS and manifest.txt. It references NO repo/CI
+# secret. A human on the OFFLINE machine then signs manifest.txt with the offline
+# minisign secret key, attaches manifest.txt.minisig to the draft, and PUBLISHES
+# (Stage B — see docs/RELEASE.md). The secret key must never become a GitHub
+# Actions secret (RESEARCH Pattern 5 / Anti-Patterns "Minisign key in CI").
+name: release
+
+on:
+  push:
+    tags: ['v1.*']
+  # Dry run: build + draft without pushing a real tag. `version` must equal
+  # app __version__ (build_release re-asserts the tag<->version contract).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Dry-run release tag to build, e.g. v1.42 (must equal app __version__)"
+        required: true
+
+# Only the scope needed to create the draft release + upload its assets. This
+# uses the automatic GITHUB_TOKEN (github.token), NOT a configured repo secret.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build onedir + installer, draft release (Stage A — no secrets)
+    # Inno Setup 6 is preinstalled on the windows-2022 image (Pitfall 6); a guard
+    # step below installs it via Chocolatey if a future runner image drops it.
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Resolve release tag (tag push or workflow_dispatch dry run)
+        id: ver
+        shell: bash
+        run: echo "tag=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # Build on the Windows runner so the vendored cp313 win_amd64 wheels
+      # (pydantic-core, argon2-cffi, cffi, psycopg) match the operator box
+      # (Pitfall 7). This assembles dist\app + dist\launcher + the zip and
+      # generates dist\MyOriShop.iss.
+      - name: Build onedir + wheels + installer script (Windows-native)
+        run: uv run python build_release.py --version ${{ steps.ver.outputs.tag }}
+
+      # windows-2022 ships Inno Setup 6; install it only if iscc is missing so the
+      # workflow survives a windows-2025 runner-image drift (Pitfall 6).
+      - name: Ensure Inno Setup present (choco fallback)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      # SourceDir defaults to the .iss directory (dist\), so compile from there.
+      - name: Compile per-user installer (dist\MyOriShop.iss)
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe" dist\MyOriShop.iss'
+
+      # Writes dist\SHA256SUMS + dist\manifest.txt over the built archive AND
+      # re-asserts the tag<->__version__ contract — the build FAILS here on drift.
+      - name: Checksums + manifest (re-asserts tag<->__version__ contract)
+        run: uv run python build_release.py --manifest --version ${{ steps.ver.outputs.tag }}
+
+      # DRAFT only. The archive, installer, SHA256SUMS and manifest.txt are
+      # uploaded UNSIGNED; a human attaches manifest.txt.minisig from the offline
+      # machine and publishes (Stage B, docs/RELEASE.md). Uses github.token — no
+      # configured repo secret is referenced.
+      - name: Draft release (unsigned; human attaches manifest.txt.minisig offline)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: MyOriShop ${{ steps.ver.outputs.tag }}
+          files: |
+            dist/MyOriShop-*.zip
+            dist/MyOriShop-Setup-*.exe
+            dist/SHA256SUMS
+            dist/manifest.txt
