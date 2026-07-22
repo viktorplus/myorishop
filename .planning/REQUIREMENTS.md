@@ -19,21 +19,23 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 ### Self-Update (UPD)
 
-- [ ] **UPD-01**: On startup (with an active internet connection) the client checks the project's latest GitHub Release and detects when a newer version is available; with no connection it is a silent no-op and never blocks offline launch.
-- [ ] **UPD-02**: Before any downloaded update is unpacked, the client verifies both its SHA-256 checksum AND its Ed25519 signature against the vendored public key, verifying the signed asset/manifest (not the mutable git tag); verification failure aborts the update and nothing is applied.
-- [ ] **UPD-03**: The operator is notified that an update is available and the update is applied ONLY on explicit confirmation (notify-and-confirm — never silent auto-apply); the confirmation surface shows the new version and its release notes, and offers "later".
-- [ ] **UPD-04**: Applying an update takes a pre-update backup (via the existing VACUUM INTO backup), runs `alembic upgrade head`, and on any failure (verification, migration, or a failed post-update health check) rolls back to the previous code and the pre-update database as a matched pair — the operator's data is never left half-migrated or lost.
-- [ ] **UPD-05**: The visible header version reflects the actually-installed release; version comparison is done on the integer counter of the "1.<N>" scheme (not string compare) and refuses anything not strictly newer (anti-downgrade).
-- [ ] **UPD-06**: Auto-update is a hard no-op on the central server — gated on the SQLite dialect (mirroring the shipped auto_enabled/backup dialect rule), so the PostgreSQL server never tries to update itself.
-- [ ] **UPD-07**: The operator (administrator) can manually trigger an update check from Настройки ("Проверить обновления"), independent of the startup check.
+- [x] **UPD-01**: On startup (with an active internet connection) the client checks the project's latest GitHub Release and detects when a newer version is available; with no connection it is a silent no-op and never blocks offline launch.
+- [x] **UPD-02**: Before any downloaded update is unpacked, the client verifies both its SHA-256 checksum AND its Ed25519 signature against the vendored public key, verifying the signed asset/manifest (not the mutable git tag); verification failure aborts the update and nothing is applied.
+- [x] **UPD-03**: The operator is notified that an update is available and the update is applied ONLY on explicit confirmation (notify-and-confirm — never silent auto-apply); the confirmation surface shows the new version and its release notes, and offers "later".
+- [x] **UPD-04**: Applying an update takes a pre-update backup (via the existing VACUUM INTO backup), runs `alembic upgrade head`, and on any failure (verification, migration, or a failed post-update health check) rolls back to the previous code and the pre-update database as a matched pair — the operator's data is never left half-migrated or lost.
+- [x] **UPD-05**: The visible header version reflects the actually-installed release; version comparison is done on the integer counter of the "1.<N>" scheme (not string compare) and refuses anything not strictly newer (anti-downgrade).
+- [x] **UPD-06**: Auto-update is a hard no-op on the central server — gated on the SQLite dialect (mirroring the shipped auto_enabled/backup dialect rule), so the PostgreSQL server never tries to update itself.
+- [x] **UPD-07**: The operator (administrator) can manually trigger an update check from Настройки ("Проверить обновления"), independent of the startup check.
 
 ## Future Requirements (deferred)
 
 ### Self-Update
+
 - Periodic background re-check while the app runs (startup-check covers most cases; revisit if operator sessions run long).
 - Retain N previous versions on disk for manual operator-initiated downgrade/recovery beyond the automatic single-step rollback.
 
 ### Release Engineering
+
 - CI-side signing (sigstore keyless) as an alternative to the offline minisign key, if release production moves fully into CI.
 - Authenticode / EV code-signing certificate for the installer and executables to clear SmartScreen without the "Run anyway" step — only if distribution widens beyond the known single operator.
 

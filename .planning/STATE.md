@@ -4,13 +4,13 @@ milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
 stopped_at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
-last_updated: "2026-07-22T17:16:46.985Z"
-last_activity: 2026-07-22 -- Phase 32 planning complete
+last_updated: "2026-07-22T17:39:37.425Z"
+last_activity: 2026-07-22 -- Phase 32 execution started
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 10
+  completed_plans: 6
   percent: 50
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 31 — packaging-launcher-signed-release-pipeline
+**Current focus:** Phase 32 — in-app-secure-self-update
 
 ## Current Position
 
-Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
-Plan: 5 of 5
+Phase: 32 (in-app-secure-self-update) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-22 -- Phase 32 planning complete
+Last activity: 2026-07-22 -- Phase 32 execution started
 
 ## Performance Metrics
 
@@ -88,6 +88,7 @@ Last activity: 2026-07-22 -- Phase 32 planning complete
 | Phase 31 P03 | 18min | 3 tasks | 5 files |
 | Phase 31 P04 | 22min | 3 tasks | 3 files |
 | Phase 31 P05 | 16min | 3 tasks | 5 files |
+| Phase 32 P01 | 13min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Phase 31-03: swap is a pure callback-injected apply_update state machine; Windows side effects live in thin adapters (OS-agnostic unit-testable)
 - [Phase ?]: Release Stage A uses automatic github.token (permissions: contents: write), never a configured repo secret — minisign secret key stays offline (T-31-02)
 - [Phase ?]: CI release-verify added as a separate ubuntu-latest job so pg-parity is untouched; apt-installed minisign flips the round-trip test from skip to run
+- [Phase ?]: 32-01: Wave-0 RED scaffold pins UpdateStatus state vocabulary (available/offline/noop/up_to_date) + the app.services.update / minisign_verify + launcher health_ok(expected_version) surfaces Waves 02-05 must satisfy; service imported in-body so collection stays green while execution is RED
 
 ### Pending Todos
 
@@ -208,7 +210,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T13:29:14.412Z
+Last session: 2026-07-22T17:39:01.166Z
 Stopped at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
 Resume file: None
 

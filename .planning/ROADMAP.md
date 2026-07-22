@@ -278,6 +278,7 @@ Plans:
 
 - [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
  (completed 2026-07-22)
+
 - [ ] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server
 
 #### Phase 31: Packaging, Launcher & Signed-Release Pipeline
@@ -330,7 +331,7 @@ Plans:
 Plans:
 **Wave 0**
 
-- [ ] 32-01-PLAN.md — Nyquist RED test scaffold: tests/test_update.py + test_launcher.py pin UPD-01..07 contracts (wave 0)
+- [x] 32-01-PLAN.md — Nyquist RED test scaffold: tests/test_update.py + test_launcher.py pin UPD-01..07 contracts (wave 0)
 
 **Wave 1** *(blocked on Wave 0 completion)*
 
@@ -390,4 +391,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
-| 32. In-App Secure Self-Update | v4.0 | 0/5 | Planned | - |
+| 32. In-App Secure Self-Update | v4.0 | 1/5 | In Progress|  |
