@@ -1,0 +1,43 @@
+{# Phase 32 UPD-01/03/07: the #update-panel fragment. Rendered on the Настройки
+   first paint (from settings_summary's cached `update_status`) and swapped by the
+   /settings/update/{check,apply,dismiss} routes (hx-target="#update-panel",
+   hx-swap="outerHTML" — the root <div id="update-panel"> is always present so the
+   target survives every swap). All GitHub-sourced text (`notes`, versions) is
+   UNTRUSTED and rendered AUTOESCAPED — never |safe (T-32-01 / V5).
+
+   Context vars:
+   - update_status : app.services.update.UpdateStatus | None (the check result)
+   - outcome       : "applying" | "verification_failed" | "rollback" | None (apply)
+   - manual        : True on an explicit manual check (shows the offline caption;
+                     the silent startup check leaves the panel empty offline, UPD-01)
+   Undefined vars are falsy under Jinja's default Undefined, so a bare
+   {% include %} that only passes update_status renders correctly. #}
+<div id="update-panel">
+{%- if outcome == "verification_failed" %}
+  <p class="error-block">Обновление не прошло проверку подлинности и было отменено. Ничего не установлено.</p>
+{%- elif outcome == "rollback" %}
+  <p class="error-block">Не удалось установить обновление. Восстановлена предыдущая версия, ваши данные в безопасности.</p>
+{%- elif update_status and update_status.state == "available" %}
+  {# S1 amber attention notice — reuses the shipped price-below token pair
+     (#fef9e7 / #b45309) inline; NO new CSS class, NO spinner (UI-SPEC). #}
+  <div class="update-notice" style="background:#fef9e7;border:1px solid #b45309;border-radius:4px;padding:16px;">
+    <h2>Доступно обновление</h2>
+    <p>Установлена версия {{ update_status.current }}. Доступна версия {{ update_status.latest }}.</p>
+    <p class="muted">Что нового</p>
+    {% if update_status.notes %}<p>{{ update_status.notes }}</p>{% else %}<p class="muted">Примечания к выпуску отсутствуют.</p>{% endif %}
+    {%- if outcome == "applying" %}
+    <p class="muted">Идёт обновление. Приложение перезапустится автоматически — дождитесь перезапуска и обновите страницу.</p>
+    {%- else %}
+    <p class="muted">Перед обновлением будет создана резервная копия базы данных. При сбое приложение вернётся к текущей версии.</p>
+    <div class="form-actions">
+      <button hx-post="/settings/update/apply" hx-target="#update-panel" hx-swap="outerHTML">Обновить и перезапустить</button>
+      <a hx-post="/settings/update/dismiss" hx-target="#update-panel" hx-swap="outerHTML" class="muted" style="cursor:pointer">Позже</a>
+    </div>
+    {%- endif %}
+  </div>
+{%- elif update_status and update_status.state == "up_to_date" %}
+  <p class="muted">У вас последняя версия ({{ update_status.current }}).</p>
+{%- elif manual %}
+  <p class="muted">Не удалось проверить обновления. Проверьте интернет-соединение и попробуйте снова.</p>
+{%- endif %}
+</div>

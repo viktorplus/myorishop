@@ -46,4 +46,20 @@
   </div>
   {% if sync_saved %}<p class="muted">Настройки сохранены</p>{% endif %}
 </form>
+
+{# UPD-06: the update surface is sqlite-only — the PostgreSQL central server
+   never renders «Обновление приложения» (is_server_db from the context
+   processor). CSRF is carried by the base body hx-headers (no per-form token). #}
+{% if not is_server_db %}
+<h2>Обновление приложения</h2>
+<form class="stacked-form" hx-post="/settings/update/check"
+      hx-target="#update-panel" hx-swap="outerHTML" hx-indicator="#update-inflight">
+  <div class="form-actions">
+    <button type="submit">Проверить обновления</button>
+    <span id="update-inflight" class="htmx-indicator muted">Проверка обновлений…</span>
+  </div>
+</form>
+{# First paint: renders the startup-detected notice (UPD-01) or empty. #}
+{% include "partials/update_panel.html" %}
+{% endif %}
 {% endblock %}

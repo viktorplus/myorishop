@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services import update
 from app.services.backup import list_backups
 from app.services.sync_client import (
     _clamp_interval,
@@ -37,6 +38,12 @@ def settings_summary(session: Session, backup_dir: Path) -> dict:
         "auto_enabled": auto_enabled,
         "auto_interval_seconds": auto_interval_seconds,
         "sync_server_url": settings.sync_server_url,
+        # UPD-01: the last (startup/manual) check result so the Настройки
+        # first paint renders the #update-panel notice without an extra
+        # request. None until the one-shot startup check has run; the panel
+        # renders empty in that case (the section is sqlite-only, UPD-06,
+        # gated by is_server_db from the context processor).
+        "update_status": update.get_cached_status(),
     }
 
 
