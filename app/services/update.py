@@ -16,7 +16,11 @@ Composed from four shipped idioms:
   manifest, never from the mutable git ``tag_name`` (UPD-02).
 """
 
+import json
 import re
+import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -24,7 +28,8 @@ from urllib.parse import urlparse
 import httpx
 
 from app import __version__
-from app.services import minisign_verify
+from app.config import settings
+from app.services import backup, minisign_verify
 
 # GitHub repo the releases are published to; tag_name only LOCATES a release.
 _REPO = "viktorplus/myorishop"
@@ -230,3 +235,182 @@ def check_for_update(engine=None) -> UpdateStatus:
 def get_cached_status() -> UpdateStatus | None:
     """Return the last check result (populated by the startup check, Plan 05)."""
     return _LAST_CHECK
+
+
+# --- APPLY half (Plan 04): verify-before-unpack -> stage for the launcher -----
+
+
+class UpdateVerificationError(Exception):
+    """Raised when the verify-before-unpack gate fails (UPD-02, T-32-01/03/05).
+
+    apply() ABORTS by raising this — nothing is unpacked or staged. A raised
+    error (never a partial stage) is the whole security guarantee: the launcher
+    only ever swaps a marker written AFTER a clean gate.
+    """
+
+
+@dataclass(frozen=True)
+class ApplyResult:
+    """The immutable result of an apply() that did NOT abort.
+
+    ``state`` is ``"staged"`` (a valid update was verified + staged, the marker
+    is written for the launcher), ``"noop"`` (PostgreSQL server — never applies,
+    UPD-06), or ``"error"`` (nothing to apply, e.g. offline). A FAILED verify
+    gate does NOT return here — it raises ``UpdateVerificationError``.
+    """
+
+    state: str
+    staged_version: str | None = None
+    message: str | None = None
+
+
+def _resolve_engine():
+    """Return the app engine lazily (keeps the test monkeypatch seam on app.db)."""
+    from app import db
+
+    return db.engine
+
+
+def _archive_url(assets: dict[str, str]) -> str | None:
+    """The single ``*.zip`` onedir archive asset URL, or None."""
+    for name, url in assets.items():
+        if name and name.endswith(".zip"):
+            return url
+    return None
+
+
+def verify_release(release: dict, dest_dir: Path) -> tuple[str, Path] | None:
+    """The HARD GATE: authenticate a release BEFORE anything is unpacked.
+
+    Order (32-RESEARCH lines 103-112): (a) Ed25519-verify the manifest against
+    the vendored ``app/minisign.pub``; (b) read the TRUSTED ``version``/``sha256``
+    from the verified manifest (never from the mutable git tag); (c) re-assert
+    the version shape + strict anti-downgrade (UPD-05) against the installed
+    ``__version__``; only then download the archive and (d) confirm its SHA-256
+    matches the signed manifest. Re-asserts the V5 asset-host allowlist on every
+    URL. Returns ``(trusted_version, archive_path)`` on a clean gate, or None on
+    ANY failure (a release we cannot fully authenticate is never applied).
+    """
+    try:
+        assets = {
+            a.get("name"): a.get("browser_download_url")
+            for a in release.get("assets", [])
+        }
+        man_url = assets.get("manifest.txt")
+        sig_url = assets.get("manifest.txt.minisig")
+        arc_url = _archive_url(assets)
+        if not man_url or not sig_url or not arc_url:
+            return None
+        for url in (man_url, sig_url, arc_url):
+            if urlparse(url).hostname not in _ALLOWED_ASSET_HOSTS:
+                return None  # V5: reject an asset served off an unexpected host
+        manifest_bytes = _download(man_url)
+        sig_text = _download(sig_url).decode("utf-8")
+        # (a) verify the signature BEFORE reading any manifest field (T-32-01).
+        if not minisign_verify.verify_minisign(
+            manifest_bytes, sig_text, _PUBKEY_PATH.read_text(encoding="utf-8")
+        ):
+            return None
+        fields = _parse_manifest(manifest_bytes)
+        version = fields.get("version", "")
+        expected_sha = fields.get("sha256", "")
+        # (b)/(c) trusted-version shape + anti-downgrade re-check at apply (UPD-05).
+        if not _VERSION_RE.match(version) or not expected_sha:
+            return None
+        if not is_strictly_newer(version, __version__):
+            return None
+        # (d) only NOW fetch the large archive + confirm its checksum (T-32-03).
+        archive_path = Path(dest_dir) / "release.zip"
+        archive_path.write_bytes(_download(arc_url))
+        if not minisign_verify.sha256_matches(archive_path, expected_sha):
+            return None
+        return version, archive_path
+    except Exception:
+        return None
+
+
+def _extract_guarded(zip_path, staged_dir) -> None:
+    """Zip-slip-guarded ``extractall`` into ``staged_dir`` (T-32-05, ASVS V12).
+
+    Every member's resolved path is confined under ``staged_dir`` BEFORE any
+    extraction; a single escaping member raises ``ValueError`` and nothing is
+    written (the caller has removed any prior ``staged/`` first).
+    """
+    staged_dir = Path(staged_dir)
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    root = staged_dir.resolve()
+    with zipfile.ZipFile(zip_path) as zf:
+        for member in zf.namelist():
+            resolved = (staged_dir / member).resolve()
+            if not resolved.is_relative_to(root):
+                raise ValueError(f"zip-slip: member escapes staged dir: {member!r}")
+        zf.extractall(staged_dir)
+
+
+def stage_pending(install_root, staged_rel, version, backup_rel) -> None:
+    """Write ``install_root/data/pending.json`` for the launcher to consume.
+
+    EXACTLY the 3 keys the shipped ``launcher.swap.parse_pending`` demands, with
+    RELATIVE paths only (so parse_pending's confinement accepts them, T-32-06).
+    The app writes the marker and keeps running; the watching launcher performs
+    the stop/swap/migrate/restart (or the matched-pair rollback on failure).
+    """
+    install_root = Path(install_root)
+    marker = install_root / "data" / "pending.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "staged_dir": staged_rel,
+                "expected_version": version,
+                "db_backup_path": backup_rel,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def apply(release: dict | None = None, *, engine=None, install_root=None) -> ApplyResult:
+    """Verify a release, unpack it into ``staged/``, back up the DB, stage marker.
+
+    Steps: (1) dialect gate — a non-SQLite engine is a hard ``"noop"`` with NO
+    download (UPD-06); (2) resolve the release (fetch latest when None) — offline
+    ⇒ ``"error"``; (3) the ``verify_release`` HARD GATE — on ANY failure raise
+    ``UpdateVerificationError`` with NOTHING staged (UPD-02); (4) zip-slip-guarded
+    unpack into ``install_root/staged`` (a stale prior staged/ is removed first);
+    (5) a pre-update ``create_backup`` VACUUM INTO snapshot into the sibling
+    ``settings.backup_dir`` (UPD-04); (6) ``stage_pending`` writes the launcher
+    marker. The app does NOT self-kill — staging + the marker is its whole share.
+    """
+    engine = engine or _resolve_engine()
+    if engine.dialect.name != "sqlite":  # (1) UPD-06 hard no-op on the server
+        return ApplyResult(state="noop")
+
+    if release is None:  # (2)
+        release = fetch_latest_release()
+    if release is None:
+        return ApplyResult(state="error", message="offline")
+
+    root = (
+        Path(install_root).resolve()
+        if install_root
+        else Path(settings.db_path).resolve().parent.parent
+    )
+    staged = root / "staged"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        verified = verify_release(release, Path(tmp))  # (3) HARD GATE
+        if not verified:
+            raise UpdateVerificationError(
+                "release signature/checksum verification failed"
+            )
+        version, archive_path = verified
+        if staged.exists():  # clean a prior aborted run before unpacking (4)
+            shutil.rmtree(staged, ignore_errors=True)
+        _extract_guarded(archive_path, staged)
+
+    # (5) pre-update VACUUM INTO backup into the ABSOLUTE sibling backups dir.
+    backup_path = backup.create_backup(engine, Path(settings.backup_dir))
+    backup_rel = backup_path.relative_to(root).as_posix()
+    stage_pending(root, "staged", version, backup_rel)  # (6)
+    return ApplyResult(state="staged", staged_version=version)
