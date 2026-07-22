@@ -28,6 +28,7 @@ from app.routes import (
     dictionary,
     export,
     finance,
+    health,
     history,
     home,
     mobile_corrections,
@@ -168,6 +169,9 @@ async def _redirect_to_login(request: Request, exc: NotAuthenticated) -> Respons
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Auth surfaces are public (listed in security.PUBLIC_PATHS) — /login /logout /setup.
 app.include_router(auth.router)
+# UPD-04: public /health (version probe for the launcher). NO dependencies= — it
+# is listed in security.PUBLIC_PATHS so the anonymous launcher probe gets a 200.
+app.include_router(health.router)
 app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(categories.router)

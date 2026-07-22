@@ -84,7 +84,9 @@ def run_once(
         stop_app=app_process.stop,
         start_app=app_process.start,
         migrate=lambda: migrate(paths),
-        health_ok=health_ok,
+        # UPD-04: bind the marker's expected_version so the post-swap health check
+        # confirms the NEW code actually serves (a stale/wrong swap -> rollback).
+        health_ok=lambda: health_ok(expected_version=pending.expected_version),
         backup_restore=lambda backup: backup_restore(backup, db_path),
     )
     marker.unlink(missing_ok=True)

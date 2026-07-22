@@ -14,6 +14,7 @@ local SQLite client install.
 from __future__ import annotations
 
 import http.client
+import json
 import os
 import shutil
 import subprocess
@@ -100,24 +101,46 @@ def migrate(paths) -> None:
     )
 
 
-def health_ok(timeout: float = 30.0, interval: float = 0.5) -> bool:
-    """Poll ``http://127.0.0.1:8000/`` and treat ANY response as alive.
+def health_ok(
+    timeout: float = 30.0, interval: float = 0.5, expected_version: str | None = None
+) -> bool:
+    """Poll the app until it is alive — optionally requiring a version match (UPD-04).
 
-    There is no ``/health`` route; an anonymous request redirects
-    ``302/303 -> /login`` (app/services/security.py PUBLIC_PATHS). Any HTTP
-    status (including the login redirect) means the server is up. Returns False
-    only if the connection is still refused after ``timeout`` seconds.
+    ``expected_version is None`` (legacy, Phase-31 hand-placed-marker path): poll
+    ``http://127.0.0.1:8000/`` and treat ANY HTTP status (including the
+    ``302/303 -> /login`` redirect) as "alive" — backward-compatible.
+
+    ``expected_version`` set (Phase-32 swap path): poll the public ``GET /health``
+    and return True only when it answers ``200`` AND ``body["version"] ==
+    expected_version``. A stale/wrong staged dir serving the OLD version fails the
+    match, so the shipped matched-pair rollback fires (32-RESEARCH Pitfall 6).
+
+    Returns False on a still-refused connection, a non-200, a JSON parse error, or
+    a version mismatch after ``timeout`` seconds. Stdlib-only — never imports
+    ``app.*`` (WinError 32: importing the app would lock the swapped ``app\\``).
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         conn = http.client.HTTPConnection(_HOST, _PORT, timeout=interval * 4)
         try:
-            conn.request("GET", "/")
-            resp = conn.getresponse()
-            resp.read()
-            # Any status line — including 302/303 -> /login — means "alive".
-            if resp.status:
-                return True
+            if expected_version is None:
+                conn.request("GET", "/")
+                resp = conn.getresponse()
+                resp.read()
+                # Any status line — including 302/303 -> /login — means "alive".
+                if resp.status:
+                    return True
+            else:
+                conn.request("GET", "/health")
+                resp = conn.getresponse()
+                body = resp.read()
+                if resp.status == 200:
+                    try:
+                        served = json.loads(body.decode("utf-8")).get("version")
+                    except (ValueError, UnicodeDecodeError):
+                        served = None
+                    if served == expected_version:
+                        return True
         except (OSError, http.client.HTTPException):
             pass
         finally:
