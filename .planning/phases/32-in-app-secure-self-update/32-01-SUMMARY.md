@@ -111,3 +111,10 @@ None - no external service configuration required in this plan. (The `uv add cry
 ---
 *Phase: 32-in-app-secure-self-update*
 *Completed: 2026-07-22*
+
+## Self-Check: PASSED
+
+- FOUND: tests/test_update.py
+- FOUND: tests/test_launcher.py (extended)
+- FOUND: .planning/phases/32-in-app-secure-self-update/32-01-SUMMARY.md
+- FOUND commit 69e75d0 (Task 1), 1024914 (Task 2), 7bc436e (plan metadata)
