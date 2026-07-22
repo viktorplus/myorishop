@@ -303,7 +303,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 31-04-PLAN.md — PKG-01/02/05 build: build_release.py embeddable onedir + manifest/SHA-256 + tag↔version + MyOriShop.iss (wave 2)
+- [x] 31-04-PLAN.md — PKG-01/02/05 build: build_release.py embeddable onedir + manifest/SHA-256 + tag↔version + MyOriShop.iss (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -366,5 +366,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 3/5 | In Progress|  |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 4/5 | In Progress|  |
 | 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
