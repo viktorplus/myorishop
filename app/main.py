@@ -58,7 +58,7 @@ from app.routes import (
     writeoffs,
 )
 from app.services import backup as backup_service
-from app.services import sync_client
+from app.services import sync_client, update
 from app.services.security import NotAuthenticated, auth_guard, require_role
 from app.services.sync_client import DEFAULT_INTERVAL_SECONDS
 
@@ -110,6 +110,27 @@ async def _auto_sync_loop() -> None:
         await asyncio.sleep(interval)
 
 
+async def _startup_update_check() -> None:
+    """UPD-01: a SINGLE one-shot, offline-safe startup update check.
+
+    Mirrors the `_auto_sync` posture — the blocking `update.check_for_update`
+    (httpx fetch + Ed25519 verify) is offloaded OFF the event loop via
+    `anyio.to_thread.run_sync` (abandon_on_cancel=False bounds the shutdown
+    wait), wrapped in a broad guard so an offline / transport / any error is
+    silently swallowed (Pitfall 4 — an offline launch must NEVER be blocked or
+    crashed). It caches the result in `update._LAST_CHECK` so the Настройки page
+    renders the notice on first paint. NOT a loop: the periodic re-check is
+    deferred (REQUIREMENTS.md). The check dialect-gates to a no-op on
+    PostgreSQL (UPD-06), so the central server never fetches.
+    """
+    try:
+        await anyio.to_thread.run_sync(
+            update.check_for_update, abandon_on_cancel=False
+        )
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # D-09: snapshot the DB BEFORE serving requests; the sync call is
@@ -119,14 +140,20 @@ async def lifespan(app: FastAPI):
     # loop reads its on/off toggle fresh each tick (D-08), so a fresh install
     # (auto_enabled default 0) simply idles until an admin enables it.
     auto_sync_task = asyncio.create_task(_auto_sync_loop())
+    # UPD-01: fire the one-shot startup update check as a background task. It is
+    # NOT awaited before `yield` — an offline start must never block launch.
+    update_check_task = asyncio.create_task(_startup_update_check())
     try:
         yield
     finally:
-        # D-08: cancel the background loop cleanly on shutdown (suppress the
+        # D-08: cancel the background tasks cleanly on shutdown (suppress the
         # expected CancelledError so shutdown never raises or hangs).
         auto_sync_task.cancel()
+        update_check_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await auto_sync_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await update_check_task
 
 
 # AUTH-01/ROLE-02: a SINGLE app-level dependency guards every current + future
