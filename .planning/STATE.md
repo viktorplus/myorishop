@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: planning
-last_updated: "2026-07-22T10:15:00.000Z"
-last_activity: 2026-07-22
+status: executing
+stopped_at: v4.0 roadmap created — Phases 31 (Packaging, Launcher & Signed-Release Pipeline) and 32 (In-App Secure Self-Update), 12/12 requirements mapped; awaiting phase planning
+last_updated: "2026-07-22T11:32:31.418Z"
+last_activity: 2026-07-22 -- Phase 31 planning complete
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -26,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 
 Phase: 31 — Packaging, Launcher & Signed-Release Pipeline (not yet planned)
 Plan: —
-Status: Roadmap created — awaiting phase planning
-Last activity: 2026-07-22 — v4.0 roadmap created (Phases 31-32, 12/12 requirements mapped)
+Status: Ready to execute
+Last activity: 2026-07-22 -- Phase 31 planning complete
 
 ## Performance Metrics
 

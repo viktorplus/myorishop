@@ -513,25 +513,29 @@ Injecting `stop_app`/`migrate`/`health_ok` makes the swap+rollback sequencing un
 | A6 | The launcher can gracefully signal FastAPI/uvicorn shutdown (or terminate its owned child) and the port frees promptly | Pattern 4 | Slow shutdown → longer swap wait; bounded by a timeout then hard-terminate |
 | A7 | `minisign` PyPI (0.1.0) is unsuitable for production verify; vendored binary or PyNaCl preferred | Standard Stack / Audit | Phase 32 decision, not Phase 31 — no impact here |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Launcher runtime: PyInstaller stub vs second embeddable copy?**
+1. **Launcher runtime: PyInstaller stub vs second embeddable copy?** **(RESOLVED)**
    - What we know: both work; stub is smaller, embeddable avoids adding PyInstaller.
    - What's unclear: operator sensitivity to install size vs. build simplicity.
    - Recommendation: PyInstaller onedir stub for the launcher only (tiny AV surface, keeps `app\` pure embeddable) — but defer to planner/operator; either satisfies PKG-04.
+   - **Resolved:** launcher runtime = **PyInstaller onedir stub** (keeps `app\` a pure Python embeddable and the launcher OUTSIDE the swappable dir). Plan 03 builds the swap state machine + Windows adapters as the `launcher/` package; the stub is only the compiled wrapper. Either option satisfies PKG-04, so the plans do not hard-depend on the stub choice.
 
-2. **Sign the manifest vs sign the archive (with trusted-comment version)?**
+2. **Sign the manifest vs sign the archive (with trusted-comment version)?** **(RESOLVED)**
    - What we know: manifest-signing is faster to verify and binds version+sha256.
    - What's unclear: Phase 32's exact verify ergonomics.
    - Recommendation: sign `manifest.txt`; note the alternative for the Phase 32 research pass.
+   - **Resolved:** **sign `manifest.txt`, NOT the archive** — one small blob binds version + archive SHA-256, fast to verify, with the version inside the signed payload (Phase-32 anti-downgrade). Honored by Plan 04 `write_manifest` and the Plan 05 offline-sign runbook.
 
-3. **Keep `psycopg[binary]` in the client bundle?**
+3. **Keep `psycopg[binary]` in the client bundle?** **(RESOLVED)**
    - What we know: it's a hard dep but the client never uses PostgreSQL.
    - What's unclear: whether making it a server-only extra is worth the pyproject churn now.
    - Recommendation: keep it bundled for v4.0 (weight only, ~10MB); revisit as a "distribution slimming" future item.
+   - **Resolved:** **keep `psycopg` bundled** for v4.0 (~10MB weight only; the client never opens PostgreSQL — dialect-gated out). No pyproject churn this phase; "distribution slimming" is a future item.
 
-4. **Where does `pending.json` live and what's its exact schema?**
+4. **Where does `pending.json` live and what's its exact schema?** **(RESOLVED)**
    - Recommendation: `data\pending.json` (survives swaps, launcher-readable); schema `{staged_dir, expected_version, db_backup_path}`. The full IPC/controlled-shutdown contract is flagged for the Phase 32 `--research-phase` pass (ROADMAP) — Phase 31 only needs the hand-placed-marker proof.
+   - **Resolved:** `data\pending.json` with schema `{staged_dir, expected_version, db_backup_path}` (honored by Plan 03 `parse_pending`). The **full IPC/controlled-shutdown contract is DEFERRED to Phase 32** — Phase 31 implements only the hand-placed-marker drive path.
 
 ## Sources
 

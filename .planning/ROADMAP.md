@@ -295,10 +295,18 @@ Plans:
 **Plans**: 5 plans (4 waves)
 
 Plans:
+**Wave 1**
+
 - [ ] 31-01-PLAN.md — Nyquist Wave-0 RED scaffold: test_packaging/test_launcher/test_release_verify pin PKG-03/04/05 contracts (wave 0)
 - [ ] 31-02-PLAN.md — PKG-03 data-separation seam: root DB/.env/secret_key/device_id/backups under absolute MYORISHOP_DATA_DIR (wave 1)
 - [ ] 31-03-PLAN.md — PKG-04 stable launcher: pure swap state machine + Windows adapters + matched-pair rollback (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 31-04-PLAN.md — PKG-01/02/05 build: build_release.py embeddable onedir + manifest/SHA-256 + tag↔version + MyOriShop.iss (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 31-05-PLAN.md — PKG-02/05 pipeline: release.yml draft build + offline-sign runbook + vendored minisign.pub + CI verify (wave 3)
 
 > **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
