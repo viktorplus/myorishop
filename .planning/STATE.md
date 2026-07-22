@@ -4,13 +4,13 @@ milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
 stopped_at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
-last_updated: "2026-07-22T12:21:42.419Z"
+last_updated: "2026-07-22T12:35:35.131Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 ## Current Position
 
 Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-22
 
@@ -85,6 +85,7 @@ Last activity: 2026-07-22
 | Phase 30 P03 | ~20min | 3 tasks | 3 files |
 | Phase 30 P04 | 15min | 3 tasks | 4 files |
 | Phase 31 P01 | 12min | 3 tasks | 4 files |
+| Phase 31 P03 | 18min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 30]: 30-03: offline ingest routes are thin callers of Phase-27 apply_merge; the only additions over sync_push are the SHA-256 integrity check (D-08) and the exact-match schema-version gate (D-09), both before any DB touch; in-body upload token means no CSRF and a single narrow ACAO scoped to /api/offline/login (D-05)
 - [Phase ?]: Phase 30 offline export (GET /offline/export) is read-only — never stamps synced_at (D-07); client half ships OFF-01/02/03/06 with a self-contained self-uploading HTML file
 - [Phase 31]: 31-01: Wave-0 RED scaffold pins PKG-01..05 contracts as executable tests — build_release/launcher.swap/launcher.adapters imported INSIDE test bodies so collection stays green while execution is RED; minisign roundtrip + vendored-pubkey skip-gated (binary + app/minisign.pub absent). API surface fixed for Plans 02-05 (assemble_onedir/generate_iss/write_manifest/verify_manifest/assert_tag_matches_version/VENDORED_APP_ASSETS; swap.Paths/Pending/apply_update/parse_pending; adapters.backup_restore). parse_pending raises ValueError on both traversal and malformed markers.
+- [Phase ?]: Phase 31-03: launcher is stdlib-only, imports no app.* (importing app would lock app\ and break the os.replace swap)
+- [Phase ?]: Phase 31-03: swap is a pure callback-injected apply_update state machine; Windows side effects live in thin adapters (OS-agnostic unit-testable)
 
 ### Pending Todos
 
@@ -201,7 +204,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T12:21:42.394Z
+Last session: 2026-07-22T12:35:22.450Z
 Stopped at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
 Resume file: None
 
