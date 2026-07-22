@@ -279,7 +279,7 @@ Plans:
 - [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
  (completed 2026-07-22)
 
-- [ ] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server
+- [x] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server (completed 2026-07-22)
 
 #### Phase 31: Packaging, Launcher & Signed-Release Pipeline
 
@@ -347,7 +347,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 32-05-PLAN.md — Settings update section + notify-and-confirm notice + thin routes + one-shot startup check (UPD-01/03/05/06/07) (wave 4)
+- [x] 32-05-PLAN.md — Settings update section + notify-and-confirm notice + thin routes + one-shot startup check (UPD-01/03/05/06/07) (wave 4)
 
 **UI hint**: yes
 
@@ -391,4 +391,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
-| 32. In-App Secure Self-Update | v4.0 | 4/5 | In Progress|  |
+| 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete   | 2026-07-22 |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: executing
+status: verifying
 stopped_at: Completed 32-02-PLAN.md (verify-gate prerequisites)
-last_updated: "2026-07-22T20:41:09.714Z"
+last_updated: "2026-07-22T20:58:25.308Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 9
-  percent: 50
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-22
 
 ## Performance Metrics
@@ -91,6 +91,7 @@ Last activity: 2026-07-22
 | Phase 32 P01 | 13min | 2 tasks | 2 files |
 | Phase 32 P02 | 5min | 2 tasks | 3 files |
 | Phase 32 P03 | 20m | 2 tasks | 2 files |
+| Phase 32 P05 | 20m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 32-02: only the PUBLIC key (app/minisign.pub, RW-prefixed) vendored; secret signing key stays offline, .gitignore blocks *.key (T-31-02/T-32-07)
 - [Phase ?]: Update: trusted version read from Ed25519-verified manifest version=, never git tag_name (T-32-04)
 - [Phase ?]: Update check: dialect no-op on non-sqlite + offline-safe never raises; __version__ kept at 1.15 as anti-downgrade baseline
+- [Phase ?]: 32-05: #update-panel self-contained div swapped via hx-swap=outerHTML so the target id survives every swap (test_manual_check contract)
+- [Phase ?]: 32-05: apply route echoes release notes from cached status so autoescaped notes render deterministically regardless of update.apply network outcome
 
 ### Pending Todos
 
@@ -217,7 +220,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T20:41:09.693Z
+Last session: 2026-07-22T20:57:48.251Z
 Stopped at: Completed 32-02-PLAN.md (verify-gate prerequisites)
 Resume file: None
 
