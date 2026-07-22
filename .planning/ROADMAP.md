@@ -276,7 +276,8 @@ Plans:
 
 **Build order (dependency-ordered — forced):** packaging + a stable launcher + code/data physical separation + a signed-release pipeline first (there is nothing safe to update *to*, and no safe over-the-top swap, until these exist) → in-app secure self-update second (the security-critical, threat-modelled phase where fetched code is executed). Phase B cannot even be tested until two real signed releases exist.
 
-- [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature) (completed 2026-07-22)
+- [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
+ (completed 2026-07-22)
 - [ ] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server
 
 #### Phase 31: Packaging, Launcher & Signed-Release Pipeline
@@ -324,7 +325,29 @@ Plans:
   4. Applying an update takes a pre-update backup (via the existing VACUUM INTO backup), runs `alembic upgrade head`, and on any failure — verification, migration, or a failed post-update health check — rolls back to the previous code and the pre-update database as a matched pair, so the operator's data is never left half-migrated or lost. (UPD-04)
   5. The visible header version reflects the actually-installed release, and version comparison is done on the integer counter of the "1.<N>" scheme (never string compare) so only a strictly-newer release is ever offered (anti-downgrade). (UPD-05)
 
-**Plans**: TBD
+**Plans**: 5 plans (5 waves)
+
+Plans:
+**Wave 0**
+
+- [ ] 32-01-PLAN.md — Nyquist RED test scaffold: tests/test_update.py + test_launcher.py pin UPD-01..07 contracts (wave 0)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+- [ ] 32-02-PLAN.md — Prerequisites: blocking-human gates for `cryptography` install + vendored app/minisign.pub + repo-public confirm (UPD-02) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 32-03-PLAN.md — Verifier + check half: pure-Python minisign/Ed25519 verify + check_for_update (dialect no-op, offline-safe, verified-manifest anti-downgrade) (UPD-01/02/05/06) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 32-04-PLAN.md — Apply pipeline: verify-before-unpack gate + zip-slip unpack + VACUUM-INTO backup + pending.json + public /health + launcher version-match (UPD-02/04) (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 32-05-PLAN.md — Settings update section + notify-and-confirm notice + thin routes + one-shot startup check (UPD-01/03/05/06/07) (wave 4)
+
 **UI hint**: yes
 
 > **Research flag:** Security-critical — this phase carries a threat model (`security_enforcement=true`, ASVS L1). The signed-manifest-vs-SHA256SUMS shape, the exact minisign verify call, and the launcher/app IPC contract (`pending.json` + controlled-shutdown signal) warrant a focused design pass. Flag `/gsd-plan-phase 32 --research-phase` for the trust model and controlled-shutdown protocol. Reuses shipped mechanisms unchanged (`backup.create_backup()` VACUUM INTO pre-update anchor, the `engine.dialect.name == "sqlite"` server no-op gate, the `_auto_sync_loop` background-loop shape, the `APP_VERSION` header / `app/__init__.py` `__version__`).
@@ -367,4 +390,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
-| 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
+| 32. In-App Secure Self-Update | v4.0 | 0/5 | Planned | - |
