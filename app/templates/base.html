@@ -17,7 +17,7 @@
      opted into swapping or validation errors are silently discarded. #}
   <meta name="htmx-config"
         content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
-  <title>MyOriShop</title>
+  <title>MyOriShop {{ APP_VERSION }}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js" defer></script>
   {# PROD-06 / D-10: delegated price-cue listener — advisory only, never
@@ -35,6 +35,9 @@
 <body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   <main class="container">
     <nav{% if is_server_db %} class="server-mode"{% endif %}>
+      {# App version label — non-interactive brand marker, muted so it reads as
+         chrome, not a nav link. Value from the APP_VERSION template global. #}
+      <span class="app-version muted">MyOriShop v{{ APP_VERSION }}</span>
       <a href="/"{% if request.url.path == "/" %} class="active"{% endif %}>Главная</a>
       <a href="/products"{% if request.url.path.startswith("/products") %} class="active"{% endif %}>Товары</a>
       <a href="/sales/new"{% if request.url.path.startswith("/sales") %} class="active"{% endif %}>Продажи</a>

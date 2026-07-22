@@ -97,6 +97,12 @@ templates = Jinja2Templates(
     directory="app/templates",
     context_processors=[_auth_context, _sync_status_context],
 )
+# App version shown in the header title. Single source in app/__init__.py,
+# exposed as a template global so no route re-passes it (mirrors the label
+# constants below). Bumped on every completed-task commit (1.0 → 1.1 → …).
+from app import __version__ as _app_version
+
+templates.env.globals["APP_VERSION"] = _app_version
 # D-07: store UTC, display local; D-06: cents rendered only via helper.
 # Aliased to _config_settings (not `settings`) so this package's own
 # `settings` attribute-name namespace doesn't collide with the sibling
