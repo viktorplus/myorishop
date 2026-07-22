@@ -1,10 +1,11 @@
 ---
 phase: 32
 slug: in-app-secure-self-update
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-22
+reviewed_at: 2026-07-22
 mode: autonomous
 ---
 
