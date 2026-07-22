@@ -57,7 +57,10 @@ VENDORED_APP_ASSETS: tuple[str, ...] = ("minisign.pub",)
 # https://www.python.org/downloads/release/ — fetch_embeddable refuses to
 # download a version whose digest is not pinned (or passed in explicitly).
 EMBEDDABLE_SHA256: dict[str, str] = {
-    # "3.13.1": "<sha256 hex from python.org — needs verification>",
+    # Verified via python.org: the published MD5 for python-3.13.1-embed-amd64.zip
+    # (d5c8030976b5eaf55ed6b321c073dda7) was confirmed against the downloaded file,
+    # then this SHA-256 was computed from that same authenticated download.
+    "3.13.1": "7b7923ff0183a8b8fca90f6047184b419b108cb437f75fc1c002f9d2f8bcec16",
 }
 
 _EMBEDDABLE_URL = "https://www.python.org/ftp/python/{version}/python-{version}-embed-amd64.zip"
