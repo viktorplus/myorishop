@@ -292,7 +292,14 @@ Plans:
   4. A stable launcher process (living outside the swappable code directory) starts the app and can stop it, swap in a staged application directory, run `alembic upgrade head`, and restart — proven by hand-placing a staged directory + a pending marker and watching the launcher swap → migrate → restart, with a failed apply rolling back to the previous code directory and the pre-update database as a matched pair. (PKG-04)
   5. Pushing a version tag runs a GitHub Actions pipeline that builds the distributable and publishes, as release assets, the archive, its SHA-256 checksum, and an Ed25519 minisign signature over the signed asset/manifest; the signature is produced with an OFFLINE secret key and verifies against the public key vendored into the client. (PKG-05)
 
-**Plans**: TBD
+**Plans**: 5 plans (4 waves)
+
+Plans:
+- [ ] 31-01-PLAN.md — Nyquist Wave-0 RED scaffold: test_packaging/test_launcher/test_release_verify pin PKG-03/04/05 contracts (wave 0)
+- [ ] 31-02-PLAN.md — PKG-03 data-separation seam: root DB/.env/secret_key/device_id/backups under absolute MYORISHOP_DATA_DIR (wave 1)
+- [ ] 31-03-PLAN.md — PKG-04 stable launcher: pure swap state machine + Windows adapters + matched-pair rollback (wave 1)
+- [ ] 31-04-PLAN.md — PKG-01/02/05 build: build_release.py embeddable onedir + manifest/SHA-256 + tag↔version + MyOriShop.iss (wave 2)
+- [ ] 31-05-PLAN.md — PKG-02/05 pipeline: release.yml draft build + offline-sign runbook + vendored minisign.pub + CI verify (wave 3)
 
 > **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
 
@@ -351,5 +358,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 0/TBD | Not started | - |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 0/5 | Planned | - |
 | 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
