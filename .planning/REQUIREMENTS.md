@@ -11,11 +11,11 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 ### Packaging & Distribution (PKG)
 
-- [ ] **PKG-01**: The operator can install and run the client on a bare Windows machine with no Python, uv, or git preinstalled — the distribution bundles its own Python runtime and app source (onedir layout, never a self-locking single-file exe).
-- [ ] **PKG-02**: The distribution ships as a Windows installer (Start-Menu shortcut, uninstaller, per-user install under %LOCALAPPDATA%). The installer is shipped UNSIGNED for now with a documented one-time SmartScreen "Run anyway" step; buying a code-signing certificate is deferred.
-- [ ] **PKG-03**: Operator data (the SQLite DB, the .env, the per-install secret_key/device_id, and backups/) lives OUTSIDE the swappable application directory — physically separated so an over-the-top update can never reach or destroy it.
-- [ ] **PKG-04**: A stable launcher process (living outside the swappable code directory) starts the app, and can stop it, swap the application directory, and restart it — the mechanism that makes a self-replace-while-running update possible on Windows.
-- [ ] **PKG-05**: Releases are produced by a repeatable pipeline (GitHub Actions on a version tag) that builds the distributable and publishes, as release assets, the archive, a SHA-256 checksum, and an Ed25519 minisign signature over the signed asset/manifest. Releases are signed with an OFFLINE minisign secret key; the matching public key is vendored into the client.
+- [x] **PKG-01**: The operator can install and run the client on a bare Windows machine with no Python, uv, or git preinstalled — the distribution bundles its own Python runtime and app source (onedir layout, never a self-locking single-file exe).
+- [x] **PKG-02**: The distribution ships as a Windows installer (Start-Menu shortcut, uninstaller, per-user install under %LOCALAPPDATA%). The installer is shipped UNSIGNED for now with a documented one-time SmartScreen "Run anyway" step; buying a code-signing certificate is deferred.
+- [x] **PKG-03**: Operator data (the SQLite DB, the .env, the per-install secret_key/device_id, and backups/) lives OUTSIDE the swappable application directory — physically separated so an over-the-top update can never reach or destroy it.
+- [x] **PKG-04**: A stable launcher process (living outside the swappable code directory) starts the app, and can stop it, swap the application directory, and restart it — the mechanism that makes a self-replace-while-running update possible on Windows.
+- [x] **PKG-05**: Releases are produced by a repeatable pipeline (GitHub Actions on a version tag) that builds the distributable and publishes, as release assets, the archive, a SHA-256 checksum, and an Ed25519 minisign signature over the signed asset/manifest. Releases are signed with an OFFLINE minisign secret key; the matching public key is vendored into the client.
 
 ### Self-Update (UPD)
 

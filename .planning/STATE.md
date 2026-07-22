@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
-stopped_at: v4.0 roadmap created — Phases 31 (Packaging, Launcher & Signed-Release Pipeline) and 32 (In-App Secure Self-Update), 12/12 requirements mapped; awaiting phase planning
-last_updated: "2026-07-22T11:32:31.418Z"
-last_activity: 2026-07-22 -- Phase 31 planning complete
+stopped_at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
+last_updated: "2026-07-22T11:54:55.995Z"
+last_activity: 2026-07-22
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 31 — Packaging, Launcher & Signed-Release Pipeline (v4.0)
+**Current focus:** Phase 31 — packaging-launcher-signed-release-pipeline
 
 ## Current Position
 
-Phase: 31 — Packaging, Launcher & Signed-Release Pipeline (not yet planned)
-Plan: —
+Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-22 -- Phase 31 planning complete
+Last activity: 2026-07-22
 
 ## Performance Metrics
 
@@ -84,6 +84,7 @@ Last activity: 2026-07-22 -- Phase 31 planning complete
 | Phase 30 P02 | ~12min | 3 tasks | 5 files |
 | Phase 30 P03 | ~20min | 3 tasks | 3 files |
 | Phase 30 P04 | 15min | 3 tasks | 4 files |
+| Phase 31 P01 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 30-02: offline upload token = itsdangerous URLSafeTimedSerializer(secret_key, salt='offline-upload'), scope 'offline_upload', TTL 300s (D-03)
 - [Phase 30]: 30-03: offline ingest routes are thin callers of Phase-27 apply_merge; the only additions over sync_push are the SHA-256 integrity check (D-08) and the exact-match schema-version gate (D-09), both before any DB touch; in-body upload token means no CSRF and a single narrow ACAO scoped to /api/offline/login (D-05)
 - [Phase ?]: Phase 30 offline export (GET /offline/export) is read-only — never stamps synced_at (D-07); client half ships OFF-01/02/03/06 with a self-contained self-uploading HTML file
+- [Phase 31]: 31-01: Wave-0 RED scaffold pins PKG-01..05 contracts as executable tests — build_release/launcher.swap/launcher.adapters imported INSIDE test bodies so collection stays green while execution is RED; minisign roundtrip + vendored-pubkey skip-gated (binary + app/minisign.pub absent). API surface fixed for Plans 02-05 (assemble_onedir/generate_iss/write_manifest/verify_manifest/assert_tag_matches_version/VENDORED_APP_ASSETS; swap.Paths/Pending/apply_update/parse_pending; adapters.backup_restore). parse_pending raises ValueError on both traversal and malformed markers.
 
 ### Pending Todos
 
@@ -199,8 +201,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22 (v4.0 roadmapping)
-Stopped at: v4.0 roadmap created — Phases 31 (Packaging, Launcher & Signed-Release Pipeline) and 32 (In-App Secure Self-Update), 12/12 requirements mapped; awaiting phase planning
+Last session: 2026-07-22T11:54:42.024Z
+Stopped at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
 Resume file: None
 
 ## Operator Next Steps
