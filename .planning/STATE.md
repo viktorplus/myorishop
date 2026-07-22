@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
-stopped_at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
-last_updated: "2026-07-22T17:39:37.425Z"
-last_activity: 2026-07-22 -- Phase 32 execution started
+stopped_at: Completed 32-02-PLAN.md (verify-gate prerequisites)
+last_updated: "2026-07-22T20:13:45.900Z"
+last_activity: 2026-07-22
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
   percent: 50
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 ## Current Position
 
 Phase: 32 (in-app-secure-self-update) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
-Last activity: 2026-07-22 -- Phase 32 execution started
+Last activity: 2026-07-22
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Last activity: 2026-07-22 -- Phase 32 execution started
 | Phase 31 P04 | 22min | 3 tasks | 3 files |
 | Phase 31 P05 | 16min | 3 tasks | 5 files |
 | Phase 32 P01 | 13min | 2 tasks | 2 files |
+| Phase 32 P02 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Release Stage A uses automatic github.token (permissions: contents: write), never a configured repo secret — minisign secret key stays offline (T-31-02)
 - [Phase ?]: CI release-verify added as a separate ubuntu-latest job so pg-parity is untouched; apt-installed minisign flips the round-trip test from skip to run
 - [Phase ?]: 32-01: Wave-0 RED scaffold pins UpdateStatus state vocabulary (available/offline/noop/up_to_date) + the app.services.update / minisign_verify + launcher health_ok(expected_version) surfaces Waves 02-05 must satisfy; service imported in-body so collection stays green while execution is RED
+- [Phase ?]: 32-02: cryptography (PyCA) 49.0.0 Ed25519 provider, human-approved supply-chain checkpoint (T-32-SC verified on pypi.org)
+- [Phase ?]: 32-02: repo viktorplus/myorishop kept PUBLIC — unauthenticated /releases/latest works, no read-only GitHub token fallback provisioned into .env
+- [Phase ?]: 32-02: only the PUBLIC key (app/minisign.pub, RW-prefixed) vendored; secret signing key stays offline, .gitignore blocks *.key (T-31-02/T-32-07)
 
 ### Pending Todos
 
@@ -210,8 +214,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T17:39:01.166Z
-Stopped at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
+Last session: 2026-07-22T20:13:45.864Z
+Stopped at: Completed 32-02-PLAN.md (verify-gate prerequisites)
 Resume file: None
 
 ## Operator Next Steps
