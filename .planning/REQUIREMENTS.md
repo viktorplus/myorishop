@@ -50,6 +50,21 @@ Requirements committed to this milestone. Each maps to exactly one roadmap phase
 
 | REQ-ID | Phase |
 |--------|-------|
+| PKG-01 | Phase 31 |
+| PKG-02 | Phase 31 |
+| PKG-03 | Phase 31 |
+| PKG-04 | Phase 31 |
+| PKG-05 | Phase 31 |
+| UPD-01 | Phase 32 |
+| UPD-02 | Phase 32 |
+| UPD-03 | Phase 32 |
+| UPD-04 | Phase 32 |
+| UPD-05 | Phase 32 |
+| UPD-06 | Phase 32 |
+| UPD-07 | Phase 32 |
+
+**Coverage:** 12/12 v4.0 requirements mapped — PKG-01..05 → Phase 31, UPD-01..07 → Phase 32. No orphans, no duplicates.
 
 ---
 *Requirements defined: 2026-07-22 via /gsd-new-milestone*
+*Traceability filled: 2026-07-22 via /gsd-roadmap (roadmapper)*

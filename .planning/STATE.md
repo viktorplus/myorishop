@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
 status: planning
-last_updated: "2026-07-22T09:38:39.368Z"
+last_updated: "2026-07-22T10:15:00.000Z"
 last_activity: 2026-07-22
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-18)
+See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 30 — offline-self-uploading-file
+**Current focus:** Phase 31 — Packaging, Launcher & Signed-Release Pipeline (v4.0)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 31 — Packaging, Launcher & Signed-Release Pipeline (not yet planned)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-07-22 — Milestone v4.0 started
+Status: Roadmap created — awaiting phase planning
+Last activity: 2026-07-22 — v4.0 roadmap created (Phases 31-32, 12/12 requirements mapped)
 
 ## Performance Metrics
 
@@ -89,6 +89,16 @@ Last activity: 2026-07-22 — Milestone v4.0 started
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+
+**v4.0 roadmap-level decisions (2026-07-22):**
+
+- **Two dependency-ordered phases, forced ordering:** Phase 31 (packaging + stable launcher + code/data physical separation + signed-release pipeline) MUST land before Phase 32 (in-app self-update) — there is nothing safe to update *to*, and no safe over-the-top swap, until code/data separation + a launcher + a signed release format exist. Phase 32 cannot even be end-to-end tested until two real signed releases exist (cut throwaway v1.N/v1.N+1 tags to exercise the round trip).
+- **Coverage:** all 12 v4.0 requirements mapped exactly once — PKG-01..05 → Phase 31, UPD-01..07 → Phase 32. No orphans, no duplicates (REQUIREMENTS.md Traceability filled 2026-07-22).
+- **Locked product decisions (from milestone questioning):** apply policy = notify-and-confirm (never silent auto-apply, UPD-03); release signing = OFFLINE minisign key with the public key vendored in the client (PKG-05/UPD-02); installer = UNSIGNED + documented one-time SmartScreen "Run anyway" (code-signing cert deferred, PKG-02). The central server is a hard no-op throughout (UPD-06, dialect-gated).
+- **Data preservation by physical layout, not careful code (PKG-03):** the SQLite DB, .env, per-install secret_key/device_id, and backups/ must be *siblings* of the swappable app directory, never children — so a directory swap physically cannot reach operator state. Relocating this state out of the install/CWD-relative defaults is the Phase-31 prerequisite; getting it wrong wipes the only copy of the operator's ledger.
+- **Reused shipped mechanisms (not new work):** `backup.create_backup()` VACUUM INTO as the pre-update anchor (UPD-04); the `engine.dialect.name == "sqlite"` gate for the server no-op (UPD-06); the `_auto_sync_loop` background-loop shape for the startup/periodic check; the `APP_VERSION` header global / `app/__init__.py` `__version__` for the version tie-in (UPD-05).
+- **Version-compare is a known pitfall:** the "1.<N>" scheme breaks under string compare ("1.9" > "1.10" is True) — compare the integer N and apply only if strictly newer (anti-downgrade, UPD-05); test the 9→10 boundary.
+- **Both phases are research-flagged:** Phase 31 — a small spike to settle bundled-runtime strategy (Python embeddable vs PyInstaller `--onedir`) before writing `build_release.py`. Phase 32 — security-critical, carries a threat model; expect `/gsd-plan-phase 32 --research-phase` for the trust model + controlled-shutdown/IPC (`pending.json`) contract.
 
 **v3.0 roadmap-level decisions (2026-07-18):**
 
@@ -188,13 +198,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21 (resumed)
-Stopped at: Session resumed, proceeding to milestone-closure chores (phase.complete 27 next)
+Last session: 2026-07-22 (v4.0 roadmapping)
+Stopped at: v4.0 roadmap created — Phases 31 (Packaging, Launcher & Signed-Release Pipeline) and 32 (In-App Secure Self-Update), 12/12 requirements mapped; awaiting phase planning
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 27 (Shared Idempotent Merge Core) is COMPLETE — the one merge engine is proven portable on SQLite + PostgreSQL. Next: `/gsd-plan-phase 28` (Central Server — Hosting & Sync API)
-- Phase-gate follow-up: push and confirm the GitHub Actions `pg-parity` job is GREEN including the new `PostgreSQL merge portability` step (postgres:17) — CI is the deliverable proof of the merge PG slice
-- Phase 30 is research-flagged — expect a `--research-phase` pass at its plan time
-- Optional, non-blocking: a short manual browser pass on Phase 22's 4 unconfirmed items (see Blockers/Concerns above)
+- v4.0 roadmap is written (ROADMAP.md) with two dependency-ordered phases and full traceability (REQUIREMENTS.md). Next: `/gsd-plan-phase 31` (Packaging, Launcher & Signed-Release Pipeline).
+- Phase 31 is research-flagged — expect a bundled-runtime spike (Python embeddable vs PyInstaller `--onedir`) before `build_release.py` is written.
+- Phase 32 is security-critical (`security_enforcement=true`, ASVS L1) — it carries a threat model; plan it with `/gsd-plan-phase 32 --research-phase` for the trust model + controlled-shutdown/IPC contract. It cannot be end-to-end tested until two real signed releases from Phase 31 exist.
+- Carried-forward, non-blocking: v3.0 verification/security tails still open (phase.complete 27; `/gsd-verify-work 30`; `/gsd-secure-phase` for 27, 29, 30) and the Phase 22 browser-UAT items (see Blockers/Concerns above).

@@ -8,6 +8,7 @@
 - ✅ **v1.3 Финансы / Касса** — Phases 15-17 (shipped 2026-07-15)
 - ✅ **v2.0 UX Overhaul & Navigation Restructure** — Phases 18-24 (shipped 2026-07-17)
 - 🚧 **v3.0 Multi-Operator Sync, Central Server & Roles** — Phases 25-30 (in progress)
+- 🚧 **v4.0 Distribution & Delivery** — Phases 31-32 (in progress)
 
 ## Phases
 
@@ -269,10 +270,54 @@ Plans:
 
 > **Research flag:** This phase needs a per-phase research pass at plan time. The self-contained-file mechanism (final form of the "HTML + embedded data opened in a browser" leading approach) and the file trust/version model (signed manifest vs. checksum-only, how to bind claimed origin without an authenticating server in the loop, schema-version compatibility rule, re-running write-path validations on the bulk path) warrant a focused pass.
 
+### 🚧 v4.0 Distribution & Delivery (In Progress)
+
+**Milestone Goal:** Turn the app from a run.bat/uv dev checkout into a self-contained, self-updating local client distribution for Windows operators. A non-technical Oriflame reseller installs it on a bare Windows machine (no Python, no uv, no git; works offline) and it safely upgrades itself from the project's GitHub Releases without ever losing local data. The central server (s1, ori.viktorplus.com) stays a plain Docker deployment and is the update *target*, never a self-updating client.
+
+**Build order (dependency-ordered — forced):** packaging + a stable launcher + code/data physical separation + a signed-release pipeline first (there is nothing safe to update *to*, and no safe over-the-top swap, until these exist) → in-app secure self-update second (the security-critical, threat-modelled phase where fetched code is executed). Phase B cannot even be tested until two real signed releases exist.
+
+- [ ] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
+- [ ] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server
+
+#### Phase 31: Packaging, Launcher & Signed-Release Pipeline
+
+**Goal**: Turn the git+uv dev checkout into a self-contained, installable Windows distribution — a bundled Python runtime + app source (onedir), an unsigned Inno Setup installer, operator data physically separated from the swappable code, a stable launcher that can stop/swap/migrate/restart the app, and a repeatable GitHub Actions pipeline that publishes a signed release. This is the prerequisite foundation: there is nothing safe to update *to*, and no safe over-the-top swap, until code/data separation + a launcher + a signed release format exist.
+**Depends on**: Phase 30 (previous milestone; first phase of v4.0)
+**Requirements**: PKG-01, PKG-02, PKG-03, PKG-04, PKG-05
+**Success Criteria** (what must be TRUE):
+
+  1. On a bare Windows machine with no Python, uv, or git, the operator runs the installer and launches the app to a working localhost browser UI — the distribution's own bundled runtime and app source (onedir layout, never a self-locking single-file exe) run with nothing else installed. (PKG-01)
+  2. Installing creates a Start-Menu shortcut and an uninstaller and puts the app per-user under `%LOCALAPPDATA%`; because the installer is shipped unsigned for now, the operator clears the one-time SmartScreen warning via the documented «Подробнее → Выполнить в любом случае» step. (PKG-02)
+  3. The operator's SQLite database, the `.env`, the per-install `secret_key`/`device_id`, and `backups/` live in an install-root location that is a *sibling* of the swappable application directory — so replacing the entire application directory can never reach or destroy operator data. (PKG-03)
+  4. A stable launcher process (living outside the swappable code directory) starts the app and can stop it, swap in a staged application directory, run `alembic upgrade head`, and restart — proven by hand-placing a staged directory + a pending marker and watching the launcher swap → migrate → restart, with a failed apply rolling back to the previous code directory and the pre-update database as a matched pair. (PKG-04)
+  5. Pushing a version tag runs a GitHub Actions pipeline that builds the distributable and publishes, as release assets, the archive, its SHA-256 checksum, and an Ed25519 minisign signature over the signed asset/manifest; the signature is produced with an OFFLINE secret key and verifies against the public key vendored into the client. (PKG-05)
+
+**Plans**: TBD
+
+> **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
+
+#### Phase 32: In-App Secure Self-Update
+
+**Goal**: Build the security-critical in-app self-update on top of Phase 31 — the client checks GitHub Releases, verifies a downloaded update's signature AND checksum before unpacking, notifies the administrator and applies only on explicit confirmation, takes a pre-update backup then migrates with rollback on any failure, ties the visible header version to the installed release with integer-scheme anti-downgrade, and is a hard no-op on the PostgreSQL central server. This is the threat-modelled phase where fetched code is executed — verification is a hard gate.
+**Depends on**: Phase 31 (bundled runtime, stop/swap/restart launcher, signed release format — none of this is testable without two real signed releases from Phase 31)
+**Requirements**: UPD-01, UPD-02, UPD-03, UPD-04, UPD-05, UPD-06, UPD-07
+**Success Criteria** (what must be TRUE):
+
+  1. On startup with an active internet connection the client checks the project's latest GitHub Release and detects when a newer version exists; with no connection it is a silent no-op that never blocks offline launch, the administrator can trigger the same check on demand from Настройки («Проверить обновления»), and on the central PostgreSQL server the entire update path is a hard no-op gated on the SQLite dialect. (UPD-01, UPD-06, UPD-07)
+  2. Before any downloaded update is unpacked, the client verifies both its SHA-256 checksum AND its Ed25519 signature over the signed asset/manifest (not the mutable git tag) against the vendored public key; a verification failure aborts the update and nothing is applied. (UPD-02)
+  3. The operator is shown the available new version and its release notes and the update is applied ONLY on explicit confirmation («Обновить и перезапустить»), with a «Позже» defer option — never a silent auto-apply. (UPD-03)
+  4. Applying an update takes a pre-update backup (via the existing VACUUM INTO backup), runs `alembic upgrade head`, and on any failure — verification, migration, or a failed post-update health check — rolls back to the previous code and the pre-update database as a matched pair, so the operator's data is never left half-migrated or lost. (UPD-04)
+  5. The visible header version reflects the actually-installed release, and version comparison is done on the integer counter of the "1.<N>" scheme (never string compare) so only a strictly-newer release is ever offered (anti-downgrade). (UPD-05)
+
+**Plans**: TBD
+**UI hint**: yes
+
+> **Research flag:** Security-critical — this phase carries a threat model (`security_enforcement=true`, ASVS L1). The signed-manifest-vs-SHA256SUMS shape, the exact minisign verify call, and the launcher/app IPC contract (`pending.json` + controlled-shutdown signal) warrant a focused design pass. Flag `/gsd-plan-phase 32 --research-phase` for the trust model and controlled-shutdown protocol. Reuses shipped mechanisms unchanged (`backup.create_backup()` VACUUM INTO pre-update anchor, the `engine.dialect.name == "sqlite"` server no-op gate, the `_auto_sync_loop` background-loop shape, the `APP_VERSION` header / `app/__init__.py` `__version__`).
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → 32
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|-----------------|--------|-----------|
@@ -306,3 +351,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 0/TBD | Not started | - |
+| 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
