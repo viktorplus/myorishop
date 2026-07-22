@@ -4,13 +4,13 @@ milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
 stopped_at: Completed 32-02-PLAN.md (verify-gate prerequisites)
-last_updated: "2026-07-22T20:13:45.900Z"
+last_updated: "2026-07-22T20:26:57.099Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 ## Current Position
 
 Phase: 32 (in-app-secure-self-update) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-22
 
@@ -90,6 +90,7 @@ Last activity: 2026-07-22
 | Phase 31 P05 | 16min | 3 tasks | 5 files |
 | Phase 32 P01 | 13min | 2 tasks | 2 files |
 | Phase 32 P02 | 5min | 2 tasks | 3 files |
+| Phase 32 P03 | 20m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 32-02: cryptography (PyCA) 49.0.0 Ed25519 provider, human-approved supply-chain checkpoint (T-32-SC verified on pypi.org)
 - [Phase ?]: 32-02: repo viktorplus/myorishop kept PUBLIC — unauthenticated /releases/latest works, no read-only GitHub token fallback provisioned into .env
 - [Phase ?]: 32-02: only the PUBLIC key (app/minisign.pub, RW-prefixed) vendored; secret signing key stays offline, .gitignore blocks *.key (T-31-02/T-32-07)
+- [Phase ?]: Update: trusted version read from Ed25519-verified manifest version=, never git tag_name (T-32-04)
+- [Phase ?]: Update check: dialect no-op on non-sqlite + offline-safe never raises; __version__ kept at 1.15 as anti-downgrade baseline
 
 ### Pending Todos
 
@@ -214,7 +217,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T20:13:45.864Z
+Last session: 2026-07-22T20:26:47.021Z
 Stopped at: Completed 32-02-PLAN.md (verify-gate prerequisites)
 Resume file: None
 

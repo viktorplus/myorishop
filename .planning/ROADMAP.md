@@ -339,7 +339,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 32-03-PLAN.md — Verifier + check half: pure-Python minisign/Ed25519 verify + check_for_update (dialect no-op, offline-safe, verified-manifest anti-downgrade) (UPD-01/02/05/06) (wave 2)
+- [x] 32-03-PLAN.md — Verifier + check half: pure-Python minisign/Ed25519 verify + check_for_update (dialect no-op, offline-safe, verified-manifest anti-downgrade) (UPD-01/02/05/06) (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -391,4 +391,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
-| 32. In-App Secure Self-Update | v4.0 | 2/5 | In Progress|  |
+| 32. In-App Secure Self-Update | v4.0 | 3/5 | In Progress|  |
