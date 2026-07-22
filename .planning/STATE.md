@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: executing
+status: verifying
 stopped_at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
-last_updated: "2026-07-22T13:10:31.772Z"
+last_updated: "2026-07-22T13:29:25.701Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
-  percent: 0
+  completed_plans: 5
+  percent: 50
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 
 Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-22
 
 ## Performance Metrics
@@ -87,6 +87,7 @@ Last activity: 2026-07-22
 | Phase 31 P01 | 12min | 3 tasks | 4 files |
 | Phase 31 P03 | 18min | 3 tasks | 5 files |
 | Phase 31 P04 | 22min | 3 tasks | 3 files |
+| Phase 31 P05 | 16min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 31]: 31-01: Wave-0 RED scaffold pins PKG-01..05 contracts as executable tests — build_release/launcher.swap/launcher.adapters imported INSIDE test bodies so collection stays green while execution is RED; minisign roundtrip + vendored-pubkey skip-gated (binary + app/minisign.pub absent). API surface fixed for Plans 02-05 (assemble_onedir/generate_iss/write_manifest/verify_manifest/assert_tag_matches_version/VENDORED_APP_ASSETS; swap.Paths/Pending/apply_update/parse_pending; adapters.backup_restore). parse_pending raises ValueError on both traversal and malformed markers.
 - [Phase ?]: Phase 31-03: launcher is stdlib-only, imports no app.* (importing app would lock app\ and break the os.replace swap)
 - [Phase ?]: Phase 31-03: swap is a pure callback-injected apply_update state machine; Windows side effects live in thin adapters (OS-agnostic unit-testable)
+- [Phase ?]: Release Stage A uses automatic github.token (permissions: contents: write), never a configured repo secret — minisign secret key stays offline (T-31-02)
+- [Phase ?]: CI release-verify added as a separate ubuntu-latest job so pg-parity is untouched; apt-installed minisign flips the round-trip test from skip to run
 
 ### Pending Todos
 
@@ -205,7 +208,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T13:10:31.749Z
+Last session: 2026-07-22T13:29:14.412Z
 Stopped at: Completed 31-01-PLAN.md (Wave-0 RED scaffold)
 Resume file: None
 

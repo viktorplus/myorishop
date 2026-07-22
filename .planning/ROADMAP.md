@@ -276,7 +276,7 @@ Plans:
 
 **Build order (dependency-ordered — forced):** packaging + a stable launcher + code/data physical separation + a signed-release pipeline first (there is nothing safe to update *to*, and no safe over-the-top swap, until these exist) → in-app secure self-update second (the security-critical, threat-modelled phase where fetched code is executed). Phase B cannot even be tested until two real signed releases exist.
 
-- [ ] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
+- [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature) (completed 2026-07-22)
 - [ ] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server
 
 #### Phase 31: Packaging, Launcher & Signed-Release Pipeline
@@ -307,7 +307,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 31-05-PLAN.md — PKG-02/05 pipeline: release.yml draft build + offline-sign runbook + vendored minisign.pub + CI verify (wave 3)
+- [x] 31-05-PLAN.md — PKG-02/05 pipeline: release.yml draft build + offline-sign runbook + vendored minisign.pub + CI verify (wave 3)
 
 > **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
 
@@ -366,5 +366,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 4/5 | In Progress|  |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
 | 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
