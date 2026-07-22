@@ -40,3 +40,8 @@ catalogs/*.url
 
 # GSD research cache (ephemeral, regenerable)
 .planning/research/.cache/
+
+# Phase 31 build artifacts (build_release.py onedir assembler — regenerable)
+/dist/
+requirements-locked.txt
+.build-cache/
