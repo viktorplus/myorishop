@@ -45,3 +45,9 @@ catalogs/*.url
 /dist/
 requirements-locked.txt
 .build-cache/
+
+# minisign SECRET signing key — MUST never be committed (threat T-31-02). The
+# secret key lives ONLY on the offline machine; only app/minisign.pub (public)
+# is committed. See docs/RELEASE.md.
+*.key
+minisign.key
