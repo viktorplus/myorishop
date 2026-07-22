@@ -24,12 +24,16 @@ Requirements: PKG-01 (onedir layout), PKG-02 (per-user .iss), PKG-05
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
+import re
 import shutil
 import sys
 import urllib.request
 import zipfile
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent
 
 # The install-root layout the launcher (Plan 03) and the .iss (PKG-02) assume:
 #   <root>\app\      <- SWAPPABLE embeddable bundle (this is `dest`)
@@ -241,14 +245,168 @@ def _copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+# --- PKG-05: manifest + SHA-256 + tag<->version contract --------------------
+
+# V5 input validation: the release tag is an untrusted input. It must be exactly
+# `v1.<N>` (integer-comparable trailing counter, MEMORY versioning-scheme) — the
+# same shape as __version__ prefixed with 'v'. This feeds Phase 32 anti-downgrade.
+_TAG_RE = re.compile(r"^v1\.\d+$")
+
+
+def write_manifest(*, archive_path: Path, version: str, dest: Path) -> Path:
+    """Bind version + archive filename + the archive's real SHA-256 into manifest.txt.
+
+    One small signed blob (Phase 05 minisign signs THIS, not the multi-hundred-MB
+    archive — RESEARCH "Why sign the manifest, not the archive") so Phase 32
+    verifies one signature then checks the archive digest against it, with the
+    version inside the signed payload (UPD-05 anti-downgrade). Also emits the
+    sibling SHA256SUMS the CI release publishes.
+    """
+    archive_path = Path(archive_path)
+    dest = Path(dest)
+    sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(
+        f"version={version}\narchive={archive_path.name}\nsha256={sha}\n",
+        encoding="utf-8",
+    )
+    (dest.parent / "SHA256SUMS").write_text(
+        f"{sha}  {archive_path.name}\n", encoding="utf-8"
+    )
+    return dest
+
+
+def _parse_manifest(manifest_path: Path) -> dict[str, str]:
+    """Parse the `key=value` lines of a manifest.txt into a dict."""
+    fields: dict[str, str] = {}
+    for raw in Path(manifest_path).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        fields[key.strip()] = value.strip()
+    return fields
+
+
+def verify_manifest(archive_path: Path, manifest_path: Path) -> bool:
+    """Re-hash <archive_path> and compare against the manifest's sha256 (T-31-03).
+
+    Returns False on any mismatch (a single flipped archive byte) or a manifest
+    missing its sha256 field — the tamper guard.
+    """
+    expected = _parse_manifest(manifest_path).get("sha256")
+    if not expected:
+        return False
+    actual = hashlib.sha256(Path(archive_path).read_bytes()).hexdigest()
+    return actual == expected
+
+
+def _read_version(repo_root: Path | None = None) -> str:
+    """Extract __version__ from app/__init__.py WITHOUT importing the app.
+
+    Importing `app` would pull the whole FastAPI/SQLAlchemy dependency graph
+    (and its site-packages); parsing the AST reads the single source of truth
+    cheaply and side-effect-free (PATTERNS "Version single-source-of-truth").
+    """
+    root = Path(repo_root) if repo_root is not None else _REPO_ROOT
+    source = (root / "app" / "__init__.py").read_text(encoding="utf-8")
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__version__" for t in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise ValueError("__version__ not found in app/__init__.py")
+
+
+def assert_tag_matches_version(tag: str, *, repo_root: Path | None = None) -> None:
+    """Fail the build unless the git tag `v1.<N>` equals __version__ `1.<N>`.
+
+    Validates the tag shape first (V5) then the equality — a malformed tag OR a
+    tag/version drift raises ValueError, so CI cannot publish a release whose
+    advertised version disagrees with the shipped code (RESEARCH Stage A).
+    """
+    if not _TAG_RE.match(tag):
+        raise ValueError(
+            f"malformed release tag {tag!r}: expected v1.<N> (regex ^v1\\.\\d+$)"
+        )
+    version = _read_version(repo_root)
+    if tag[1:] != version:
+        raise ValueError(
+            f"release tag {tag!r} does not match app __version__ {version!r} — "
+            "bump app/__init__.py or fix the tag before releasing"
+        )
+
+
+def _zip_onedir(dist_dir: Path, version: str) -> Path:
+    """Zip the assembled app\\ + launcher\\ into dist/MyOriShop-<version>.zip."""
+    dist_dir = Path(dist_dir)
+    archive = dist_dir / f"MyOriShop-{version}.zip"
+    tmp = archive.with_suffix(".zip.partial")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for sub in ("app", "launcher"):
+                root = dist_dir / sub
+                if not root.exists():
+                    continue
+                for path in sorted(root.rglob("*")):
+                    if path.is_file():
+                        zf.write(path, path.relative_to(dist_dir).as_posix())
+        tmp.replace(archive)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+    return archive
+
+
 def _build_cli(argv: list[str] | None = None) -> int:
-    """Thin CLI: `--version <tag>` (full build). Manifest/.iss wired in later tasks."""
+    """CLI: `--version v1.<N>` builds the onedir; add `--manifest` for checksums.
+
+    Both paths first assert the tag<->__version__ contract so a drifted release
+    fails fast (RESEARCH Stage A). The heavy build fetches the embeddable +
+    vendors wheels (Windows-native in CI); `--manifest` runs after the archive
+    exists to emit SHA256SUMS + manifest.txt.
+    """
     parser = argparse.ArgumentParser(description="MyOriShop Windows onedir build assembler")
-    parser.add_argument("--version", help="release tag, e.g. v1.42 (must equal __version__)")
-    parser.add_argument("--manifest", action="store_true", help="write SHA256SUMS + manifest.txt")
-    parser.parse_args(argv)
-    parser.error("full build/manifest CLI is completed in later tasks of this plan")
-    return 2
+    parser.add_argument(
+        "--version", required=True, help="release tag, e.g. v1.42 (must equal __version__)"
+    )
+    parser.add_argument(
+        "--manifest",
+        action="store_true",
+        help="write SHA256SUMS + manifest.txt over the already-built archive",
+    )
+    parser.add_argument(
+        "--python-version",
+        default="3.13.1",
+        help="Python embeddable release to bundle (must be SHA-pinned in EMBEDDABLE_SHA256)",
+    )
+    args = parser.parse_args(argv)
+
+    # tag<->version contract — fail the build on any drift (both paths).
+    assert_tag_matches_version(args.version)
+    version = args.version[1:]
+    dist_dir = _REPO_ROOT / "dist"
+
+    if args.manifest:
+        archive = dist_dir / f"MyOriShop-{version}.zip"
+        if not archive.exists():
+            parser.error(f"archive {archive} not found — run the build (without --manifest) first")
+        write_manifest(archive_path=archive, version=version, dest=dist_dir / "manifest.txt")
+        return 0
+
+    embed_zip = fetch_embeddable(args.python_version, _REPO_ROOT / ".build-cache")
+    # Vendor into a staging dir FIRST — assemble_onedir wipes dest\, so the wheels
+    # must live outside the bundle until it copies them into Lib\site-packages.
+    wheel_staging = dist_dir / ".wheels"
+    vendor_wheels(wheel_staging, repo_root=_REPO_ROOT)
+    assemble_onedir(
+        embeddable_zip=embed_zip,
+        wheel_dir=wheel_staging,
+        dest=dist_dir / "app",
+        repo_root=_REPO_ROOT,
+    )
+    _zip_onedir(dist_dir, version)
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry
