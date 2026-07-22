@@ -6,6 +6,7 @@ DB directory (outside the synced DB, RESEARCH A2 / Pitfall 5 / Pitfall 6).
 Never log or print `secret_key` / `device_id` (CLAUDE.md safety).
 """
 
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -13,13 +14,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.device_id import get_or_create_local_id
 
+# PKG-03 (RESEARCH Pattern 3): the launcher-supplied ABSOLUTE data-dir root.
+# Every operator-state path (DB, .env, secret_key, device_id, backups/) is
+# rooted here so the operator's data lives as a physical SIBLING of the
+# swappable app\ directory — an over-the-top app-dir swap can never reach or
+# destroy it (STATE.md "Data preservation by physical layout, not careful
+# code"). The default "data" (resolved to an absolute path) keeps dev / run.bat
+# behavior byte-identical when MYORISHOP_DATA_DIR is unset.
+_DATA_DIR = Path(os.environ.get("MYORISHOP_DATA_DIR", "data")).resolve()
+
 
 class Settings(BaseSettings):
     """Local app configuration; every field can be overridden via .env."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=str(_DATA_DIR / ".env"), env_file_encoding="utf-8"
+    )
 
-    db_path: str = "data/myorishop.db"
+    db_path: str = str(_DATA_DIR / "myorishop.db")
     # SRV-01/SRV-02 (Phase 26): the SINGLE DB-URL source of truth read by both
     # alembic/env.py and app/db.py. Empty default so an explicit DATABASE_URL in
     # .env/environment wins (field database_url ⇒ env var DATABASE_URL via
@@ -65,7 +77,13 @@ class Settings(BaseSettings):
     # BCK-01 (D-08/D-09/D-10): startup + manual VACUUM INTO backups.
     # backup_on_startup exists as a flag so the TEST SUITE can disable the
     # lifespan backup (RESEARCH Pitfall 1) — env overrides BACKUP_ON_STARTUP.
-    backup_dir: str = "backups"
+    # PKG-03 / RESEARCH Pitfall 2 — THE critical wipe-risk line: backup_dir must
+    # be an ABSOLUTE path under the data dir (never CWD-relative "backups").
+    # Under packaging CWD is app\, so a relative "backups" would land INSIDE the
+    # swappable app dir and be destroyed on the first over-the-top update —
+    # wiping the operator's only ledger copy (STATE.md data-preservation
+    # decision). Rooting it at _DATA_DIR makes the backups a sibling of app\.
+    backup_dir: str = str(_DATA_DIR / "backups")
     backup_on_startup: bool = True
     backup_keep: int = 30
     # RPT-02/RPT-04 (D-05): global fallback when a product's own threshold is NULL.
@@ -84,6 +102,9 @@ class Settings(BaseSettings):
         An env-provided value is left untouched; only the empty `secret_key`
         default and the static `"device-01"` sentinel are replaced.
         """
+        # PKG-03: db_path is rooted at _DATA_DIR, so its parent is the absolute
+        # data dir — secret_key / device_id follow the seam for free, no new
+        # resolution code needed.
         data_dir = Path(self.db_path).parent
         # Single source of truth: only the empty default is filled; an explicit
         # DATABASE_URL (e.g. postgresql+psycopg://…) is left untouched.
