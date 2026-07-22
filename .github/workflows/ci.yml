@@ -46,3 +46,31 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
         run: uv run pytest tests/test_merge_pg.py -x
+
+  release-verify:
+    name: minisign sign->verify round-trip + tamper-fail (PKG-05, T-31-03)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # Install the official jedisct1 minisign so the sign->verify round-trip in
+      # tests/test_release_verify.py RUNS instead of self-skipping (it skips only
+      # when the binary is absent — mirrors the DATABASE_URL-absent PG auto-skip).
+      # The round-trip uses a THROWAWAY keypair generated per run in tmp; the
+      # production offline secret key never enters CI (T-31-02 / T-31-SC).
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      # This closes PKG-05's verify-mechanism proof: sign a manifest, verify it
+      # passes, tamper it, assert verify FAILS (T-31-03) — the same primitive
+      # Phase 32's self-update runs before unpacking.
+      - name: Release-verify (manifest/tamper/version + minisign round-trip)
+        run: uv run pytest tests/test_release_verify.py -x
