@@ -49,11 +49,17 @@ class Settings(BaseSettings):
     # secret the driver authenticates with. `sync_token` is a SECRET — like
     # `secret_key` it lives in `.env`, is NEVER a `sync_state`/DB column (a
     # copied myorishop.db must not carry the device credential), and is NEVER
-    # logged/printed (CLAUDE.md safety). Both default to "" so a fresh install
-    # runs fully offline until the operator configures them (offline-first).
+    # logged/printed (CLAUDE.md safety).
+    #
+    # `sync_server_url` defaults to the known central server so the local
+    # distribution knows where to sync out of the box; the operator only needs to
+    # enter the per-device `sync_token` (which stays "" here — a secret, never
+    # defaulted). The CENTRAL SERVER itself must NOT be a sync client, so its
+    # deployment sets SYNC_SERVER_URL="" in the environment (env wins over this
+    # default) to stay unconfigured — mirrors SESSION_HTTPS_ONLY being server-only.
     # The auto-sync toggle/interval are NOT here — they must be runtime-mutable
     # (D-15) and live in the `sync_state` table, not static `.env`.
-    sync_server_url: str = ""
+    sync_server_url: str = "https://ori.viktorplus.com"
     sync_token: str = ""
     display_tz: str = "Europe/Moscow"
     # BCK-01 (D-08/D-09/D-10): startup + manual VACUUM INTO backups.

@@ -93,7 +93,9 @@ def test_get_or_create_sync_state_idempotent(session):
     the SAME row — never a second one (D-10 single-row invariant)."""
     first = sync_client.get_or_create_sync_state(session)
     assert first.id == 1
-    assert first.auto_enabled == 0
+    # Role-aware default: the test DB is SQLite (a local client), so auto-sync
+    # is enabled out of the box; the central PostgreSQL server would get 0.
+    assert first.auto_enabled == 1
     assert first.auto_interval_seconds == DEFAULT_INTERVAL_SECONDS
 
     second = sync_client.get_or_create_sync_state(session)
@@ -140,9 +142,10 @@ def test_record_sync_result_writes_on_error(session):
 
 
 def test_read_autosync_config_fresh_and_clamped(session):
-    """Fresh row → (False, 300). A too-low interval clamps up to 60; a too-high
-    one clamps down to 3600 (D-15). Read fresh from the row each call (D-08)."""
-    assert sync_client.read_autosync_config(session) == (False, DEFAULT_INTERVAL_SECONDS)
+    """Fresh row → (True, 300) on a local SQLite client (role-aware default). A
+    too-low interval clamps up to 60; a too-high one clamps down to 3600 (D-15).
+    Read fresh from the row each call (D-08)."""
+    assert sync_client.read_autosync_config(session) == (True, DEFAULT_INTERVAL_SECONDS)
 
     row = sync_client.get_or_create_sync_state(session)
     row.auto_enabled = 1
@@ -558,11 +561,14 @@ def test_run_sync_tick_respects_toggle(sync_driver_pair, engine, monkeypatch):
     monkeypatch.setattr(sync_client, "SessionLocal", tick_sessions)
     monkeypatch.setattr(sync_client, "build_sync_client", lambda: pair.client)
 
-    # Auto OFF → no sync, no recorded result.
+    # Explicitly DISABLE (the local-client default is now ON) → no sync, no result.
+    with tick_sessions() as off:
+        sync_client.get_or_create_sync_state(off).auto_enabled = 0
+        off.commit()
     sync_client.run_sync_tick()
     with tick_sessions() as check:
         row = check.get(SyncState, 1)
-        assert row is None or row.last_status is None
+        assert row.last_status is None
 
     # Enable auto → the tick runs the driver and records a result.
     with tick_sessions() as setup:

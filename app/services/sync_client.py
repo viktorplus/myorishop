@@ -81,9 +81,16 @@ def get_or_create_sync_state(session: Session) -> SyncState:
     """
     row = session.get(SyncState, 1)
     if row is None:
+        # Role-aware default: a local SQLite client / distribution auto-syncs out
+        # of the box (auto_enabled=1); the central PostgreSQL server never does —
+        # it IS the sync target, so it stays 0. The DB dialect is the role signal
+        # (no separate flag). Amends the shipped D-15 opt-in default. Harmless
+        # when unconfigured: run_sync_once short-circuits to `not_configured`
+        # until a sync_token is set, so nothing leaves the box.
+        is_local_client = session.get_bind().dialect.name == "sqlite"
         row = SyncState(
             id=1,
-            auto_enabled=0,
+            auto_enabled=1 if is_local_client else 0,
             auto_interval_seconds=DEFAULT_INTERVAL_SECONDS,
         )
         session.add(row)

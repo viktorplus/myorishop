@@ -31,8 +31,14 @@ def _loop_session(engine, monkeypatch):
 def test_iteration_auto_off_does_not_call_run_sync_tick(
     _loop_session, session, monkeypatch
 ):
-    """Auto-sync disabled (default) → `run_sync_tick` is never called (D-15)."""
+    """Auto-sync explicitly disabled → `run_sync_tick` is never called (D-15)."""
     import app.main as main
+    from app.services.sync_client import get_or_create_sync_state
+
+    # The local-client default is now ON; disable explicitly to test the off path.
+    row = get_or_create_sync_state(session)
+    row.auto_enabled = 0
+    session.commit()
 
     called = []
     monkeypatch.setattr(sync_client, "run_sync_tick", lambda: called.append(True))
@@ -40,7 +46,7 @@ def test_iteration_auto_off_does_not_call_run_sync_tick(
     interval = asyncio.run(main._auto_sync_iteration())
 
     assert called == []
-    assert interval == 300  # DEFAULT_INTERVAL_SECONDS (fresh row)
+    assert interval == 300  # DEFAULT_INTERVAL_SECONDS
 
 
 def test_iteration_auto_on_calls_run_sync_tick(_loop_session, session, monkeypatch):
