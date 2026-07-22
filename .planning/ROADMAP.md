@@ -343,7 +343,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 32-04-PLAN.md — Apply pipeline: verify-before-unpack gate + zip-slip unpack + VACUUM-INTO backup + pending.json + public /health + launcher version-match (UPD-02/04) (wave 3)
+- [x] 32-04-PLAN.md — Apply pipeline: verify-before-unpack gate + zip-slip unpack + VACUUM-INTO backup + pending.json + public /health + launcher version-match (UPD-02/04) (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -391,4 +391,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
-| 32. In-App Secure Self-Update | v4.0 | 3/5 | In Progress|  |
+| 32. In-App Secure Self-Update | v4.0 | 4/5 | In Progress|  |
