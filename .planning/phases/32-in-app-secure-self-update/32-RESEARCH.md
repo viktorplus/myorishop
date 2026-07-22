@@ -329,35 +329,43 @@ def stage_pending(install_root: Path, staged_rel: str, version: str, backup_rel:
 | A5 | The launcher needs no new code (expected_version enforcement optional) | Responsibility Map | Low — the shipped `apply_update` covers UPD-04; A6 is defense-in-depth only |
 | A6 | `cryptography` abi3 wheel imports cleanly under the embeddable cp313 `._pth` | Standard Stack | Medium — must be smoke-tested in the bundle (the `._pth` adds `Lib\site-packages`, `build_release.py:46`) |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All six resolved during `/gsd-plan-phase 32` planning. Each carries a RESOLVED line pointing at the plan/task that implements the recommendation.
 
 1. **GitHub owner/repo for releases**
    - What we know: `git remote -v` → `github.com/viktorplus/myorishop`; existing tags `v1.0..v2.0`.
    - What's unclear: Is that repo **public** (so unauthenticated `/releases/latest` works), and is it where signed `v1.<N>` releases will be published?
    - Recommendation: Confirm with the operator; default to `viktorplus/myorishop` public. If private, a read-only token must be provisioned (adds a secret to `.env`).
+   - **RESOLVED:** folded into Plan 32-02's blocking-human checkpoint (`user_setup`: confirm `github.com/viktorplus/myorishop` is PUBLIC for unauthenticated `/releases/latest`; read-only `.env` token recorded as the private-repo fallback).
 
 2. **`app/minisign.pub` is absent (BLOCKING)**
    - What we know: The verify gate needs the vendored public key; it is not in the repo (`ls app/minisign.pub` → not present); `build_release` treats it as optional (`build_release.py:51,196-201`).
    - What's unclear: When will the operator run `minisign -G` and commit `app/minisign.pub` (`docs/RELEASE.md:22-60`)?
    - Recommendation: This is a prerequisite for any end-to-end test. The plan should include a `checkpoint:human-verify` that `app/minisign.pub` exists and its key line starts `RW` before the verify tests can pass unskipped.
+   - **RESOLVED:** Plan 32-02 `checkpoint:human-verify` (autonomous:false) — operator runs `minisign -G` offline and vendors the `RW…` public-key line to `app/minisign.pub`; downstream verify tasks (32-03/32-04) depend on it.
 
 3. **Post-update health-check definition**
    - What we know: `adapters.health_ok` treats *any* HTTP status on `/` as alive (`launcher/adapters.py:103-126`).
    - What's unclear: Is "any response" strong enough, or should the launcher assert the **new** version is actually running (e.g. a tiny unauthenticated `/version` or `/health` endpoint returning `__version__`)?
    - Recommendation: Consider adding a public `/health` route returning `{"version": APP_VERSION}` so the health check can confirm the swap actually took (stronger UPD-04 guarantee). User-owned decision.
+   - **RESOLVED (stronger option chosen):** Plan 32-04 adds a public `GET /health` returning `{version: APP_VERSION}`; launcher `health_ok(expected_version=…)` passes only on a version match (legacy "any-status alive" retained when `expected_version=None` for Phase-31 back-compat). This also closes OQ-6.
 
 4. **Two real signed releases needed to test e2e**
    - What we know: Phase 32 "cannot even be end-to-end tested until two real signed releases exist" (ROADMAP.md:317; STATE.md v4.0 decisions).
    - What's unclear: Which throwaway `v1.<N>`/`v1.<N+1>` tags to cut, and who runs the offline signing.
    - Recommendation: Plan a UAT that cuts two throwaway tags, signs both offline, and exercises the full round trip on a bare Windows box.
+   - **RESOLVED:** recorded as a manual UAT item for `/gsd-verify-work 32` (noted in Plan 32-05) — cannot be an automated test; bare-Windows two-release round trip + tamper/downgrade rejection.
 
 5. **Verify the global (trusted-comment) signature too?**
    - What we know: minisign's trusted comment is authenticated by a second global signature (spec).
    - What's unclear: Do we need to verify it, given the primary payload (`manifest.txt`) already carries version + SHA-256?
    - Recommendation: Verify the primary signature at minimum (sufficient for UPD-02); optionally verify the global signature for completeness. Low cost.
+   - **RESOLVED:** Plan 32-03 verifies the primary signature over the signed manifest (sufficient for UPD-02); global trusted-comment signature accepted as optional/out-of-scope (recorded for `/gsd-secure-phase 32` as defense-in-depth).
 
 6. **`expected_version` enforcement in the launcher (Pitfall 6)**
    - Recommendation: Decide whether to add the (small) launcher-side or app-side assertion that the staged bundle's `__version__` equals `pending.expected_version`. Defense-in-depth; not required by UPD-04.
+   - **RESOLVED:** implemented via the OQ-3 resolution — Plan 32-04's `health_ok(expected_version=…)` version-match check enforces that the swapped-in bundle is actually the expected version.
 
 ## Environment Availability
 
