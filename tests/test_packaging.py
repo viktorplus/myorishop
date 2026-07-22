@@ -38,6 +38,14 @@ def reload_config(monkeypatch):
     settings and these gates are RED by design.
     """
 
+    # Snapshot the live `settings` object every other module (conftest fixtures,
+    # app.db, app.main, app.sync_client) already holds a reference to. Reloading
+    # app.config rebinds `app.config.settings` to a NEW object; consumers that read
+    # it dynamically would then see the wrong (real ./data) config, poisoning
+    # unrelated tests collected after this one. Restoring the original identity at
+    # teardown keeps `app.config.settings` stable across the reload.
+    _original_settings = app.config.settings
+
     def _reload(data_dir: Path):
         monkeypatch.setenv("MYORISHOP_DATA_DIR", str(data_dir))
         importlib.reload(app.config)
@@ -47,6 +55,7 @@ def reload_config(monkeypatch):
     # Restore the module to its unpatched state for the rest of the session.
     monkeypatch.delenv("MYORISHOP_DATA_DIR", raising=False)
     importlib.reload(app.config)
+    app.config.settings = _original_settings
 
 
 def _data_paths(settings) -> list[Path]:
