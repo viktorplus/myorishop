@@ -298,7 +298,7 @@ Plans:
 **Wave 1**
 
 - [x] 31-01-PLAN.md — Nyquist Wave-0 RED scaffold: test_packaging/test_launcher/test_release_verify pin PKG-03/04/05 contracts (wave 0)
-- [ ] 31-02-PLAN.md — PKG-03 data-separation seam: root DB/.env/secret_key/device_id/backups under absolute MYORISHOP_DATA_DIR (wave 1)
+- [x] 31-02-PLAN.md — PKG-03 data-separation seam: root DB/.env/secret_key/device_id/backups under absolute MYORISHOP_DATA_DIR (wave 1)
 - [ ] 31-03-PLAN.md — PKG-04 stable launcher: pure swap state machine + Windows adapters + matched-pair rollback (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -366,5 +366,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 1/5 | In Progress|  |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 2/5 | In Progress|  |
 | 32. In-App Secure Self-Update | v4.0 | 0/TBD | Not started | - |
