@@ -18,7 +18,24 @@ Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Current Milestone: v3.0 Multi-Operator Sync, Central Server & Roles
+## Current Milestone: v4.0 Distribution & Delivery
+
+**Goal:** Turn the app from a run.bat/uv dev checkout into a self-contained, self-updating local client distribution for Windows operators; the central server (s1, ori.viktorplus.com) stays a plain Docker deployment and is out of scope for packaging/auto-update — it is the sync/update target, not a client.
+
+**Target features:**
+- Packaging / installer — a distributable archive/installer of the client that runs with NO git and NO developer toolchain on the operator machine (bundled runtime; decided launch story replacing the v1 run.bat + uv dev flow)
+- Self-updating distribution — when the local client has an active internet connection, it auto-updates from the project's GitHub Releases: download the release archive by tag → verify authenticity/integrity (signature/checksum) → unpack over the install → run `alembic upgrade head` → restart, with rollback on failure
+- Visible version tie-in — the header "1.<N>" version reflects the installed release so the operator sees the new version after an update
+- Role-aware safety — auto-update is a no-op on the central server (dialect-based, mirroring the shipped auto_enabled rule from 1.1)
+
+**Scoping notes:**
+- Windows-first, single operator per install, offline-capable
+- Central server packaging/auto-update is OUT of scope — the server is the update target, deployed via Docker
+- SECURITY-SENSITIVE: the client runs fetched code → release signature/checksum verification, safe unpack, and rollback on failure are mandatory
+- Open questions for requirements/roadmap: update-check cadence (startup vs periodic), auto-apply vs notify, Windows launcher self-restart after update, release-archive staging, and how GitHub Releases are produced (manual vs CI on tag)
+
+<details>
+<summary>Archived: v3.0 Multi-Operator Sync, Central Server & Roles (phases complete 2026-07-20; verification/security tails open)</summary>
 
 **Goal:** Turn the single-operator local app into a multi-operator system — local clients synchronize with a central server (online over the internet AND offline via USB flash drive), backed by user accounts with mandatory login and an administrator/operator permission split.
 
@@ -33,6 +50,8 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - Multi-currency is OUT of scope — deferred to a later milestone (single currency, as today)
 - Real authentication replaces the v1 "single local user, no auth" assumption — this milestone adds the first security boundary to the app
 - Both sync transports (online + USB) shipped together is the maximum-scope, highest-risk choice — this is the hardest architectural work in the project's history
+
+</details>
 
 <details>
 <summary>Archived: v2.0 UX Overhaul & Navigation Restructure (SHIPPED 2026-07-17)</summary>
@@ -238,4 +257,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-18 — v3.0 milestone scoped (Multi-Operator Sync, Central Server & Roles)*
+*Last updated: 2026-07-22 — v4.0 milestone scoped (Distribution & Delivery)*

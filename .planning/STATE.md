@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: Multi-Operator Sync, Central Server & Roles
-status: verifying
-stopped_at: Phase 30 UI-SPEC approved
-last_updated: "2026-07-20T15:51:37.988Z"
-last_activity: 2026-07-20
+milestone: v4.0
+milestone_name: Distribution & Delivery
+status: planning
+last_updated: "2026-07-22T09:38:39.368Z"
+last_activity: 2026-07-22
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 31
-  completed_plans: 31
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,21 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-18)
 
 ## Current Position
 
-Phase: 30 (offline-self-uploading-file) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-07-21 - Completed quick task 260721-oti: merged 121 corrected dictionary names into rubric_overrides.json, re-imported locally + on s1
-
-Progress: [██████████] 100%
-
-**v3.0 phase map (Phases 25-30):**
-
-1. Phase 25 — Authentication, Roles & User Attribution (AUTH/USER/ROLE + RPT-01, 16 reqs) — local, testable first
-2. Phase 26 — PostgreSQL Portability & Append-Only Parity (SRV-01/02)
-3. Phase 27 — Shared Idempotent Merge Core (SYNC-02/03/04/05) — **research flag** (server-authoritative Tier-B conflict policy + `Product.code` collision rule)
-4. Phase 28 — Central Server: Hosting & Sync API (SRV-04, SYNC-09)
-5. Phase 29 — Online Client Sync (SYNC-01/06/07/08, SRV-03)
-6. Phase 30 — Offline Self-Uploading File (OFF-01..07) — **research flag** (self-contained-file mechanism + trust/version model)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-22 — Milestone v4.0 started
 
 ## Performance Metrics
 
