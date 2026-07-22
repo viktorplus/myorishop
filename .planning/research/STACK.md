@@ -1,165 +1,183 @@
 # Stack Research
 
-**Domain:** Local-first inventory app gaining a central PostgreSQL server, online + offline-USB sync of an append-only ledger, and mandatory auth with roles (v3.0)
-**Researched:** 2026-07-18
-**Confidence:** HIGH (all versions verified against PyPI JSON on 2026-07-18; architecture recommendations MEDIUM-HIGH)
+**Domain:** Windows self-contained distribution + secure GitHub-Releases auto-update for a FastAPI + Uvicorn + SQLite desktop app (v4.0)
+**Researched:** 2026-07-22
+**Confidence:** HIGH (version facts verified against PyPI/GitHub/vendor sites; packaging-strategy judgments MEDIUM-HIGH)
 
-> Scope note: the v1/v2 stack (Python 3.13, FastAPI 0.139, SQLAlchemy 2.0 sync, SQLite+WAL, HTMX 2.0.10 vendored, Jinja2, Alembic, uv, Ruff) is **settled and unchanged**. This file only covers the **NEW** additions v3.0 needs. Nothing here replaces an existing choice.
+> **Scope note:** This is a v4.0 *additive* research pass. The existing runtime stack (Python 3.13, FastAPI 0.139, Uvicorn, SQLAlchemy 2.0, SQLite, Jinja2, HTMX 2.0.10 vendored, Alembic, pydantic-settings, uv, httpx) is already shipped and validated — see the root `CLAUDE.md`. Everything below is **new capability only**: (a) turning the client into a self-contained Windows distributable, and (b) securely self-updating from GitHub Releases. Nothing here changes the running app's dependencies except one small new runtime library for signature verification.
+
+---
+
+## The two problems, and the shape of the answer
+
+1. **Package** the client so it runs on an operator's Windows machine with **no Python, no uv, no git** preinstalled, still works **offline**, and launches straight to the browser.
+2. **Self-update** from GitHub Releases with real **authenticity** (not just integrity): download by tag → verify signature + checksum → stage → swap → `alembic upgrade head` → relaunch, with **rollback** on any failure.
+
+The single most important design decision that ties both together: **package the app as a directory of plain files (a "onedir" layout), keep the SQLite database and config OUTSIDE that directory, and make "update" = swap the directory + run Alembic.** This makes rollback a directory rename and lets Alembic run as ordinary Python (no frozen-import magic). Every recommendation below flows from that decision.
 
 ---
 
 ## Recommended Stack
 
-### Core Technologies (new for v3.0)
+### Core Technologies (the packaging + update layer)
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| **psycopg** (psycopg 3) | 3.3.4 | PostgreSQL driver for the **server** SQLAlchemy engine | The modern, actively-maintained Postgres adapter; SQLAlchemy 2.0 ships a first-class dialect for it (`postgresql+psycopg://`). Server-only: clients keep SQLite, so this installs on the VPS, not on operator machines. Install `psycopg[binary]` to avoid a local C/libpq build on the server. **Confidence: HIGH** (PyPI 3.3.4, requires-python >=3.10, released 2026-05-01) |
-| **pwdlib** (with argon2 extra) | 0.3.0 | Password hashing for login | The FastAPI-recommended successor to passlib. Defaults to **Argon2id** (current OWASP first choice), tiny surface, sync API that fits `def` endpoints. `pwdlib[argon2]` pulls `argon2-cffi`. Passlib is unmaintained (last release 2020) and leans on the stdlib `crypt` module, **removed in Python 3.13 (PEP 594)** — a hard reason not to use it here. **Confidence: HIGH** (version), **HIGH** (passlib-vs-pwdlib rationale) |
-| **argon2-cffi** | 25.1.0 | Argon2 backend used by pwdlib | Pulled automatically by `pwdlib[argon2]` (declared range `>=23.1.0,<26`, so 25.1.0 fits). The actual hashing implementation. **Confidence: HIGH** |
-| **Starlette `SessionMiddleware`** | bundled (Starlette 1.3.1 via FastAPI 0.139) | Signed-cookie login session | Already in the tree — no new framework. Stores a small signed session (`user_id`, `role`) in an itsdangerous-signed cookie. Stateless (no session table, works across uvicorn workers), which is the simplest safe fit for a server-rendered HTMX app. **Confidence: HIGH** |
-| **itsdangerous** | 2.2.0 | Cookie signing backend for SessionMiddleware | `SessionMiddleware` **requires** it (raises `AssertionError` at startup if missing) — declare it explicitly rather than relying on it being transitively present. Also the right tool if you later sign a USB-export file or a device sync token. **Confidence: HIGH** |
-| **httpx** | 0.28.1 | Client -> server sync HTTP transport | Already a **dev** dependency (TestClient) — promote it to a runtime dependency. Use the **sync** `httpx.Client` to match the all-sync codebase (`def` endpoints, sync Session). Timeouts, retries, TLS, and streaming uploads for large ledger batches, all in one lib. **Confidence: HIGH** |
+| **Python Windows embeddable package** (CPython) | 3.13.x (`python-3.13.x-embed-amd64.zip` from python.org) | The bundled runtime shipped inside the distributable | Ships the **official, python.org-signed** `python.exe`/`pythonw.exe` + stdlib as a redistributable zip. No compilation, no freezing, so **no PyInstaller/Nuitka AV false-positives** and **Alembic/uvicorn just work as normal files**. `pythonw.exe` launches with **no console window**. Confidence: HIGH |
+| **Inno Setup** | 6.7.3 (stable, 2026-05-26) — or 7.0.2 (2026-07-13) | Builds the Windows installer (Start-Menu shortcut, uninstaller, install to `%LOCALAPPDATA%`) | Free, mature, scriptable (`.iss`), the de-facto standard for non-MSI Windows installers. Supports SignTool integration for Authenticode when/if a cert is added. Stay on **6.7.3** unless you need 7.x features — 7.0.2 is very new. Confidence: HIGH |
+| **py-minisign** | 0.13.2 (2026-04-09) | In-process verification of the release signature against a **baked-in public key** | The security control that matters: the update client verifies each release was signed by a key **you hold offline**, so a compromised GitHub account cannot push runnable malware. Pure-format minisign (Ed25519) verifier; depends on `cryptography` >= 46.0.7. Requires Python >= 3.9. Confidence: HIGH |
+| **minisign** (CLI, dev-side signing) | 0.12 (jedisct1, 2025-01-15) | You (the developer) sign each release archive locally with your secret key | Tiny, audited, single-file Ed25519 signer. Secret key never leaves your machine → the strongest anti-supply-chain control for a solo dev. Client verifies with py-minisign; no need to bundle this binary in the client. Confidence: HIGH |
+| **httpx** | 0.28.1 (**already a dependency**) | GitHub Releases API calls + asset download | Already used by FastAPI's TestClient and available in the app; no new dependency for networking. Use it to hit `GET /repos/{owner}/{repo}/releases/latest` and stream the asset. Confidence: HIGH |
+| **uv** | 0.11.28 (**already the dev tool**) | *Build-time* dependency resolution/export into the embeddable bundle | Keeps the build in the existing toolchain: `uv export --format requirements-txt --no-hashes` produces the pinned list; install it into the bundle's `lib/` with `uv pip install --target lib -r requirements.txt`. No uv on the operator machine. Confidence: HIGH |
 
-### Supporting Libraries
+### Supporting Libraries / stdlib (no install needed)
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| **stdlib `json`** | (Python 3.13) | Serialize the ledger exchange (NDJSON) for BOTH online HTTP and offline USB | No new dependency. Every ledger/entity column is already JSON-native (TEXT UUIDs, int cents, ISO-text timestamps, `payload` is already a `JSON` column). One serializer feeds both transports — see "Sync exchange format" below. **Confidence: HIGH** |
-| **pydantic** | 2.13.x (already present) | Type/validate the sync envelope + the login form | Already in the tree via pydantic-settings/FastAPI. Define one small `SyncEnvelope`/`OperationRow` model reused by push, pull, and USB import — no separate serialization lib (no marshmallow). **Confidence: HIGH** |
-| **pydantic-settings** | 2.14.x (already present) | Hold the new secrets: `secret_key`, `database_url`, `sync_server_url`, per-device `sync_token` | Extend the existing `Settings` class. Keeps the session secret and the Postgres URL in `.env`, never in code (CLAUDE.md safety rule). **Confidence: HIGH** |
-| **psycopg[binary]** | 3.3.4 | Server-only optional dependency group | Put Postgres behind an optional `[project.optional-dependencies] server` group so operator clients (`uv sync`) never install it. **Confidence: HIGH** |
+| `hashlib` | stdlib | SHA-256 of the downloaded archive vs. the release's `SHA256SUMS` | Always — integrity check *before* signature check (cheap fail-fast). |
+| `zipfile` / `shutil` | stdlib | Safe unpack + staging-dir copy/rename swap | Always. Guard against zip-slip: reject any member whose resolved path escapes the target dir. |
+| `subprocess` | stdlib | Run the detached updater/swapper and `alembic upgrade head` | The running app cannot overwrite its own loaded DLLs; a short-lived detached process does the swap after the app exits. |
+| `webbrowser` / `os.startfile` | stdlib | Open the operator's default browser at `http://127.0.0.1:<port>` on launch | In the launcher script. |
+| `cryptography` | >= 46.0.7 (pulled in by py-minisign) | Ed25519 primitives under py-minisign | Transitive; do not call directly. Note: it ships a large compiled wheel — include it in the bundle. |
 
-### Development Tools
+### Development / Build Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| uv | Env/dep manager (unchanged) | Add the runtime deps with `uv add`; add server-only Postgres as an optional group (`uv add --optional server "psycopg[binary]"`). |
-| Alembic (unchanged) | One migration history for BOTH dialects | Make batch mode conditional on the SQLite dialect and gate dialect-specific trigger DDL — see "Alembic: one history, two databases". |
-| A local Postgres for dev | Test the same migrations against Postgres before the VPS | Docker Postgres or a native install is fine **for the server/dev box only**; do NOT introduce Docker into the client run story (still `run.bat`). |
+| `uv export` / `uv pip install --target` | Assemble pinned deps into the bundle | One command each; stays in the current uv world. |
+| Inno Setup Compiler (`ISCC.exe`) | Compile `installer.iss` → `MyOriShopSetup.exe` | Can run headless in CI. |
+| `minisign -G` / `minisign -Sm` | Generate keypair once; sign each release archive + `SHA256SUMS` | Publish `minisign.pub` in the repo; **bake it into the client**. Secret key stays offline. |
+| GitHub Actions (release-on-tag) | Build bundle → checksum → (sign) → create Release with assets | Optional but recommended for reproducible releases; see the signing-location tradeoff under "Stack Patterns". |
 
-## Installation
+---
+
+## Installation (build-machine only; the operator installs nothing but the produced setup.exe)
 
 ```bash
-# Client + shared runtime deps (all machines)
-uv add "pwdlib[argon2]==0.3.*" "itsdangerous==2.2.*" "httpx==0.28.*"
+# --- one-time: signing key (developer machine, kept OFFLINE) ---
+minisign -G                      # produces minisign.key (secret) + minisign.pub (public)
+#   -> commit minisign.pub into the repo AND embed it in the client source
 
-# Server-only (the VPS running Postgres) — optional group, clients skip it
-uv add --optional server "psycopg[binary]==3.3.*"
+# --- per-release build (developer machine or CI) ---
+# 1. pin deps from the existing uv project
+uv export --format requirements-txt --no-hashes -o build/requirements.txt
 
-# Server connection string (SQLAlchemy 2.0 + psycopg 3 dialect):
-#   postgresql+psycopg://USER:PASSWORD@HOST:5432/myorishop
-# Client connection string stays:
-#   sqlite:///data/myorishop.db
-#
-# New .env keys (never commit real values):
-#   SECRET_KEY=<64+ random hex chars>       # SessionMiddleware cookie signing
-#   DATABASE_URL=postgresql+psycopg://...    # server only; clients keep db_path
-#   SYNC_SERVER_URL=https://your-vps/...     # client only
-#   SYNC_TOKEN=<per-device shared secret>    # client<->server auth for /sync
+# 2. lay down the embeddable runtime + deps
+#    (unzip python-3.13.x-embed-amd64.zip into build/runtime/, edit python313._pth:
+#     add '../app' and '../lib', and uncomment 'import site')
+uv pip install --target build/lib -r build/requirements.txt
+
+# 3. checksum + sign the release archive
+#    (zip the staged app -> MyOriShop-1.N.zip)
+sha256sum MyOriShop-1.N.zip > SHA256SUMS
+minisign -Sm SHA256SUMS         # -> SHA256SUMS.minisig  (upload both to the Release)
+
+# 4. build the installer
+ISCC.exe installer.iss           # -> dist/MyOriShopSetup.exe
+
+# --- new RUNTIME dependency added to the app itself ---
+uv add py-minisign               # only new package the shipped client needs
 ```
 
-## Integration Points (into the existing codebase)
+The shipped client's only new dependency is **py-minisign** (+ its transitive `cryptography`). Everything else is stdlib, the already-present httpx, or build-time-only.
 
-**(a) One SQLAlchemy 2.0 model set on both SQLite (client) and PostgreSQL (server)**
-- The models are **already portable** — `app/models.py` uses only dialect-neutral types (`String`, `Integer`, `JSON`, `ForeignKey`) and already writes partial indexes with *both* `sqlite_where=` and `postgresql_where=` (e.g. `uq_products_code_active`). No model rewrite needed.
-- `app/db.py` `build_engine()` is SQLite-specific (the PRAGMA `connect` listener). Add a sibling **server engine** built from `DATABASE_URL` with `postgresql+psycopg`; the PRAGMA listener must NOT be attached to it (guard on `engine.dialect.name == "sqlite"`).
-- Keep the generic `JSON` column type (works on both). Optionally map to `JSONB` on Postgres later via a type variant, but it is not required for correctness.
-- Money stays integer cents (already the rule); ISO-text UTC timestamps stay TEXT (portable to Postgres `text`; can migrate to `timestamptz` later without touching model code).
-
-**(b) Auth for the FastAPI + HTMX server-rendered app**
-- New `User` model: `id` UUID TEXT PK (matches the house convention), `login` unique, `name`, `password_hash` (String), `role` (String), `created_at`. Follow the project's existing **service-layer allow-list** pattern for `role` (like `WRITEOFF_REASONS`/`CONTACT_KINDS`) — no DB CHECK on role; validate `role in {"admin", "operator"}` in the service.
-- Hash with `pwdlib.PasswordHash.recommended()` (Argon2id) at user-create and password-change; verify at login; use its `verify_and_update` to transparently re-hash on parameter changes.
-- Add `SessionMiddleware(secret_key=settings.secret_key, https_only=True, same_site="lax")` in `app/main.py`. On login success set `request.session["user_id"]` and `["role"]`; logout clears it.
-- Add two FastAPI dependencies — `require_login` and `require_admin` — that read the session and 303-redirect to `/login` (or 403) otherwise. Apply `require_admin` to admin-only routers (users, warehouses, dictionaries, settings, reports) and `require_login` everywhere else. This replaces the v1 "single local user, no auth" assumption.
-- `settings.operator_name` (currently a static config default stamped into `record_operation`'s `created_by`) should become **the logged-in user's name** — a small, contained change at the single ledger choke point.
-
-**(c) Append-only ledger sync — one format for online + USB**
-- The ledger is **already sync-ready**: `Operation`/`CashMovement` have UUID4 TEXT PKs, `device_id`+`seq` with `UNIQUE(device_id, seq)`, an unused `synced_at` cursor column, and DB triggers blocking UPDATE/DELETE. `record_operation()` is the single write path.
-- **Format: NDJSON** (one JSON object per line) of ledger rows — same bytes whether it is an HTTP request/response body (online) or a file on a USB stick (offline). No custom binary format, no shipping a second SQLite file.
-- **Merge = set union by UUID PK.** Because rows are immutable and globally unique, importing is an idempotent "insert if the `id` is not already present" — no conflict resolution, no last-writer-wins, no CRDT. `synced_at` marks which local rows have been pushed so the next push sends only the delta.
-- **The SQLite append-only triggers do NOT block importing remote rows** — they block UPDATE/DELETE only, so inserting synced rows is allowed. But the server (Postgres) needs **equivalent triggers**: `app/db.py:APPEND_ONLY_TRIGGERS` and migration `0001` carry a *frozen SQLite* `CREATE TRIGGER ... RAISE(ABORT ...)`. A new migration must add the **PostgreSQL** equivalent (`CREATE FUNCTION ... RAISE EXCEPTION` + `BEFORE UPDATE/DELETE` trigger), gated on dialect — see the flag below. The `db.py` comment already anticipates a "v2 sync milestone relaxes the UPDATE trigger" — treat that DDL constant as append-only itself.
-
-**(d) HTTP client for push/pull**
-- New FastAPI routes on the **server**: `POST /sync/push` (accept NDJSON ledger delta) and `GET /sync/pull?since_seq=&device_id=` (return rows the client lacks). No new server framework — same FastAPI/Starlette.
-- New **client** module using sync `httpx.Client`: read un-synced rows (`synced_at IS NULL`), POST them, GET peers' rows, insert locally, stamp `synced_at`. Authenticate `/sync/*` with the per-device `SYNC_TOKEN` header (simplest device auth; not a user login).
-
-## Alembic: one history, two databases
-
-| Concern | Do this |
-|---------|---------|
-| `render_as_batch` | Make it **conditional**: `render_as_batch = connection.dialect.name == "sqlite"` in `env.py`. Batch mode is a SQLite-only workaround; forcing it on Postgres is wrong. |
-| Dialect-specific DDL (append-only triggers) | Inside migrations, branch on `op.get_bind().dialect.name` — emit `RAISE(ABORT ...)` SQLite triggers vs a plpgsql `RAISE EXCEPTION` function+trigger for Postgres. |
-| Connection string | Same migration files, both databases: `alembic upgrade head` runs against SQLite locally and Postgres on the server; only `sqlalchemy.url` differs (read from `DATABASE_URL`). |
-| Multidb template | **Not needed** — that template is for one process migrating several DBs at once. Here each machine migrates its own single DB. |
+---
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| psycopg 3 (`postgresql+psycopg`) | psycopg2 (`postgresql+psycopg2`) | Only if a dependency forces psycopg2. It is in maintenance-only mode; psycopg3 has better typing, native async (unused here) and is the forward path. No reason to pick it for a greenfield server. |
-| pwdlib[argon2] | bcrypt (5.0.0) used directly | Perfectly fine and slightly fewer layers if you prefer bcrypt; call `bcrypt.hashpw`/`checkpw` yourself. pwdlib is recommended because it defaults to Argon2id and gives a stable verify/needs-update API for free. |
-| Argon2id | bcrypt | bcrypt is acceptable and battle-tested; choose it if you want the smallest possible dependency. Argon2id is the current OWASP first recommendation, hence the default. |
-| Starlette SessionMiddleware (signed cookie) | Server-side session store (DB/Redis) | Only if you must invalidate sessions server-side instantly or store large session state. For a handful of operators with `user_id`+`role` in the cookie, stateless signed cookies are simpler and sufficient. |
-| NDJSON over HTTP + USB file | Ship a whole SQLite `.db` file for USB sync | Copying a `.db` file is easy for full backup, but it conflates "backup" with "merge" and can't be reused by the online transport. NDJSON is one format for both paths and merges row-by-row. |
-| Per-device shared-secret token for `/sync` | OAuth2 / JWT for sync | Overkill for a closed set of trusted operator devices talking to one owner-run server. A signed token header is enough; revisit only if untrusted third-party clients appear. |
+| Embeddable-Python onedir | **PyInstaller 6.21.0 (`--onedir`)** | If assembling the embeddable bundle proves fiddly and you accept spec-file work. `--onedir` (never `--onefile`) keeps a swappable directory. Requires hidden-import wrangling (`uvicorn.lifespan.*`, `uvicorn.protocols.*`) and bundling Alembic's `versions/` as `--add-data`. More mature tooling, but **higher AV false-positive rate** and Alembic script discovery needs manual `script_location`. See re-evaluation below. Confidence: HIGH |
+| Embeddable-Python onedir | **Nuitka 4.1.3 (`--standalone`)** | If you want compiled/obfuscated output and faster startup, and can absorb long build times + a C toolchain. Sometimes fewer AV hits than PyInstaller, but the most complex build of the three and still a swappable dir. Overkill for a single-operator internal tool. |
+| minisign / py-minisign | **sigstore 4.4.0 (keyless) / cosign** | Move here when releases are **CI-built** and you want keyless OIDC signing + a public transparency log (Rekor) instead of managing a secret key. Heavier client + infra; justified once you have multiple maintainers or a CI-only release process. |
+| minisign / py-minisign | **GitHub artifact attestations** | If you stay entirely inside GitHub Actions and only need provenance for CI-built assets. Verifies "built by this workflow," not "approved by the human who holds the offline key." |
+| Inno Setup | **Plain `.zip` (no installer)** | Simplest possible: operator unzips to a folder, runs a shortcut. Acceptable for the single-operator case, but no Start-Menu entry, no clean uninstall, and no place to register the file/DB-outside-install convention. Use only for a throwaway pilot. |
+| Inno Setup | **MSIX / WiX MSI** | If you later need enterprise deployment, per-machine policy, or Store distribution. MSIX **requires** code signing and its self-update model (App Installer) fights our directory-swap approach. Too much ceremony for one operator. |
+| uv-export build | **pyapp (ofek), Briefcase (BeeWare)** | pyapp = a Rust bootstrapper that fetches Python on first run (needs internet at first launch — violates offline-first). Briefcase = nice native MSI packaging but a GUI-app-oriented toolchain to learn. Consider Briefcase only if you want a maintained end-to-end packager and can drop the directory-swap update model. |
+
+---
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| **passlib** | Unmaintained since 2020; relies on the stdlib `crypt` module, **removed in Python 3.13 (PEP 594)** — the project runs 3.13 | `pwdlib[argon2]` (or `bcrypt` directly) |
-| **fastapi-users** | Heavy, async-first, brings its own DB models/registration/OAuth flows — triples the auth surface for a 2-role, server-rendered app | A tiny `User` model + pwdlib + SessionMiddleware + two `Depends` guards |
-| **python-jose / JWT for user login** | Hand-rolled JWT in a server-rendered app is more code and more footguns than a signed session cookie; no SPA/API consumer needs a bearer token | Starlette `SessionMiddleware` signed cookie |
-| **Celery / RQ / APScheduler + Redis/RabbitMQ** | No background job infrastructure is justified; sync is a request/response the operator triggers (button or simple timer). Adds a broker, a worker process, ops burden | A `def` sync function called from a route (online) or a menu action (USB) |
-| **Kafka / Debezium / logical replication / CDC** | Enterprise streaming/CDC for 1–handful of operators is absurd overkill | NDJSON delta over `httpx` / USB, merged by UUID |
-| **CRDT libraries (automerge, y-py, pycrdt)** | The ledger is append-only, immutable, UUID-keyed — merge is a set union with zero conflicts, so a CRDT solves a problem you don't have | Insert-if-absent by `id` |
-| **psycopg2** on the server | Maintenance-only; weaker typing than psycopg3 | psycopg 3 |
-| **asyncpg / async SQLAlchemy / `async_sessionmaker`** | Would fork the entire sync codebase (sync Session + `def` endpoints) for no throughput need at this scale | Sync `psycopg` + sync `Session` |
-| **Alembic multidb template** | For migrating several DBs in one run; here each node migrates its own single DB | One history + `DATABASE_URL` + dialect-conditional batch/DDL |
-| **SQLModel** | Already rejected in v1 (lags SQLAlchemy, thin docs); no reason to revisit | SQLAlchemy 2.0 declarative (unchanged) |
-| **A second serialization lib (marshmallow, custom binary)** | pydantic + stdlib `json` already cover the sync envelope | pydantic `SyncEnvelope` + `json` |
-| **Docker/pgbouncer on the client** | Clients stay SQLite + `run.bat`; no Postgres, no pooler there | Client engine unchanged |
+| **PyInstaller `--onefile`** | Unpacks to a temp dir on every launch (slow, litters `%TEMP%`), the exe is self-locked so you **cannot swap it while running**, and it defeats the directory-swap/rollback model | `--onedir`, or the embeddable-Python onedir |
+| **Checksum-only "verification"** | A SHA256SUMS file lives in the **same** release; a compromised GitHub account regenerates it. It proves integrity, **not authenticity** — the client would happily run attacker-signed malware | Checksum **plus** a minisign signature verified against a **baked-in public key** whose secret half never touches GitHub |
+| **Embedding the signing secret key in the client, or in a plaintext CI secret used for release signing** | Bakes the "who can publish runnable code" trust into a place an attacker can reach | Keep the minisign **secret key offline** (sign locally), or move to sigstore keyless. Only the **public** key ships in the client |
+| **Replacing the running app's own files in-place** | Windows locks loaded `python*.exe`/`*.dll`; overwrite fails mid-update → corrupt install | Detached updater process: wait for app exit → rename `current`→`backup`, `staged`→`current` → Alembic → relaunch → rollback rename on failure |
+| **Storing the SQLite DB / config inside the install directory** | A directory swap or uninstall would destroy user data, and rollback couldn't preserve it | Put the DB + `.env` in `%LOCALAPPDATA%\MyOriShop\data\` (via pydantic-settings), **outside** the swappable app dir |
+| **PyOxidizer** | Effectively unmaintained (author stepped back); Rust-embedded-Python is a debugging dead-end for a beginner | Embeddable Python or PyInstaller |
+| **Fetching deps from a CDN or at first run** | App must work offline | Everything vendored into the bundle at build time (htmx is already vendored) |
+| **Auto-updating the central server** | The Docker server at ori.viktorplus.com is the update *target*, not a client; auto-update there would be dangerous | Gate auto-update on the SQLite dialect (mirror the shipped `auto_enabled` role rule) so it is a **no-op** on PostgreSQL/server |
+
+---
+
+## Re-evaluation: the CLAUDE.md "PyInstaller is a v1 rabbit hole" flag
+
+**Original verdict (v1, HIGH-confidence, still correct for its context):** for a solo beginner who only needs to run the app on their own machine, freezing FastAPI+Uvicorn into an exe (hidden imports, uvloop/watchfiles hooks) was pure yak-shaving with zero payoff — `run.bat` + uv was the right answer.
+
+**v4.0 re-evaluation:** packaging is now the *point* of the milestone, so investing in a real distributable is justified. But the v1 concerns did not disappear — they got *more* relevant because we now also need **self-update + Alembic migrations + rollback**:
+
+- PyInstaller still needs hidden-import wrangling for uvicorn and must ship Alembic's `versions/` scripts as bundled data with a corrected `script_location` — exactly the fiddliness the v1 note warned about, now compounded by migrations.
+- Packed bootloaders draw **antivirus false positives** and unsigned exes trigger **SmartScreen**; the embeddable approach reuses python.org's already-trusted, signed `python.exe`/`pythonw.exe`, sidestepping the AV problem.
+- The directory-swap update model wants **plain, swappable files**; embeddable Python is plain files, a PyInstaller build is a semi-opaque `_internal` blob.
+
+**Conclusion:** the flag is **relaxed, not reversed.** PyInstaller `--onedir` is now an acceptable, well-documented fallback (moved from "What NOT to Use" to "Alternatives"). But for *this* app — beginner-maintained, Alembic-driven, self-updating, offline-first — **embeddable CPython onedir is the lower-magic, better-debuggable, fewer-AV-surprises primary choice.** `--onefile` remains firmly on the do-not-use list.
+
+---
 
 ## Stack Patterns by Variant
 
-**If deploying the central server (VPS):**
-- Install the `[server]` optional group (`psycopg[binary]`), set `DATABASE_URL=postgresql+psycopg://...`, run `alembic upgrade head` against Postgres, and add the plpgsql append-only trigger via the dialect-gated migration.
-- Do NOT attach the SQLite PRAGMA `connect` listener to the Postgres engine.
+**Directory & data layout (drives everything):**
+- Install to `%LOCALAPPDATA%\MyOriShop\app\` (the swappable "current" dir). DB + config in `%LOCALAPPDATA%\MyOriShop\data\`. Staging + backups in `%LOCALAPPDATA%\MyOriShop\updates\`.
+- `run.bat` + `uv run` (dev) survives unchanged for development; the installer produces a **shortcut → `runtime\pythonw.exe app\launcher.py`** for the operator. Two launch stories, one codebase.
 
-**If running an operator client (Windows, offline-capable):**
-- Nothing changes about the DB layer — still `sqlite:///data/myorishop.db`, WAL, PRAGMAs, `run.bat`. It gains only the login screen, the `httpx` push/pull module, and a USB export/import action. `psycopg` is never installed here.
+**Secure update flow (concrete):**
+1. On launch (and/or on an interval) call `GET /repos/<owner>/<repo>/releases/latest`; compare tag `1.<N>` to `app.__version__`.
+2. Download the release **archive**, `SHA256SUMS`, and `SHA256SUMS.minisig` via httpx to `updates\`.
+3. `py-minisign`: verify `SHA256SUMS.minisig` against the **baked-in public key** → then `hashlib` check the archive against `SHA256SUMS`. **Both must pass** before any file is trusted.
+4. Unpack to `updates\staged-1.N\` with zip-slip guarding.
+5. Spawn a detached updater; the app exits; updater renames `app`→`backup-<old>`, `staged`→`app`, runs `runtime\python.exe -m alembic upgrade head` (DB lives outside, so migrations apply to the real data), relaunches.
+6. **Rollback:** if unpack/verify/Alembic/launch fails at any step, restore `backup-<old>`→`app` and keep the old DB (SQLite backup/`VACUUM INTO` already exists in the app — snapshot the DB before `upgrade head`).
 
-**If online sync is available:** `httpx.Client` push/pull against `/sync/*` with the `SYNC_TOKEN` header.
+**Where to sign (open decision to surface in the roadmap):**
+- **Strongest:** developer signs archives locally with an **offline** minisign key; uploads signatures to the Release. GitHub compromise cannot forge runnable releases.
+- **Convenient:** CI signs with a minisign secret in Actions secrets — but that key now lives on GitHub, weakening the guarantee. If you want CI signing, prefer **sigstore keyless** (no long-lived secret) over a stored minisign key.
 
-**If offline (USB) only:** the same NDJSON serializer writes to / reads from a file on the flash drive; import runs the identical insert-if-absent merge. No transport-specific code beyond "bytes from HTTP body" vs "bytes from file".
+**Windows trust surface (SmartScreen / Authenticode — separate from minisign):**
+- minisign secures the **update channel**; it does nothing for the **first** installer download. An unsigned `MyOriShopSetup.exe` shows SmartScreen "unknown publisher."
+- For a **single known operator**, document the one-time "More info → Run anyway" bypass — a code-signing cert is **optional/deferrable**.
+- If wider distribution comes later: an **OV** cert still warns until reputation builds; an **EV** cert gives instant SmartScreen reputation but now **requires a hardware token / cloud HSM** and costs more. Wire `SignTool` into Inno Setup at that point.
+
+**Role-aware no-op (mirrors shipped v1.1 rule):** gate the entire updater on `engine.dialect.name == "sqlite"`; on PostgreSQL (the server) it returns immediately.
+
+---
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| sqlalchemy 2.0.x | psycopg 3.3.4 | Dialect `postgresql+psycopg` is native to SQLAlchemy 2.0. Verified requires-python >=3.10. **HIGH** |
-| fastapi 0.139.0 | starlette 1.3.1 | Installed in the venv; `SessionMiddleware` ships in Starlette. **HIGH** |
-| starlette SessionMiddleware | itsdangerous 2.2.0 | Middleware asserts itsdangerous is importable at startup. **HIGH** |
-| pwdlib 0.3.0 | argon2-cffi 25.1.0 | `pwdlib[argon2]` requires `argon2-cffi >=23.1.0,<26` — 25.1.0 fits. **HIGH** |
-| pwdlib 0.3.0 (bcrypt extra) | bcrypt 5.0.0 | `pwdlib[bcrypt]` requires `bcrypt >=4.1.2,<6` — 5.0.0 fits (only if you pick bcrypt over argon2). **HIGH** |
-| httpx 0.28.1 | Python 3.13 | Already used as the TestClient backend; promote to runtime. **HIGH** |
-| psycopg 3.3.4 | Python 3.13 | requires-python >=3.10. `[binary]` avoids a libpq build on the server. **HIGH** |
-| passlib 1.7.4 | Python 3.13 | **INCOMPATIBLE in spirit** — relies on stdlib `crypt`, removed in 3.13 (PEP 594); unmaintained since 2020. Do not add. **HIGH** |
+| py-minisign 0.13.2 | Python >= 3.9 | Fine on 3.13. Pulls `cryptography` >= 46.0.7 (large compiled wheel — include in bundle) |
+| PyInstaller 6.21.0 | Python >=3.8,<3.16 | Supports 3.13. Use `--onedir` only; add uvicorn hidden imports + Alembic `versions/` data |
+| Nuitka 4.1.3 | Python 3.4–3.14 (CPython) | Supports 3.13; needs a C compiler; `--standalone` |
+| sigstore 4.4.0 | Python >= 3.10 | Alternative signing path; heavier than minisign |
+| Inno Setup 6.7.3 / 7.0.2 | Windows (any target) | 6.7.3 is the safe default; 7.0.2 (2026-07-13) is very new |
+| Python 3.13 embeddable | httpx 0.28.1, Alembic 1.18.5, SQLAlchemy 2.0.51, FastAPI 0.139.0 | All already validated on 3.13 in the existing stack; embeddable runs the identical wheels |
+| minisign CLI 0.12 | py-minisign 0.13.2 | Same Ed25519 minisign signature format; sign with CLI, verify in-process with the library |
+
+---
 
 ## Sources
 
-- https://pypi.org/pypi/psycopg/json — 3.3.4, requires-python >=3.10, released 2026-05-01 (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/pwdlib/json — 0.3.0; extras `argon2` (argon2-cffi >=23.1.0,<26), `bcrypt` (bcrypt >=4.1.2,<6) (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/argon2-cffi/json — 25.1.0 (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/itsdangerous/json — 2.2.0 (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/httpx/json — 0.28.1 (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/bcrypt/json — 5.0.0 (verified 2026-07-18, HIGH)
-- https://pypi.org/pypi/passlib/json — 1.7.4, last release 2020; unmaintained (verified 2026-07-18, HIGH)
-- Installed venv introspection — starlette 1.3.1 / fastapi 0.139.0 (verified 2026-07-18, HIGH)
-- Codebase read — `app/models.py` (UUID PK, device_id/seq, synced_at, portable partial indexes), `app/db.py` (SQLite PRAGMA listener, `APPEND_ONLY_TRIGGERS`, frozen migration-0001 copy), `app/services/ledger.py` (`record_operation` single write path, `created_by` from settings), `app/config.py` (pydantic-settings) (verified 2026-07-18, HIGH)
-- PEP 594 (removal of `crypt`/`spwd` in Python 3.13) and OWASP Password Storage guidance (Argon2id first choice) — general/standards knowledge (MEDIUM-HIGH)
+- https://pypi.org/pypi/pyinstaller/json — PyInstaller **6.21.0**, requires-python `>=3.8,<3.16` (verified 2026-07-22, HIGH). Note: an `upload_time` value returned by the fetch looked like a placeholder — treat the *date* as unverified, the *version/requires-python* as verified.
+- https://pypi.org/pypi/nuitka/json — Nuitka **4.1.3**, CPython 3.4–3.14 (HIGH)
+- https://pypi.org/pypi/sigstore/json — sigstore-python **4.4.0**, requires-python `>=3.10` (HIGH)
+- https://pypi.org/pypi/py-minisign/json — py-minisign **0.13.2**, released 2026-04-09, requires-python `>=3.9`, depends on `cryptography` >= 46.0.7, MIT (HIGH)
+- https://api.github.com/repos/jedisct1/minisign/releases/latest — minisign CLI **0.12**, published 2025-01-15 (HIGH)
+- https://jrsoftware.org/isdl.php — Inno Setup **6.7.3** (2026-05-26 stable) and **7.0.2** (2026-07-13) (HIGH)
+- Existing root `CLAUDE.md` — validated runtime stack + the v1 PyInstaller flag being re-evaluated here (HIGH)
+- Practitioner judgments (embeddable-onedir vs PyInstaller for self-update, checksum-vs-signature threat model, offline-key vs CI-signing tradeoff, Windows running-process self-replace pattern, SmartScreen/AV surface, DB-outside-install-dir) — architecture reasoning from official Python/PyInstaller/minisign/Inno Setup docs knowledge (MEDIUM-HIGH)
 
 ---
-*Stack research for: v3.0 central server + sync + auth additions to a mature FastAPI/SQLAlchemy/SQLite local-first app*
-*Researched: 2026-07-18*
+*Stack research for: Windows self-contained distribution + secure GitHub-Releases auto-update (v4.0)*
+*Researched: 2026-07-22*
