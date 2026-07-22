@@ -14,6 +14,7 @@ from app.db import get_session
 from app.routes import templates
 from app.services.dictionary import add_entry, list_entries, lookup, update_entry
 from app.services.pagination import page_window
+from app.services.pricing import latest_prices_for_codes
 from app.services.rubrics import RUBRICS
 
 router = APIRouter()
@@ -34,6 +35,11 @@ def _dictionary_context(
     """Shared filter/sort/page context for GET and the two POST handlers."""
     result = list_entries(session, code=code, name=name, category=category, sort=sort, page=page)
     pw = page_window(result["page"], result["total_pages"])
+    # CAT-05 display: the dictionary is code->name only, but the operator wants
+    # ПЦ/ДЦ visible without opening each card. Pull the latest catalog price for
+    # just this page's codes (one query) as read-only reference values; codes
+    # with no catalog row render "—". Helper data only — never a Product write.
+    prices = latest_prices_for_codes(session, [e.code for e in result["entries"]])
     qs_parts = {
         k: v
         for k, v in {
@@ -47,6 +53,7 @@ def _dictionary_context(
     extra_qs = ("&" + urlencode(qs_parts)) if qs_parts else ""
     return {
         "entries": result["entries"],
+        "prices": prices,
         "page": result["page"],
         "total": result["total"],
         "total_pages": result["total_pages"],

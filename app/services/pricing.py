@@ -32,6 +32,33 @@ def latest_price_for_code(session: Session, code: str) -> CatalogPrice | None:
     ).first()
 
 
+def latest_prices_for_codes(
+    session: Session, codes: list[str]
+) -> dict[str, tuple[int | None, int | None]]:
+    """Batch (ДЦ, ПЦ) reference prices for many codes — one query per page.
+
+    The list-view analog of ``reference_prices_for_code`` (LIST-01, dictionary
+    page): fetches every catalog row for the given codes newest (year, number)
+    first and keeps only the first (latest) row seen per code. Codes with no
+    catalog row are simply absent from the result — the caller renders "—".
+    D-05: consultant_cents pairs to ДЦ, consumer_cents to ПЦ.
+    """
+    wanted = [c.strip() for c in codes if c and c.strip()]
+    if not wanted:
+        return {}
+    rows = session.scalars(
+        select(CatalogPrice)
+        .where(CatalogPrice.code.in_(wanted))
+        .order_by(CatalogPrice.year.desc(), CatalogPrice.number.desc())
+    )
+    result: dict[str, tuple[int | None, int | None]] = {}
+    for row in rows:
+        # Newest first — keep only the first (latest) row per code.
+        if row.code not in result:
+            result[row.code] = (row.consultant_cents, row.consumer_cents)
+    return result
+
+
 def reference_prices_for_code(session: Session, code: str) -> tuple[int | None, int | None]:
     """(ДЦ, ПЦ) reference prices for a code, independently of one another.
 

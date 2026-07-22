@@ -32,6 +32,8 @@
         <th>Код</th>
         <th>Название</th>
         <th>Категория</th>
+        <th>ПЦ</th>
+        <th>ДЦ</th>
         <th></th>
       </tr>
       <tr class="filter-row">
@@ -53,6 +55,8 @@
               {% endfor %}
             </select></th>
         <th></th>
+        <th></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -66,6 +70,11 @@
         <td><input type="text" name="code" value="{{ row.code }}" form="edit-{{ e.id }}"></td>
         <td><input type="text" name="name" value="{{ row.name }}" form="edit-{{ e.id }}"></td>
         <td>{{ e.rubric or "—" }}</td>
+        {# CAT-05 read-only reference: ПЦ=consumer (p[1]), ДЦ=consultant (p[0]);
+           «—» when the code has no catalog price. #}
+        {% set p = prices.get(e.code) %}
+        <td class="num">{% if p and p[1] is not none %}{{ p[1] | cents }}{% else %}—{% endif %}</td>
+        <td class="num">{% if p and p[0] is not none %}{{ p[0] | cents }}{% else %}—{% endif %}</td>
         <td>
           <form id="edit-{{ e.id }}"
                 hx-post="/dictionary/{{ e.id }}?list_code={{ code|urlencode }}&list_name={{ name|urlencode }}&list_sort={{ sort|urlencode }}&list_page={{ page }}&list_category={{ category|urlencode }}"
