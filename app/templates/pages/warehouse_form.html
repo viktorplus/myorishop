@@ -23,6 +23,27 @@
     {% if errors.address %}<p class="error">{{ errors.address }}</p>{% endif %}
   </div>
 
+  {# CUR-01: the warehouse's currency. Every amount on its stock is expressed in
+     this currency; there is no conversion, so a change here relabels the money
+     rather than recalculating it. #}
+  <div class="field">
+    <label for="currency">Валюта склада</label>
+    {% set selected_currency = (form.currency if form and form.currency else (warehouse.currency if warehouse else DEFAULT_CURRENCY)) %}
+    <select id="currency" name="currency">
+      {% for code, symbol in CURRENCIES.items() %}
+      <option value="{{ code }}"{% if code == selected_currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
+      {% endfor %}
+    </select>
+    {% if errors.currency %}<p class="error">{{ errors.currency }}</p>{% endif %}
+    <p class="muted">Суммы этого склада показываются в выбранной валюте. Пересчёт по курсу не выполняется.</p>
+  </div>
+
+  {# AUTH-05: this is a PLAIN form — the body-level `hx-headers` only reaches
+     hx-post/hx-put/hx-delete, so a native submit carries no X-CSRF-Token and
+     auth_guard would 403 it. The hidden field is the documented second accepted
+     source in `require_csrf` (same idiom as settings.html:43). #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
   <div class="form-actions">
     <button type="submit">Сохранить склад</button>
     <a href="/warehouses">Отмена</a>
