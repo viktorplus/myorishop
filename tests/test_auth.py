@@ -396,3 +396,19 @@ def test_csrf_enforced_on_protected_post(anon_client, session, login):
     )
     assert with_token.status_code != 403
     assert with_token.status_code == 303
+
+
+def test_every_native_form_ships_a_csrf_field(client):
+    """AUTH-05: a plain <form method="post"> must carry the hidden csrf_token.
+
+    The body-level `hx-headers` in base.html only rides hx-post/hx-put/hx-delete,
+    so a natively submitted form sends no X-CSRF-Token and `require_csrf` answers
+    403. Both /products/new and /customers/new shipped neither the header nor the
+    field, which made adding a product or a customer impossible in a browser
+    (reproduced live: HTTP 403). The rest of the suite cannot catch this because
+    the `client` fixture replaces auth_guard wholesale, bypassing CSRF with it.
+    """
+    for path in ("/products/new", "/customers/new", "/warehouses/new"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert 'name="csrf_token"' in response.text, f"{path} has no CSRF field"

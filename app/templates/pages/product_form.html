@@ -103,6 +103,14 @@
     {% if errors.stale_days %}<p class="error">{{ errors.stale_days }}</p>{% endif %}
   </div>
 
+  {# AUTH-05: plain form — the hx-* attributes above drive the code/price lookups
+     (those are htmx requests and DO get the body-level X-CSRF-Token), but the
+     submit itself is native, so it carries no header and auth_guard would 403
+     it. The hidden field is require_csrf's second accepted source (same idiom as
+     settings.html:43). Kept OUTSIDE the button's condition so the token does not
+     depend on whether the save button is rendered. #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
   {% if not (product and product.deleted_at) %}
   <div class="form-actions">
     <button type="submit">Сохранить товар</button>

@@ -97,6 +97,12 @@
     {% if errors.address %}<p class="error">{{ errors.address }}</p>{% endif %}
   </div>
 
+  {# AUTH-05: plain form — base.html's body-level hx-headers only rides hx-post/
+     hx-put/hx-delete, so a native submit carries no X-CSRF-Token and auth_guard
+     403s it. The hidden field is require_csrf's second accepted source
+     (same idiom as settings.html:43). #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
   <div class="form-actions">
     <button type="submit">Сохранить покупателя</button>
     <a href="/customers">Отмена</a>
