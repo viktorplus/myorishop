@@ -392,3 +392,28 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 5/5 | Complete   | 2026-07-22 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete   | 2026-07-22 |
+
+## Backlog
+
+### Phase 999.1: Per-Warehouse Currency (RUB/UAH/EUR) (BACKLOG)
+
+**Goal:** [Captured for future planning] Each warehouse carries its own currency; money is never silently summed across currencies.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Decisions already locked by the operator (2026-08-09):
+
+- **Field:** `Warehouse.currency`, fixed list RUB/UAH/EUR. Migration backfills `RUB` for every existing warehouse; the warehouse form gets a select defaulting to RUB.
+- **No conversion:** no FX rates, no rate table, no base-currency roll-up. Currencies live side by side.
+- **Reports:** single-currency only, behind a mandatory warehouse/currency filter. Cross-currency totals must not exist.
+- **Transfers:** allowed between warehouses of different currencies; the operator enters the cost in the destination warehouse's currency (today the batch cost is carried over as a bare number).
+
+Scope discovered by reading the code (2026-08-09) — this is a full phase, not a field addition:
+
+- `services/reports.py`, `services/dashboard.py`, `services/finance.py` contain **zero** occurrences of `warehouse`. A currency filter means introducing a warehouse dimension that does not exist there at all. The only link is `Batch.warehouse_id` (`app/models.py:256`); sales reach a warehouse only through batches.
+- `format_cents` (`app/core.py:49`) renders `12,50` with no currency symbol anywhere. Every money surface (receipts, transfers, sale, history, batch cards) needs a currency-aware render, desktop **and** mobile templates.
+- `services/sales.py` has zero occurrences of `warehouse`, so a basket can currently mix batches from different warehouses — after this change that would mix currencies inside one sale. Mixing must be blocked (or the sale split).
+- Sync needs no schema edit: `merge.KIND_TO_FIELDS` (`app/services/merge.py:80`) derives fields from the model columns, so `currency` propagates automatically. **Needs verification:** behaviour when a new-schema client pushes to an old-schema server — the field is likely dropped silently; cover with a version-mismatch test.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
