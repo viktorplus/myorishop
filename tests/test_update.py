@@ -138,20 +138,27 @@ def test_check_detects_newer(monkeypatch):
     """UPD-01 (T-32-10): a newer signed release is reported ``available`` with its
     version + notes; offline (fetch returns None) is a silent no-op that NEVER
     raises. RED until Wave 02 builds ``app.services.update``."""
+    from app import __version__ as current_version  # noqa: PLC0415
     from app.services import update  # noqa: PLC0415
+
+    # Derive "newer" from the CURRENT app version instead of hard-coding it:
+    # pinning a literal (it was "1.16") makes every routine __version__ bump a
+    # false failure. Versions here are 1.N, not semver.
+    major, minor = current_version.split(".")
+    newer_version = f"{major}.{int(minor) + 1}"
 
     monkeypatch.setattr(update, "fetch_latest_release", lambda: fake_release_json())
     # The manifest fetch/verify seam yields a signature-verified version + notes.
     monkeypatch.setattr(
         update,
         "verified_manifest_version",
-        lambda release: ("1.16", "release notes text"),
+        lambda release: (newer_version, "release notes text"),
         raising=False,
     )
 
     status = update.check_for_update()
     assert status.state == "available"
-    assert status.latest == "1.16"
+    assert status.latest == newer_version
     assert "release notes text" in (status.notes or "")
 
     # Offline: fetch returns None ⇒ silent no-op, NOTHING raises (UPD-01/T-32-10).
