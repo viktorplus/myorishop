@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 30-offline-self-uploading-file
 source: [30-VERIFICATION.md]
 started: 2026-07-20T16:27:30Z
-updated: 2026-07-20T16:45:00Z
+updated: 2026-08-09T00:00:00Z
 ---
 
 ## Current Test
@@ -19,9 +19,19 @@ expected: |
   The page renders fully (no external CSS/JS/font loads); login + upload completes
   end-to-end against the central server with no application installed.
 why_human: Requires a separate internet-connected machine with no app install; TestClient cannot exercise `file://` browser behaviour.
-result: issue
-reported: "Opened the exported file in a browser (served from a separate origin, standalone). It IS self-contained — no external CSS/JS/font requests. But the page is broken: the «Будет отправлено» preview is empty and raw JavaScript leaks onto the page as text. The file's login/upload logic never runs, so upload cannot complete end-to-end."
-severity: blocker
+result: pass
+first_run: "issue (blocker) — Opened the exported file in a browser (served from a separate origin, standalone). It IS self-contained — no external CSS/JS/font requests. But the page is broken: the «Будет отправлено» preview is empty and raw JavaScript leaks onto the page as text. The file's login/upload logic never runs, so upload cannot complete end-to-end."
+evidence: |
+  Closed 2026-08-09 after the diagnosed fix. The blocker was the literal `</script`
+  written inside the LIVE logic script's own comments; fix committed as 380387a
+  ("fix(30): neutralize literal </script in self-upload logic script comments").
+  Re-run in a real browser on a regenerated export served from a separate origin:
+  self-contained (the page GET is the ONLY network request), login + upload
+  completed end-to-end against a demo central server — POST /api/offline/upload
+  200, «Данные загружены. Загружено записей: 49», server rows 0→23 operations and
+  0→26 cash movements. Regression pinned by tests/test_offline.py:591
+  (test_logic_script_block_has_no_raw_end_tag); tests/test_offline.py = 21 passed
+  on 2026-08-09.
 
 ### 2. In-browser preview counts + explicit confirm gate (OFF-06 / OFF-04)
 expected: |
@@ -31,15 +41,22 @@ expected: |
   correct password → the confirm step appears. Nothing POSTs to the server until the
   «Отправить на сервер» confirm button is clicked.
 why_human: The preview render and no-post-until-confirm behaviour execute in browser JS; automated tests verify the embedded markup and JS source but not the live in-browser interaction.
-result: issue
-reported: "Preview counts do NOT render (panel is empty) and the login/confirm flow is dead, because the inline <script> that owns all of this behaviour is terminated early by the browser. Cannot verify wrong-password gate, confirm gate, or no-post-until-confirm — none of the JS executes."
-severity: blocker
+result: pass
+first_run: "issue (blocker) — Preview counts do NOT render (panel is empty) and the login/confirm flow is dead, because the inline <script> that owns all of this behaviour is terminated early by the browser. Cannot verify wrong-password gate, confirm gate, or no-post-until-confirm — none of the JS executes."
+evidence: |
+  Closed 2026-08-09 by the same 380387a fix, re-run live in a browser. All three
+  gates observed: (1) «Будет отправлено» rendered «Операции 23 / Товары 7 /
+  Покупатели 2 / Партии 4 / Продажи 6 / Движения кассы 26» with no network call
+  beyond the page GET; (2) wrong password → «Неверный логин или пароль. Данные не
+  отправлены.» with only POST /api/offline/login 401 and NO /upload; (3) correct
+  password revealed «Отправить на сервер» and still no /upload until that button
+  was clicked.
 
 ## Summary
 
 total: 2
-passed: 0
-issues: 2
+passed: 2
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -59,6 +76,9 @@ blocked: 0
     - "Rewrite the three comment lines so no literal `</script` (any case) appears inside the live <script> block — e.g. write it as `<\\/script`, or `the closing script tag`, or split the token (`</scr`+`ipt`). The comment on line 111 is inside a Jinja {# #} block (stripped at render) and is harmless."
     - "Add a browser-level regression that asserts the logic script executes (e.g. the preview panel is populated / payload hidden field is staged) for an exported file, so a `</script` in this block is caught automatically. A static template test asserting no live-script line matches /<\\/script/i would also catch it cheaply."
   debug_session: ""
-  fix_applied: "app/templates/offline/self_upload.html — rewrote the three JS comment lines (146/149/150) so no literal `</script` (any case) appears inside the live logic <script>; added a NOTE warning against writing the token there. NOT yet committed."
+  resolved: true
+  resolved_at: 2026-08-09
+  fix_commit: 380387a
+  fix_applied: "app/templates/offline/self_upload.html — rewrote the three JS comment lines (146/149/150) so no literal `</script` (any case) appears inside the live logic <script>; added a NOTE warning against writing the token there. COMMITTED as 380387a."
   fix_verified: "Live in-browser UAT (Claude in Chrome) on a regenerated export served from a separate origin (http://127.0.0.1:8020, standalone) against a demo central server (http://localhost:8010, empty ledger, admin/demo1234). All four checkpoints green: (1) preview renders «Операции 23 / Товары 7 / Покупатели 2 / Партии 4 / Продажи 6 / Движения кассы 26» with the ONLY network request being the page GET (self-contained, no external CSS/JS/font); (2) wrong password → «Неверный логин или пароль. Данные не отправлены.» + only POST /api/offline/login 401, no /upload; (3) correct password → «Отправить на сервер» confirm revealed, still no /upload; (4) confirm click → POST /api/offline/upload 200, result page «Данные загружены. Загружено записей: 49. Операций: 23, движений кассы: 26.», server DB rows 0→23 operations, 0→26 cash_movements."
-  remaining: "Commit the template fix + add the regression test (still owed); then this blocker is closeable."
+  remaining: "none — both owed items are done: the template fix is committed (380387a) and the regression exists as tests/test_offline.py:591 test_logic_script_block_has_no_raw_end_tag (asserts no literal `</script`, any case, inside the live logic script body). tests/test_offline.py: 21 passed on 2026-08-09."

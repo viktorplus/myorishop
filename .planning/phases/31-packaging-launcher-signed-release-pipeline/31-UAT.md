@@ -30,7 +30,18 @@ result: [pending]
 
 ### 3. Offline minisign keygen + vendored public key (PKG-05)
 expected: Operator runs `minisign -G` on the OFFLINE machine, stores minisign.key off-repo, commits ONLY app/minisign.pub (base64 line starts 'RW'); confirm the secret key is never committed (.gitignore blocks *.key). Once present, tests/test_release_verify.py::test_vendored_pubkey_present_and_bundled runs green (RW + bundled) instead of skipping.
-result: [pending]
+result: pass
+evidence: |
+  Satisfied out-of-order during Phase 32 wave 1 (the keygen checkpoint there is the
+  same operator action this item describes). Verified 2026-08-09:
+  - app/minisign.pub present (115 bytes, committed);
+  - the secret key lives outside the repo (C:\Users\Admin\.minisign\minisign.key)
+    and `git ls-files | grep '\.key$'` returns nothing tracked;
+  - `git check-ignore -v test.key` → .gitignore:52 `*.key`, so a stray secret key
+    cannot be staged;
+  - tests/test_release_verify.py::test_vendored_pubkey_present_and_bundled PASSED
+    (not SKIPPED) — full file 5 passed, which is the exact skip→green flip this
+    item asked for.
 
 ### 4. Real signed-release pipeline run (PKG-05)
 expected: Pin a verified Python 3.13.x embeddable SHA-256 into EMBEDDABLE_SHA256, push a throwaway tag v1.<N> (with __version__ matching); confirm release.yml builds on the Windows runner and drafts a release with the archive + installer + SHA256SUMS + manifest.txt. Then sign manifest.txt with the OFFLINE key, attach manifest.txt.minisig, and Publish.
@@ -39,9 +50,9 @@ result: [pending]
 ## Summary
 
 total: 4
-passed: 0
+passed: 1
 issues: 0
-pending: 4
+pending: 3
 skipped: 0
 blocked: 0
 
