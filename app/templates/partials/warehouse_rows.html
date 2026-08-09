@@ -24,6 +24,7 @@
       <tr>
         <th>Название</th>
         <th>Адрес</th>
+        <th>Валюта</th>
         <th>Товаров</th>
         <th>Последняя приёмка</th>
         <th>Действия</th>
@@ -44,6 +45,8 @@
                  hx-include="#warehouse-rows input, #warehouse-rows select"
                  hx-target="#warehouse-rows" hx-swap="outerHTML" hx-push-url="true">
         </th>
+        {# currency / товаров / последняя приёмка have no per-column filter #}
+        <th></th>
         <th></th>
         <th></th>
         <th>
@@ -63,6 +66,7 @@
       <tr{% if w.deleted_at %} class="muted"{% endif %}>
         <td>{{ w.name }}</td>
         <td>{{ w.address or '' }}</td>
+        <td>{{ w.currency }} {{ CURRENCIES.get(w.currency, '') }}</td>
         <td class="num">{{ w.item_count }}</td>
         {# w.last_receipt is Operation.created_at (full ISO timestamp, not a
            date-only string like batch.expiry) — the `local_dt` filter,

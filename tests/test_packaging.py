@@ -176,8 +176,12 @@ def test_onedir_bundles_all_alembic_versions(tmp_path):
     )
     repo_versions = list((_REPO_ROOT / "alembic" / "versions").glob("[0-9]*.py"))
     bundled = list((Path(dist_app) / "alembic" / "versions").glob("[0-9]*.py"))
-    assert len(repo_versions) == 22, "repo migration count drifted from 22"
-    assert len(bundled) == len(repo_versions)
+    # The contract is "every repo migration is bundled", not a fixed count — a
+    # hard-coded number turns each new migration into a false failure (it did,
+    # when 0023 added warehouses.currency). The floor keeps the original guard
+    # against an empty/na-glob directory silently passing.
+    assert len(repo_versions) >= 22, "alembic/versions lost migrations"
+    assert {p.name for p in bundled} == {p.name for p in repo_versions}
 
 
 # --- PKG-02: per-user Inno Setup installer ----------------------------------

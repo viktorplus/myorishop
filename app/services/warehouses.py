@@ -10,12 +10,29 @@ status='all'/status='deleted' still reach them — write-path callers
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core import new_id, utcnow_iso
+from app.core import CURRENCIES, DEFAULT_CURRENCY, new_id, utcnow_iso
 from app.models import Batch, Operation, Warehouse
 from app.services.pagination import paginate
 
 NAME_REQUIRED_ERROR = "Укажите название склада."
 WAREHOUSE_NOT_FOUND_ERROR = "Склад не найден."
+CURRENCY_INVALID_ERROR = "Выберите валюту склада из списка."
+
+
+def _clean_currency(currency: str) -> tuple[str, dict[str, str]]:
+    """Normalise + validate a submitted currency code (CUR-01).
+
+    Blank means "unchanged/default" (RUB) so an old form post without the field
+    still works; anything outside `CURRENCIES` is a validation error, never a
+    silently stored value — an unknown code would make every amount on that
+    warehouse unlabelled.
+    """
+    code = (currency or "").strip().upper()
+    if not code:
+        return DEFAULT_CURRENCY, {}
+    if code not in CURRENCIES:
+        return DEFAULT_CURRENCY, {"currency": CURRENCY_INVALID_ERROR}
+    return code, {}
 
 
 def list_warehouses(
@@ -107,24 +124,30 @@ def list_warehouses(
 
 
 def add_warehouse(
-    session: Session, *, name: str, address: str
+    session: Session, *, name: str, address: str, currency: str = ""
 ) -> tuple[Warehouse | None, dict[str, str]]:
-    """Create a warehouse; requires non-blank name. No uniqueness check (D-04)."""
+    """Create a warehouse; requires non-blank name. No uniqueness check (D-04).
+
+    `currency` (CUR-01) defaults to RUB when omitted and must be one of the
+    supported codes otherwise.
+    """
     name = name.strip()
     address = address.strip()
-    errors: dict[str, str] = {}
+    code, errors = _clean_currency(currency)
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
     if errors:
         return None, errors
-    warehouse = Warehouse(id=new_id(), name=name, address=address or None)
+    warehouse = Warehouse(
+        id=new_id(), name=name, address=address or None, currency=code
+    )
     session.add(warehouse)
     session.commit()
     return warehouse, {}
 
 
 def update_warehouse(
-    session: Session, warehouse_id: str, *, name: str, address: str
+    session: Session, warehouse_id: str, *, name: str, address: str, currency: str = ""
 ) -> tuple[Warehouse | None, dict[str, str]]:
     """Edit an existing warehouse in place; unknown id is a distinct error."""
     warehouse = session.get(Warehouse, warehouse_id)
@@ -137,12 +160,20 @@ def update_warehouse(
     name = name.strip()
     address = address.strip()
     errors: dict[str, str] = {}
+    # CUR-01: an omitted field keeps the CURRENT currency (unlike add, where
+    # "omitted" means the RUB default) — a partial form post must never silently
+    # relabel an existing warehouse's money.
+    code = warehouse.currency
+    if (currency or "").strip():
+        code, currency_errors = _clean_currency(currency)
+        errors.update(currency_errors)
     if not name:
         errors["name"] = NAME_REQUIRED_ERROR
     if errors:
         return None, errors
     warehouse.name = name
     warehouse.address = address or None
+    warehouse.currency = code
     session.commit()
     return warehouse, {}
 

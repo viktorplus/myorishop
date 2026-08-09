@@ -4,7 +4,14 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings as _config_settings
-from app.core import format_cents, format_ru_date, iso_to_local
+from app.core import (
+    CURRENCIES,
+    DEFAULT_CURRENCY,
+    format_cents,
+    format_money,
+    format_ru_date,
+    iso_to_local,
+)
 from app.db import SessionLocal
 from app.models import (
     CASH_BUCKET_LABELS,
@@ -130,3 +137,10 @@ templates.env.globals["CONTACT_KINDS"] = CONTACT_KINDS
 # Phase 25 (ROLE-01): expose the role allow-list (Latin key → RU label) so the
 # role <select> and the role-conditioned menu-hide can read labels globally.
 templates.env.globals["ROLES"] = ROLES
+# CUR-01: the supported per-warehouse currencies (code → symbol) plus the
+# default, exposed the same established way so the warehouse form's <select>
+# and every amount-rendering surface read them globally.
+templates.env.globals["CURRENCIES"] = CURRENCIES
+templates.env.globals["DEFAULT_CURRENCY"] = DEFAULT_CURRENCY
+# Renders an amount together with its currency symbol: {{ cents | money(w.currency) }}
+templates.env.filters["money"] = format_money

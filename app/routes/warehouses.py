@@ -108,14 +108,15 @@ def warehouse_add(
     request: Request,
     name: str = Form(""),
     address: str = Form(""),
+    currency: str = Form(""),
     session: Session = Depends(get_session),
 ):
-    _, errors = add_warehouse(session, name=name, address=address)
+    _, errors = add_warehouse(session, name=name, address=address, currency=currency)
     if errors:
         context = {
             "warehouse": None,
             "errors": errors,
-            "form": {"name": name, "address": address},
+            "form": {"name": name, "address": address, "currency": currency},
         }
         return templates.TemplateResponse(
             request, "pages/warehouse_form.html", context, status_code=422
@@ -142,9 +143,12 @@ def warehouse_update(
     warehouse_id: str,
     name: str = Form(""),
     address: str = Form(""),
+    currency: str = Form(""),
     session: Session = Depends(get_session),
 ):
-    _, errors = update_warehouse(session, warehouse_id, name=name, address=address)
+    _, errors = update_warehouse(
+        session, warehouse_id, name=name, address=address, currency=currency
+    )
     if "warehouse" in errors:
         raise HTTPException(status_code=404, detail="unknown warehouse")
     if errors:
@@ -152,7 +156,7 @@ def warehouse_update(
         context = {
             "warehouse": existing,
             "errors": errors,
-            "form": {"name": name, "address": address},
+            "form": {"name": name, "address": address, "currency": currency},
         }
         return templates.TemplateResponse(
             request, "pages/warehouse_form.html", context, status_code=422

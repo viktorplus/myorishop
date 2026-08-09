@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.core import new_id, utcnow_iso
+from app.core import DEFAULT_CURRENCY, new_id, utcnow_iso
 
 # Pitfall 4: SQLite allows unnamed constraints; future batch migrations
 # cannot target them for drop. Name everything from day one.
@@ -211,6 +211,13 @@ class Warehouse(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     address: Mapped[str | None] = mapped_column(String(300))
+    # CUR-01: the currency every amount on this warehouse's stock is expressed
+    # in. Money stays integer minor units (Pitfall 3) — this only names the unit.
+    # No conversion exists anywhere, so amounts from warehouses with different
+    # currencies must never be summed. Migration 0023 backfills 'RUB'.
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default=DEFAULT_CURRENCY, server_default=DEFAULT_CURRENCY
+    )
     created_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
     # D-05: soft delete only; no hard deletes (matches Product convention).

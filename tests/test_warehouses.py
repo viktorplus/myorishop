@@ -37,7 +37,16 @@ def test_migration_0007_creates_and_seeds_default_warehouse(tmp_path, monkeypatc
 
     with closing(sqlite3.connect(db_file)) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(warehouses)")}
-        assert cols == {"id", "name", "address", "created_at", "updated_at", "deleted_at"}
+        # `currency` joins the set in 0023 (CUR-01).
+        assert cols == {
+            "id",
+            "name",
+            "address",
+            "currency",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+        }
 
         rows = conn.execute(
             "SELECT id, name, address, deleted_at FROM warehouses"
@@ -633,3 +642,132 @@ def test_web_warehouses_page_preserves_filter_sort_status_bar_after_restructure(
     assert 'name="name"' in response.text
     assert 'name="address"' in response.text
     assert 'name="status"' in response.text
+
+
+# --- CUR-01: per-warehouse currency -----------------------------------------
+
+
+def test_add_warehouse_defaults_to_rub(session):
+    """A warehouse created without an explicit currency is RUB (the migration default)."""
+    warehouse, errors = add_warehouse(session, name="Склад без валюты", address="")
+
+    assert errors == {}
+    assert warehouse.currency == "RUB"
+
+
+def test_add_warehouse_accepts_each_supported_currency(session):
+    for code in ("RUB", "UAH", "EUR"):
+        warehouse, errors = add_warehouse(
+            session, name=f"Склад {code}", address="", currency=code
+        )
+        assert errors == {}, code
+        assert warehouse.currency == code
+
+
+def test_add_warehouse_rejects_unknown_currency(session):
+    """An unsupported code is a validation error, never a silently stored value."""
+    warehouse, errors = add_warehouse(
+        session, name="Склад с чужой валютой", address="", currency="USD"
+    )
+
+    assert warehouse is None
+    assert "currency" in errors
+    assert session.query(Warehouse).filter_by(name="Склад с чужой валютой").count() == 0
+
+
+def test_update_warehouse_changes_currency(session):
+    warehouse, _ = add_warehouse(session, name="Склад Киев", address="", currency="RUB")
+
+    updated, errors = update_warehouse(
+        session, warehouse.id, name="Склад Киев", address="", currency="UAH"
+    )
+
+    assert errors == {}
+    assert updated.currency == "UAH"
+
+
+def test_update_warehouse_rejects_unknown_currency(session):
+    warehouse, _ = add_warehouse(session, name="Склад Прага", address="", currency="EUR")
+
+    updated, errors = update_warehouse(
+        session, warehouse.id, name="Склад Прага", address="", currency="CZK"
+    )
+
+    assert updated is None
+    assert "currency" in errors
+    session.refresh(warehouse)
+    assert warehouse.currency == "EUR"
+
+
+def test_migration_0023_adds_currency_and_backfills_rub(tmp_path, monkeypatch):
+    """Existing warehouses (incl. the 0007 seed row) come out of the upgrade as RUB."""
+    db_file = tmp_path / "currency.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
+    cfg = Config("alembic.ini")
+
+    # Stop one revision BEFORE the currency migration, add a warehouse the old
+    # way, then upgrade — the backfill must reach rows that already existed.
+    command.upgrade(cfg, "0022")
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO warehouses (id, name, address, created_at, updated_at)"
+            " VALUES (?, ?, NULL, ?, ?)",
+            (new_id(), "Старый склад", "2026-01-01T00:00:00+00:00",
+             "2026-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(warehouses)")}
+        assert "currency" in cols
+        currencies = [
+            row[0] for row in conn.execute("SELECT currency FROM warehouses")
+        ]
+        assert currencies, "expected at least the seed warehouse"
+        assert set(currencies) == {"RUB"}
+
+
+def test_web_warehouse_form_renders_non_empty_currency_select(client):
+    """The new-warehouse form offers every supported currency, RUB preselected."""
+    response = client.get("/warehouses/new")
+
+    assert response.status_code == 200
+    assert 'name="currency"' in response.text
+    for code in ("RUB", "UAH", "EUR"):
+        assert f'value="{code}"' in response.text
+    assert 'value="RUB" selected' in response.text
+
+
+def test_web_warehouse_add_persists_selected_currency(client, session):
+    response = client.post(
+        "/warehouses",
+        data={"name": "Склад Одесса", "address": "", "currency": "UAH"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    warehouse = session.query(Warehouse).filter_by(name="Склад Одесса").one()
+    assert warehouse.currency == "UAH"
+
+
+def test_web_warehouses_list_shows_currency(client, session):
+    add_warehouse(session, name="Склад Берлин", address="", currency="EUR")
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    row = response.text.split("Склад Берлин")[1].split("</tr>")[0]
+    assert "€" in row
+
+
+def test_web_warehouse_form_carries_csrf_field(client):
+    """AUTH-05: the warehouse form is a PLAIN form, so it must ship the hidden
+    csrf_token field — the body-level hx-headers only covers hx-* requests, and
+    without the field a native browser submit is rejected with 403."""
+    response = client.get("/warehouses/new")
+
+    assert response.status_code == 200
+    assert 'name="csrf_token"' in response.text

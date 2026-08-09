@@ -53,6 +53,39 @@ def format_cents(cents: int) -> str:
     return f"{sign}{whole},{frac:02d}"
 
 
+# Per-warehouse currency (CUR-01): a FIXED set — money is stored as integer minor
+# units exactly as before, and the code only says which currency those units are
+# in. There is no conversion and no exchange rate anywhere in the app, so amounts
+# in different currencies are never summed.
+CURRENCIES: dict[str, str] = {
+    "RUB": "₽",
+    "UAH": "₴",
+    "EUR": "€",
+}
+DEFAULT_CURRENCY = "RUB"
+
+
+def currency_symbol(currency: str | None) -> str:
+    """Display symbol for a currency code; unknown/empty falls back to the code.
+
+    Never raises — display code must not blow up on a row written by a newer
+    client that knows a currency this build does not.
+    """
+    if not currency:
+        return CURRENCIES[DEFAULT_CURRENCY]
+    return CURRENCIES.get(currency, currency)
+
+
+def format_money(cents: int, currency: str | None = None) -> str:
+    """Render integer cents WITH its currency symbol: (1250, 'EUR') -> '12,50 €'.
+
+    `format_cents` stays the bare-number filter (totals inside a column already
+    labelled with a currency); this is the one to use wherever an amount stands
+    on its own and the reader must know which currency it is.
+    """
+    return f"{format_cents(cents)} {currency_symbol(currency)}"
+
+
 def format_ru_date(iso: str | None) -> str:
     """Render a stored ISO date ('2026-07-12') as RU display 'dd.mm.yyyy'.
 
