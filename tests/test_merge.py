@@ -9,9 +9,14 @@ NDJSON helper those later plans reuse.
 import json
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import sessionmaker
 
+from alembic import command
+from app.config import settings
+from app.db import build_engine
 from app.models import Batch, CashMovement, Operation, Product, User, Warehouse
 from app.services import merge
 from app.services.auth import hash_password
@@ -634,6 +639,59 @@ def test_missing_parent_rejected(session):
     # All-or-nothing: nothing landed.
     assert session.scalar(select(func.count()).select_from(Operation)) == 0
     assert session.get(Product, "ghost-product") is None
+
+
+# --- CUR-02/quick-260810: under-migrated server fails loudly (no silent drop) -
+
+
+def _under_migrated_session(tmp_path, monkeypatch, revision):
+    """A Session bound to a DB whose Alembic history stops at `revision` —
+    i.e. schema-BEHIND-code, the reproducible half of "old server, new
+    client" (merge.KIND_TO_FIELDS is derived from the CURRENTLY IMPORTED
+    app.models at process start, so this test suite can only ever have one
+    app.models — the code is always current; only the DB can lag)."""
+    db_file = tmp_path / "under_migrated.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
+    cfg = Config("alembic.ini")
+    command.upgrade(cfg, revision)
+    engine = build_engine(db_file.as_posix())
+    return sessionmaker(bind=engine)()
+
+
+def test_push_cash_movement_currency_to_pre_0024_db_fails_loudly(tmp_path, monkeypatch):
+    """LOCKED/T-quick-260810-SC: a server DB stopped at 0023 (no
+    cash_movements.currency yet) rejects a synced row carrying the new field
+    with a loud OperationalError (observed contract, pinned here) — never a
+    silent drop of the field or a corrupted row. The caller's transaction
+    rolls back; nothing lands."""
+    under_migrated = _under_migrated_session(tmp_path, monkeypatch, "0023")
+    record = {**_cash("cm-x", amount_cents=100, seq=1), "currency": "EUR"}
+
+    with pytest.raises(OperationalError):
+        _apply(under_migrated, [record])
+    under_migrated.rollback()
+    under_migrated.close()
+
+
+def test_push_batch_cost_cents_to_pre_0025_db_fails_loudly(tmp_path, monkeypatch):
+    """LOCKED/T-quick-260810-SC: a server DB stopped at 0024 (warehouses.currency
+    and cash_movements.currency exist; batches.cost_cents does not) rejects a
+    synced batch carrying cost_cents the same way — loud OperationalError, no
+    silent drop, no partial write (FK-ordered: warehouse/product upsert
+    succeeds first, the batch insert itself is what fails)."""
+    under_migrated = _under_migrated_session(tmp_path, monkeypatch, "0024")
+    wh = _warehouse_rec("w-fk2", name="Склад-FK2")
+    prod = _product_rec("p-fk2", code="FK-2", name="FK2")
+    bat = {
+        **_batch_rec("b-fk2", product_id="p-fk2", warehouse_id="w-fk2"),
+        "cost_cents": 500,
+    }
+
+    with pytest.raises(OperationalError):
+        _apply(under_migrated, [wh, prod, bat])
+    under_migrated.rollback()
+    under_migrated.close()
 
 
 def test_tombstone_inline(session, product):
