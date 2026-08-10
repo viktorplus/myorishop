@@ -15,8 +15,9 @@ tamper attempt is still rejected. The DELETE triggers were not touched.
 LOCKSTEP RULE: `app.db.APPEND_ONLY_TRIGGERS` is the live source of trigger
 DDL for these fixtures (`tests/conftest.py` builds each test DB from
 `Base.metadata.create_all` plus that constant, never via Alembic), while
-migration `0018` is what runs in production. The two must always move
-together — `test_trigger_column_list_matches_schema` and
+migrations `0018` and `0026` (the latter added the `currency` column guard
+to `cash_movements_no_update`) are what run in production. The two must
+always move together — `test_trigger_column_list_matches_schema` and
 `test_declared_constants_match_trigger_ddl` below are the tripwires that turn
 a drift or a fail-open into a loud red test instead of a silent hole.
 
@@ -60,6 +61,7 @@ IMMUTABLE_CASH_COLUMNS: frozenset[str] = frozenset(
         "id",
         "category",
         "amount_cents",
+        "currency",
         "note",
         "sale_id",
         "author_id",
@@ -234,10 +236,10 @@ def test_delete_still_rejected(ledger):
 _DRIFT_HINT = (
     "Ledger schema drifted from the append-only trigger guard. A column not "
     "named in the trigger's WHEN clause can be changed FREELY — the ledger "
-    "silently fails open. Update BOTH migration 0018 "
-    "(alembic/versions/0018_sync_cursor_trigger_relaxation.py) AND "
-    "app/db.py::APPEND_ONLY_TRIGGERS, plus the constant in this module, in "
-    "the same commit."
+    "silently fails open. Add a NEW migration mirroring "
+    "alembic/versions/0018_sync_cursor_trigger_relaxation.py (see also 0026) "
+    "AND update app/db.py::APPEND_ONLY_TRIGGERS, plus the constant in this "
+    "module, in the same commit."
 )
 
 

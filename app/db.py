@@ -14,10 +14,12 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 # Live source of the append-only trigger DDL (FND-01) for TEST FIXTURES.
-# Migrations 0001/0013 carry their own FROZEN v1 copies, and migration
+# Migrations 0001/0013 carry their own FROZEN v1 copies, migration
 # 0018_sync_cursor_trigger_relaxation.py carries the frozen v2 copy of the
-# two *_no_update triggers below (WR-06: migrations must never import
-# mutable app code).
+# two *_no_update triggers below, and migration
+# 0026_cash_movements_trigger_guards_currency.py carries the frozen v3 copy
+# of cash_movements_no_update (added the `currency` column guard) (WR-06:
+# migrations must never import mutable app code).
 #
 # LOCKSTEP RULE — this constant and migration 0018 must ALWAYS move together.
 # tests/conftest.py builds every test DB from Base.metadata.create_all plus
@@ -65,6 +67,7 @@ APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
          NEW.id           IS NOT OLD.id
       OR NEW.category     IS NOT OLD.category
       OR NEW.amount_cents IS NOT OLD.amount_cents
+      OR NEW.currency     IS NOT OLD.currency
       OR NEW.note         IS NOT OLD.note
       OR NEW.sale_id      IS NOT OLD.sale_id
       OR NEW.author_id    IS NOT OLD.author_id
