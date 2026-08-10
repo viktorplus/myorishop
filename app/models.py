@@ -266,6 +266,10 @@ class Batch(Base):
     expiry: Mapped[str | None] = mapped_column(String(10))
     # D-02: sale-price snapshot frozen at batch creation; NULL for legacy.
     price_cents: Mapped[int | None] = mapped_column(Integer)
+    # CUR-02: cost snapshot in THIS batch's warehouse currency, frozen at
+    # receipt time. NULL for legacy/never-entered batches — falls back to
+    # Product.cost_cents at read time (never backfilled, migration 0025).
+    cost_cents: Mapped[int | None] = mapped_column(Integer)
     location: Mapped[str | None] = mapped_column(String(100))  # WH-02 free-text tag
     comment: Mapped[str | None] = mapped_column(String(200))  # LOT-04
     # UAT test 1 symptom 3: auto-generated «{product.name} — {creation date}»
@@ -517,6 +521,11 @@ class CashMovement(Base):
     # SIGNED integer cents: positive = приход, negative = расход. Integer
     # cents ONLY, never Float/Numeric (D-00a, CLAUDE.md money rule).
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    # CUR-02: the currency this movement's amount is expressed in. Mirrors
+    # Warehouse.currency's exact shape. Migration 0024 backfills 'RUB'.
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default=DEFAULT_CURRENCY, server_default=DEFAULT_CURRENCY
+    )
     note: Mapped[str | None] = mapped_column(String(300))
     # Nullable link to the sale this auto-credit/auto-debit movement
     # originated from. Set at INSERT time only — the cash_movements_no_update

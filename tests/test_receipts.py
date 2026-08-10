@@ -20,8 +20,14 @@ test_web_, everything else is service level. "recent"/"nav" select the
 03-01 Task 3 slice; "lookup"/"price_sync" select the 03-02 slice.
 """
 
+import sqlite3
+from contextlib import closing
+
+from alembic.config import Config
 from sqlalchemy import select
 
+from alembic import command
+from app.config import settings
 from app.core import new_id
 from app.models import Batch, CatalogPrice, Operation, Product, Warehouse
 from app.services import catalog
@@ -1133,3 +1139,48 @@ def test_web_receipt_new_page_no_code_shows_no_cue(client):
     response = client.get("/receipts/new")
     assert response.status_code == 200
     assert "data-ref-cents" not in response.text
+
+
+def test_migration_0025_adds_batch_cost_cents_nullable(tmp_path, monkeypatch):
+    """A pre-existing batch's cost_cents reads NULL after the upgrade (no
+    backfill — batch-level cost was never tracked before this migration)."""
+    db_file = tmp_path / "batch_cost.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
+    cfg = Config("alembic.ini")
+
+    # Stop one revision BEFORE cost_cents (0024 has warehouses.currency +
+    # cash_movements.currency but not batches.cost_cents yet).
+    command.upgrade(cfg, "0024")
+    product_id = new_id()
+    warehouse_id = new_id()
+    batch_id = new_id()
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO products (id, name, quantity, created_at, updated_at)"
+            " VALUES (?, ?, 0, ?, ?)",
+            (product_id, "Товар", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO warehouses (id, name, currency, created_at, updated_at)"
+            " VALUES (?, ?, 'RUB', ?, ?)",
+            (warehouse_id, "Склад", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO batches"
+            " (id, product_id, warehouse_id, quantity, is_legacy, created_at, updated_at)"
+            " VALUES (?, ?, ?, 0, 0, ?, ?)",
+            (batch_id, product_id, warehouse_id,
+             "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(batches)")}
+        assert "cost_cents" in cols
+        (cost_cents,) = conn.execute(
+            "SELECT cost_cents FROM batches WHERE id = ?", (batch_id,)
+        ).fetchone()
+        assert cost_cents is None

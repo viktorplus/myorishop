@@ -10,10 +10,15 @@ app.services.returns.register_return (credit, sale_rollback, debit,
 partial, atomic).
 """
 
+import sqlite3
+from contextlib import closing
+
 import pytest
+from alembic.config import Config
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 
+from alembic import command
 from app.config import settings
 from app.core import new_id, utcnow_iso
 from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
@@ -1120,3 +1125,35 @@ def test_mobile_deposit_rejects_withdrawal_category(mobile_client_factory, sessi
     assert response.status_code == 422
     assert "Выберите основание." in response.text
     assert _cash_count(session) == 0
+
+
+def test_migration_0024_adds_currency_and_backfills_rub(tmp_path, monkeypatch):
+    """Existing cash_movements rows come out of the upgrade as RUB (mirrors
+    test_warehouses.py::test_migration_0023_adds_currency_and_backfills_rub)."""
+    db_file = tmp_path / "cash_currency.db"
+    monkeypatch.setattr(settings, "db_path", db_file.as_posix())
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{db_file.as_posix()}")
+    cfg = Config("alembic.ini")
+
+    # Stop one revision BEFORE the currency migration, insert a movement the
+    # old way, then upgrade — the backfill must reach rows that already existed.
+    command.upgrade(cfg, "0023")
+    with closing(sqlite3.connect(db_file)) as conn:
+        conn.execute(
+            "INSERT INTO cash_movements"
+            " (id, category, amount_cents, device_id, seq, created_at, created_by)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_id(), "deposit_opening", 1000, new_id(), 1,
+             "2026-01-01T00:00:00+00:00", "Оператор"),
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with closing(sqlite3.connect(db_file)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(cash_movements)")}
+        assert "currency" in cols
+        currencies = [
+            row[0] for row in conn.execute("SELECT currency FROM cash_movements")
+        ]
+        assert currencies == ["RUB"]
