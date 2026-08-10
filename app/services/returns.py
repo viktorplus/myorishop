@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import new_id
-from app.models import Batch, Operation, Product
+from app.models import Batch, Operation, Product, Warehouse
 from app.services import finance
 from app.services.batches import legacy_batch
 from app.services.ledger import record_operation
@@ -149,6 +149,10 @@ def register_return(
         # D-08: restore stock to the ORIGIN op's batch (or the product's legacy
         # batch, lazily created when absent) — the return never re-asks.
         batch_id = _resolve_or_create_return_batch_id(session, origin)
+        # CUR-02: the return debit carries the same warehouse currency the
+        # stock is being restored to.
+        batch = session.get(Batch, batch_id)
+        warehouse = session.get(Warehouse, batch.warehouse_id)
         op = record_operation(
             session,
             type_="return",
@@ -171,6 +175,7 @@ def register_return(
                 session,
                 category="return",
                 amount_cents=-debit,
+                currency=warehouse.currency,
                 sale_id=origin.sale_id,
                 commit=False,
             )

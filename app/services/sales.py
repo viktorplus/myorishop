@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import new_id, to_cents, utcnow_iso
-from app.models import Batch, Customer, Operation, Product, Sale
+from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import record_operation
@@ -42,6 +42,10 @@ EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чт
 PRODUCT_NOT_FOUND_TMPL = "Товар с кодом „{code}“ не найден. Сначала оприходуйте товар."
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 SAVE_ROLLBACK = "Не удалось сохранить продажу. Попробуйте ещё раз."
+# CUR-02 D-quick2: a basket may only draw from warehouses that share ONE
+# currency — money is never summed across currencies (app.core.CURRENCIES,
+# no FX conversion). Checked after per-line validation, before any write.
+MIXED_CURRENCY_ERROR = "Нельзя добавить в одну продажу товары со складов с разной валютой."
 # PROD-07/D-17/D-23: both sale prefill-hint families (card-sourced and
 # batch-sourced) must state the sale-only scope — a sale is a negotiation
 # with one customer, so an edited ПЦ/batch price here is saved to THIS sale
@@ -186,6 +190,19 @@ def register_sale(
     if errors:
         return None, errors
 
+    # CUR-02: reject a basket whose picked batches resolve to warehouses of
+    # different currencies — a hard reject (never confirm=1-overridable, same
+    # all-or-nothing discipline as D-03), checked before any write. Every
+    # resolved line has a validated batch here (errors is empty), and every
+    # Batch.warehouse_id is NOT NULL, so this never needs Task 5's
+    # NULL-batch legacy-row fallback (that only applies to reading OLD rows).
+    warehouse_ids = {line["batch"].warehouse_id for line in resolved}
+    warehouses = session.scalars(select(Warehouse).where(Warehouse.id.in_(warehouse_ids))).all()
+    basket_currencies = {warehouse.currency for warehouse in warehouses}
+    if len(basket_currencies) > 1:
+        return None, {"basket": MIXED_CURRENCY_ERROR}
+    basket_currency = next(iter(basket_currencies))
+
     # SAL-04/D-08/D-09: aggregate oversell check — sum requested qty per
     # product_id across ALL resolved lines (Pitfall 6: the SAME product on
     # two lines must be summed before comparing, not checked line-by-line),
@@ -272,7 +289,14 @@ def register_sale(
                 type_="sale",
                 product_id=product.id,
                 qty_delta=-qty,
-                unit_cost_cents=product.cost_cents,  # D-11 freeze (may be None)
+                # D-11 freeze: batch cost first (CUR-02), else the product
+                # card (may be None) — byte-identical to pre-existing
+                # behavior for every batch whose cost_cents is still NULL.
+                unit_cost_cents=(
+                    line["batch"].cost_cents
+                    if line["batch"].cost_cents is not None
+                    else product.cost_cents
+                ),
                 unit_price_cents=price_cents,  # D-10 entered price
                 sale_id=header.id,
                 batch_id=line["batch"].id,  # LOT-02/D-11 per-line picked batch
@@ -287,6 +311,7 @@ def register_sale(
             session,
             category="sale",
             amount_cents=total_cents,
+            currency=basket_currency,  # CUR-02: the basket's single warehouse currency
             sale_id=header.id,
             commit=False,
         )

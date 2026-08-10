@@ -20,12 +20,17 @@ import re
 from sqlalchemy import select
 
 from app.core import new_id
-from app.models import Batch, CatalogPrice, Operation, Product, Sale
-from app.services import catalog
+from app.models import Batch, CatalogPrice, Operation, Product, Sale, Warehouse
+from app.services import catalog, finance
 from app.services.batches import open_batches
 from app.services.customers import create_customer
 from app.services.ledger import compute_stock, record_operation
-from app.services.sales import lookup_prefill, recent_sales, register_sale  # noqa: F401
+from app.services.sales import (  # noqa: F401
+    MIXED_CURRENCY_ERROR,
+    lookup_prefill,
+    recent_sales,
+    register_sale,
+)
 
 
 def _sale_ops(session):
@@ -604,6 +609,114 @@ def test_oversell_and_below_minimum_both_reported_together(session, stocked_prod
     assert result.get("oversell")
     assert result.get("below_minimum")
     assert _sale_ops(session) == []
+
+
+# --- CUR-02: mixed-currency baskets + batch-cost-aware sale cash ------------
+
+
+def test_mixed_currency_basket_rejected_zero_writes(session, product, warehouse):
+    """CUR-02: a basket mixing batches from different-currency warehouses is
+    rejected before any write — a hard reject, never confirm=1-overridable."""
+    eur_warehouse = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add(eur_warehouse)
+    session.commit()
+    rub_batch = _batch(session, product, warehouse, qty=5)
+    eur_batch = _batch(session, product, eur_warehouse, qty=5)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code, product.code],
+        qtys=["1", "1"],
+        prices=["10,00", "10,00"],
+        batch_ids=[rub_batch.id, eur_batch.id],
+    )
+    assert result is None
+    assert errors.get("basket") == MIXED_CURRENCY_ERROR
+    assert _sale_ops(session) == []
+
+
+def test_same_currency_multi_warehouse_basket_still_sells(session, product, warehouse):
+    """CUR-02: two different warehouses sharing ONE currency still sell fine."""
+    other_rub_warehouse = Warehouse(id=new_id(), name="Второй склад RUB")
+    session.add(other_rub_warehouse)
+    session.commit()
+    batch_a = _batch(session, product, warehouse, qty=5)
+    batch_b = _batch(session, product, other_rub_warehouse, qty=5)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code, product.code],
+        qtys=["1", "1"],
+        prices=["10,00", "10,00"],
+        batch_ids=[batch_a.id, batch_b.id],
+    )
+    assert errors == {}
+    assert result
+    assert len(_sale_ops(session)) == 2
+
+
+def test_sale_freezes_unit_cost_from_batch_first(session, product, warehouse):
+    """D-11: unit_cost_cents prefers Batch.cost_cents over Product.cost_cents."""
+    product.cost_cents = 700
+    session.commit()
+    batch_with_cost = _batch(session, product, warehouse, qty=5)
+    batch_with_cost.cost_cents = 900
+    session.commit()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[batch_with_cost.id],
+    )
+    assert errors == {}
+    op = _sale_ops(session)[0]
+    assert op.unit_cost_cents == 900
+
+
+def test_sale_falls_back_to_product_cost_when_batch_cost_null(session, product, warehouse):
+    """D-11: byte-identical to pre-existing behavior when Batch.cost_cents is NULL."""
+    product.cost_cents = 700
+    session.commit()
+    batch_no_cost = _batch(session, product, warehouse, qty=5)
+    assert batch_no_cost.cost_cents is None
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[batch_no_cost.id],
+    )
+    assert errors == {}
+    op = _sale_ops(session)[0]
+    assert op.unit_cost_cents == 700
+
+
+def test_sale_credit_currency_matches_sold_batch_warehouse(session, product):
+    """CUR-02: the auto-recorded sale-credit CashMovement carries the sold
+    batch's warehouse currency, landing in that currency's balance bucket."""
+    eur_warehouse = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add(eur_warehouse)
+    session.commit()
+    eur_batch = _batch(session, product, eur_warehouse, qty=5)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=["10,00"],
+        batch_ids=[eur_batch.id],
+    )
+    assert errors == {}
+    assert finance.compute_balance(session, "EUR") == 1000
+    assert finance.compute_balance(session, "RUB") == 0
 
 
 # --- Web slice (routes + templates) ---
