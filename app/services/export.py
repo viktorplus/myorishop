@@ -32,8 +32,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import format_cents, iso_to_local
-from app.models import CASH_CATEGORIES, CashMovement, Customer, Operation, Product, Sale
+from app.core import DEFAULT_CURRENCY, format_cents, iso_to_local
+from app.models import (
+    CASH_CATEGORIES,
+    Batch,
+    CashMovement,
+    Customer,
+    Operation,
+    Product,
+    Sale,
+    Warehouse,
+)
 
 _INJECTION_PREFIXES = ("=", "+", "-", "@")
 
@@ -116,16 +125,28 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
     diverges from the newest-first UI listings elsewhere in this app).
     """
     query = (
-        select(Operation, Product, Sale, Customer)
+        select(Operation, Product, Sale, Customer, Warehouse.currency)
         .join(Product, Operation.product_id == Product.id)
         .outerjoin(Sale, Operation.sale_id == Sale.id)
         .outerjoin(Customer, Sale.customer_id == Customer.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
         .where(Operation.type == "sale")
         .order_by(Operation.created_at)
     )
-    header = ["Когда", "Код", "Товар", "Кол-во", "Цена", "Себестоимость", "Покупатель", "Кто"]
+    header = [
+        "Когда",
+        "Код",
+        "Товар",
+        "Кол-во",
+        "Цена",
+        "Себестоимость",
+        "Валюта",
+        "Покупатель",
+        "Кто",
+    ]
     rows = []
-    for op, product, sale, customer in session.execute(query).all():
+    for op, product, sale, customer, row_currency in session.execute(query).all():
         buyer = ""
         # Sale row may itself be None for very old/malformed data.
         if sale and customer:
@@ -138,6 +159,9 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
                 -op.qty_delta,
                 format_cents(op.unit_price_cents) if op.unit_price_cents is not None else "",
                 format_cents(op.unit_cost_cents) if op.unit_cost_cents is not None else "",
+                # CUR-02/LOCKED: a NULL-batch legacy row is RUB, same fallback
+                # rule as app.services.reports.operation_currency_clause.
+                row_currency or DEFAULT_CURRENCY,
                 buyer,
                 op.created_by,
             ]
@@ -189,11 +213,12 @@ def stream_cash_movements_csv(
         )
         .order_by(CashMovement.created_at)
     ).all()
-    header = ["Когда", "Категория", "Комментарий", "Сумма"]
+    header = ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
     rows = [
         [
             iso_to_local(movement.created_at, settings.display_tz),
             _csv_safe(CASH_CATEGORIES.get(movement.category, movement.category)),
+            movement.currency,
             _csv_safe(movement.note or ""),
             format_cents(movement.amount_cents),
         ]

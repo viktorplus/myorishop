@@ -133,15 +133,17 @@ def test_cash_movements_csv_bom_delimiter_and_header(session):
     text = body.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    assert rows[0] == ["Когда", "Категория", "Комментарий", "Сумма"]
+    assert rows[0] == ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
     assert len(rows) == 3
     # Oldest-first: both rows share the same timestamp, insertion order holds.
     assert rows[1][1] == "Оплата поставщику"
-    assert rows[1][2] == "Оплата"
-    assert rows[1][3] == "-12,00"
+    assert rows[1][2] == "RUB"
+    assert rows[1][3] == "Оплата"
+    assert rows[1][4] == "-12,00"
     assert rows[2][1] == "Продажа"
-    assert rows[2][2] == ""
-    assert rows[2][3] == "30,00"
+    assert rows[2][2] == "RUB"
+    assert rows[2][3] == ""
+    assert rows[2][4] == "30,00"
 
 
 def test_cash_movements_csv_null_note_renders_empty(session, monkeypatch):
@@ -154,7 +156,7 @@ def test_cash_movements_csv_null_note_renders_empty(session, monkeypatch):
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    assert rows[1][2] == ""
+    assert rows[1][3] == ""
     assert "None" not in text
 
 
@@ -173,7 +175,7 @@ def test_cash_movements_csv_escapes_formula_injection_note(session, monkeypatch)
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    assert rows[1][2] == "'=CMD()"
+    assert rows[1][3] == "'=CMD()"
 
 
 def test_cash_movements_csv_half_open_period_and_order(session):
@@ -196,7 +198,7 @@ def test_cash_movements_csv_half_open_period_and_order(session):
     rows = list(reader)
     # Only the start_iso row is in-period; the end_iso row is excluded.
     assert len(rows) == 2
-    assert rows[1][3] == "10,00"
+    assert rows[1][4] == "10,00"
 
 
 # --- route-level: /export page + three download routes (Task 2) ------------
@@ -281,6 +283,7 @@ def test_sales_csv_roundtrip(client, session, product):
         "Кол-во",
         "Цена",
         "Себестоимость",
+        "Валюта",
         "Покупатель",
         "Кто",
     ]
@@ -288,9 +291,61 @@ def test_sales_csv_roundtrip(client, session, product):
     assert rows[1][1] == product.code
     assert rows[1][2] == product.name
     assert rows[1][3] == "2"
+    # CUR-02: the sold batch's warehouse currency (default RUB via _ensure_batch).
+    assert rows[1][6] == "RUB"
     # Formula-injection-prefixed customer name is escaped with a leading apostrophe.
-    assert rows[1][6] == "'=cmd Тестова"
-    assert rows[1][7] == settings.operator_name
+    assert rows[1][7] == "'=cmd Тестова"
+    assert rows[1][8] == settings.operator_name
+
+
+def test_sales_csv_labels_non_default_currency(client, session, product):
+    """CUR-02: a sale whose batch lives in a non-RUB warehouse is labelled correctly."""
+    eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add(eur_wh)
+    session.flush()
+    eur_batch = Batch(id=new_id(), product_id=product.id, warehouse_id=eur_wh.id, quantity=0)
+    session.add(eur_batch)
+    header = Sale(
+        id=new_id(), customer_id=None, created_at=utcnow_iso(), created_by=settings.operator_name
+    )
+    session.add(header)
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-1,
+        unit_cost_cents=500,
+        unit_price_cents=800,
+        sale_id=header.id,
+        batch_id=eur_batch.id,
+    )
+    session.commit()
+
+    response = client.get("/export/sales.csv")
+    text = response.content.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    assert rows[1][6] == "EUR"
+
+
+def test_cash_movements_csv_labels_non_default_currency(session):
+    """CUR-02: a cash movement recorded with currency=EUR is labelled correctly."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid = "2026-07-10T10:00:00+00:00"
+    import app.services.finance as finance_module
+
+    original_utcnow_iso = finance_module.utcnow_iso
+    finance_module.utcnow_iso = lambda: mid
+    try:
+        record_cash_movement(session, category="sale", amount_cents=1000, currency="EUR")
+    finally:
+        finance_module.utcnow_iso = original_utcnow_iso
+
+    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    text = _stream_body(response).decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    assert rows[1][2] == "EUR"
 
 
 def test_customers_csv_roundtrip(client, session):
