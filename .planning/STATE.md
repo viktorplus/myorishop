@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-07-22
+Last activity: 2026-08-10 - Completed quick task 260810-2g3: currency correctness part 2 (per-currency reports/cash, no mixed-currency basket, transfer cost in destination currency)
 
 ## Performance Metrics
 
@@ -204,6 +204,7 @@ None yet.
 | 260721-f39 | Add category filter dropdown to /products (converted free-text input to a <select> sourced from category_options) and /dictionary (brand-new filter <select> sourced from the fixed RUBRICS list, exact match on Dictionary.rubric) | 2026-07-21 | b9c3bdb | [260721-f39-add-category-filter-dropdown-to-products](./quick/260721-f39-add-category-filter-dropdown-to-products/) |
 | 260721-fu0 | Add scripts/reset_business_data.py (dialect-aware wipe of products/customers/sales/operations/cash/batches only, typed-confirmation gated, no --force bypass, works on local SQLite and server PostgreSQL) and scripts/load_test_data.py (10 customers + exactly 10 operations of each of the 9 ledger types, service-layer only) | 2026-07-21 | 8061a99 | [260721-fu0-add-reset-business-data-and-load-test-da](./quick/260721-fu0-add-reset-business-data-and-load-test-da/) |
 | 260721-oti | Merge 121 corrected product names from reports/dictionary_refresh_results.json into app/services/rubric_overrides.json (name field only, 1784 entries preserved, conf/rubric untouched); full-replace re-import applied locally (mismatch=0) and on s1 (git pull + docker compose up -d --build image rebuild + containerized import, since rubric_overrides.json is COPY-baked into the ori-app image, not volume-mounted) | 2026-07-21 | 5940b3f | [260721-oti-merge-121-dictionary-name-fixes-into-rub](./quick/260721-oti-merge-121-dictionary-name-fixes-into-rub/) |
+| 260810-2g3 | Currency correctness part 2 (continues cdcec66): cash_movements.currency + batches.cost_cents (migrations 0024/0025/0026); per-currency balance/history/cash-flow/stock-valuation/sales-profit/dashboard behind a mandatory currency filter (never a cross-currency SUM); mixed-currency sale baskets rejected pre-write; cross-currency transfers require a destination-currency cost; «Валюта» column on CSV exports; legacy NULL-batch ledger rows bucket as RUB via the shared operation_currency_clause (outer join + COALESCE, never an inner join) | 2026-08-10 | bb0b759 | [260810-2g3-currency-correctness-part-2-per-currency](./quick/260810-2g3-currency-correctness-part-2-per-currency/) |
 
 ## Deferred Items
 
