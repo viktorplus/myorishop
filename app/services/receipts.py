@@ -215,6 +215,7 @@ def register_receipt(
             name=batch_name,
             expiry=expiry,
             price_cents=sale_cents,
+            cost_cents=cost_cents,  # CUR-02: batch cost in the warehouse's currency
             location=location_raw.strip() or None,
             comment=comment_raw.strip() or None,
             quantity=0,

@@ -63,7 +63,8 @@
             warehouses = warehouses | default([]),
             dest_warehouse_id_value = form.dest_warehouse_id or '',
             new_expiry_value = form.new_expiry or '',
-            new_comment_value = form.new_comment or '' %}
+            new_comment_value = form.new_comment or '',
+            cost_value = form.cost or '' %}
     {% include "partials/transfer_batch_wrap.html" %}
     {% endwith %}
 

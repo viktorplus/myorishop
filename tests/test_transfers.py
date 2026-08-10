@@ -340,6 +340,76 @@ def test_cross_warehouse_blank_overrides_still_inherits_unchanged(session, stock
     assert dest.comment == source.comment
 
 
+def _eur_warehouse(session):
+    """Seed and return a second active warehouse with a different currency."""
+    wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
+def test_cross_currency_transfer_blank_cost_rejected_zero_writes(session, stocked_product):
+    """CUR-02: a cross-currency transfer with a blank cost is rejected, zero writes."""
+    from sqlalchemy import select
+
+    from app.models import Operation
+    from app.services.transfers import COST_REQUIRED_ERROR
+
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _eur_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+    )
+    assert result is None
+    assert errors == {"cost": COST_REQUIRED_ERROR}
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
+
+
+def test_cross_currency_transfer_with_cost_succeeds(session, stocked_product):
+    """CUR-02: a cross-currency transfer with an entered cost writes the
+    destination batch's cost_cents from the entered value."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _eur_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+        cost_raw="9,50",
+    )
+    assert errors == {}
+    assert result["dest"].cost_cents == 950
+
+
+def test_same_currency_transfer_blank_cost_inherits_source(session, stocked_product):
+    """CUR-02: a same-currency transfer with a blank cost inherits source.cost_cents."""
+    source = _source_batch(session, stocked_product, qty=8)
+    source.cost_cents = 400
+    session.commit()
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+    )
+    assert errors == {}
+    assert result["dest"].cost_cents == 400
+
+
 def test_same_warehouse_override_field_with_only_whitespace_treated_as_blank(
     session, stocked_product
 ):

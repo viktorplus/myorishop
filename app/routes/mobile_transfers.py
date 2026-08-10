@@ -96,6 +96,7 @@ def _render_dest_step(
     dest_warehouse_id: str = "",
     new_expiry: str = "",
     new_comment: str = "",
+    cost: str = "",
     errors: dict | None = None,
     oversell: dict | None = None,
     saved: dict | None = None,
@@ -111,6 +112,7 @@ def _render_dest_step(
         "qty": qty,
         "new_expiry": new_expiry,
         "new_comment": new_comment,
+        "cost": cost,
         "errors": errors or {},
         "oversell": oversell,
         "saved": saved,
@@ -181,6 +183,7 @@ def transfers_step_dest(
     name: str = Form(""),
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
+    cost: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -196,6 +199,7 @@ def transfers_step_dest(
         name=name,
         new_expiry=new_expiry,
         new_comment=new_comment,
+        cost=cost,
     )
 
 
@@ -209,6 +213,7 @@ def transfers_create(
     dest_warehouse_id: str = Form(""),
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
+    cost: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -225,6 +230,7 @@ def transfers_create(
             dest_warehouse_id=dest_warehouse_id,
             new_expiry=new_expiry,
             new_comment=new_comment,
+            cost_raw=cost,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500
@@ -241,6 +247,7 @@ def transfers_create(
             dest_warehouse_id=dest_warehouse_id,
             new_expiry=new_expiry,
             new_comment=new_comment,
+            cost=cost,
             errors={"form": SAVE_FAILED_ERROR},
             status_code=422,
         )
@@ -258,6 +265,7 @@ def transfers_create(
             dest_warehouse_id=dest_warehouse_id,
             new_expiry=new_expiry,
             new_comment=new_comment,
+            cost=cost,
             oversell=result["oversell"],
         )
 
@@ -272,6 +280,7 @@ def transfers_create(
             dest_warehouse_id=dest_warehouse_id,
             new_expiry=new_expiry,
             new_comment=new_comment,
+            cost=cost,
             errors=errors,
             status_code=422,
         )

@@ -15,9 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import new_id
-from app.models import Batch, Operation, Product
+from app.core import new_id, to_cents
+from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses
+from app.services.catalog import PRICE_ERROR
 from app.services.ledger import record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
@@ -29,6 +30,12 @@ SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR = (
     "новое состояние/комментарий — иначе получится пустой дубликат партии."
 )
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
+# CUR-02: a transfer into a different-currency warehouse always requires a
+# real destination cost — no conversion, no FX rate.
+COST_REQUIRED_ERROR = (
+    "Укажите себестоимость партии в валюте склада назначения — "
+    "склады используют разную валюту."
+)
 
 
 def register_transfer(
@@ -41,6 +48,7 @@ def register_transfer(
     dest_warehouse_id: str = "",
     new_expiry: str = "",
     new_comment: str = "",
+    cost_raw: str = "",
     confirm: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one stock transfer atomically; returns (result, errors).
@@ -93,6 +101,29 @@ def register_transfer(
     if dest_warehouse_id not in active_ids:
         return None, {"warehouse": WAREHOUSE_ERROR}
 
+    # CUR-02: a cross-currency transfer REQUIRES an entered destination cost
+    # (no conversion — the operator states the real cost in the destination
+    # warehouse's own currency); a same-currency transfer accepts an optional
+    # cost and otherwise inherits the source batch's cost_cents unchanged.
+    dest_warehouse = session.get(Warehouse, dest_warehouse_id)
+    source_warehouse = session.get(Warehouse, source.warehouse_id)
+    cost_text = cost_raw.strip()
+    if dest_warehouse.currency != source_warehouse.currency:
+        if not cost_text:
+            return None, {"cost": COST_REQUIRED_ERROR}
+        try:
+            cost_cents = to_cents(cost_text)
+        except ValueError:
+            return None, {"cost": PRICE_ERROR}
+    else:
+        if not cost_text:
+            cost_cents = source.cost_cents
+        else:
+            try:
+                cost_cents = to_cents(cost_text)
+            except ValueError:
+                return None, {"cost": PRICE_ERROR}
+
     # D-06/D-07: same-warehouse split is allowed only when at least one
     # override is supplied (else it would create an empty duplicate batch).
     # .strip() discipline, never a bare truthy check (Test F).
@@ -133,6 +164,7 @@ def register_transfer(
         name=source.name,
         expiry=new_expiry_clean if new_expiry_clean else source.expiry,
         price_cents=source.price_cents,
+        cost_cents=cost_cents,
         location=source.location,
         comment=new_comment_clean if new_comment_clean else source.comment,
         quantity=0,

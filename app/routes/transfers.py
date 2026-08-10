@@ -143,6 +143,7 @@ def transfers_create(
     dest_warehouse_id: str = Form(""),
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
+    cost: str = Form(""),
     confirm: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -155,6 +156,7 @@ def transfers_create(
         "dest_warehouse_id": dest_warehouse_id,
         "new_expiry": new_expiry,
         "new_comment": new_comment,
+        "cost": cost,
     }
     # WH-03/D-10: resolve the picked batch (if any) for the re-echoed picker +
     # dest select on a 422/warn re-render — re-validate ownership the same
@@ -180,6 +182,7 @@ def transfers_create(
             dest_warehouse_id=dest_warehouse_id,
             new_expiry=new_expiry,
             new_comment=new_comment,
+            cost_raw=cost,
             confirm=confirm,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500

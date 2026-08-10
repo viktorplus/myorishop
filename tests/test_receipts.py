@@ -296,6 +296,53 @@ def test_register_receipt_topup_freezes_batch_price(session, product, warehouse)
     assert batch.price_cents == 1000  # frozen — NOT rewritten to 9900
 
 
+def test_register_receipt_new_batch_stores_cost_cents(session, product, warehouse):
+    """CUR-02: a new batch stores its entered cost as Batch.cost_cents."""
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="5",
+        cost_raw="7,50",
+        sale_raw="12,00",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    assert result["batch"].cost_cents == 750
+
+
+def test_register_receipt_topup_leaves_batch_cost_cents_unchanged(session, product, warehouse):
+    """CUR-02: a top-up never rewrites the chosen batch's frozen cost_cents."""
+    first, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="4",
+        cost_raw="5,00",
+        sale_raw="10,00",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    batch = first["batch"]
+    assert batch.cost_cents == 500
+
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Крем",
+        qty_raw="3",
+        cost_raw="99,00",
+        sale_raw="99,00",
+        warehouse_id=warehouse.id,
+        batch_choice=batch.id,
+    )
+    assert errors == {}
+    session.refresh(batch)
+    assert batch.cost_cents == 500  # frozen — NOT rewritten to 9900
+
+
 def test_register_receipt_rejects_foreign_product_batch(session, product, warehouse):
     """Pitfall 10 / T-09-04: another product's batch -> rejected, zero writes."""
     other = Product(id=new_id(), code="OTHER-1", name="Другой", quantity=0)

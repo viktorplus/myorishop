@@ -66,6 +66,18 @@
       <input type="text" id="new_comment" name="new_comment" value="{{ new_comment | default('') }}">
     </div>
 
+    {# CUR-02: required only when the destination warehouse's currency
+       differs from the source batch's — otherwise optional (inherits
+       source.cost_cents when left blank). #}
+    <div class="field">
+      <label for="cost">Себестоимость партии в валюте склада назначения</label>
+      <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
+             value="{{ cost | default('') }}">
+      <p class="muted">Обязательно, если склад назначения использует другую валюту, иначе можно
+        оставить пустым — унаследуется от партии-источника.</p>
+      {% if errors is defined and errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
+    </div>
+
     <div class="mobile-actions">
       {# WR-02: tojson correctly escapes a double quote inside code for both
          JSON and this HTML attribute. #}

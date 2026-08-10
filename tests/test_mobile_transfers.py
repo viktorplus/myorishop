@@ -216,6 +216,95 @@ def test_transfers_happy_path_writes_two_rows_and_preserves_history(
     assert dest_batch.location == source.location
 
 
+def _eur_warehouse(session, name="Склад EUR"):
+    wh = Warehouse(id=new_id(), name=name, currency="EUR")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
+def test_transfers_create_cross_currency_blank_cost_rejected_zero_writes(
+    mobile_client_factory, session, stocked_product
+):
+    """CUR-02: a cross-currency transfer with a blank cost is rejected, zero writes."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _eur_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Укажите себестоимость партии" in response.text
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
+
+
+def test_transfers_create_cross_currency_with_cost_succeeds(
+    mobile_client_factory, session, stocked_product
+):
+    """CUR-02: a cross-currency transfer with an entered cost writes the
+    destination batch's cost_cents from the entered value."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _eur_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+            "cost": "9,50",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+    from app.services.batches import open_batches
+
+    dest_batch = open_batches(session, stocked_product.id, dest_wh.id)[0]
+    assert dest_batch.cost_cents == 950
+
+
+def test_transfers_create_same_currency_blank_cost_inherits_source(
+    mobile_client_factory, session, stocked_product
+):
+    """CUR-02: a same-currency transfer with a blank cost inherits source.cost_cents."""
+    source = _source_batch(session, stocked_product)
+    source.cost_cents = 400
+    session.commit()
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    from app.services.batches import open_batches
+
+    dest_batch = open_batches(session, stocked_product.id, dest_wh.id)[0]
+    assert dest_batch.cost_cents == 400
+
+
 def test_transfers_dest_list_includes_source_even_with_two_warehouses(
     mobile_client_factory, session, stocked_product
 ):
