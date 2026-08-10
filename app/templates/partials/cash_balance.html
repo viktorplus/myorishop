@@ -1,4 +1,7 @@
 {# Cash balance figure (FIN-06). Keeps the existing .num/bold treatment.
    The `oob` flag lets a successful POST refresh the balance in place via an
-   out-of-band swap (mirrors writeoff_rows' oob pattern). #}
-<p id="cash-balance" class="num"{% if oob %} hx-swap-oob="true"{% endif %}><strong>{{ balance_cents | cents }}</strong></p>
+   out-of-band swap (mirrors writeoff_rows' oob pattern). CUR-02: rendered
+   WITH its currency symbol — this is the one place the active currency
+   becomes visible on every render of this partial (desktop + mobile, page
+   load + oob refresh). #}
+<p id="cash-balance" class="num"{% if oob %} hx-swap-oob="true"{% endif %}><strong>{{ balance_cents | money(currency) }}</strong></p>

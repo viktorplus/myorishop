@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import new_id, to_cents, utcnow_iso
+from app.core import CURRENCIES, DEFAULT_CURRENCY, new_id, to_cents, utcnow_iso
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.security import author_fields
@@ -26,6 +26,7 @@ AMOUNT_ERROR = "Введите сумму больше нуля."
 CATEGORY_ERROR = "Выберите категорию."
 NOTE_REQUIRED_ERROR = "Укажите комментарий."
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
+CURRENCY_ERROR = "Выберите валюту из списка."
 
 # D-04: these two manual categories require a non-blank free-text comment.
 _NOTE_REQUIRED_CATEGORIES = frozenset({"withdrawal_other", "deposit_correction"})
@@ -49,6 +50,7 @@ def record_cash_movement(
     *,
     category: str,
     amount_cents: int,
+    currency: str = DEFAULT_CURRENCY,
     sale_id: str | None = None,
     note: str | None = None,
     commit: bool = True,
@@ -61,12 +63,17 @@ def record_cash_movement(
     through as-is — callers pass a positive credit or a negative debit;
     NEVER coerce to float/Decimal (D-00b).
 
+    CUR-02: `currency` defaults to RUB so every pre-existing call site keeps
+    working unchanged; an unknown code raises (mirrors the category guard).
+
     WR-03: commit=False stages the row without committing so a caller can
     combine several writes into one transaction (mirrors record_operation's
     commit flag).
     """
     if category not in CASH_CATEGORIES:
         raise ValueError(f"unknown cash category: {category!r}")
+    if currency not in CURRENCIES:
+        raise ValueError(f"unknown currency: {currency!r}")
 
     # USER-05: stamp the request-scoped author at the single write path,
     # identically to ledger.record_operation. author_fields() falls back to
@@ -76,6 +83,7 @@ def record_cash_movement(
         id=new_id(),
         category=category,
         amount_cents=amount_cents,
+        currency=currency,
         sale_id=sale_id,
         note=note,
         author_id=author_id,
@@ -96,6 +104,7 @@ def record_manual_movement(
     category: str,
     amount_raw: str,
     note: str,
+    currency: str = "",
     confirm: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Manual cash entry (D-02): the thin write wrapper around the single path.
@@ -105,6 +114,10 @@ def record_manual_movement(
     identically. Everything client-supplied is untrusted (V5): the category
     allow-list, the amount parse, the sign, the mandatory-comment rule and the
     negative-balance gate are all enforced HERE, never in the route.
+
+    CUR-02: `currency` is normalized the same way `warehouses._clean_currency`
+    does — blank means DEFAULT_CURRENCY, anything else must be a CURRENCIES
+    key or a validation error (never a silently stored unknown code).
 
     Success: ``({"movement": mv}, {})``. Validation failure: ``(None, errors)``
     with RU messages and ZERO writes. The negative-balance warn returns
@@ -121,6 +134,14 @@ def record_manual_movement(
     is_deposit = category in CASH_BUCKETS["deposit"]
     if not (is_withdrawal or is_deposit):
         errors["category"] = CATEGORY_ERROR
+
+    # (1a) Currency allow-list (T-quick-260810-01), same normalization as
+    # warehouses._clean_currency: blank -> DEFAULT_CURRENCY, else must be known.
+    currency_code = (currency or "").strip().upper()
+    if not currency_code:
+        currency_code = DEFAULT_CURRENCY
+    elif currency_code not in CURRENCIES:
+        errors["currency"] = CURRENCY_ERROR
 
     # (2) Parse the amount via the ONLY sanctioned money parser; reject
     # blank/zero/negative/non-integer server-side (T-16-01/D-02a).
@@ -145,10 +166,20 @@ def record_manual_movement(
         return None, {"note": NOTE_REQUIRED_ERROR}
 
     # (6) Negative-balance warn-but-allow gate (T-16-05/D-05) — withdrawals only;
-    # the would-be balance is recomputed LIVE, never trusted from the client.
-    if is_withdrawal and confirm != "1" and compute_balance(session) + amount_cents < 0:
+    # the would-be balance is recomputed LIVE, never trusted from the client,
+    # scoped to the SAME currency this movement will be recorded in.
+    if (
+        is_withdrawal
+        and confirm != "1"
+        and compute_balance(session, currency_code) + amount_cents < 0
+    ):
         return (
-            {"negative_balance": {"balance": compute_balance(session), "amount": -amount_cents}},
+            {
+                "negative_balance": {
+                    "balance": compute_balance(session, currency_code),
+                    "amount": -amount_cents,
+                }
+            },
             {},
         )
 
@@ -158,6 +189,7 @@ def record_manual_movement(
             session,
             category=category,
             amount_cents=amount_cents,
+            currency=currency_code,
             note=note.strip() or None,
             commit=True,
         )
@@ -168,23 +200,29 @@ def record_manual_movement(
     return {"movement": mv}, {}
 
 
-def compute_balance(session: Session) -> int:
-    """Recompute the whole-till cash balance from the ledger alone (D-00b).
+def compute_balance(session: Session, currency: str = DEFAULT_CURRENCY) -> int:
+    """Recompute the cash balance for ONE currency from the ledger alone (D-00b).
 
-    Live SUM(amount_cents) — no WHERE clause, no cache. 0 on an empty
-    ledger; the signed sum otherwise.
+    Live SUM(amount_cents) scoped to `currency` — no cache. 0 on an empty
+    ledger for that currency; the signed sum otherwise. CUR-02: defaults to
+    RUB so every pre-existing call site keeps working unchanged.
     """
-    return session.scalar(select(func.coalesce(func.sum(CashMovement.amount_cents), 0)))
+    return session.scalar(
+        select(func.coalesce(func.sum(CashMovement.amount_cents), 0)).where(
+            CashMovement.currency == currency
+        )
+    )
 
 
 def cash_history_view(
     session: Session,
     *,
+    currency: str = DEFAULT_CURRENCY,
     bucket: str | None = None,
     page: int = 0,
     page_size: int = LIST_PAGE_SIZE,
 ) -> dict:
-    """Paginated, bucket-filtered, newest-first read over the whole cash ledger (D-07).
+    """Paginated, bucket-filtered, newest-first read over ONE currency's cash ledger (D-07).
 
     Mirrors operations.history_view but SIMPLER — bare CashMovement rows, no
     Product/Batch join. The «Тип» filter is a COARSE bucket, not an exact
@@ -193,10 +231,17 @@ def cash_history_view(
     «Снятие»'s 5 categories). An unknown/tampered bucket resolves to None and is
     ignored (no filter), mirroring history_view's OPERATION_TYPES membership
     guard (T-16-07). An out-of-range page is clamped server-side (T-14-04).
-    Portable ORM only — no raw/SQLite-specific SQL.
+    CUR-02: `currency` defaults to RUB so every pre-existing call site keeps
+    working unchanged. Portable ORM only — no raw/SQLite-specific SQL.
     """
-    stmt = select(CashMovement).order_by(*_CASH_DEFAULT_ORDER)
-    count_stmt = select(func.count()).select_from(CashMovement)
+    stmt = select(CashMovement).where(CashMovement.currency == currency).order_by(
+        *_CASH_DEFAULT_ORDER
+    )
+    count_stmt = (
+        select(func.count())
+        .select_from(CashMovement)
+        .where(CashMovement.currency == currency)
+    )
 
     cats = CASH_BUCKETS.get(bucket) if bucket else None
     if cats:
@@ -214,4 +259,5 @@ def cash_history_view(
         "total": total,
         "total_pages": total_pages,
         "bucket": bucket or "",
+        "currency": currency,
     }

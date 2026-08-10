@@ -27,6 +27,7 @@ from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
     CASH_CATEGORIES,
     CashMovement,
     Operation,
+    Warehouse,
 )
 from app.services.batches import open_batches
 from app.services.finance import (
@@ -96,6 +97,35 @@ def test_balance_sums_mixed(session):
     record_cash_movement(session, category="sale", amount_cents=12500)
     record_cash_movement(session, category="return", amount_cents=-5000)
     assert compute_balance(session) == 7500
+
+
+def test_balance_scopes_by_currency(session):
+    """CUR-02: compute_balance is scoped to ONE currency; the two never sum."""
+    session.add(Warehouse(id=new_id(), name="Склад EUR", currency="EUR"))
+    session.commit()
+    record_cash_movement(session, category="sale", amount_cents=1000)  # RUB default
+    record_cash_movement(session, category="sale", amount_cents=2000, currency="EUR")
+
+    assert compute_balance(session, "RUB") == 1000
+    assert compute_balance(session, "EUR") == 2000
+    assert compute_balance(session, "RUB") != compute_balance(session, "RUB") + compute_balance(
+        session, "EUR"
+    )
+
+
+def test_record_manual_movement_writes_entered_currency(session):
+    """CUR-02: record_manual_movement's written row carries the entered currency."""
+    session.add(Warehouse(id=new_id(), name="Склад EUR", currency="EUR"))
+    session.commit()
+    result, errors = record_manual_movement(
+        session,
+        category="deposit_opening",
+        amount_raw="50,00",
+        note="",
+        currency="EUR",
+    )
+    assert errors == {}
+    assert result["movement"].currency == "EUR"
 
 
 def test_contract_stamps_audit_and_seq(session):
@@ -323,6 +353,17 @@ def test_page_empty_shows_zero(client):
     assert "0,00" in response.text
 
 
+def test_web_finance_renders_non_empty_currency_selects_rub_default(client):
+    """CLAUDE.md select check: /finance's withdraw + deposit forms each render
+    a non-empty currency select, RUB preselected by default."""
+    response = client.get("/finance")
+    assert response.status_code == 200
+    assert response.text.count('name="currency"') >= 2
+    for code in ("RUB", "UAH", "EUR"):
+        assert f'value="{code}"' in response.text
+    assert 'value="RUB" selected' in response.text
+
+
 def test_page_shows_balance(client, session):
     """FIN-06: GET /finance renders the live balance via the cents filter."""
     record_cash_movement(session, category="sale", amount_cents=12500)
@@ -514,6 +555,7 @@ def test_cash_history_empty(session):
         "total": 0,
         "total_pages": 1,
         "bucket": "",
+        "currency": "RUB",
     }
 
 

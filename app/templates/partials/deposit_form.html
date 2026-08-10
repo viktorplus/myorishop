@@ -19,6 +19,20 @@
       {% if errors.amount %}<p class="error">{{ errors.amount }}</p>{% endif %}
     </div>
 
+    {# CUR-02: currency picker, RUB preselected — tolerates both the 422-error
+       path (only form.currency) and the page-context path (also the outer
+       `currency` filter var). #}
+    {% set selected_currency = form.currency or currency|default('') or DEFAULT_CURRENCY %}
+    <div class="field">
+      <label for="deposit-currency">Валюта</label>
+      <select id="deposit-currency" name="currency">
+        {% for code, symbol in CURRENCIES.items() %}
+        <option value="{{ code }}"{% if code == selected_currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
+        {% endfor %}
+      </select>
+      {% if errors.currency %}<p class="error">{{ errors.currency }}</p>{% endif %}
+    </div>
+
     <div class="field">
       <label for="deposit-category">Основание</label>
       <select id="deposit-category" name="category">
