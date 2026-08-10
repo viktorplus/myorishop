@@ -305,10 +305,83 @@ def test_recent_operations_never_uses_bare_join_for_sale_or_customer():
 def test_dashboard_context_no_catalog_row_returns_none_and_full_composition(session):
     result = dashboard_context(session, TZ)
     assert result["catalog"] is None
-    assert set(result) == {"weekday", "date", "time", "catalog", "metrics", "stock", "feed"}
+    assert set(result) == {
+        "weekday",
+        "date",
+        "time",
+        "catalog",
+        "metrics",
+        "stock",
+        "feed",
+        "currency",
+    }
     assert result["metrics"]["today"]["revenue_cents"] == 0
     assert "product_count" in result["stock"]
     assert result["feed"] == []
+    assert result["currency"] == "RUB"
     # Zero ledger writes: nothing pending on the session after a read-only call.
     assert not session.new
     assert not session.dirty
+
+
+# --- CUR-02: currency scoping -------------------------------------------------
+
+
+def test_stock_summary_scopes_by_currency(session):
+    """CUR-02: two warehouses of different currencies never sum into stock_summary."""
+    rub_wh = Warehouse(id=new_id(), name="Склад RUB")
+    eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add_all([rub_wh, eur_wh])
+    product = Product(id=new_id(), code="D1", name="Товар D1", quantity=5)
+    session.add(product)
+    session.flush()
+    rub_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=rub_wh.id,
+        quantity=2, cost_cents=900, price_cents=1400,
+    )
+    eur_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=eur_wh.id,
+        quantity=3, cost_cents=500, price_cents=800,
+    )
+    session.add_all([rub_batch, eur_batch])
+    session.commit()
+
+    rub_result = stock_summary(session, "RUB")
+    eur_result = stock_summary(session, "EUR")
+    assert rub_result["cost_value_cents"] == 1800
+    assert eur_result["cost_value_cents"] == 1500
+    assert rub_result != eur_result
+
+
+def test_dashboard_context_currency_param_scopes_metrics_and_stock(session):
+    result_rub = dashboard_context(session, TZ, "RUB")
+    result_eur = dashboard_context(session, TZ, "EUR")
+    assert result_rub["currency"] == "RUB"
+    assert result_eur["currency"] == "EUR"
+
+
+def test_web_home_renders_currency_select_and_switches_stock_tile(client, session):
+    """CUR-02: / renders a non-empty currency select (RUB default), and
+    ?currency=EUR changes the rendered stock tile figures."""
+    eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add(eur_wh)
+    product = Product(id=new_id(), code="D2", name="Товар D2", quantity=4)
+    session.add(product)
+    session.flush()
+    eur_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=eur_wh.id,
+        quantity=4, cost_cents=700, price_cents=1200,
+    )
+    session.add(eur_batch)
+    session.commit()
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert '<select id="currency" name="currency"' in response.text
+    assert '<option value="RUB" selected>' in response.text
+
+    rub_response = client.get("/", params={"currency": "RUB"})
+    eur_response = client.get("/", params={"currency": "EUR"})
+    assert rub_response.status_code == 200
+    assert eur_response.status_code == 200
+    assert rub_response.text != eur_response.text

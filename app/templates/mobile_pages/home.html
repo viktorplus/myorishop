@@ -5,6 +5,19 @@
 
 <h2>Показатели</h2>
 <p class="muted">{{ weekday }}, {{ date }} · {{ time }}</p>
+
+{# CUR-02: currency switcher — a plain GET/full page reload. #}
+<form method="get" action="/m/">
+  <div class="field">
+    <label for="currency">Валюта</label>
+    <select id="currency" name="currency" onchange="this.form.submit()">
+      {% for code, symbol in CURRENCIES.items() %}
+      <option value="{{ code }}"{% if code == currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
 <p>
   {%- if not catalog -%}
   Активный каталог не задан. <a href="/catalogs">Указать номер и дату закрытия</a>.

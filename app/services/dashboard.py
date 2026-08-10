@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core import local_day_bounds_utc
+from app.core import DEFAULT_CURRENCY, local_day_bounds_utc
 from app.models import ActiveCatalog, Batch, Customer, Operation, Product, Sale
 from app.services.active_catalog import get_active_catalog
 from app.services.finance_reports import cash_expense_total, stock_valuation
@@ -72,7 +72,13 @@ def catalog_status(catalog: ActiveCatalog | None, today: date) -> dict | None:
     }
 
 
-def period_metrics(session: Session, start_day: date, end_day: date, tz_name: str) -> dict:
+def period_metrics(
+    session: Session,
+    start_day: date,
+    end_day: date,
+    tz_name: str,
+    currency: str = DEFAULT_CURRENCY,
+) -> dict:
     """Revenue/net-profit/expense for one local calendar-day range (DASH-03).
 
     Mirrors app/routes/finance.py::_metrics_context's single-period shape:
@@ -81,10 +87,14 @@ def period_metrics(session: Session, start_day: date, end_day: date, tz_name: st
     set Финансы uses, never cost-of-goods-sold) — rendered as-is, never
     negated here. `profit_cents` is the NET figure: gross + expense, D-08,
     addition only (never subtraction).
+
+    CUR-02: `currency` scopes both the sales/profit and expense halves to ONE
+    currency, delegating to sales_profit_report's shared operation_currency_clause
+    legacy-row fallback — never re-implemented here.
     """
     start_iso, end_iso = local_day_bounds_utc(start_day, end_day, tz_name)
-    gross = sales_profit_report(session, start_iso, end_iso)
-    expense_cents = cash_expense_total(session, start_iso, end_iso)
+    gross = sales_profit_report(session, start_iso, end_iso, currency=currency)
+    expense_cents = cash_expense_total(session, start_iso, end_iso, currency=currency)
     return {
         "revenue_cents": gross["totals"]["revenue_cents"],
         "profit_cents": gross["totals"]["profit_cents"] + expense_cents,
@@ -92,7 +102,7 @@ def period_metrics(session: Session, start_day: date, end_day: date, tz_name: st
     }
 
 
-def dashboard_metrics(session: Session, tz_name: str) -> dict:
+def dashboard_metrics(session: Session, tz_name: str, currency: str = DEFAULT_CURRENCY) -> dict:
     """today/week/month period_metrics (DASH-03), D-09's 3x generalization.
 
     Boundary formulas replicated locally (not imported from app.routes.reports
@@ -106,13 +116,13 @@ def dashboard_metrics(session: Session, tz_name: str) -> dict:
     month_start = today.replace(day=1)
     month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
     return {
-        "today": period_metrics(session, today, today, tz_name),
-        "week": period_metrics(session, week_start, week_end, tz_name),
-        "month": period_metrics(session, month_start, month_end, tz_name),
+        "today": period_metrics(session, today, today, tz_name, currency),
+        "week": period_metrics(session, week_start, week_end, tz_name, currency),
+        "month": period_metrics(session, month_start, month_end, tz_name, currency),
     }
 
 
-def stock_summary(session: Session) -> dict:
+def stock_summary(session: Session, currency: str = DEFAULT_CURRENCY) -> dict:
     """Stock valuation + distinct-code count (DASH-04).
 
     product_count is a single SQL count aggregation (never a Python loop,
@@ -124,7 +134,7 @@ def stock_summary(session: Session) -> dict:
         .select_from(Product)
         .where(Product.deleted_at.is_(None), Product.quantity > 0)
     )
-    return {**stock_valuation(session), "product_count": product_count}
+    return {**stock_valuation(session, currency), "product_count": product_count}
 
 
 def recent_operations(session: Session, limit: int = 10) -> list[dict]:
@@ -152,7 +162,7 @@ def recent_operations(session: Session, limit: int = 10) -> list[dict]:
     ]
 
 
-def dashboard_context(session: Session, tz_name: str) -> dict:
+def dashboard_context(session: Session, tz_name: str, currency: str = DEFAULT_CURRENCY) -> dict:
     """The single composer call app/routes/home.py and mobile_home.py need.
 
     Never raises when no ActiveCatalog row exists (DASH-02's empty-state
@@ -163,7 +173,8 @@ def dashboard_context(session: Session, tz_name: str) -> dict:
     return {
         **dashboard_now(tz_name),
         "catalog": catalog_status(get_active_catalog(session), today),
-        "metrics": dashboard_metrics(session, tz_name),
-        "stock": stock_summary(session),
+        "metrics": dashboard_metrics(session, tz_name, currency),
+        "stock": stock_summary(session, currency),
         "feed": recent_operations(session, limit=10),
+        "currency": currency,
     }

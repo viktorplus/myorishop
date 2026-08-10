@@ -7,10 +7,11 @@ composition happens in app.services.dashboard.dashboard_context — this
 route only calls it and renders the result.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core import CURRENCIES, DEFAULT_CURRENCY
 from app.db import get_session
 from app.routes import templates
 from app.services.dashboard import dashboard_context
@@ -18,7 +19,14 @@ from app.services.dashboard import dashboard_context
 router = APIRouter()
 
 
+def _clean_query_currency(raw: str) -> str:
+    """CUR-02/T-quick-260810-02: an untrusted `?currency=` value never reaches
+    a WHERE clause unvalidated — anything outside CURRENCIES falls back to RUB."""
+    return raw if raw in CURRENCIES else DEFAULT_CURRENCY
+
+
 @router.get("/")
-def home(request: Request, session: Session = Depends(get_session)):
-    context = dashboard_context(session, settings.display_tz)
+def home(request: Request, currency: str = Query(""), session: Session = Depends(get_session)):
+    currency = _clean_query_currency(currency)
+    context = dashboard_context(session, settings.display_tz, currency)
     return templates.TemplateResponse(request, "pages/home.html", context)
