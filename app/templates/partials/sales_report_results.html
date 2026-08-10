@@ -13,11 +13,22 @@
     <label for="author">Пользователь</label>
     <select id="author" name="author"
             hx-get="/reports/sales" hx-trigger="change"
-            hx-include="[name='from'], [name='to']"
+            hx-include="[name='from'], [name='to'], [name='currency']"
             hx-target="#sales-results" hx-push-url="true">
       <option value=""{% if not author_id %} selected{% endif %}>Все пользователи</option>
       {% for u in users %}
       <option value="{{ u.id }}"{% if u.id == author_id %} selected{% endif %}>{{ u.display_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="currency">Валюта</label>
+    <select id="currency" name="currency"
+            hx-get="/reports/sales" hx-trigger="change"
+            hx-include="[name='from'], [name='to'], [name='author']"
+            hx-target="#sales-results" hx-push-url="true">
+      {% for code, symbol in CURRENCIES.items() %}
+      <option value="{{ code }}"{% if code == currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
       {% endfor %}
     </select>
   </div>

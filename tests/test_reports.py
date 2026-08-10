@@ -179,6 +179,66 @@ def test_sales_report_includes_deleted_product_for_past_period(session, product,
     assert report["by_product"][0]["product"] is product
 
 
+def test_sales_report_scopes_by_currency(session, product, monkeypatch):
+    """CUR-02: RUB and EUR sales in the same period never mix into one total."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+
+    rub_warehouse = Warehouse(id=new_id(), name="Склад RUB")
+    eur_warehouse = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add_all([rub_warehouse, eur_warehouse])
+    session.commit()
+    rub_batch = Batch(id=new_id(), product_id=product.id, warehouse_id=rub_warehouse.id, quantity=0)
+    eur_batch = Batch(id=new_id(), product_id=product.id, warehouse_id=eur_warehouse.id, quantity=0)
+    session.add_all([rub_batch, eur_batch])
+    session.commit()
+
+    import app.services.ledger as ledger_module
+
+    monkeypatch.setattr(ledger_module, "utcnow_iso", lambda: mid_day_iso)
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-1,
+        unit_cost_cents=500,
+        unit_price_cents=1000,
+        batch_id=rub_batch.id,
+    )
+    record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-2,
+        unit_cost_cents=500,
+        unit_price_cents=1000,
+        batch_id=eur_batch.id,
+    )
+
+    rub_report = sales_profit_report(session, start_iso, end_iso, currency="RUB")
+    eur_report = sales_profit_report(session, start_iso, end_iso, currency="EUR")
+    assert rub_report["totals"]["units_sold"] == 1
+    assert eur_report["totals"]["units_sold"] == 2
+
+
+def test_sales_report_legacy_null_batch_row_buckets_as_rub(session, product, past_sale, customer):
+    """LOCKED decision: a batch_id=None (pre-Phase-9) sale counts under RUB,
+    via the shared operation_currency_clause outer join — never dropped, and
+    MUST NOT appear under any other currency."""
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    mid_day_iso = "2026-07-10T10:00:00+00:00"
+    past_sale(
+        customer, product, created_at=mid_day_iso, qty=1, unit_price_cents=1000, batch_id=None
+    )
+
+    rub_report = sales_profit_report(session, start_iso, end_iso, currency="RUB")
+    uah_report = sales_profit_report(session, start_iso, end_iso, currency="UAH")
+    eur_report = sales_profit_report(session, start_iso, end_iso, currency="EUR")
+    assert rub_report["totals"]["units_sold"] == 1
+    assert uah_report["totals"]["units_sold"] == 0
+    assert eur_report["totals"]["units_sold"] == 0
+
+
 def _record_writeoff_at(
     session,
     monkeypatch,
@@ -314,6 +374,14 @@ def test_web_reports_sales_hx_request_returns_partial_only(client):
     assert response.status_code == 200
     assert "<html" not in response.text
     assert "<nav" not in response.text
+
+
+def test_web_reports_sales_renders_currency_select_rub_default(client):
+    """CUR-02: /reports/sales renders a non-empty currency select, RUB preselected."""
+    response = client.get("/reports/sales")
+    assert response.status_code == 200
+    assert '<select id="currency" name="currency"' in response.text
+    assert '<option value="RUB" selected>' in response.text
 
 
 def test_web_nav_has_reports_link(client):

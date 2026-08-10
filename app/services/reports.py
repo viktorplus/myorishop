@@ -14,11 +14,36 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import WRITEOFF_REASONS, Operation, Product
+from app.core import DEFAULT_CURRENCY
+from app.models import WRITEOFF_REASONS, Batch, Operation, Product, Warehouse
+
+
+def operation_currency_clause(currency: str):
+    """LOCKED decision: the shared currency predicate for Operation-based reports.
+
+    `Operation.batch_id` is nullable (pre-Phase-9 legacy rows, which predate
+    any warehouse/currency concept). Currency resolves via
+    `Operation.batch_id -> Batch.warehouse_id -> Warehouse.currency`, falling
+    back to `DEFAULT_CURRENCY` (RUB) when `batch_id IS NULL` — matching
+    migration 0023's backfill (every pre-existing row has always been RUB).
+
+    Callers MUST reach this predicate through an OUTER join chain
+    (`.outerjoin(Batch, Operation.batch_id == Batch.id)
+    .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)`) — an INNER
+    join would silently DROP legacy rows from every currency's report
+    instead of counting the NULL ones under RUB, which is a
+    data-loss-shaped bug. This is ONE shared helper, never re-implemented
+    inline per report.
+    """
+    return func.coalesce(Warehouse.currency, DEFAULT_CURRENCY) == currency
 
 
 def sales_profit_report(
-    session: Session, start_iso: str, end_iso: str, author_id: str | None = None
+    session: Session,
+    start_iso: str,
+    end_iso: str,
+    author_id: str | None = None,
+    currency: str = DEFAULT_CURRENCY,
 ) -> dict:
     """Sales/profit totals and per-product breakdown for a UTC [start_iso, end_iso) period.
 
@@ -32,14 +57,21 @@ def sales_profit_report(
     RESEARCH Pitfall 5: this report is historical — it deliberately does
     NOT filter Product.deleted_at, so a product soft-deleted after the
     period still appears in a report for a period before its deletion.
+
+    CUR-02: `currency` scopes the report to ONE currency, via the shared
+    operation_currency_clause helper (see its docstring for the LOCKED
+    legacy-row fallback rule).
     """
     stmt = (
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
         .where(
             Operation.type == "sale",
             Operation.created_at >= start_iso,
             Operation.created_at < end_iso,
+            operation_currency_clause(currency),
         )
     )
     # RPT-01 (Plan 08): optional operator filter — extra parameterized

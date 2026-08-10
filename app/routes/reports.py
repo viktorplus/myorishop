@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, local_day_bounds_utc
 from app.db import get_session
 from app.routes import templates
 from app.services.batches import expiring_batches
@@ -28,6 +28,12 @@ router = APIRouter()
 
 INVALID_DATE_ERROR = "Некорректная дата."
 INVERTED_RANGE_ERROR = "Проверьте даты: «с» должно быть раньше или равно «по»."
+
+
+def _clean_query_currency(raw: str) -> str:
+    """CUR-02/T-quick-260810-02: an untrusted `?currency=` value never reaches
+    a WHERE clause unvalidated — anything outside CURRENCIES falls back to RUB."""
+    return raw if raw in CURRENCIES else DEFAULT_CURRENCY
 
 
 def _resolve_period(from_raw: str, to_raw: str, tz_name: str) -> dict:
@@ -95,15 +101,17 @@ def reports_sales_page(
     from_: str = Query("", alias="from"),
     to: str = Query("", alias="to"),
     author: str = Query(""),
+    currency: str = Query(""),
     session: Session = Depends(get_session),
 ):
+    currency = _clean_query_currency(currency)
     period = _resolve_period(from_, to, settings.display_tz)
     report = None
     if not period["error"]:
         start_iso, end_iso = local_day_bounds_utc(
             period["from_date"], period["to_date"], settings.display_tz
         )
-        report = sales_profit_report(session, start_iso, end_iso, author or None)
+        report = sales_profit_report(session, start_iso, end_iso, author or None, currency)
 
     context = {
         "from_date": period["from_date"].isoformat(),
@@ -114,6 +122,7 @@ def reports_sales_page(
         "report": report,
         "users": list_users(session),
         "author_id": author,
+        "currency": currency,
     }
     # CR-01 precedent (history.py): only a genuine HX-Request header gets
     # the chrome-less results partial; a filtered top-level GET still
