@@ -7,6 +7,19 @@
    swap can never destroy the load-more control (CR-01 precedent). #}
 {% block step_indicator %}{% endblock %}
 {% block content %}
+{# CUR-02: currency switcher — plain GET/full page reload (see desktop
+   pages/finance.html for the rationale). #}
+<form method="get" action="/m/finance">
+  <div class="field">
+    <label for="currency">Валюта</label>
+    <select id="currency" name="currency" onchange="this.form.submit()">
+      {% for code, symbol in CURRENCIES.items() %}
+      <option value="{{ code }}"{% if code == currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
 <h2>Показатели</h2>
 {% with period_action = "/m/finance/metrics", period_target = "#finance-metrics" %}
 {% include "partials/period_filter.html" %}

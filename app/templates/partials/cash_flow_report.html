@@ -5,6 +5,11 @@
    come ONLY from the CASH_CATEGORIES Jinja global — never hardcoded — so
    the expense subtotal here is guaranteed to reconcile with the net-profit
    tile's cash_expense_total (D-05 hard invariant). #}
+{# CUR-02: a hidden `currency` input round-trips the active filter through
+   period_filter.html's existing hx-include (#cashflow-results input, select)
+   with zero changes to that partial — this is #cashflow-results' own
+   content, so a preset/date click carries the currency forward automatically. #}
+<input type="hidden" name="currency" value="{{ currency }}">
 {% if report is none %}
 <div class="error-block">
   <p class="error">Не удалось загрузить отчёт. Проверьте даты и попробуйте ещё раз.</p>

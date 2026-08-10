@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+{# CUR-02: currency switcher — a plain GET/full page reload, given /finance
+   has several independent htmx swap targets (metrics, history) that would
+   each otherwise need their own currency-propagation wiring. #}
+<form method="get" action="/finance">
+  <div class="field">
+    <label for="currency">Валюта</label>
+    <select id="currency" name="currency" onchange="this.form.submit()">
+      {% for code, symbol in CURRENCIES.items() %}
+      <option value="{{ code }}"{% if code == currency %} selected{% endif %}>{{ code }} ({{ symbol }})</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
 <h2>Показатели</h2>
 {% with period_action = "/finance/metrics", period_target = "#finance-metrics" %}
 {% include "partials/period_filter.html" %}
@@ -7,7 +21,7 @@
 <div id="finance-metrics">
   {% include "partials/finance_tiles.html" %}
 </div>
-<p><a class="button" href="/finance/report">Отчёт и экспорт CSV</a></p>
+<p><a class="button" href="/finance/report?currency={{ currency }}">Отчёт и экспорт CSV</a></p>
 
 <h1>Баланс кассы</h1>
 {% include "partials/cash_balance.html" %}

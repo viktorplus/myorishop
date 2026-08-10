@@ -9,13 +9,28 @@ cash_expense_total, D-05).
 from datetime import date
 
 from app.core import local_day_bounds_utc, new_id
-from app.models import Product
+from app.models import Batch, Product, Warehouse
 from app.services.finance import record_cash_movement
 from app.services.finance_reports import (
     cash_expense_total,
     cash_flow_report,
     stock_valuation,
 )
+
+
+def _add_batch(session, product, warehouse, *, quantity, cost_cents=None, price_cents=None):
+    """Seed one open batch for `product` in `warehouse` (stock_valuation is
+    now batch-level, CUR-02 — see finance_reports.stock_valuation)."""
+    batch = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=quantity,
+        cost_cents=cost_cents,
+        price_cents=price_cents,
+    )
+    session.add(batch)
+    return batch
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
@@ -100,26 +115,14 @@ def test_expense_total_net_reconciliation_is_addition(session, monkeypatch):
 
 
 def test_stock_valuation_sums_active_products(session):
-    session.add_all(
-        [
-            Product(
-                id=new_id(),
-                code="A",
-                name="Товар A",
-                quantity=2,
-                cost_cents=1000,
-                sale_cents=1500,
-            ),
-            Product(
-                id=new_id(),
-                code="B",
-                name="Товар B",
-                quantity=3,
-                cost_cents=500,
-                sale_cents=800,
-            ),
-        ]
-    )
+    warehouse = Warehouse(id=new_id(), name="Склад")
+    session.add(warehouse)
+    product_a = Product(id=new_id(), code="A", name="Товар A", cost_cents=1000, sale_cents=1500)
+    product_b = Product(id=new_id(), code="B", name="Товар B", cost_cents=500, sale_cents=800)
+    session.add_all([product_a, product_b])
+    session.flush()
+    _add_batch(session, product_a, warehouse, quantity=2)
+    _add_batch(session, product_b, warehouse, quantity=3)
     session.commit()
 
     result = stock_valuation(session)
@@ -128,16 +131,12 @@ def test_stock_valuation_sums_active_products(session):
 
 
 def test_stock_valuation_excludes_null_prices_and_counts_unknown(session):
-    session.add(
-        Product(
-            id=new_id(),
-            code="C",
-            name="Товар C",
-            quantity=2,
-            cost_cents=None,
-            sale_cents=None,
-        )
-    )
+    warehouse = Warehouse(id=new_id(), name="Склад")
+    session.add(warehouse)
+    product = Product(id=new_id(), code="C", name="Товар C", cost_cents=None, sale_cents=None)
+    session.add(product)
+    session.flush()
+    _add_batch(session, product, warehouse, quantity=2)
     session.commit()
 
     result = stock_valuation(session)
@@ -185,6 +184,67 @@ def test_stock_valuation_excludes_deleted_products(session):
     assert result["sale_value_cents"] == 0
     assert result["cost_unknown_count"] == 0
     assert result["sale_unknown_count"] == 0
+
+
+def test_stock_valuation_scopes_by_currency(session):
+    """CUR-02: two warehouses of different currencies each report ONLY their
+    own batch; the two never sum together. A batch left with cost_cents=None
+    proves the Product.cost_cents fallback still works."""
+    rub_wh = Warehouse(id=new_id(), name="Склад RUB")
+    eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
+    session.add_all([rub_wh, eur_wh])
+    product = Product(id=new_id(), code="F", name="Товар F", cost_cents=1000, sale_cents=1500)
+    session.add(product)
+    session.flush()
+    _add_batch(session, product, rub_wh, quantity=2, cost_cents=900, price_cents=1400)
+    _add_batch(session, product, eur_wh, quantity=3, cost_cents=None, price_cents=None)
+    session.commit()
+
+    rub_result = stock_valuation(session, "RUB")
+    eur_result = stock_valuation(session, "EUR")
+    # RUB batch: cost_cents=900 (its own snapshot), price_cents=1400.
+    assert rub_result["cost_value_cents"] == 1800
+    assert rub_result["sale_value_cents"] == 2800
+    # EUR batch: cost_cents/price_cents NULL -> falls back to the product card.
+    assert eur_result["cost_value_cents"] == 3000
+    assert eur_result["sale_value_cents"] == 4500
+    assert rub_result != eur_result
+
+
+def test_expense_total_scopes_by_currency(session, monkeypatch):
+    """CUR-02: cash_expense_total scopes to ONE currency."""
+    mid = "2026-07-10T10:00:00+00:00"
+    _record_cash_at(
+        session, monkeypatch, mid, category="withdrawal_rent", amount_cents=-800
+    )
+    import app.services.finance as finance_module
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: mid)
+    from app.services.finance import record_cash_movement as _rcm
+
+    _rcm(session, category="withdrawal_rent", amount_cents=-500, currency="EUR")
+
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    assert cash_expense_total(session, start_iso, end_iso, currency="RUB") == -800
+    assert cash_expense_total(session, start_iso, end_iso, currency="EUR") == -500
+
+
+def test_cash_flow_report_scopes_by_currency(session, monkeypatch):
+    """CUR-02: cash_flow_report scopes the whole grouping to ONE currency."""
+    mid = "2026-07-10T10:00:00+00:00"
+    _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=3000)
+    import app.services.finance as finance_module
+
+    monkeypatch.setattr(finance_module, "utcnow_iso", lambda: mid)
+    from app.services.finance import record_cash_movement as _rcm
+
+    _rcm(session, category="sale", amount_cents=1000, currency="EUR")
+
+    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    rub_report = cash_flow_report(session, start_iso, end_iso, currency="RUB")
+    eur_report = cash_flow_report(session, start_iso, end_iso, currency="EUR")
+    assert rub_report["income_total_cents"] == 3000
+    assert eur_report["income_total_cents"] == 1000
 
 
 def test_stock_valuation_ignores_period(session):
@@ -619,7 +679,7 @@ def test_web_finance_page_report_link_is_button_styled(client):
     CSV wording, not the old bare unstyled inline text link."""
     response = client.get("/finance")
     assert response.status_code == 200
-    assert '<a class="button" href="/finance/report">' in response.text
+    assert '<a class="button" href="/finance/report?currency=RUB">' in response.text
     assert "CSV" in response.text
 
 
