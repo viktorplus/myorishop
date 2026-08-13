@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/"},
+  {"label": "Товары", "href": "/products"},
+  {"label": product.name ~ " (" ~ (product.code or "") ~ ")", "href": "/products/" ~ product.id ~ "/edit"},
+  {"label": "Партия", "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
 <h1>Редактирование партии</h1>
+<p class="muted">«{{ batch_identity_label(batch, product) }}», {{ warehouse.name }}, {{ batch.quantity }} шт.</p>
 
 {% if errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
 

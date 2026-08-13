@@ -753,6 +753,27 @@ def test_web_edit_page_shows_form_and_empty_history(client, session):
     assert "Удалить товар" in page.text
 
 
+def test_web_edit_page_shows_breadcrumbs_and_identity_line(client, session):
+    """Task 2 (quick-260813-l0y): breadcrumb trail + identity line, edit mode only."""
+    product, errors = create_product(
+        session,
+        code="7777",
+        name="Пудра Компактная",
+        category="Макияж",
+        cost_raw="",
+        sale_raw="",
+    )
+    assert errors == {}
+
+    page = client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    body = page.text
+    assert '<a href="/">Главная</a>' in body
+    assert '<a href="/products">Товары</a>' in body
+    assert '<span aria-current="page">Товар</span>' in body
+    assert f"{product.name} ({product.code})" in body
+
+
 def test_web_edit_price_then_history_rendered(client, session):
     """CAT-04 e2e: price edit shows old and new values plus the operator name."""
     product, errors = create_product(

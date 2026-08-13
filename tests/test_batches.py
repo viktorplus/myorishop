@@ -917,6 +917,44 @@ def test_web_batch_update_unknown_id_404s(client):
     assert response.status_code == 404
 
 
+def test_web_batch_edit_shows_breadcrumbs_and_identity_line(client, session, product, warehouse):
+    """Task 2 (quick-260813-l0y): breadcrumb trail + identity line above the h1."""
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name="Партия А",
+        quantity=5,
+    )
+    session.add(seeded)
+    session.commit()
+
+    response = client.get(f"/batches/{seeded.id}/edit")
+    assert response.status_code == 200
+    body = response.text
+    assert '<a href="/">Главная</a>' in body
+    assert '<a href="/products">Товары</a>' in body
+    assert f'<a href="/products/{product.id}/edit">{product.name} ({product.code})</a>' in body
+    assert '<span aria-current="page">Партия</span>' in body
+    assert f'«{seeded.name}», {warehouse.name}, {seeded.quantity} шт.' in body
+
+
+def test_web_batch_edit_breadcrumb_escapes_html_in_product_name(client, session, warehouse):
+    """T-quick-260813-l0y-01: an HTML-metacharacter product name is escaped, never |safe."""
+    product = Product(
+        id=new_id(), code="XSS-001", name="<script>alert(1)</script>", quantity=0
+    )
+    session.add(product)
+    seeded = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=1)
+    session.add(seeded)
+    session.commit()
+
+    response = client.get(f"/batches/{seeded.id}/edit")
+    assert response.status_code == 200
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+
+
 def test_web_chooser_shows_batch_name_in_topup_label(client, session, product):
     """The chooser top-up label surfaces batch.name when the batch has one."""
     warehouse = _make_warehouse(session)

@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/"},
+  {"label": "Склады", "href": "/warehouses"},
+  {"label": ("Склад" if warehouse else "Новый склад"), "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
 {% if warehouse %}
 <h1>Редактирование склада</h1>
 {% else %}
 <h1>Новый склад</h1>
 {% endif %}
+{% if warehouse %}<p class="muted">{{ warehouse.name }}{% if warehouse.address %} · {{ warehouse.address }}{% endif %}</p>{% endif %}
 
 {% if errors.warehouse %}<p class="error">{{ errors.warehouse }}</p>{% endif %}
 

@@ -791,6 +791,25 @@ def test_web_customer_edit_form_renders_stored_contacts(client, session):
     assert "Москва, ул. Ленина 1" in response.text
 
 
+def test_web_customer_edit_shows_breadcrumbs_and_identity_line(client, session):
+    """Task 2 (quick-260813-l0y): breadcrumb trail + identity line, edit mode only."""
+    customer, errors = create_customer(
+        session,
+        name="Мария",
+        surname="Кузнецова",
+        consultant_number="777",
+    )
+    assert errors == {}
+
+    response = client.get(f"/customers/{customer.id}/edit")
+    assert response.status_code == 200
+    body = response.text
+    assert '<a href="/">Главная</a>' in body
+    assert '<a href="/customers">Покупатели</a>' in body
+    assert '<span aria-current="page">Покупатель</span>' in body
+    assert f"{customer.name} {customer.surname} · № {customer.consultant_number}" in body
+
+
 def test_web_customer_edit_form_renders_blank_row_for_empty_kind(client, session):
     """A customer with phones but no emails still renders one blank email row."""
     customer, errors = create_customer(

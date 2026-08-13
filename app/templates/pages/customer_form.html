@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/"},
+  {"label": "Покупатели", "href": "/customers"},
+  {"label": ("Покупатель" if customer else "Новый покупатель"), "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
 {% if customer %}
 <h1>Редактирование покупателя</h1>
 {% else %}
 <h1>Новый покупатель</h1>
 {% endif %}
+{% if customer %}<p class="muted">{{ customer.name }}{% if customer.surname %} {{ customer.surname }}{% endif %}{% if customer.consultant_number %} · № {{ customer.consultant_number }}{% endif %}</p>{% endif %}
 
 {% if errors.customer %}<p class="error">{{ errors.customer }}</p>{% endif %}
 

@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/"},
+  {"label": "Товары", "href": "/products"},
+  {"label": ("Товар" if product else "Новый товар"), "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
 {% if product %}
 <h1>Редактирование товара</h1>
 {% else %}
 <h1>Новый товар</h1>
 {% endif %}
+{% if product %}<p class="muted">{{ product.name }} ({{ product.code or "" }})</p>{% endif %}
 
 {% if product and product.deleted_at %}
 <div class="error-block">Товар удалён</div>

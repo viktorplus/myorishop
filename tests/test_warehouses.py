@@ -488,6 +488,20 @@ def test_web_warehouse_edit_renders_existing_values(client, session):
     assert "ул. Тестовая, 1" in response.text
 
 
+def test_web_warehouse_edit_shows_breadcrumbs_and_identity_line(client, session):
+    """Task 2 (quick-260813-l0y): breadcrumb trail + identity line, edit mode only."""
+    warehouse, _ = add_warehouse(session, name="Склад Юг", address="ул. Южная, 5")
+
+    response = client.get(f"/warehouses/{warehouse.id}/edit")
+
+    assert response.status_code == 200
+    body = response.text
+    assert '<a href="/">Главная</a>' in body
+    assert '<a href="/warehouses">Склады</a>' in body
+    assert '<span aria-current="page">Склад</span>' in body
+    assert f"{warehouse.name} · {warehouse.address}" in body
+
+
 def test_web_warehouse_edit_unknown_id_404s(client):
     response = client.get("/warehouses/00000000-0000-4000-8000-000000000099/edit")
 
