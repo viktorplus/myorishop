@@ -21,9 +21,13 @@
   <button type="button"
           class="mobile-card"
           hx-get="/m/transfers/step/batch-pick"
-          {# WR-02: tojson correctly escapes a double quote inside code for
-             both JSON and this HTML attribute. #}
-          hx-vals="{{ {'batch_id': b.id, 'code': code, 'name': name} | tojson }}"
+          {# WR-02: tojson always emits JSON's mandatory double-quoted keys
+             and values, so this attribute MUST be single-quoted or the
+             browser's HTML parser truncates it at the payload's first
+             double-quote. tojson escapes any single quote appearing in the
+             data to its unicode escape, so a single-quoted attribute can
+             never be broken by the data itself. #}
+          hx-vals='{{ {'batch_id': b.id, 'code': code, 'name': name} | tojson }}'
           hx-target="#wizard-step"
           hx-swap="outerHTML">
     <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
@@ -42,13 +46,17 @@
   {% endif %}
 
   <div class="mobile-actions">
-    {# WR-02: tojson correctly escapes a double quote inside code for both
-       JSON and this HTML attribute. hx-vals (not hx-include) since this
-       partial has no wrapping <form> of its own — matches this same file's
-       batch-pick cards' own technique for carrying code forward (13-04). #}
+    {# WR-02: tojson always emits JSON's mandatory double-quoted keys and
+       values, so this attribute MUST be single-quoted or the browser's
+       HTML parser truncates it at the payload's first double-quote. tojson
+       escapes any single quote appearing in the data to its unicode
+       escape, so a single-quoted attribute can never be broken by the
+       data itself. hx-vals (not hx-include) since this partial has no
+       wrapping <form> of its own — matches this same file's batch-pick
+       cards' own technique for carrying code forward (13-04). #}
     <button type="button" class="secondary"
             hx-get="/m/transfers"
-            hx-vals="{{ {'code': code} | tojson }}"
+            hx-vals='{{ {'code': code} | tojson }}'
             hx-target="#wizard-step"
             hx-swap="outerHTML">Назад</button>
   </div>
