@@ -20,6 +20,7 @@ from app.db import SessionLocal
 from app.routes import (
     auth,
     backup,
+    batches,
     catalogs,
     categories,
     corrections,
@@ -201,6 +202,7 @@ app.include_router(auth.router)
 app.include_router(health.router)
 app.include_router(home.router)
 app.include_router(products.router)
+app.include_router(batches.router)
 app.include_router(categories.router)
 app.include_router(catalogs.router)
 # ROLE-02/03: the admin-only routers (user management, warehouses, dictionaries,

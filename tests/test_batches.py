@@ -801,6 +801,96 @@ def test_update_batch_noop_resubmit_leaves_updated_at_unchanged_then_real_edit_a
     assert result2.updated_at > forced_old
 
 
+# --- desktop /batches routes ---
+
+
+def test_web_batch_edit_shows_readonly_rows_with_links(client, session, product, warehouse):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=5,
+    )
+    session.add(seeded)
+    session.commit()
+
+    response = client.get(f"/batches/{seeded.id}/edit")
+    assert response.status_code == 200
+    assert f"/writeoff?code={product.code}" in response.text
+    assert f"/transfers?code={product.code}" in response.text
+
+
+def test_web_batch_update_saves_changes_and_redirects(client, session, product, warehouse):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=5,
+    )
+    session.add(seeded)
+    session.commit()
+
+    response = client.post(
+        f"/batches/{seeded.id}",
+        data={
+            "name": "Новая партия",
+            "expiry": "",
+            "location": "",
+            "comment": "",
+            "price": "12,50",
+            "cost": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/products/{product.id}/edit"
+    session.expire_all()
+    updated = session.get(Batch, seeded.id)
+    assert updated.name == "Новая партия"
+    assert updated.price_cents == 1250
+
+
+def test_web_batch_update_invalid_price_rerenders_422_unchanged(client, session, product, warehouse):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=5,
+    )
+    session.add(seeded)
+    session.commit()
+
+    response = client.post(
+        f"/batches/{seeded.id}",
+        data={
+            "name": "",
+            "expiry": "",
+            "location": "",
+            "comment": "",
+            "price": "abc",
+            "cost": "",
+        },
+    )
+    assert response.status_code == 422
+    assert PRICE_ERROR in response.text
+    session.expire_all()
+    unchanged = session.get(Batch, seeded.id)
+    assert unchanged.price_cents is None
+
+
+def test_web_batch_edit_unknown_id_404s(client):
+    response = client.get("/batches/no-such-batch/edit")
+    assert response.status_code == 404
+
+
+def test_web_batch_update_unknown_id_404s(client):
+    response = client.post(
+        "/batches/no-such-batch",
+        data={"name": "", "expiry": "", "location": "", "comment": "", "price": "", "cost": ""},
+    )
+    assert response.status_code == 404
+
+
 def test_web_chooser_shows_batch_name_in_topup_label(client, session, product):
     """The chooser top-up label surfaces batch.name when the batch has one."""
     warehouse = _make_warehouse(session)

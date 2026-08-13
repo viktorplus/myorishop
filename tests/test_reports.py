@@ -753,6 +753,7 @@ def test_expiry_report_page(client, session, product):
     assert "просрочено" in response.text
     past_pos = response.text.index("01.01.2020")
     assert "просрочено" in response.text[past_pos : past_pos + 200]
+    assert f'/batches/{future_batch.id}/edit"' in response.text
 
 
 def test_expiry_report_page_empty_state(client):

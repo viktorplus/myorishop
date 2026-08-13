@@ -16,6 +16,7 @@
       <th class="num">Остаток</th>
       <th class="num">Цена</th>
       <th>Комментарий</th>
+      <th>Действия</th>
     </tr>
   </thead>
   <tbody>
@@ -33,6 +34,7 @@
       <td class="num">{{ row.batch.quantity }}</td>
       <td class="num">{% if row.batch.price_cents is not none %}{{ row.batch.price_cents | cents }}{% else %}—{% endif %}</td>
       <td>{{ row.batch.comment or "" }}</td>
+      <td><a href="/batches/{{ row.batch.id }}/edit">Изменить</a></td>
     </tr>
     {% endfor %}
   </tbody>

@@ -1252,6 +1252,16 @@ def test_web_products_list_shows_batch_breakdown_when_batches_exist(client, stoc
     assert "Партии (1)" in page.text
 
 
+def test_web_products_list_batch_row_has_edit_link(client, session, stocked_product):
+    """quick-260813-i28: each batch breakout row links to its edit screen."""
+    from app.services.batches import open_batches
+
+    batch = open_batches(session, stocked_product.id)[0]
+    page = client.get("/products")
+    assert page.status_code == 200
+    assert f'/batches/{batch.id}/edit"' in page.text
+
+
 def test_web_products_list_no_batch_breakdown_when_no_batches(client, product):
     """Pitfall 5 regression guard: a zero-batch product renders no expand affordance."""
     page = client.get("/products")
