@@ -45,6 +45,22 @@ def test_mobile_correction_batch_step_lists_open_batches(
     assert batch.id in response.text
 
 
+def test_mobile_correction_batch_step_hx_vals_batch_id_survives_html_attribute(
+    mobile_client_factory, session, product, warehouse
+):
+    """quick-260813-ezt: tojson escapes ' not " — a double-quoted hx-vals
+    attribute silently truncates at the payload's first '"', dropping
+    batch_id. Pins the single-quoted rendered attribute shape."""
+    batch = _seed_batch(session, product, warehouse, 5)
+    client = mobile_client_factory(mobile_corrections.router)
+
+    response = client.post("/m/corrections/step/batch", data={"code": product.code})
+
+    assert response.status_code == 200
+    assert f'hx-vals=\'{{"batch_id": "{batch.id}", "code": "{product.code}"}}\'' in response.text
+    assert 'hx-vals="{' not in response.text
+
+
 def test_mobile_correction_batch_pick_revalidates_ownership(
     mobile_client_factory, session, product, warehouse
 ):

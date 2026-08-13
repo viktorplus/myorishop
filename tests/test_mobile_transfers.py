@@ -86,6 +86,45 @@ def test_transfers_batch_pick_carries_name_into_dest_step(
     assert f'name="name" value="{stocked_product.name}"' in response.text
 
 
+def test_transfers_step_batch_hx_vals_batch_id_survives_html_attribute(
+    mobile_client_factory, session, stocked_product
+):
+    """quick-260813-ezt: tojson escapes ' not " — a double-quoted hx-vals
+    attribute silently truncates at the payload's first '"', dropping
+    batch_id. This one response renders BOTH the batch-pick card and the
+    Назад button of transfers_step_batch.html, so the guard assertion
+    covers both fixed spots in this file."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post("/m/transfers/step/batch", data={"code": stocked_product.code})
+
+    assert response.status_code == 200
+    assert (
+        f'hx-vals=\'{{"batch_id": "{source.id}", "code": "{stocked_product.code}", "name":'
+        in response.text
+    )
+    assert 'hx-vals="{' not in response.text
+
+
+def test_transfers_step_dest_hx_vals_back_button_is_single_quoted(
+    mobile_client_factory, session, stocked_product
+):
+    """quick-260813-ezt: covers the fifth fixed line (transfers_step_dest.html
+    Назад button) — single-quoted hx-vals carries code intact."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers/step/dest",
+        data={"code": stocked_product.code, "batch_id": source.id},
+    )
+
+    assert response.status_code == 200
+    assert f'hx-vals=\'{{"code": "{stocked_product.code}"}}\'' in response.text
+    assert 'hx-vals="{' not in response.text
+
+
 def test_transfers_create_carries_name_through_oversell_retry(
     mobile_client_factory, session, stocked_product
 ):
