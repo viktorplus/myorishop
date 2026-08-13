@@ -32,6 +32,7 @@ from app.routes import (
     health,
     history,
     home,
+    mobile_batches,
     mobile_corrections,
     mobile_customers,
     mobile_finance,
@@ -264,6 +265,7 @@ app.include_router(mobile_search.router)
 app.include_router(mobile_writeoff.router)
 app.include_router(mobile_corrections.router)
 app.include_router(mobile_products.router)
+app.include_router(mobile_batches.router)
 app.include_router(mobile_customers.router)
 app.include_router(mobile_transfers.router)
 app.include_router(mobile_returns.router)

@@ -15,6 +15,20 @@
 {% for row in stock_rows %}
 <p>{{ row.warehouse_name }}: {{ row.total_qty }} шт.</p>
 {% endfor %}
+{% if batches %}
+{# quick-260813-i28: open batches for this product, one compact card each —
+   mirrors mobile_partials/batch_card_picker.html's per-batch line shape.
+   Untrusted stored text (name/location/comment) stays Jinja-autoescaped,
+   never |safe (T-09-11/T-13-12 class). #}
+<h2>Партии</h2>
+{% for b in batches %}
+<div class="mobile-card">
+  <p>{% if b.name %}{{ b.name }}{% else %}без названия{% endif %}</p>
+  <p>{% if b.expiry %}{{ b.expiry | ru_date }}{% else %}без срока{% endif %} · {% if b.price_cents is not none %}{{ b.price_cents | cents }}{% else %}—{% endif %} · {{ b.quantity }} шт.</p>
+  <p><a href="/m/batches/{{ b.id }}/edit">Изменить</a></p>
+</div>
+{% endfor %}
+{% endif %}
 <div class="mobile-actions">
   <a class="button" href="/m/sales?code={{ product.code }}">Продать</a>
   <a class="button" href="/m/receipts?code={{ product.code }}">Принять</a>

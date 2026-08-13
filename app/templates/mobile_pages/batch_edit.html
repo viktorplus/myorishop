@@ -1,0 +1,58 @@
+{% extends "mobile_base.html" %}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Партия</h1>
+
+{% if errors.batch %}<p class="error">{{ errors.batch }}</p>{% endif %}
+
+<p><strong>{{ product.name }} ({{ product.code or "" }})</strong></p>
+<p>Остаток: {{ batch.quantity }} шт. — <a href="/writeoff?code={{ product.code }}">Списать</a></p>
+<p>Склад: {{ warehouse.name }} — <a href="/transfers?code={{ product.code }}">Переместить</a></p>
+
+<form method="post" action="/m/batches/{{ batch.id }}" class="stacked-form">
+  <div class="field">
+    <label for="name">Название партии <span class="muted">(необязательно)</span></label>
+    <input type="text" id="name" name="name" value="{% if form %}{{ form.name or '' }}{% else %}{{ batch.name or '' }}{% endif %}">
+    {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="expiry">Срок годности <span class="muted">(необязательно)</span></label>
+    <input type="date" id="expiry" name="expiry" value="{% if form %}{{ form.expiry or '' }}{% else %}{{ batch.expiry or '' }}{% endif %}">
+    {% if errors.expiry %}<p class="error">{{ errors.expiry }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="location">Место хранения <span class="muted">(необязательно)</span></label>
+    <input type="text" id="location" name="location" value="{% if form %}{{ form.location or '' }}{% else %}{{ batch.location or '' }}{% endif %}">
+    {% if errors.location %}<p class="error">{{ errors.location }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="comment">Комментарий <span class="muted">(необязательно)</span></label>
+    <input type="text" id="comment" name="comment" value="{% if form %}{{ form.comment or '' }}{% else %}{{ batch.comment or '' }}{% endif %}">
+    {% if errors.comment %}<p class="error">{{ errors.comment }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="price">Цена продажи <span class="muted">(необязательно)</span></label>
+    <input type="text" id="price" name="price" inputmode="decimal" placeholder="0,00"
+           value="{% if form %}{{ form.price or '' }}{% elif batch.price_cents is not none %}{{ batch.price_cents | cents }}{% endif %}">
+    {% if errors.price %}<p class="error">{{ errors.price }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="cost">Себестоимость <span class="muted">(необязательно)</span></label>
+    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
+           value="{% if form %}{{ form.cost or '' }}{% elif batch.cost_cents is not none %}{{ batch.cost_cents | cents }}{% endif %}">
+    {% if errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
+  </div>
+
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="mobile-actions">
+    <button type="submit">Сохранить</button>
+    <a class="mobile-back" href="/m/search/product/{{ product.id }}">Отмена</a>
+  </div>
+</form>
+{% endblock %}

@@ -40,8 +40,9 @@ def mobile_search_product_detail(
         return Response(status_code=404)
 
     warehouse_names = {w.id: w.name for w in active_warehouses(session)}
+    batches = open_batches(session, product.id)
     totals: dict[str, int] = {}
-    for b in open_batches(session, product.id):
+    for b in batches:
         totals[b.warehouse_id] = totals.get(b.warehouse_id, 0) + b.quantity
 
     stock_rows = sorted(
@@ -52,7 +53,7 @@ def mobile_search_product_detail(
         key=lambda row: row["warehouse_name"],
     )
 
-    context = {"product": product, "stock_rows": stock_rows}
+    context = {"product": product, "stock_rows": stock_rows, "batches": batches}
     return templates.TemplateResponse(
         request, "mobile_partials/search_product_detail.html", context
     )

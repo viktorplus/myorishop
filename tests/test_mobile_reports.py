@@ -39,3 +39,17 @@ def test_expiry_report_no_marker_for_future_batch(mobile_client_factory, session
 
     assert response.status_code == 200
     assert "просрочено" not in response.text
+
+
+def test_expiry_report_shows_batch_edit_link(mobile_client_factory, session, batch):
+    """quick-260813-i28: each batch card links to its mobile edit screen."""
+    future = (datetime.now().date() + timedelta(days=30)).isoformat()
+    batch.expiry = future
+    batch.quantity = 5
+    session.commit()
+
+    client = mobile_client_factory(mobile_reports.router)
+    response = client.get("/m/reports/expiry")
+
+    assert response.status_code == 200
+    assert f'/m/batches/{batch.id}/edit"' in response.text

@@ -72,3 +72,17 @@ def test_search_product_detail_shows_quick_action_links_for_zero_stock_product(
     assert response.status_code == 200
     assert f'href="/m/sales?code={product.code}"' in response.text
     assert f'href="/m/receipts?code={product.code}"' in response.text
+
+
+def test_search_product_detail_shows_batch_edit_link_when_batches_exist(
+    mobile_client_factory, stocked_product, session
+):
+    """quick-260813-i28: an open batch renders with an «Изменить» link."""
+    from app.services.batches import open_batches
+
+    batch = open_batches(session, stocked_product.id)[0]
+    client = mobile_client_factory(mobile_search.router)
+    response = client.get(f"/m/search/product/{stocked_product.id}")
+
+    assert response.status_code == 200
+    assert f'/m/batches/{batch.id}/edit"' in response.text
