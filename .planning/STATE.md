@@ -4,14 +4,14 @@ milestone: v4.0
 milestone_name: Distribution & Delivery
 status: verifying
 stopped_at: Completed 32-02-PLAN.md (verify-gate prerequisites)
-last_updated: "2026-07-22T20:58:25.308Z"
-last_activity: 2026-07-22
+last_updated: "2026-08-13T11:35:07.728Z"
+last_activity: "2026-08-13 - Completed quick task 260813-ezt: fix broken hx-vals tojson attributes in double-quoted HTML attrs (mobile batch pick)"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
   total_plans: 10
   completed_plans: 10
-  percent: 100
+  percent: 67
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-08-13 - Completed quick task 260813-ezt: fix broken hx-vals tojson attributes in double-quoted HTML attrs (mobile batch pick)
+Last activity: 2026-08-13 - Completed quick task 260813-i28: batch editing (name/expiry/location/comment/price/cost), quantity/warehouse permanently read-only
 
 ## Performance Metrics
 
@@ -206,6 +206,7 @@ None yet.
 | 260721-oti | Merge 121 corrected product names from reports/dictionary_refresh_results.json into app/services/rubric_overrides.json (name field only, 1784 entries preserved, conf/rubric untouched); full-replace re-import applied locally (mismatch=0) and on s1 (git pull + docker compose up -d --build image rebuild + containerized import, since rubric_overrides.json is COPY-baked into the ori-app image, not volume-mounted) | 2026-07-21 | 5940b3f | [260721-oti-merge-121-dictionary-name-fixes-into-rub](./quick/260721-oti-merge-121-dictionary-name-fixes-into-rub/) |
 | 260810-2g3 | Currency correctness part 2 (continues cdcec66): cash_movements.currency + batches.cost_cents (migrations 0024/0025/0026); per-currency balance/history/cash-flow/stock-valuation/sales-profit/dashboard behind a mandatory currency filter (never a cross-currency SUM); mixed-currency sale baskets rejected pre-write; cross-currency transfers require a destination-currency cost; «Валюта» column on CSV exports; legacy NULL-batch ledger rows bucket as RUB via the shared operation_currency_clause (outer join + COALESCE, never an inner join) | 2026-08-10 | bb0b759 | [260810-2g3-currency-correctness-part-2-per-currency](./quick/260810-2g3-currency-correctness-part-2-per-currency/) |
 | 260813-ezt | Fix broken hx-vals tojson attributes in double-quoted HTML attrs: Jinja's `\|tojson` escapes `'` but not `"`, so the browser truncated `hx-vals` at the payload's first double quote — mobile batch cards fired batch-pick with an empty batch_id (sale/correction/write-off/transfer wizards could not select a batch at all, «Далее» stayed disabled); 5 attributes re-delimited to single quotes across 4 templates + 3 regression tests | 2026-08-13 | e574a00 | [260813-ezt-fix-broken-hx-vals-tojson-attributes-in-](./quick/260813-ezt-fix-broken-hx-vals-tojson-attributes-in-/) |
+| 260813-i28 | Batch editing: new `update_batch` service (name/expiry/location/comment/price/cost, RU validation, empty->NULL, quantity/warehouse_id/product_id/is_legacy structurally excluded) + desktop `/batches/{id}/edit` and mobile `/m/batches/{id}/edit` routes, reachable from the desktop product batch table, desktop+mobile `/reports/expiry`, and mobile product detail; `?code=` prefill added to `/writeoff` + `/m/writeoff` (mirrors `/transfers`, already supported) | 2026-08-13 | 21cbbff | [260813-i28-batch-editing-edit-every-batch-field-exc](./quick/260813-i28-batch-editing-edit-every-batch-field-exc/) |
 
 ## Deferred Items
 
@@ -222,7 +223,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-22T20:57:48.251Z
+Last session: 2026-08-13T11:35:07.702Z
 Stopped at: Completed 32-02-PLAN.md (verify-gate prerequisites)
 Resume file: None
 
