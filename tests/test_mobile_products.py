@@ -43,3 +43,15 @@ def test_mobile_products_toolbar_reaches_transfers_corrections_search(
     assert 'href="/m/transfers"' in response.text
     assert 'href="/m/corrections"' in response.text
     assert 'href="/m/search"' in response.text
+
+
+def test_mobile_products_card_links_to_product_detail(mobile_client_factory, product):
+    """The Товары card is the operator's only nav path to a product's
+    batches (and their «Изменить» link) — a bare <div> card left /m/products
+    a dead end. Asserts the rendered link, not just that the detail route
+    answers 200."""
+    client = mobile_client_factory(mobile_products.router)
+    response = client.get("/m/products")
+
+    assert response.status_code == 200
+    assert f'href="/m/search/product/{product.id}"' in response.text

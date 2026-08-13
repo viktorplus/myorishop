@@ -7,11 +7,15 @@
 <div class="empty-state"><p class="muted">Товаров пока нет.</p></div>
 {% else %}
 {% for product in rows %}
-<div class="mobile-card">
+{# The card is a link to the read-only product detail (same shape as
+   mobile_partials/search_results.html) — that page is the only mobile path
+   to a product's batches and their «Изменить» link, so a bare <div> here
+   left /m/products a dead end. #}
+<a class="mobile-card" href="/m/search/product/{{ product.id }}">
   <p><strong>{{ product.name }}</strong></p>
   <p class="muted">Код: {{ product.code }}{% if product.category %} · {{ product.category }}{% endif %}</p>
   <p class="num">Кол-во: {{ product.quantity }}</p>
-</div>
+</a>
 {% endfor %}
 {% endif %}
 {% if page + 1 < total_pages %}
