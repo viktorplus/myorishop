@@ -1,17 +1,40 @@
-"""Batch read helpers (D-07/D-08/D-13): the query side of batch tracking.
+"""Batch service (D-07/D-08/D-13): mostly read helpers, plus one write.
 
-Batches are born only via receipts and the legacy migration (D-03); this
-module never writes. It backs the sale/writeoff/correction pickers and the
-receipt chooser. Read-only, session-first, RU-free (display strings live in
-templates), mirroring the warehouses service shape.
+Batches are born only via receipts and the legacy migration (D-03); every
+helper below stays read-only and backs the sale/writeoff/correction pickers
+plus the receipt chooser, RU-free (display strings live in templates),
+mirroring the warehouses service shape.
+
+`update_batch` (quick-260813-i28) is the ONE write in this module — an
+operator-facing edit of name/expiry/location/comment/price_cents/cost_cents.
+It NEVER writes quantity/warehouse_id/product_id/is_legacy: quantity is a
+cached SUM(operations.qty_delta) projection (D-11) and correcting it
+directly would desync stock from the append-only ledger; an operator
+corrects stock only through Списание/Перемещение.
 """
 
 from collections import defaultdict
+from datetime import date
 
 from sqlalchemy import nullslast, select
 from sqlalchemy.orm import Session
 
 from app.models import Batch, Product, Warehouse
+from app.services.catalog import parse_optional_cents
+
+BATCH_NOT_FOUND_ERROR = "Партия не найдена."
+NAME_TOO_LONG_ERROR = "Название партии слишком длинное — не больше 220 символов."
+LOCATION_TOO_LONG_ERROR = "Место хранения слишком длинное — не больше 100 символов."
+COMMENT_TOO_LONG_ERROR = "Комментарий слишком длинный — не больше 200 символов."
+# LOT-03/quick-260813-i28: mirrors app.services.receipts.parse_optional_expiry's
+# exact behavior. Duplicated inline rather than imported — app.services.receipts
+# already imports active_warehouses FROM this module, so importing back would
+# be a circular import.
+EXPIRY_ERROR = "Укажите срок годности в формате ГГГГ-ММ-ДД."
+
+_NAME_MAX_LEN = 220
+_LOCATION_MAX_LEN = 100
+_COMMENT_MAX_LEN = 200
 
 
 def open_batches(
@@ -90,3 +113,71 @@ def active_warehouses(session: Session) -> list[Warehouse]:
             .order_by(Warehouse.name)
         )
     )
+
+
+def update_batch(
+    session: Session,
+    batch_id: str,
+    *,
+    name_raw: str,
+    expiry_raw: str,
+    location_raw: str,
+    comment_raw: str,
+    price_raw: str,
+    cost_raw: str,
+) -> tuple[Batch | None, dict[str, str]]:
+    """Operator edit of a batch's name/expiry/location/comment/price/cost.
+
+    Returns (batch, {}) on success or (None, errors) with RU messages — on
+    any error NOTHING is written. Every field is validated BEFORE any
+    mutation, collecting ALL errors into one dict (never fail-fast on the
+    first bad field, mirrors app.services.catalog.update_product's idiom).
+
+    Every field, submitted as "" (after strip), clears the column to NULL —
+    unlike receipts.register_receipt, which is additive and never clears a
+    price. Never touches quantity/warehouse_id/product_id/is_legacy — they
+    are not even parameters. Relies on SQLAlchemy's normal dirty-tracking: a
+    genuine no-op (resubmitting the batch's own current values) assigns no
+    changed attribute, so no UPDATE is emitted and the model's `onupdate`
+    hook never fires; a real change advances `updated_at`.
+    """
+    batch = session.get(Batch, batch_id)
+    if batch is None:
+        return None, {"batch": BATCH_NOT_FOUND_ERROR}
+
+    errors: dict[str, str] = {}
+
+    name = name_raw.strip() or None
+    if name is not None and len(name) > _NAME_MAX_LEN:
+        errors["name"] = NAME_TOO_LONG_ERROR
+
+    location = location_raw.strip() or None
+    if location is not None and len(location) > _LOCATION_MAX_LEN:
+        errors["location"] = LOCATION_TOO_LONG_ERROR
+
+    comment = comment_raw.strip() or None
+    if comment is not None and len(comment) > _COMMENT_MAX_LEN:
+        errors["comment"] = COMMENT_TOO_LONG_ERROR
+
+    expiry_s = expiry_raw.strip()
+    expiry: str | None = None
+    if expiry_s:
+        try:
+            expiry = date.fromisoformat(expiry_s).isoformat()
+        except ValueError:
+            errors["expiry"] = EXPIRY_ERROR
+
+    price_cents = parse_optional_cents(price_raw, errors, "price")
+    cost_cents = parse_optional_cents(cost_raw, errors, "cost")
+
+    if errors:
+        return None, errors
+
+    batch.name = name
+    batch.expiry = expiry
+    batch.location = location
+    batch.comment = comment
+    batch.price_cents = price_cents
+    batch.cost_cents = cost_cents
+    session.commit()
+    return batch, {}

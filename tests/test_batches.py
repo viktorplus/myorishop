@@ -22,12 +22,19 @@ from app.config import settings
 from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import (
+    BATCH_NOT_FOUND_ERROR,
+    COMMENT_TOO_LONG_ERROR,
+    EXPIRY_ERROR,
+    LOCATION_TOO_LONG_ERROR,
+    NAME_TOO_LONG_ERROR,
     active_warehouses,
     batches_for_products,
     expiring_batches,
     legacy_batch,
     open_batches,
+    update_batch,
 )
+from app.services.catalog import PRICE_ERROR
 from app.services.ledger import next_seq, rebuild_stock, record_operation
 from app.services.receipts import register_receipt
 
@@ -633,6 +640,165 @@ def test_register_receipt_autogenerates_batch_name(session):
     assert topup_result["batch"].id == batch.id
     session.expire_all()
     assert session.get(Batch, batch.id).name == original_name
+
+
+def _update_batch_kwargs(**overrides):
+    """Default no-op update_batch kwargs (all six fields blank); override per test."""
+    kwargs = {
+        "name_raw": "",
+        "expiry_raw": "",
+        "location_raw": "",
+        "comment_raw": "",
+        "price_raw": "",
+        "cost_raw": "",
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_update_batch_unknown_id_returns_error_and_writes_nothing(session):
+    result, errors = update_batch(session, "no-such-batch", **_update_batch_kwargs())
+    assert result is None
+    assert errors == {"batch": BATCH_NOT_FOUND_ERROR}
+
+
+def test_update_batch_invalid_price_and_cost_rejected(session, batch):
+    result, errors = update_batch(
+        session, batch.id, **_update_batch_kwargs(price_raw="abc", cost_raw="xyz")
+    )
+    assert result is None
+    assert errors == {"price": PRICE_ERROR, "cost": PRICE_ERROR}
+
+
+def test_update_batch_invalid_expiry_rejected(session, batch):
+    result, errors = update_batch(
+        session, batch.id, **_update_batch_kwargs(expiry_raw="not-a-date")
+    )
+    assert result is None
+    assert errors == {"expiry": EXPIRY_ERROR}
+
+
+def test_update_batch_too_long_fields_all_reported_together(session, batch):
+    result, errors = update_batch(
+        session,
+        batch.id,
+        **_update_batch_kwargs(
+            name_raw="A" * 221, location_raw="B" * 101, comment_raw="C" * 201
+        ),
+    )
+    assert result is None
+    assert errors == {
+        "name": NAME_TOO_LONG_ERROR,
+        "location": LOCATION_TOO_LONG_ERROR,
+        "comment": COMMENT_TOO_LONG_ERROR,
+    }
+
+
+def test_update_batch_clears_all_six_fields_to_null(session, product, warehouse):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name="Партия А",
+        expiry="2026-01-01",
+        location="Полка 3",
+        comment="Комментарий",
+        price_cents=1000,
+        cost_cents=500,
+        quantity=0,
+    )
+    session.add(seeded)
+    session.commit()
+
+    result, errors = update_batch(session, seeded.id, **_update_batch_kwargs())
+    assert errors == {}
+    session.refresh(result)
+    assert result.name is None
+    assert result.expiry is None
+    assert result.location is None
+    assert result.comment is None
+    assert result.price_cents is None
+    assert result.cost_cents is None
+
+
+def test_update_batch_successful_edit_never_touches_locked_fields(session, product, warehouse):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        quantity=7,
+        is_legacy=0,
+    )
+    session.add(seeded)
+    session.commit()
+    orig_quantity = seeded.quantity
+    orig_warehouse_id = seeded.warehouse_id
+    orig_product_id = seeded.product_id
+    orig_is_legacy = seeded.is_legacy
+
+    result, errors = update_batch(
+        session,
+        seeded.id,
+        **_update_batch_kwargs(name_raw="Новая партия", price_raw="12,50"),
+    )
+    assert errors == {}
+    assert result.quantity == orig_quantity
+    assert result.warehouse_id == orig_warehouse_id
+    assert result.product_id == orig_product_id
+    assert result.is_legacy == orig_is_legacy
+
+
+def test_update_batch_noop_resubmit_leaves_updated_at_unchanged_then_real_edit_advances_it(
+    session, product, warehouse
+):
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name="Партия",
+        expiry="2026-01-01",
+        location="Полка 1",
+        comment="Заметка",
+        price_cents=1000,
+        cost_cents=500,
+        quantity=0,
+    )
+    session.add(seeded)
+    session.commit()
+    forced_old = "2020-01-01T00:00:00+00:00"
+    seeded.updated_at = forced_old
+    session.commit()
+
+    # Genuine no-op: resubmit the batch's own current values.
+    result, errors = update_batch(
+        session,
+        seeded.id,
+        name_raw=seeded.name,
+        expiry_raw=seeded.expiry,
+        location_raw=seeded.location,
+        comment_raw=seeded.comment,
+        price_raw="10,00",
+        cost_raw="5,00",
+    )
+    assert errors == {}
+    session.refresh(result)
+    assert result.updated_at == forced_old
+
+    # A real change advances updated_at.
+    result2, errors2 = update_batch(
+        session,
+        seeded.id,
+        name_raw="Изменённая партия",
+        expiry_raw=seeded.expiry,
+        location_raw=seeded.location,
+        comment_raw=seeded.comment,
+        price_raw="10,00",
+        cost_raw="5,00",
+    )
+    assert errors2 == {}
+    session.refresh(result2)
+    assert result2.updated_at != forced_old
+    assert result2.updated_at > forced_old
 
 
 def test_web_chooser_shows_batch_name_in_topup_label(client, session, product):
