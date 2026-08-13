@@ -417,3 +417,60 @@ Scope discovered by reading the code (2026-08-09) — this is a full phase, not 
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.2: One-Tap Reversal of a Wrong Operation (BACKLOG)
+
+**Goal:** [Captured for future planning] An operator who recorded the wrong receipt, write-off, transfer or cash movement can reverse it from История with one confirmed tap, instead of hand-composing a compensating operation.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Captured 2026-08-13 from a live-usage audit prompted by the operator ("найди подобные неудобства"), alongside the batch-editing gap that shipped as quick task 260813-i28. NOT scheduled — the operator explicitly deferred it.
+
+The problem, verified in code:
+
+- Nothing in the app can be undone. `/history` (`app/routes/history.py:84`) is display-only — `app/templates/pages/history.html` renders no action controls at all.
+- Ledger operations are append-only by design (`record_operation`, `app/services/ledger.py:37-49`, is the ONLY sanctioned write path; DB triggers ABORT any UPDATE). That constraint is correct and must stay — a reversal has to be a NEW compensating operation, never an edit or delete.
+- Today the operator must hand-compose that compensation and know which tool to reach for: a wrong receipt → correction + write-off; a wrong write-off → a `+` correction; a wrong transfer → a manual reverse transfer. Nothing links the compensating row back to what it fixes.
+- Cash is the worst case: `record_cash_movement` (`app/services/finance.py:48`) is the only write path and there is no delete/undo route at all (`app/routes/finance.py` exposes only `/finance/withdraw` and `/finance/deposit`). A mistyped deposit can only be balanced by an opposite movement, leaving two rows and no stated relationship.
+
+Scope sketch (not a plan): a reversal service per operation type that writes the compensating row(s) through the existing sanctioned write paths; a payload link back to the reversed operation id so История can show «сторно операции X»; guards against double-reversal and against reversing a row whose stock has already moved on; the same control on desktop and mobile История. Returns (`app/services/returns.py:117`) are the existing precedent for a linked, capped compensating write.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.3: Back-Dated Operations (BACKLOG)
+
+**Goal:** [Captured for future planning] The operator can record a sale, receipt or cash movement with the date it actually happened, so period reports stop drifting.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Captured 2026-08-13 in the same audit. NOT scheduled — deferred by the operator.
+
+The problem, verified in code:
+
+- `record_operation` (`app/services/ledger.py:37-49`) takes no date argument; every ledger row is stamped "now". Same for `record_cash_movement` (`app/services/finance.py:48`).
+- Consequence: a sale made yesterday and entered today lands in today's bucket. Every period-scoped surface (finance report, dashboard, cash flow, sales profit) inherits the drift.
+
+Known risks to settle before planning: the operation date is currently the same value used for ordering, for the sync cursor and for the append-only audit trail — an operator-supplied date must NOT overwrite the audit timestamp. The likely shape is a separate "business date" column defaulting to the technical timestamp, with reports switching to it; that touches the ledger, the sync payload and every report query, so this is a real phase, not a field.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.4: Mobile Editing of Product and Customer Cards (BACKLOG)
+
+**Goal:** [Captured for future planning] The operator can fix a product card or a customer's details from the phone, instead of having to reach a desktop.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Captured 2026-08-13 in the same audit. NOT scheduled — deferred by the operator.
+
+The problem, verified in code:
+
+- `app/routes/mobile_products.py` exposes exactly one route (`GET /m/products`, a list). The mobile product card `app/templates/mobile_partials/search_product_detail.html` states its own read-only status in its header comment; there is no mobile route that writes a `Product`.
+- So min sale price, cost, category and the low-stock threshold — all editable on desktop at `/products/{id}/edit` (`app/routes/products.py:262,281`) — are unreachable from the phone.
+- `app/routes/mobile_customers.py` likewise exposes only `GET /m/customers`. A new customer CAN be created mid-sale (`app/routes/mobile_sales.py:159` calls the shared `create_customer`), but an existing customer's name, surname, phone or consultant number cannot be corrected from the phone.
+
+Scope sketch (not a plan): mobile route pairs mirroring the desktop edit/update pair and reusing the same services (no second validation path), following the `/m/batches/{id}/edit` precedent shipped in quick task 260813-i28, plus entry points from the mobile product card and the customer list.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
