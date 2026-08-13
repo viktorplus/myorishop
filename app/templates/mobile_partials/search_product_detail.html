@@ -3,8 +3,18 @@
    chrome via mobile_base.html. No edit/POST capability exists on mobile
    this phase. Context: product + stock_rows of {warehouse_name, total_qty}. #}
 {% extends "mobile_base.html" %}
+{% block back %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/m/"},
+  {"label": "Товары", "href": "/m/products"},
+  {"label": "Товар", "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
+{% endblock %}
 {% block step_indicator %}{% endblock %}
 {% block content %}
+{# quick-260813-l0y: no separate identity line here — the h1 below already
+   states the specific product (unlike the other five screens, whose h1 only
+   names the generic action). #}
 <h1>{{ product.name }} ({{ product.code or "" }})</h1>
 {% if product.category %}
 <p>{{ product.category }}</p>

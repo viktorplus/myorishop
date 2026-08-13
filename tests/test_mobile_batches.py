@@ -25,6 +25,32 @@ def test_mobile_batch_edit_shows_readonly_rows_with_links(
     assert f"/transfers?code={product.code}" in response.text
 
 
+def test_mobile_batch_edit_shows_breadcrumbs_and_identity_line(
+    mobile_client_factory, session, product, warehouse
+):
+    """Task 3 (quick-260813-l0y): breadcrumb trail replaces the default back link."""
+    seeded = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name="Партия Б",
+        quantity=3,
+    )
+    session.add(seeded)
+    session.commit()
+    client = mobile_client_factory(mobile_batches.router)
+
+    response = client.get(f"/m/batches/{seeded.id}/edit")
+    assert response.status_code == 200
+    body = response.text
+    assert '<a href="/m/">Главная</a>' in body
+    assert '<a href="/m/products">Товары</a>' in body
+    assert f'<a href="/m/search/product/{product.id}">{product.name} ({product.code})</a>' in body
+    assert '<span aria-current="page">Партия</span>' in body
+    assert f'«{seeded.name}», {warehouse.name}, {seeded.quantity} шт.' in body
+    assert "← Главная" not in body
+
+
 def test_mobile_batch_update_saves_changes_and_redirects(
     mobile_client_factory, session, product, warehouse
 ):

@@ -44,6 +44,19 @@ def test_search_product_detail_shows_code_name_and_warehouse_stock(
     assert "8 шт." in body
 
 
+def test_search_product_detail_shows_breadcrumbs(mobile_client_factory, stocked_product):
+    """Task 3 (quick-260813-l0y): breadcrumb trail replaces the default back link."""
+    client = mobile_client_factory(mobile_search.router)
+    response = client.get(f"/m/search/product/{stocked_product.id}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert '<a href="/m/">Главная</a>' in body
+    assert '<a href="/m/products">Товары</a>' in body
+    assert '<span aria-current="page">Товар</span>' in body
+    assert "← Главная" not in body
+
+
 def test_search_product_detail_unknown_id_returns_404(mobile_client_factory, session):
     client = mobile_client_factory(mobile_search.router)
     response = client.get("/m/search/product/does-not-exist")
