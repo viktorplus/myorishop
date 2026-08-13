@@ -30,6 +30,85 @@ from app.services.sync_client import (
 )
 
 
+# Path prefix -> nav section table (Task 1, quick-260813-l0y): shared by both
+# base.html and mobile_base.html so a nested screen highlights its owning
+# section instead of nothing (each previously used a bare startswith on its
+# OWN prefix only). Every prefix here is mutually exclusive by construction
+# (no listed prefix is itself a prefix of another listed prefix) — keep that
+# invariant when adding a new entry. "/settings" alone covers
+# "/settings/users" via startswith, so it is not listed twice.
+# "/returns"/"/m/returns" map to "history" for the shared table's
+# completeness even though today that route only ever renders as an HTMX
+# fragment inside /history's #return-slot (see
+# partials/history_rows.html's hx-get="/returns?..."), never full page
+# chrome — this repo's staleness check: the locked-scope note describing
+# /returns as nav-highlightable does not match the route's current
+# fragment-only behavior; the mapping is added anyway since it is harmless
+# and forward-compatible, but is provable only via a direct nav_section()
+# unit test, not an HTTP round-trip.
+NAV_SECTION_PREFIXES: list[tuple[str, str]] = [
+    ("/products", "products"),
+    ("/batches", "products"),
+    ("/receipts", "products"),
+    ("/writeoff", "products"),
+    ("/transfers", "products"),
+    ("/corrections", "products"),
+    ("/categories", "products"),
+    ("/dictionary", "products"),
+    ("/catalogs", "products"),
+    ("/warehouses", "products"),
+    ("/m/products", "products"),
+    ("/m/batches", "products"),
+    ("/m/receipts", "products"),
+    ("/m/writeoff", "products"),
+    ("/m/transfers", "products"),
+    ("/m/corrections", "products"),
+    ("/m/search", "products"),
+    ("/sales", "sales"),
+    ("/m/sales", "sales"),
+    ("/customers", "customers"),
+    ("/m/customers", "customers"),
+    ("/returns", "history"),
+    ("/m/returns", "history"),
+    ("/history", "history"),
+    ("/m/history", "history"),
+    ("/reports", "reports"),
+    ("/m/reports/expiry", "reports"),
+    ("/finance", "finance"),
+    ("/m/finance", "finance"),
+    ("/settings", "settings"),
+]
+
+
+def nav_section(path: str) -> str | None:
+    """Return the section owning `path` (first matching prefix), else None.
+
+    None covers both "/" and "/m/" (the home tile owns no section) and any
+    path outside the table — the status quo everywhere today (T-quick-260813-
+    l0y-02: no wrong-but-unsafe render, worst case is "nothing highlighted").
+    """
+    for prefix, section in NAV_SECTION_PREFIXES:
+        if path.startswith(prefix):
+            return section
+    return None
+
+
+def batch_identity_label(batch, product) -> str:
+    """Identity label for a batch: stored name wins, else derived, else bare product name.
+
+    batch.name set -> that name verbatim (any expiry). batch.name unset with an
+    expiry -> "{product.name} — dd.mm.yyyy" (format_ru_date). Neither -> bare
+    product.name. Used by breadcrumb identity lines (Task 2/3, quick-260813-l0y)
+    so an operator editing one of a product's several batches can tell which
+    one is open.
+    """
+    if batch.name:
+        return batch.name
+    if batch.expiry:
+        return f"{product.name} — {format_ru_date(batch.expiry)}"
+    return product.name
+
+
 def _auth_context(request: Request) -> dict:
     """Inject current_user + csrf_token into EVERY template (Phase 25, AUTH-05).
 
@@ -144,3 +223,7 @@ templates.env.globals["CURRENCIES"] = CURRENCIES
 templates.env.globals["DEFAULT_CURRENCY"] = DEFAULT_CURRENCY
 # Renders an amount together with its currency symbol: {{ cents | money(w.currency) }}
 templates.env.filters["money"] = format_money
+# quick-260813-l0y: shared nav-highlight table + batch identity label, read by
+# both base.html and mobile_base.html / the six breadcrumb-carrying templates.
+templates.env.globals["nav_section"] = nav_section
+templates.env.globals["batch_identity_label"] = batch_identity_label

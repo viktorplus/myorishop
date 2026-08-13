@@ -1,0 +1,17 @@
+{# Shared breadcrumb trail (Task 1, quick-260813-l0y): renders a `crumbs` list
+   of {label, href} dicts. Every crumb except the last is a link; the last
+   crumb is plain text with aria-current="page" (the "you are here" cue).
+   crumb.label values are untrusted stored text (product/batch/customer/
+   warehouse names) — plain Jinja autoescape only, never |safe, same class as
+   the existing T-09-11/T-13-12 precedent already documented in
+   batch_card_picker.html. #}
+<nav class="breadcrumbs" aria-label="Хлебные крошки">
+  {% for crumb in crumbs %}
+  {% if not loop.last %}
+  <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+  <span class="muted"> › </span>
+  {% else %}
+  <span aria-current="page">{{ crumb.label }}</span>
+  {% endif %}
+  {% endfor %}
+</nav>

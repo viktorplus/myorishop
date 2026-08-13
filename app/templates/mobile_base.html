@@ -32,24 +32,33 @@
    hx-post/hx-put/hx-delete on the page. #}
 <body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   {% block tabbar %}
+  {% set active_section = nav_section(request.url.path) %}
   <nav class="mobile-tabbar">
     <a href="/m/"{% if request.url.path == "/m/" %} class="active"{% endif %}>Главная</a>
-    <a href="/m/products"{% if request.url.path.startswith("/m/products") %} class="active"{% endif %}>Товары</a>
-    <a href="/m/sales"{% if request.url.path.startswith("/m/sales") %} class="active"{% endif %}>Продажи</a>
-    <a href="/m/customers"{% if request.url.path.startswith("/m/customers") %} class="active"{% endif %}>Покупатели</a>
-    <a href="/m/history"{% if request.url.path.startswith("/m/history") %} class="active"{% endif %}>История</a>
-    <a href="/m/reports/expiry"{% if request.url.path.startswith("/m/reports") %} class="active"{% endif %}>Отчёты</a>
-    <a href="/m/finance"{% if request.url.path.startswith("/m/finance") %} class="active"{% endif %}>Финансы</a>
+    <a href="/m/products"{% if active_section == "products" %} class="active"{% endif %}>Товары</a>
+    <a href="/m/sales"{% if active_section == "sales" %} class="active"{% endif %}>Продажи</a>
+    <a href="/m/customers"{% if active_section == "customers" %} class="active"{% endif %}>Покупатели</a>
+    <a href="/m/history"{% if active_section == "history" %} class="active"{% endif %}>История</a>
+    <a href="/m/reports/expiry"{% if active_section == "reports" %} class="active"{% endif %}>Отчёты</a>
+    <a href="/m/finance"{% if active_section == "finance" %} class="active"{% endif %}>Финансы</a>
   </nav>
   {% endblock %}
   <main class="mobile-shell">
-    {% block back %}<a class="mobile-back" href="/m/">← Главная</a>{% endblock %}
-    {# AUTH-05: logout affordance — POST, CSRF-carried via the body hx-headers.
-       Reuses .mobile-back (min-height:44px touch target); pushed right with
-       margin-left:auto (no new CSS). display_name autoescaped, never |safe. #}
-    {% if current_user %}
-    <a class="mobile-back" style="margin-left:auto;cursor:pointer" hx-post="/logout">{{ current_user.display_name }} · Выйти</a>
-    {% endif %}
+    {# quick-260813-l0y: real flex row (.mobile-header-row) so the back slot
+       can render a multi-crumb breadcrumbs.html without overlapping or
+       horizontally overflowing the logout control — see the CSS comment on
+       .mobile-header-row for why margin-left:auto never actually worked here. #}
+    <div class="mobile-header-row">
+      {% block back %}<a class="mobile-back" href="/m/">← Главная</a>{% endblock %}
+      {# AUTH-05: logout affordance — POST, CSRF-carried via the body
+         hx-headers. Reuses .mobile-back (min-height:44px touch target);
+         .mobile-header-row's justify-content:space-between now right-aligns
+         it (margin-left:auto dropped, it was a no-op). display_name
+         autoescaped, never |safe. #}
+      {% if current_user %}
+      <a class="mobile-back" style="cursor:pointer" hx-post="/logout">{{ current_user.display_name }} · Выйти</a>
+      {% endif %}
+    </div>
     {% block step_indicator %}{% endblock %}
     {% block content %}{% endblock %}
   </main>

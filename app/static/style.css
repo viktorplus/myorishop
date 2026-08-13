@@ -51,6 +51,22 @@ nav.server-mode a.active {
   color: #ffffff;
 }
 
+/* Breadcrumb trail (Task 1, quick-260813-l0y): reuses .muted for the
+   separator/inactive-crumb tokens (the global `a { color: #2563eb; }` rule
+   already styles the links) — no new colour role. overflow-wrap is what
+   guarantees a long product name wraps instead of forcing a horizontal
+   scrollbar on the mobile shell. */
+.breadcrumbs {
+  font-size: 14px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.breadcrumbs [aria-current="page"] {
+  color: #222;
+  font-weight: 600;
+}
+
 /* Товары toolbar (Phase 24, D-01/D-04/D-05): always-visible two-group
    action toolbar reusing .form-actions/.button/.muted verbatim. */
 .toolbar {
@@ -373,6 +389,22 @@ a.link-danger:hover {
    44px touch-target minimum (spacing exception, see UI-SPEC). */
 .mobile-shell { max-width: 480px; margin: 0 auto; padding: 16px; }
 .mobile-back { display: inline-block; min-height: 44px; line-height: 44px; }
+
+/* quick-260813-l0y: the back/logout row needs a real flex row now that the
+   back slot can render breadcrumbs.html (a multi-crumb <nav> that can wrap
+   onto several lines) instead of one short link. The previous
+   margin-left:auto on the logout link never actually right-aligned it — CSS
+   auto margins compute to 0 on inline-level/inline-block boxes, not just
+   block boxes — harmless while the slot held one short link, but wrong once
+   it can wrap, so justify-content:space-between does that job instead. */
+.mobile-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .mobile-step-indicator { font-size: 14px; color: #6b7280; margin: 0 0 16px; }
 
 .mobile-tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

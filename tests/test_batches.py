@@ -21,6 +21,7 @@ from alembic import command
 from app.config import settings
 from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Batch, Operation, Product, Warehouse
+from app.routes import batch_identity_label
 from app.services.batches import (
     BATCH_NOT_FOUND_ERROR,
     COMMENT_TOO_LONG_ERROR,
@@ -283,6 +284,31 @@ def test_format_ru_date():
     assert format_ru_date("2026-07-12") == "12.07.2026"
     assert format_ru_date(None) == ""
     assert format_ru_date("") == ""
+
+
+def test_batch_identity_label_prefers_name_then_derives_then_falls_back():
+    """Task 1 (quick-260813-l0y): stored name wins; else derive; else bare product name."""
+
+    class _P:
+        name = "Крем для рук"
+
+    class _B:
+        name = None
+        expiry = None
+
+    product = _P()
+
+    named = _B()
+    named.name = "Партия А"
+    named.expiry = "2026-01-01"
+    assert batch_identity_label(named, product) == "Партия А"
+
+    dated = _B()
+    dated.expiry = "2026-08-13"
+    assert batch_identity_label(dated, product) == "Крем для рук — 13.08.2026"
+
+    bare = _B()
+    assert batch_identity_label(bare, product) == "Крем для рук"
 
 
 # --- Task 2: migration 0008 replay ----------------------------------------
