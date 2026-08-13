@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-08-13 - Completed quick task 260813-i28: batch editing (name/expiry/location/comment/price/cost), quantity/warehouse permanently read-only
+Last activity: 2026-08-13 - Completed quick task 260813-l0y: breadcrumbs on the edit screens + product card, and an active-section nav highlight that survives nested screens
 
 ## Performance Metrics
 
@@ -207,6 +207,7 @@ None yet.
 | 260810-2g3 | Currency correctness part 2 (continues cdcec66): cash_movements.currency + batches.cost_cents (migrations 0024/0025/0026); per-currency balance/history/cash-flow/stock-valuation/sales-profit/dashboard behind a mandatory currency filter (never a cross-currency SUM); mixed-currency sale baskets rejected pre-write; cross-currency transfers require a destination-currency cost; «Валюта» column on CSV exports; legacy NULL-batch ledger rows bucket as RUB via the shared operation_currency_clause (outer join + COALESCE, never an inner join) | 2026-08-10 | bb0b759 | [260810-2g3-currency-correctness-part-2-per-currency](./quick/260810-2g3-currency-correctness-part-2-per-currency/) |
 | 260813-ezt | Fix broken hx-vals tojson attributes in double-quoted HTML attrs: Jinja's `\|tojson` escapes `'` but not `"`, so the browser truncated `hx-vals` at the payload's first double quote — mobile batch cards fired batch-pick with an empty batch_id (sale/correction/write-off/transfer wizards could not select a batch at all, «Далее» stayed disabled); 5 attributes re-delimited to single quotes across 4 templates + 3 regression tests | 2026-08-13 | e574a00 | [260813-ezt-fix-broken-hx-vals-tojson-attributes-in-](./quick/260813-ezt-fix-broken-hx-vals-tojson-attributes-in-/) |
 | 260813-i28 | Batch editing: new `update_batch` service (name/expiry/location/comment/price/cost, RU validation, empty->NULL, quantity/warehouse_id/product_id/is_legacy structurally excluded) + desktop `/batches/{id}/edit` and mobile `/m/batches/{id}/edit` routes, reachable from the desktop product batch table, desktop+mobile `/reports/expiry`, and mobile product detail; `?code=` prefill added to `/writeoff` + `/m/writeoff` (mirrors `/transfers`, already supported) | 2026-08-13 | 21cbbff | [260813-i28-batch-editing-edit-every-batch-field-exc](./quick/260813-i28-batch-editing-edit-every-batch-field-exc/) |
+| 260813-l0y | Breadcrumbs + active-section nav: shared `partials/breadcrumbs.html` (last crumb non-link, `aria-current="page"`) and an object-identity line on the 4 desktop edit forms (batch/product/customer/warehouse) + the 2 mobile screens (batch edit, product detail, where the trail replaces the generic «← Главная»); one shared `nav_section()` prefix→section map in `app/routes/__init__.py` consumed by BOTH navs, so nested paths (`/batches/*`, `/receipts`, `/writeoff`, `/transfers`, `/corrections`, `/categories`, `/dictionary`, `/catalogs`, `/warehouses`, `/m/search/*`) keep their section highlighted instead of highlighting nothing | 2026-08-13 | 879a03e | [260813-l0y-breadcrumbs-on-edit-screens-active-secti](./quick/260813-l0y-breadcrumbs-on-edit-screens-active-secti/) |
 
 ## Deferred Items
 
