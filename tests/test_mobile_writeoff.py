@@ -24,6 +24,21 @@ def _make_batch(session, product, warehouse, quantity, **kwargs):
     return batch
 
 
+def test_mobile_writeoff_start_prefills_code_from_query(mobile_client_factory, product):
+    """quick-260813-i28: ?code= prefills the Код field, both cold and HX-Request."""
+    client = mobile_client_factory(mobile_writeoff.router)
+
+    cold = client.get("/m/writeoff", params={"code": product.code})
+    assert cold.status_code == 200
+    assert f'value="{product.code}"' in cold.text
+
+    hx = client.get(
+        "/m/writeoff", params={"code": product.code}, headers={"HX-Request": "true"}
+    )
+    assert hx.status_code == 200
+    assert f'value="{product.code}"' in hx.text
+
+
 def test_batch_step_lists_open_batches_and_includes_picker(
     mobile_client_factory, session, product, warehouse
 ):

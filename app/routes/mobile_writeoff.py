@@ -65,8 +65,11 @@ def _carried_warehouse_name(session: Session, code_clean: str, batch_id_clean: s
 
 
 @router.get("/m/writeoff")
-def mobile_writeoff_start(request: Request):
-    context = {"errors": {}, "code": "", "name": "", "saved": None}
+def mobile_writeoff_start(request: Request, code: str = ""):
+    # quick-260813-i28: minimal ?code= echo (mirrors mobile_corrections.py's
+    # mobile_correction_start idiom). mobile_pages/writeoff.html and
+    # mobile_partials/writeoff_step_product.html already read {{ code or '' }}.
+    context = {"errors": {}, "code": code.strip(), "name": "", "saved": None}
     if bool(request.headers.get("HX-Request")):
         return templates.TemplateResponse(
             request, "mobile_partials/writeoff_step_product.html", context

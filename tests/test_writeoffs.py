@@ -204,6 +204,13 @@ def test_web_writeoff_form(client, session, stocked_product):
     assert lookup_response.status_code == 204
 
 
+def test_web_writeoff_page_prefills_code_from_query(client, stocked_product):
+    """quick-260813-i28: ?code= prefills the Код field (linked from batch_form.html)."""
+    response = client.get("/writeoff", params={"code": stocked_product.code})
+    assert response.status_code == 200
+    assert f'value="{stocked_product.code}"' in response.text
+
+
 def test_web_writeoff_oversell(client, session, stocked_product):
     """OPS-01/D-04: write-off oversell warns-but-allows — writing off more
     than the picked batch holds with no confirm writes 0 rows and shows a

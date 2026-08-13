@@ -23,10 +23,15 @@ SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте 
 
 
 @router.get("/writeoff")
-def writeoff_page(request: Request, session: Session = Depends(get_session)):
+def writeoff_page(request: Request, code: str = "", session: Session = Depends(get_session)):
+    # quick-260813-i28: minimal ?code= echo (mirrors mobile_corrections.py's
+    # mobile_correction_start idiom) — NOT the fuller _resolve_transfer_lookup
+    # prefetch /transfers uses. The existing value="{{ form.code or '' }}"
+    # binding in writeoff_form.html already renders this.
+    code_clean = code.strip()
     context = {
         "errors": {},
-        "form": {},
+        "form": {"code": code_clean} if code_clean else {},
         "focus_code": False,
         "writeoffs": recent_writeoffs(session),
     }
