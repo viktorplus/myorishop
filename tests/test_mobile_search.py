@@ -1,6 +1,7 @@
 """Phase 11 Plan 02: /m/search (reuses catalog.search_view unchanged)."""
 
 from app.routes import mobile_search
+from app.services.dictionary import add_entry
 
 
 def test_search_matching_query_returns_row(mobile_client_factory, product):
@@ -85,6 +86,31 @@ def test_search_product_detail_shows_quick_action_links_for_zero_stock_product(
     assert response.status_code == 200
     assert f'href="/m/sales?code={product.code}"' in response.text
     assert f'href="/m/receipts?code={product.code}"' in response.text
+
+
+def test_search_product_detail_shows_dictionary_quick_add_when_missing(
+    client, stocked_product
+):
+    """Quick task 260814-je0: uses `client` (not mobile_client_factory) —
+    the CTA POSTs cross-router to dictionary.router and needs a real,
+    authenticated current_user for the cosmetic admin gate to evaluate true."""
+    response = client.get(f"/m/search/product/{stocked_product.id}")
+
+    assert response.status_code == 200
+    assert f'/dictionary/from-product/{stocked_product.id}"' in response.text
+    assert "Добавить в справочник" in response.text
+
+
+def test_search_product_detail_hides_quick_add_when_already_in_dictionary(
+    client, session, stocked_product
+):
+    add_entry(session, code=stocked_product.code, name=stocked_product.name)
+
+    response = client.get(f"/m/search/product/{stocked_product.id}")
+
+    assert response.status_code == 200
+    assert "Добавить в справочник" not in response.text
+    assert "Есть в справочнике" in response.text
 
 
 def test_search_product_detail_shows_batch_edit_link_when_batches_exist(

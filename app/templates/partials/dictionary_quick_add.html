@@ -1,0 +1,28 @@
+{# Quick task 260814-je0: shared CTA included by BOTH product_form.html and
+   search_product_detail.html, and also the exact template
+   POST /dictionary/from-product/{id} renders back (swapped outerHTML into
+   this same div, so the whole thing is replaced in one piece).
+
+   Context contract: product (Product row — needs .id and .code),
+   dictionary_entry (Dictionary row or None), error (RU string or None, only
+   ever set by the POST response).
+
+   Cosmetic admin gate: mirrors base.html's existing ROLE-03
+   {% if current_user and current_user.role == "administrator" %} around the
+   «Настройки» link. The REAL boundary is POST /dictionary/from-product/{id}'s
+   require_role("administrator") wrap on dictionary.router in app/main.py —
+   this {% if %} only avoids showing an operator a button that could only
+   ever 403. #}
+{% if current_user and current_user.role == "administrator" and product.code %}
+<div id="dictionary-quick-add" class="field">
+  {% if dictionary_entry %}
+  <p class="muted">Есть в справочнике</p>
+  {% else %}
+  <button type="button" class="secondary"
+          hx-post="/dictionary/from-product/{{ product.id }}"
+          hx-target="#dictionary-quick-add"
+          hx-swap="outerHTML">Добавить в справочник</button>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% endif %}
+</div>
+{% endif %}

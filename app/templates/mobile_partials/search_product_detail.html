@@ -21,6 +21,7 @@
 {% else %}
 <p class="muted">—</p>
 {% endif %}
+{% include "partials/dictionary_quick_add.html" %}
 <p>Мин. цена: {% if product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% else %}—{% endif %}</p>
 {% for row in stock_rows %}
 <p>{{ row.warehouse_name }}: {{ row.total_qty }} шт.</p>

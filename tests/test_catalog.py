@@ -18,8 +18,9 @@ from sqlalchemy import select, text
 
 from alembic import command
 from app.config import settings
-from app.core import utcnow_iso
-from app.models import OPERATION_TYPES, Operation
+from app.core import new_id, utcnow_iso
+from app.models import OPERATION_TYPES, Operation, User
+from app.services.auth import hash_password
 from app.services.catalog import (
     category_options,
     create_product,
@@ -32,6 +33,7 @@ from app.services.catalog import (
     soft_delete_product,
     update_product,
 )
+from app.services.dictionary import add_entry, lookup
 from app.services.ledger import record_operation
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}
@@ -772,6 +774,75 @@ def test_web_edit_page_shows_breadcrumbs_and_identity_line(client, session):
     assert '<a href="/products">Товары</a>' in body
     assert '<span aria-current="page">Товар</span>' in body
     assert f"{product.name} ({product.code})" in body
+
+
+def test_web_edit_page_shows_dictionary_quick_add_when_code_missing(client, session):
+    """Quick task 260814-je0: the CTA renders on the edit card when the
+    product's code has no matching dictionary row."""
+    product, errors = create_product(
+        session, code="J5", name="Новый Товар Без Справочника", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    page = client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    assert f'/dictionary/from-product/{product.id}"' in page.text
+    assert "Добавить в справочник" in page.text
+
+
+def test_web_edit_page_hides_quick_add_when_already_in_dictionary(client, session):
+    product, errors = create_product(
+        session, code="J6", name="Товар В Справочнике", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    add_entry(session, code="J6", name="Уже Есть")
+
+    page = client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    assert "Добавить в справочник" not in page.text
+    assert "Есть в справочнике" in page.text
+
+
+def test_web_dictionary_from_product_creates_entry_and_flips_cta(client, session):
+    product, errors = create_product(
+        session, code="J7", name="Продукт Семь", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    response = client.post(f"/dictionary/from-product/{product.id}")
+    assert response.status_code == 200
+    assert "Есть в справочнике" in response.text
+    assert lookup(session, "J7") is not None
+
+
+def test_web_dictionary_from_product_unknown_id_404(client):
+    response = client.post("/dictionary/from-product/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_web_edit_page_quick_add_hidden_for_operator(anon_client, session, login):
+    """T-quick-260814-je0-03: the cosmetic admin gate hides a CTA that would
+    only 403 on click for a non-administrator."""
+    operator = User(
+        id=new_id(),
+        login="op",
+        display_name="Оператор",
+        role="operator",
+        password_hash=hash_password("pw"),
+        is_active=1,
+    )
+    session.add(operator)
+    session.commit()
+
+    product, errors = create_product(
+        session, code="J8", name="Товар Оператора", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    assert login(anon_client, "op", "pw").status_code == 303
+    page = anon_client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    assert "Добавить в справочник" not in page.text
 
 
 def test_web_edit_price_then_history_rendered(client, session):

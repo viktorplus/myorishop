@@ -24,6 +24,7 @@ from app.services.catalog import (
     update_product,
 )
 from app.services.catalogs import catalogs_for_code
+from app.services.dictionary import lookup
 from app.services.pagination import page_window
 from app.services.pricing import latest_price_for_code
 
@@ -274,6 +275,7 @@ def product_edit(request: Request, product_id: str, session: Session = Depends(g
         "stale_days_default": settings.stale_days,
         "product_catalogs": catalogs_for_code(session, product.code or ""),
         "latest_price": latest_price_for_code(session, product.code or ""),
+        "dictionary_entry": lookup(session, product.code) if product.code else None,
     }
     return templates.TemplateResponse(request, "pages/product_form.html", context)
 

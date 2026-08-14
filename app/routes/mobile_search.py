@@ -13,6 +13,7 @@ from app.models import Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
 from app.services.catalog import search_view
+from app.services.dictionary import lookup
 
 router = APIRouter()
 
@@ -53,7 +54,12 @@ def mobile_search_product_detail(
         key=lambda row: row["warehouse_name"],
     )
 
-    context = {"product": product, "stock_rows": stock_rows, "batches": batches}
+    context = {
+        "product": product,
+        "stock_rows": stock_rows,
+        "batches": batches,
+        "dictionary_entry": lookup(session, product.code) if product.code else None,
+    }
     return templates.TemplateResponse(
         request, "mobile_partials/search_product_detail.html", context
     )
