@@ -45,6 +45,16 @@ def test_mobile_products_toolbar_reaches_transfers_corrections_search(
     assert 'href="/m/search"' in response.text
 
 
+def test_mobile_products_toolbar_reaches_dictionary_missing(mobile_client_factory, product):
+    """Quick task 260814-je0: mobile Справочники toolbar reaches the
+    missing-products backfill page."""
+    client = mobile_client_factory(mobile_products.router)
+    response = client.get("/m/products")
+
+    assert response.status_code == 200
+    assert 'href="/dictionary/missing"' in response.text
+
+
 def test_mobile_products_card_links_to_product_detail(mobile_client_factory, product):
     """The Товары card is the operator's only nav path to a product's
     batches (and their «Изменить» link) — a bare <div> card left /m/products

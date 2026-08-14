@@ -11,8 +11,16 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.models import Product
 from app.routes import templates
-from app.services.dictionary import add_entry, list_entries, lookup, update_entry
+from app.services.dictionary import (
+    add_entry,
+    add_entry_from_product,
+    list_entries,
+    list_missing_products,
+    lookup,
+    update_entry,
+)
 from app.services.pagination import page_window
 from app.services.pricing import latest_prices_for_codes
 from app.services.rubrics import RUBRICS
@@ -71,6 +79,26 @@ def _dictionary_context(
     }
 
 
+def _dictionary_missing_context(session: Session, *, page: int = 0) -> dict:
+    """Shared context for GET /dictionary/missing and its POST re-render.
+
+    Quick task 260814-je0. No filters on this list, so extra_qs stays the
+    empty string the shared pagination partial expects.
+    """
+    result = list_missing_products(session, page=page)
+    pw = page_window(result["page"], result["total_pages"])
+    return {
+        "products": result["products"],
+        "total": result["total"],
+        "total_pages": result["total_pages"],
+        "page": result["page"],
+        "page_window": pw,
+        "list_url": "/dictionary/missing",
+        "rows_target_id": "dictionary-missing-rows",
+        "extra_qs": "",
+    }
+
+
 @router.get("/dictionary")
 def dictionary_page(
     request: Request,
@@ -116,6 +144,66 @@ def dictionary_lookup(
         "category": entry.rubric if fill_category else category,
     }
     return templates.TemplateResponse(request, "partials/dictionary_lookup.html", context)
+
+
+@router.get("/dictionary/missing")
+def dictionary_missing_page(
+    request: Request,
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    """Quick task 260814-je0: active products whose code is missing from the
+    dictionary — one-click backfill entry point (CAT-02 D-24 helper only)."""
+    context = _dictionary_missing_context(session, page=page)
+    is_hx = bool(request.headers.get("HX-Request"))
+    if is_hx:
+        return templates.TemplateResponse(
+            request, "partials/dictionary_missing_rows.html", context
+        )
+    return templates.TemplateResponse(request, "pages/dictionary_missing.html", context)
+
+
+@router.post("/dictionary/missing/{product_id}/add")
+def dictionary_missing_add(
+    request: Request,
+    product_id: str,
+    page: int = 0,
+    session: Session = Depends(get_session),
+):
+    """Quick task 260814-je0: whole-list re-render — the added product no
+    longer matches the LEFT JOIN query, so it is simply absent afterwards."""
+    entry, errors = add_entry_from_product(session, product_id)
+    if "product" in errors:
+        raise HTTPException(status_code=404, detail="unknown product")
+    context = _dictionary_missing_context(session, page=page)
+    return templates.TemplateResponse(
+        request, "partials/dictionary_missing_rows.html", context
+    )
+
+
+@router.post("/dictionary/from-product/{product_id}")
+def dictionary_from_product(
+    request: Request,
+    product_id: str,
+    session: Session = Depends(get_session),
+):
+    """Quick task 260814-je0: shared CTA on the product detail cards
+    (desktop /products/{id}/edit, mobile /m/search/product/{id})."""
+    product = session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="unknown product")
+    _, errors = add_entry_from_product(session, product_id)
+    context = {
+        "product": product,
+        "dictionary_entry": lookup(session, product.code) if product.code else None,
+        "error": next(iter(errors.values()), None) if errors else None,
+    }
+    return templates.TemplateResponse(
+        request,
+        "partials/dictionary_quick_add.html",
+        context,
+        status_code=422 if errors else 200,
+    )
 
 
 @router.post("/dictionary")

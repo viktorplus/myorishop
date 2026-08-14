@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+{% with crumbs = [
+  {"label": "Главная", "href": "/"},
+  {"label": "Товары", "href": "/products"},
+  {"label": "Нет в справочнике", "href": none}
+] %}{% include "partials/breadcrumbs.html" %}{% endwith %}
+<h1>Товары без записи в справочнике</h1>
+<p class="muted">Активные товары, чей код ещё не добавлен в справочник. Добавьте запись в один клик — код и название берутся из карточки товара.</p>
+
+{% include "partials/dictionary_missing_rows.html" %}
+{% endblock %}

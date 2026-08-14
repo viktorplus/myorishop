@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import new_id
-from app.models import Dictionary
+from app.models import Dictionary, Product
 from app.services.pagination import LIST_PAGE_SIZE
 
 DUPLICATE_ERROR = "Код уже есть в справочнике — отредактируйте существующую строку."
@@ -148,3 +148,62 @@ def lookup(session: Session, code: str) -> Dictionary | None:
     if not code:
         return None
     return session.scalars(select(Dictionary).where(Dictionary.code == code)).first()
+
+
+def list_missing_products(session: Session, *, page: int = 0) -> dict:
+    """Active products whose non-empty code has no matching dictionary row.
+
+    Quick task 260814-je0. Read-only (no Dictionary/Product write) — mirrors
+    list_entries's SQL-side pagination shape (SELECT + separate COUNT,
+    LIST_PAGE_SIZE, page clamp). Dictionary.code is UNIQUE, so the LEFT JOIN
+    can never duplicate a product row.
+    """
+    filters = [
+        Product.deleted_at.is_(None),
+        Product.code.is_not(None),
+        Product.code != "",
+        Dictionary.id.is_(None),
+    ]
+    base = select(Product).outerjoin(Dictionary, Product.code == Dictionary.code)
+    count_base = (
+        select(func.count())
+        .select_from(Product)
+        .outerjoin(Dictionary, Product.code == Dictionary.code)
+    )
+
+    total = session.scalar(count_base.where(*filters))
+    total_pages = max(1, -(-total // LIST_PAGE_SIZE))
+    page = max(0, min(page, total_pages - 1))
+
+    stmt = (
+        base.where(*filters)
+        .order_by(Product.name_lc)
+        .limit(LIST_PAGE_SIZE)
+        .offset(page * LIST_PAGE_SIZE)
+    )
+    products = list(session.scalars(stmt))
+    return {
+        "products": products,
+        "total": total,
+        "total_pages": total_pages,
+        "page": page,
+    }
+
+
+def add_entry_from_product(
+    session: Session, product_id: str
+) -> tuple[Dictionary | None, dict[str, str]]:
+    """Create a dictionary entry from a product's own code+name (D-24 reuse).
+
+    Quick task 260814-je0. This is the ONE function both new POST routes
+    call, so the "product not found" / "empty code" RU error shapes are
+    shared. Straight passthrough to add_entry — no validation duplicated
+    (add_entry's own race-guard and duplicate-code handling apply verbatim).
+    """
+    product = session.get(Product, product_id)
+    if product is None:
+        return None, {"product": "Товар не найден."}
+    code = (product.code or "").strip()
+    if not code:
+        return None, {"code": "У товара не указан код."}
+    return add_entry(session, code=code, name=product.name)

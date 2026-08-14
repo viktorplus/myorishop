@@ -18,9 +18,17 @@ from sqlalchemy import select
 
 from alembic import command
 from app.config import settings
-from app.models import Dictionary, Operation
-from app.services.catalog import create_product
-from app.services.dictionary import add_entry, list_entries, lookup, update_entry
+from app.core import new_id
+from app.models import Dictionary, Operation, Product
+from app.services.catalog import create_product, soft_delete_product
+from app.services.dictionary import (
+    add_entry,
+    add_entry_from_product,
+    list_entries,
+    list_missing_products,
+    lookup,
+    update_entry,
+)
 from app.services.rubrics import RUBRICS
 
 EMPTY_MONEY = {"cost_raw": "", "sale_raw": ""}  # D-01/Pitfall 4 (Phase 18 plan 02)
@@ -475,3 +483,132 @@ def test_web_dictionary_renders_category_select(client, session):
     assert '<select name="category"' in response.text
     assert "Макияж" in response.text
     assert "Уход за лицом" in response.text
+
+
+# --- backfill from products (quick task 260814-je0) ---
+
+
+def test_list_missing_products_excludes_dictionary_matches_and_bad_codes(session):
+    """Only active, coded products with no dictionary row are listed."""
+    missing, errors = create_product(
+        session, code="J1", name="Без Справочника", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    already, errors = create_product(
+        session, code="J2", name="Уже В Справочнике", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    add_entry(session, code="J2", name="Уже Есть")
+
+    deleted, errors = create_product(
+        session, code="J-DEL", name="Удалённый Товар", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    soft_delete_product(session, deleted.id)
+
+    no_code = Product(id=new_id(), code=None, name="Нет Кода", quantity=0)
+    session.add(no_code)
+    session.commit()
+
+    result = list_missing_products(session)
+    assert result["total"] == 1
+    assert result["products"][0].code == "J1"
+
+
+def test_list_missing_products_paginates_and_clamps_page(session):
+    for i in range(25):
+        create_product(
+            session, code=f"K{i:02d}", name=f"Товар {i:02d}", category="", **EMPTY_MONEY
+        )
+
+    first = list_missing_products(session, page=0)
+    assert len(first["products"]) == 20
+    assert first["total_pages"] == 2
+
+    clamped = list_missing_products(session, page=99)
+    assert clamped["page"] == 1
+    assert len(clamped["products"]) == 5
+
+
+def test_add_entry_from_product_creates_row_from_product_code_and_name(session):
+    product, errors = create_product(
+        session, code="J3", name="Тушь Ресничная", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    ops_before = len(session.scalars(select(Operation)).all())
+
+    entry, errors = add_entry_from_product(session, product.id)
+    assert errors == {}
+    assert entry.code == "J3"
+    assert entry.name == "Тушь Ресничная"
+
+    session.refresh(product)
+    assert product.name == "Тушь Ресничная"
+    assert len(session.scalars(select(Operation)).all()) == ops_before
+
+
+def test_add_entry_from_product_unknown_id_returns_error(session):
+    entry, errors = add_entry_from_product(session, "does-not-exist")
+    assert entry is None
+    assert errors == {"product": "Товар не найден."}
+
+
+def test_add_entry_from_product_blank_code_returns_error(session):
+    product = Product(id=new_id(), code=None, name="Нет Кода", quantity=0)
+    session.add(product)
+    session.commit()
+
+    entry, errors = add_entry_from_product(session, product.id)
+    assert entry is None
+    assert "code" in errors
+
+
+def test_web_dictionary_missing_page_lists_and_hides_dictionary_matches(client, session):
+    missing, errors = create_product(
+        session, code="J-MISS", name="Товар Без Справочника", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    already, errors = create_product(
+        session, code="J-HAS", name="Товар С Справочником", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+    add_entry(session, code="J-HAS", name="Уже Есть")
+
+    response = client.get("/dictionary/missing")
+    assert response.status_code == 200
+    assert "Товар Без Справочника" in response.text
+    assert "Товар С Справочником" not in response.text
+
+
+def test_web_dictionary_missing_page_empty_state(client, session, product):
+    add_entry(session, code=product.code, name=product.name)
+
+    response = client.get("/dictionary/missing")
+    assert response.status_code == 200
+    assert "Все активные товары с кодом уже есть в справочнике." in response.text
+
+
+def test_web_dictionary_missing_add_removes_row_and_creates_entry(client, session):
+    missing, errors = create_product(
+        session, code="J4", name="Крем Для Лица", category="", **EMPTY_MONEY
+    )
+    assert errors == {}
+
+    response = client.post(f"/dictionary/missing/{missing.id}/add")
+    assert response.status_code == 200
+    assert 'id="dictionary-missing-rows"' in response.text
+    assert "Крем Для Лица" not in response.text
+    assert lookup(session, "J4") is not None
+
+
+def test_web_dictionary_missing_add_unknown_id_404(client):
+    response = client.post("/dictionary/missing/does-not-exist/add")
+    assert response.status_code == 404
+
+
+def test_web_nav_has_dictionary_missing_link(client):
+    response = client.get("/products")
+    assert response.status_code == 200
+    assert 'href="/dictionary/missing"' in response.text
+    assert "Нет в справочнике" in response.text

@@ -1,0 +1,34 @@
+{# Quick task 260814-je0: swap target for the missing-products list + its
+   one-click add action. Stable id, partial-only responses. Context contract:
+   products, page, total, total_pages, page_window, list_url, rows_target_id,
+   extra_qs (mirrors partials/dictionary_rows.html's contract). #}
+<div id="dictionary-missing-rows">
+  {% if products %}
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+      <tr>
+        <td>{{ p.code }}</td>
+        <td>{{ p.name }}</td>
+        <td>
+          <button type="button" class="secondary"
+                  hx-post="/dictionary/missing/{{ p.id }}/add?page={{ page }}"
+                  hx-target="#dictionary-missing-rows"
+                  hx-swap="outerHTML">Добавить в справочник</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% include "partials/pagination.html" %}
+  {% else %}
+  <p class="empty-state">Все активные товары с кодом уже есть в справочнике.</p>
+  {% endif %}
+</div>
