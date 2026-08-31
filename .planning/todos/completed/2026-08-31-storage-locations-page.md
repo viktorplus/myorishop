@@ -2,7 +2,7 @@
 
 **Area:** ui
 **Created:** 2026-08-31
-**Status:** pending
+**Status:** completed 2026-08-31 (app 1.34)
 
 ## Problem
 
@@ -40,3 +40,36 @@
 - `app/services/stock.py` — остатки по складам
 - `app/templates/pages/` — шаблоны страниц
 - `app/services/pagination.py` — постраничный вывод
+
+## Result
+
+Реализовано: `/locations` — «Места хранения», кнопка в панели «Товары»
+(и в мобильной панели: страница десктопная, как /categories и /dictionary,
+которые уже линкуются с мобильной панели).
+
+Решения по открытым вопросам:
+
+- Место НЕ стало новым полем. Оно выводится из партии: `Batch.location`
+  (заполняется формой прихода), иначе `Batch.comment` — то поле, куда
+  оператор записал полки при описи 2026-08-31.
+- Партии без места не прячутся: они попадают в группу «Место не указано».
+  Партия с остатком физически где-то лежит; спрятать её значило бы врать
+  про склад.
+- Показываются только открытые партии (`quantity > 0`).
+- Места сортируются естественно: «полка 5» раньше «полки 39»,
+  «Место не указано» всегда последним.
+
+Два вида на одном URL: без запроса — карта склада (место, позиций, штук),
+с запросом или выбранным местом — сами партии с колонкой «Место».
+
+Не вошло: отдельная мобильная страница `/m/locations` с карточками.
+
+## Files (as built)
+
+- `app/services/locations.py` — новый read-сервис
+- `app/routes/locations.py` — тонкий роут `/locations`
+- `app/templates/pages/locations.html`, `app/templates/partials/location_rows.html`
+- `app/templates/partials/products_toolbar.html`, `app/templates/mobile_partials/products_toolbar.html` — кнопка
+- `app/routes/__init__.py` — `("/locations", "products")` в `NAV_SECTION_PREFIXES`
+- `app/main.py` — регистрация роутера
+- `tests/test_locations.py` — 15 тестов

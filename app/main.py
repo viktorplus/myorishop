@@ -32,6 +32,7 @@ from app.routes import (
     health,
     history,
     home,
+    locations,
     mobile_batches,
     mobile_corrections,
     mobile_customers,
@@ -205,6 +206,7 @@ app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(batches.router)
 app.include_router(categories.router)
+app.include_router(locations.router)
 app.include_router(catalogs.router)
 # ROLE-02/03: the admin-only routers (user management, warehouses, dictionaries,
 # settings) are gated SERVER-SIDE with require_role — the menu-hide in Plan 06 is

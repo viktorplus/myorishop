@@ -1,0 +1,103 @@
+{# Stable HTMX swap target: the search box, the place picker and the pagination
+   bar all swap #location-rows (outerHTML). Context comes from
+   locations.list_locations_view via routes.locations: mode ("places"|"rows"),
+   places_page/rows, places (all places, for the picker), q/place, page/total/
+   total_pages/page_window, list_url, rows_target_id, extra_qs. #}
+<div id="location-rows">
+  <div class="filter-bar">
+    <div class="field">
+      <label for="location-q">Найти товар</label>
+      <input type="search" id="location-q" name="q" placeholder="Код или название…" value="{{ q }}"
+             hx-get="/locations" hx-trigger="input changed delay:300ms, search"
+             hx-include="#location-rows input, #location-rows select"
+             hx-target="#location-rows" hx-swap="outerHTML" hx-push-url="true">
+    </div>
+    <div class="field">
+      <label for="location-place">Место</label>
+      <select id="location-place" name="place"
+              hx-get="/locations" hx-trigger="change"
+              hx-include="#location-rows input, #location-rows select"
+              hx-target="#location-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value="" {% if not place %}selected{% endif %}>Все места</option>
+        {% for p in places %}
+        <option value="{{ p.place }}" {% if p.place == place %}selected{% endif %}>{{ p.place }} ({{ p.quantity }} шт.)</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  {% if mode == "places" %}
+    {% if places_page %}
+    <p class="muted">Мест: {{ total }}. Выберите место или найдите товар — система покажет, где он лежит.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Место</th>
+          <th class="num">Позиций</th>
+          <th class="num">Всего штук</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in places_page %}
+        <tr>
+          <td>{{ p.place }}</td>
+          <td class="num">{{ p.batches }}</td>
+          <td class="num">{{ p.quantity }}</td>
+          <td>
+            <a href="#" hx-get="/locations?place={{ p.place | urlencode }}"
+               hx-target="#location-rows" hx-swap="outerHTML" hx-push-url="true">Что лежит</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% include "partials/pagination.html" %}
+    {% else %}
+    <div class="empty-state">
+      <h2>Мест хранения пока нет</h2>
+      <p class="muted">Место записывается в поле «Место хранения» или «Комментарий» партии при приёмке. <a href="/receipts/new">Оформить приход</a></p>
+    </div>
+    {% endif %}
+  {% else %}
+    {% if rows %}
+    <p class="muted">
+      {% if place %}Место «{{ place }}»{% if q %}, поиск «{{ q }}»{% endif %}{% else %}Поиск «{{ q }}»{% endif %} — партий: {{ total }}.
+      <a href="#" hx-get="/locations" hx-target="#location-rows" hx-swap="outerHTML" hx-push-url="true">Показать все места</a>
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Место</th>
+          <th>Код</th>
+          <th>Товар</th>
+          <th>Срок годности</th>
+          <th>Склад</th>
+          <th class="num">Остаток</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.place }}</td>
+          <td>{{ row.product.code or "" }}</td>
+          <td>{{ row.product.name }}</td>
+          <td>{% if row.batch.expiry %}{{ row.batch.expiry | ru_date }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ row.warehouse.name }}</td>
+          <td class="num">{{ row.batch.quantity }}</td>
+          <td><a href="/batches/{{ row.batch.id }}/edit">Изменить</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% include "partials/pagination.html" %}
+    {% else %}
+    <div class="empty-state">
+      <p class="muted">Ничего не найдено.
+        <a href="#" hx-get="/locations" hx-target="#location-rows" hx-swap="outerHTML" hx-push-url="true">Показать все места</a>
+      </p>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
