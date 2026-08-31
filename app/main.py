@@ -50,6 +50,7 @@ from app.routes import (
     mobile_writeoff,
     offline,
     products,
+    public_pages,
     receipts,
     reports,
     returns,
@@ -203,6 +204,7 @@ app.include_router(auth.router)
 # UPD-04: public /health (version probe for the launcher). NO dependencies= — it
 # is listed in security.PUBLIC_PATHS so the anonymous launcher probe gets a 200.
 app.include_router(health.router)
+app.include_router(public_pages.router)
 app.include_router(home.router)
 app.include_router(products.router)
 app.include_router(batches.router)

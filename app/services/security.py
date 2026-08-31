@@ -36,7 +36,15 @@ from app.services.users import count_users, get_active_user
 # Only login/logout/first-run are reachable without a session. StaticFiles is a
 # mount (not a router), so app-level dependencies never apply to it — /static
 # stays public automatically (RESEARCH Pattern 3).
-PUBLIC_PATHS = {"/login", "/logout", "/setup", "/health"}
+# Последний элемент — ВРЕМЕННАЯ публичная страница описи (app/routes/public_pages.py).
+# Точное совпадение, как и остальные: это один статический файл, а не дерево.
+PUBLIC_PATHS = {
+    "/login",
+    "/logout",
+    "/setup",
+    "/health",
+    "/code/artifact/0ac2f0bf-4df3-4de0-864a-b87d09e87305",
+}
 
 # SYNC-09 / threat T-28-03: the token-authenticated sync tree bypass.
 # THREE things this constant guarantees, read them before touching it:
