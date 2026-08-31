@@ -1,0 +1,53 @@
+{# Mobile storage-place cards (todo 2026-08-31). Self-wrapping #location-cards
+   (mirrors history_cards.html's convention) so partials/pagination.html's
+   outerHTML-swap buttons receive a response that includes the wrapper.
+
+   Two card shapes, chosen by `mode` (locations.list_locations_view):
+   "places" — the warehouse map, one card per place, a PLAIN link (tapping a
+   place is navigation, and a full render re-syncs the place picker above);
+   "rows" — one card per batch, linking to the mobile batch edit screen.
+
+   DATA CARDS ONLY: pagination lives in location_pagination.html, a
+   structural sibling in the page, isolated from this partial's own swaps
+   (CR-01 precedent). Autoescape only — product names and free-text places
+   are untrusted-at-rest text; NEVER |safe. #}
+<div id="location-cards"{% if oob %} hx-swap-oob="true"{% endif %}>
+{% if mode == "places" %}
+  {% if places_page %}
+  <p class="muted">Мест: {{ total }}. Выберите место или найдите товар — система покажет, где он лежит.</p>
+  {% for p in places_page %}
+  <a class="mobile-card" href="/m/locations?place={{ p.place | urlencode }}">
+    <p><strong>{{ p.place }}</strong></p>
+    <p class="muted">Позиций: {{ p.batches }} · Штук: {{ p.quantity }}</p>
+  </a>
+  {% endfor %}
+  {% else %}
+  <p class="empty-state muted">Мест хранения пока нет. Место записывается в поле «Место хранения» или «Комментарий» партии при приёмке.</p>
+  {% endif %}
+{% else %}
+  {% if rows %}
+  <p class="muted">
+    {% if place %}Место «{{ place }}»{% if q %}, поиск «{{ q }}»{% endif %}{% else %}Поиск «{{ q }}»{% endif %} — партий: {{ total }}.
+    <a href="/m/locations">Показать все места</a>
+  </p>
+  {% for row in rows %}
+  <a class="mobile-card" href="/m/batches/{{ row.batch.id }}/edit">
+    {# Inside one place the shelf is already named by the picker and the
+       summary line above, so the card leads with the товар; across places
+       (a search) the place is the answer the operator came for. #}
+    {%- if place %}
+    <p><strong>{{ row.product.name }}</strong></p>
+    {%- else %}
+    <p><strong>{{ row.place }}</strong></p>
+    <p>{{ row.product.name }}</p>
+    {%- endif %}
+    <p class="muted">Код: {{ row.product.code or "—" }} · {{ row.warehouse.name }}</p>
+    <p class="muted">Срок: {% if row.batch.expiry %}{{ row.batch.expiry | ru_date }}{% else %}—{% endif %}</p>
+    <p class="num">{{ row.batch.quantity }} шт.</p>
+  </a>
+  {% endfor %}
+  {% else %}
+  <p class="empty-state muted">Ничего не найдено. <a href="/m/locations">Показать все места</a></p>
+  {% endif %}
+{% endif %}
+</div>

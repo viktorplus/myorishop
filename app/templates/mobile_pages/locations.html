@@ -1,0 +1,34 @@
+{% extends "mobile_base.html" %}
+{# Mobile Места хранения (todo 2026-08-31): the desktop /locations page in the
+   mobile card idiom. #location-filters, #location-cards and
+   #location-pagination stay DOM siblings, never nested, so a search swap can
+   never destroy the picker or the pagination control (CR-01 precedent).
+   Stacked .field divs, no .filter-bar row — the 480px shell is too narrow for
+   two side-by-side controls (mirrors mobile_pages/history.html). #}
+{% block step_indicator %}{% endblock %}
+{% block content %}
+<h1>Места хранения</h1>
+<div id="location-filters">
+  <div class="field">
+    <label for="q">Найти товар</label>
+    <input type="search" id="q" name="q" placeholder="Код или название…" value="{{ q }}"
+           hx-get="/m/locations" hx-trigger="input changed delay:300ms, search"
+           hx-include="#location-filters input, #location-filters select"
+           hx-target="#location-cards" hx-swap="outerHTML" hx-push-url="true">
+  </div>
+  <div class="field">
+    <label for="place">Место</label>
+    <select id="place" name="place"
+            hx-get="/m/locations" hx-trigger="change"
+            hx-include="#location-filters input, #location-filters select"
+            hx-target="#location-cards" hx-swap="outerHTML" hx-push-url="true">
+      <option value=""{% if not place %} selected{% endif %}>Все места</option>
+      {% for p in places %}
+      <option value="{{ p.place }}"{% if p.place == place %} selected{% endif %}>{{ p.place }} ({{ p.quantity }} шт.)</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% include "mobile_partials/location_cards.html" %}
+{% include "mobile_partials/location_pagination.html" %}
+{% endblock %}

@@ -59,6 +59,7 @@ NAV_SECTION_PREFIXES: list[tuple[str, str]] = [
     ("/catalogs", "products"),
     ("/warehouses", "products"),
     ("/m/products", "products"),
+    ("/m/locations", "products"),
     ("/m/batches", "products"),
     ("/m/receipts", "products"),
     ("/m/writeoff", "products"),

@@ -62,7 +62,12 @@
 Два вида на одном URL: без запроса — карта склада (место, позиций, штук),
 с запросом или выбранным местом — сами партии с колонкой «Место».
 
-Не вошло: отдельная мобильная страница `/m/locations` с карточками.
+Мобильная версия `/m/locations` добавлена следом (app 1.35): те же данные
+в карточном виде, кнопка мобильной панели ведёт на неё. Карточка места —
+обычная ссылка (полная перерисовка страницы), поэтому селектор «Место»
+над списком всегда показывает то место, которое открыто; поиск живой
+(htmx), пагинация — общий контрол с oob-обновлением, как в мобильной
+«Истории».
 
 ## Files (as built)
 
@@ -72,4 +77,7 @@
 - `app/templates/partials/products_toolbar.html`, `app/templates/mobile_partials/products_toolbar.html` — кнопка
 - `app/routes/__init__.py` — `("/locations", "products")` в `NAV_SECTION_PREFIXES`
 - `app/main.py` — регистрация роутера
-- `tests/test_locations.py` — 15 тестов
+- `app/routes/mobile_locations.py`, `app/templates/mobile_pages/locations.html`,
+  `app/templates/mobile_partials/location_cards.html`,
+  `app/templates/mobile_partials/location_pagination.html` — мобильная версия
+- `tests/test_locations.py` (15 тестов), `tests/test_mobile_locations.py` (8 тестов)

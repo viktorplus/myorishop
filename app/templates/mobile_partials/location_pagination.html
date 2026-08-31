@@ -1,0 +1,10 @@
+{# Mobile storage-place pagination bar (todo 2026-08-31): reuses the SAME
+   numbered page_window/paginate control desktop uses (partials/pagination.html,
+   included unmodified). Rendered as its own element — a DOM sibling of
+   #location-cards in mobile_pages/locations.html, never nested inside it — so
+   a search/place swap on #location-cards can never destroy this control
+   (CR-01 precedent, mirrors history_pagination.html). `oob` drives
+   hx-swap-oob so every HX response updates this bar in place. #}
+<div id="location-pagination"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% include "partials/pagination.html" %}
+</div>

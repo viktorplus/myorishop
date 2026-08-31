@@ -39,6 +39,7 @@ from app.routes import (
     mobile_finance,
     mobile_history,
     mobile_home,
+    mobile_locations,
     mobile_products,
     mobile_receipts,
     mobile_reports,
@@ -261,6 +262,7 @@ app.include_router(sync.router)
 # only on these responses, so the /api/sync/ CORS posture stays untouched (D-05).
 app.include_router(offline.router)
 app.include_router(mobile_home.router)
+app.include_router(mobile_locations.router)
 app.include_router(mobile_sales.router)
 app.include_router(mobile_receipts.router)
 app.include_router(mobile_search.router)
