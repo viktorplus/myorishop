@@ -21,15 +21,18 @@ import json
 import pytest
 from sqlalchemy import func, select
 
-from app.models import Dictionary
+from app.models import Dictionary, Product
 from app.services.rubrics import RUBRIC_OVERRIDES
 from scripts.import_catalogs import (
     ShadeNameWouldShrink,
     apply_dictionary_import,
+    apply_product_name_updates,
     apply_shade_name_updates,
     build_dictionary_row,
+    dictionary_names_after,
     export_dictionary,
     merge_dictionary_export,
+    plan_product_name_updates,
     plan_shade_name_updates,
     read_previous_export,
     write_export,
@@ -332,3 +335,155 @@ def test_plan_defaults_to_the_shipped_overrides(session):
     assert [item["code"] for item in plan] == [code]
     assert plan[0]["new"] == entry["name"]
     assert plan[0]["new_rubric"] == entry["rubric"], "the override's own rubric is applied"
+
+
+# ---------------------------------------------------------------------------
+# --restore-shade-names, the product-card half
+#
+# Same mode, same predicate, one extra pass: a card the inventory import
+# created from a CSV that held only the shade gets its product type back from
+# the (already restored) dictionary row.
+#
+# This is NOT «sync the cards from the dictionary». On s1 there are 17 name
+# mismatches and only 5 of them run in that direction; the other 12 are cards
+# the operator typed BY HAND, richer than the справочник. A blanket sync would
+# destroy those 12, which is exactly what the tests below forbid.
+# ---------------------------------------------------------------------------
+
+# The two real s1 reversals, verbatim from the SPEC.
+RICH_CARD_CODE = "25048"
+RICH_CARD = "Мужская туалетная вода Tycoon75 мл"
+THIN_DICT = "Туалетная вода tycoon"
+RICH_CARD_CODE_2 = "21566"
+RICH_CARD_2 = "Женские туалетные духи Volare Magnolia объем 50 мл"
+THIN_DICT_2 = "Туалетные духи volare magnolia"
+
+
+def _seed_product(session, code, name, **extra):
+    product = Product(code=code, name=name, name_lc=(name or "").lower(), quantity=0, **extra)
+    session.add(product)
+    session.commit()
+    return product
+
+
+def _card_plan(session, dict_plan=()):
+    """Plan the cards the way the runner does — against the RESTORED names."""
+    return plan_product_name_updates(session, dictionary_names_after(session, list(dict_plan)))
+
+
+def test_plan_product_name_updates_selects_only_a_bare_shade_card(session):
+    _seed_dictionary(session, SHADE_CODE, RESTORED)
+    card = _seed_product(session, SHADE_CODE, SHADE_ONLY)
+
+    plan = _card_plan(session)
+
+    assert [item["code"] for item in plan] == [SHADE_CODE]
+    assert plan[0]["id"] == card.id
+    assert plan[0]["old"] == SHADE_ONLY
+    assert plan[0]["new"] == RESTORED
+    # Read-only: nothing was written.
+    session.expire_all()
+    assert session.get(Product, card.id).name == SHADE_ONLY
+
+
+def test_a_card_richer_than_the_dictionary_is_never_planned(session):
+    """The 12 s1 reversals: the operator's hand-written card wins, untouched.
+
+    `is_shade_tail` is directional — it demands the REPLACEMENT be strictly
+    longer — so a card that already names the product, its gender and its
+    volume can never be rewritten with the thinner dictionary name. Without
+    this the mode would silently overwrite 12 hand-typed names on the server.
+    """
+    _seed_dictionary(session, RICH_CARD_CODE, THIN_DICT)
+    _seed_dictionary(session, RICH_CARD_CODE_2, THIN_DICT_2)
+    rich = _seed_product(session, RICH_CARD_CODE, RICH_CARD)
+    rich_2 = _seed_product(session, RICH_CARD_CODE_2, RICH_CARD_2)
+
+    assert _card_plan(session) == []
+
+    # And applying the (empty) plan leaves both names byte-identical.
+    apply_product_name_updates(session, _card_plan(session))
+    session.commit()
+    session.expire_all()
+    assert session.get(Product, rich.id).name == RICH_CARD
+    assert session.get(Product, rich_2.id).name == RICH_CARD_2
+
+
+def test_a_card_equal_to_the_dictionary_name_is_never_planned(session):
+    """Nothing to restore is not «restore nothing to it» — it is no plan."""
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY)
+    _seed_product(session, SHADE_CODE, SHADE_ONLY)
+
+    assert _card_plan(session) == []
+
+
+def test_a_card_with_no_dictionary_row_or_no_code_is_never_planned(session):
+    _seed_product(session, FAKE_CODE, "Медовый")  # no dictionary row at all
+    _seed_product(session, None, SHADE_ONLY)  # a hand-made card without a code
+    _seed_dictionary(session, SHADE_CODE, RESTORED)  # a row with no card
+
+    assert _card_plan(session) == []
+
+
+def test_the_card_pass_reads_the_RESTORED_dictionary_name(session):
+    """The «Офис» case end to end: the row is shade-only until the row pass.
+
+    Planning the cards against the CURRENT dictionary would select nothing —
+    both sides read «Фарфоровый». The card plan has to see the dictionary as it
+    will be after the row pass, which is what makes the dry run honest.
+    """
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY)
+    card = _seed_product(session, SHADE_CODE, SHADE_ONLY)
+
+    assert plan_product_name_updates(session, {SHADE_CODE: SHADE_ONLY}) == []
+
+    dict_plan = plan_shade_name_updates(session, SHADE_OVERRIDES)
+    plan = _card_plan(session, dict_plan)
+
+    assert [item["new"] for item in plan] == [RESTORED]
+
+    apply_shade_name_updates(session, dict_plan)
+    apply_product_name_updates(session, plan)
+    session.commit()
+
+    session.expire_all()
+    assert session.get(Product, card.id).name == RESTORED
+    assert session.scalar(select(Dictionary).where(Dictionary.code == SHADE_CODE)).name == RESTORED
+
+
+def test_apply_writes_card_name_and_name_lc_and_leaves_the_rest_alone(session):
+    """LIST-02: without name_lc the card disappears from the name search."""
+    _seed_dictionary(session, SHADE_CODE, RESTORED)
+    card = _seed_product(session, SHADE_CODE, SHADE_ONLY, category="Макияж", sale_cents=1234)
+
+    updated = apply_product_name_updates(session, _card_plan(session))
+    session.commit()
+
+    row = session.get(Product, card.id)
+    assert updated == 1
+    assert row.name == RESTORED
+    assert row.name_lc == RESTORED.lower()
+    assert row.name_lc == row.name.lower(), "the shadow column tracks the new name"
+    assert row.category == "Макияж", "category has its own rules; this mode never touches it"
+    assert row.sale_cents == 1234 and row.code == SHADE_CODE and row.quantity == 0
+
+
+def test_apply_refuses_a_card_name_that_would_shrink(session):
+    """«Ни одно имя карточки не стало короче» — enforced at write time."""
+    card = _seed_product(session, SHADE_CODE, RESTORED)
+    forged = [{"id": card.id, "code": SHADE_CODE, "old": RESTORED, "new": SHADE_ONLY}]
+
+    with pytest.raises(ShadeNameWouldShrink):
+        apply_product_name_updates(session, forged)
+
+
+def test_the_second_card_run_plans_nothing_and_creates_no_card(session):
+    _seed_dictionary(session, SHADE_CODE, RESTORED)
+    _seed_product(session, SHADE_CODE, SHADE_ONLY)
+    _seed_product(session, RICH_CARD_CODE, RICH_CARD)
+
+    apply_product_name_updates(session, _card_plan(session))
+    session.commit()
+
+    assert _card_plan(session) == [], "idempotent"
+    assert session.scalar(select(func.count()).select_from(Product)) == 2

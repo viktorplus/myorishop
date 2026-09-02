@@ -32,6 +32,15 @@ structurally out of reach; no allow-list and no blacklist has to be maintained.
 It refuses any candidate that is not strictly LONGER than what it replaces, and
 a second run plans nothing.
 
+The same mode then walks `products` with the SAME predicate: a card created by
+the inventory import from a CSV that held only the shade gets the product type
+back from its dictionary row (name AND the name_lc search shadow, LIST-02). It
+is emphatically NOT a «sync cards from the dictionary» pass — where the card is
+RICHER than the dictionary («Мужская туалетная вода Tycoon75 мл» against
+«Туалетная вода tycoon», 12 such names typed by hand on s1) `is_shade_tail` is
+false in both directions and the card is left exactly as the operator wrote it.
+`category` is a separate field with its own rules and is never touched.
+
 Together those two are the whole safe-on-a-live-server surface — one inserts,
 one updates, neither can do the other's job. The default ``--file`` path
 overwrites names wholesale and stays local-only: a name edited by hand on the
@@ -61,7 +70,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core import new_id  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
-from app.models import Dictionary  # noqa: E402
+from app.models import Dictionary, Product  # noqa: E402
 from app.services.catalogs import parse_json_code  # noqa: E402
 from app.services.rubrics import (  # noqa: E402
     RUBRIC_OVERRIDES,
@@ -209,6 +218,74 @@ def apply_shade_name_updates(session, plan: list[dict]) -> int:
     return updated
 
 
+def dictionary_names_after(session, plan: list[dict]) -> dict[str, str]:
+    """code -> the dictionary name as it will read once `plan` is applied.
+
+    The product pass has to see the RESTORED справочник, not the current one:
+    the five «Офис» cards are shade-only precisely because their dictionary row
+    was shade-only too. Overlaying the plan instead of re-reading after the
+    write is what makes the dry run predict the same cards `--apply` updates.
+    """
+    names = {row.code: (row.name or "") for row in session.scalars(select(Dictionary))}
+    for item in plan:
+        if item["code"] in names:
+            names[item["code"]] = item["new"]
+    return names
+
+
+def plan_product_name_updates(session, names: dict[str, str]) -> list[dict]:
+    """Read-only: which product CARDS may have their product type restored.
+
+    `names` is the dictionary as it will read after the row pass
+    (`dictionary_names_after`). A card qualifies only when its code has a
+    dictionary name AND the card's own name is nothing but the shade tail of
+    it — the same `is_shade_tail` the dictionary pass uses, which is what keeps
+    the 12 hand-written cards that are RICHER than the справочник out of reach:
+    the fuller name has to be the dictionary's for the card to be rewritten.
+
+    Soft-deleted cards are included; the predicate, not the row's visibility,
+    is the safety. Writes nothing, inserts nothing, commits nothing.
+    """
+    plan: list[dict] = []
+    for product in session.scalars(select(Product)):
+        code = (product.code or "").strip()
+        if not code:
+            continue
+        full = (names.get(code) or "").strip()[:MAX_NAME]
+        current = product.name or ""
+        if not is_shade_tail(current, full):
+            continue
+        plan.append({"id": product.id, "code": code, "old": current, "new": full})
+    return sorted(plan, key=lambda item: (item["code"], item["id"]))
+
+
+def apply_product_name_updates(session, plan: list[dict]) -> int:
+    """Write name + name_lc on the planned cards. Never commits.
+
+    `category`, prices, quantity and every other column are left alone, and a
+    card is looked up by its own id, so nothing is inserted or deleted. The
+    shrink guard is the same last line of defence as on the dictionary side.
+    The caller owns the transaction.
+    """
+    rows = {product.id: product for product in session.scalars(select(Product))}
+    updated = 0
+    for item in plan:
+        product = rows.get(item["id"])
+        if product is None:
+            continue
+        new = item["new"]
+        if len(new) <= len(product.name or ""):
+            raise ShadeNameWouldShrink(
+                f"{item['code']}: «{product.name}» -> «{new}» is not longer; refusing to write"
+            )
+        product.name = new
+        # LIST-02 / D-27: the lowercase shadow the name search matches on —
+        # without it the card would vanish from search under its new name.
+        product.name_lc = new.lower()
+        updated += 1
+    return updated
+
+
 def export_dictionary(session) -> dict[str, dict]:
     """Dump `dictionary` back into this script's own file format.
 
@@ -307,14 +384,26 @@ def _run_restore_shade_names(apply: bool) -> None:
         print(f"Rubric changes: {len(moved)}")
         for item in moved[:10]:
             print(f"  {item['code']}: {item['old_rubric']} -> {item['new_rubric']}")
+
+        products_before = session.query(Product).count()
+        card_plan = plan_product_name_updates(session, dictionary_names_after(session, plan))
+        print(f"Product cards: {products_before}")
+        print(f"Карточек товаров к обновлению: {len(card_plan)}")
+        for item in card_plan[:10]:
+            print(f"  {item['code']}: «{item['old']}» -> «{item['new']}»")
+
         if not apply:
             print("DRY RUN — nothing written. Re-run with --apply.")
             return
         updated = apply_shade_name_updates(session, plan)
+        cards_updated = apply_product_name_updates(session, card_plan)
         session.commit()
         after = session.query(Dictionary).count()
+        products_after = session.query(Product).count()
     print(f"Updated: {updated}")
+    print(f"Карточек товаров обновлено: {cards_updated}")
     print(f"Dictionary: {before} -> {after}  (this mode cannot insert or delete)")
+    print(f"Товаров: {products_before} -> {products_after}  (cards are updated, never created)")
 
 
 def main() -> None:
