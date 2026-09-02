@@ -29,6 +29,7 @@ from sqlalchemy import func, select
 from app.models import CatalogPrice
 from scripts.import_prices import (
     EXPORT_KEYS,
+    MAX_NAME,
     build_price_rows,
     build_shade_overrides,
     collect_from_archive,
@@ -50,6 +51,7 @@ from scripts.import_prices import (
     shade_text,
     split_series_type,
     upsert_price_rows,
+    validate_records,
     write_export,
     write_overrides,
 )
@@ -117,6 +119,17 @@ def test_serialize_export_is_valid_json_one_record_per_line():
         [{**PLAIN_ROW, "code": 46413}],
         [{**PLAIN_ROW, "year": "2025"}],
         [{**PLAIN_ROW, "number": True}],
+        # 260902-tev / CR-02: the four money and name fields the .gz transport
+        # carried unchecked. A float lands in an INTEGER money column (SQLite
+        # stores REAL, PostgreSQL aborts the transaction); a string reaches
+        # format_cents() through reference_prices_for_code() and 500s the page.
+        [{**PLAIN_ROW, "consumer_cents": 599.5}],
+        [{**PLAIN_ROW, "consultant_cents": "не указано"}],
+        [{**PLAIN_ROW, "points": "3"}],
+        [{**PLAIN_ROW, "points": True}],  # bool is an int subclass
+        [{**PLAIN_ROW, "consumer_cents": -1}],
+        [{**PLAIN_ROW, "name": 46413}],
+        [{**PLAIN_ROW, "name": "х" * (MAX_NAME + 1)}],  # CatalogPrice.name is String(200)
     ],
 )
 def test_load_export_refuses_malformed_input(tmp_path, payload):
@@ -127,6 +140,25 @@ def test_load_export_refuses_malformed_input(tmp_path, payload):
         load_export(path)
 
     assert str(exc.value), "the failure must name what is wrong"
+
+
+def test_validate_records_accepts_a_stored_zero_and_a_null():
+    """The contract is >= 0, not > 0 — and None still means «this source has none».
+
+    export_prices() reads whatever the database holds, so a legitimate
+    re-export of a stored zero must not be rejected by the transport.
+    """
+    records = [
+        {
+            **PLAIN_ROW,
+            "consumer_cents": 0,
+            "points": 0,
+            "consultant_cents": None,
+            "name": None,
+        }
+    ]
+
+    assert validate_records(records, "test") == records
 
 
 def test_build_price_rows_carries_every_field_verbatim():

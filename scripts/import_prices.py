@@ -654,6 +654,25 @@ def validate_records(records, source) -> list[dict]:
             value = record[field]
             if not isinstance(value, int) or isinstance(value, bool):
                 sys.exit(f"{source}: record {i} has a non-integer {field} {value!r}")
+        name = record["name"]
+        if name is not None:
+            if not isinstance(name, str):
+                sys.exit(f"{source}: record {i} has a non-string name {name!r}")
+            if len(name) > MAX_NAME:
+                sys.exit(
+                    f"{source}: record {i} has a name of {len(name)} chars, "
+                    f"longer than the {MAX_NAME}-char column: {name[:40]!r}…"
+                )
+        # `>= 0`, not `> 0`, on purpose: the producers (`_cents` above and
+        # import_master_pricelist._cents) only ever emit positive-or-None, but
+        # export_prices() reads whatever the database holds, so a legitimate
+        # re-export of a stored zero must not be rejected here.
+        for field in ("consumer_cents", "consultant_cents", "points"):
+            value = record[field]
+            if value is None:
+                continue
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                sys.exit(f"{source}: record {i} has a non-integer {field} {value!r}")
     return records
 
 
