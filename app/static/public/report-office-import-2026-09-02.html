@@ -204,8 +204,14 @@ thead th{position:static !important;top:auto !important}
 .callout{border-left:3px solid #d97706;background:#fffbeb;padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;font-size:14px}
 .callout b{color:#92400e}
 .callout ul{margin:8px 0 0;padding-left:20px}
-:root:not([data-theme="light"]) .callout{background:#2a1f0a}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .callout{background:#2a1f0a}}
+/* Тёмный фон врезки — ТОЛЬКО в тёмной теме. Без media-обёртки это правило
+   красило врезку тёмным и в светлой теме: тёмный текст на тёмном фоне. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .callout{background:#2a1f0a;border-left-color:#f59e0b}
+  :root:not([data-theme="light"]) .callout b{color:#fbbf24}
+}
+:root[data-theme="dark"] .callout{background:#2a1f0a;border-left-color:#f59e0b}
+:root[data-theme="dark"] .callout b{color:#fbbf24}
 .toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
 .toc a{font-size:13px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:inherit}
 .toc a:hover{border-color:var(--muted)}
