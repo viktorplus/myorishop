@@ -209,6 +209,41 @@ def test_write_export_into_an_existing_file_preserves_a_foreign_code(tmp_path):
     assert set(read_previous_export(dest)) == {"11111", FAKE_CODE}
 
 
+def test_write_export_never_opens_its_destination_directly(tmp_path, monkeypatch):
+    """CR-03 (quick task 260902-tev): products.json is written through the shared
+    atomic_write of scripts/import_prices.py, never truncated in place.
+
+    The helper resolves `_open_export` from its OWN module globals, so patching
+    it there covers this cross-script caller too.
+    """
+    from pathlib import Path
+
+    from scripts import import_prices
+
+    dest = tmp_path / "products.json"
+    recorded = []
+    real = import_prices._open_export
+
+    def spy(path, mode, **kwargs):
+        recorded.append(Path(path))
+        return real(path, mode, **kwargs)
+
+    monkeypatch.setattr("scripts.import_prices._open_export", spy)
+
+    fresh = {
+        FAKE_CODE: {"name": FAKE_NAME, "catalogs": ["01_26"]},
+        "11111": {"name": "Посторонний код", "catalogs": ["01_20"]},
+    }
+    write_export(dest, fresh)
+
+    assert recorded, "the writer never went through _open_export"
+    assert recorded[0] != dest, "the destination itself must not be opened for writing"
+
+    on_disk = read_previous_export(dest)
+    assert on_disk == {code: fresh[code] for code in sorted(fresh)}
+    assert list(on_disk) == sorted(fresh), "the file stays key-sorted"
+
+
 # ---------------------------------------------------------------------------
 # --restore-shade-names (quick task 260902-k2i)
 #

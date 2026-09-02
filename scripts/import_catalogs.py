@@ -78,6 +78,7 @@ from app.services.rubrics import (  # noqa: E402
     resolve_name,
     resolve_rubric,
 )
+from scripts.import_prices import atomic_write  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILE = "catalogs/products.json"
@@ -352,11 +353,10 @@ def write_export(dest: Path, fresh: dict[str, dict]) -> dict[str, int]:
     merged, stats = merge_dictionary_export(previous, fresh)
     if stats["after"] < stats["before"]:  # unreachable by construction; a hard guard
         sys.exit(f"Refusing to write: the export would drop codes ({stats})")
-    dest.parent.mkdir(parents=True, exist_ok=True)
     # Explicit LF so a re-export on Windows and on Linux produce identical bytes.
-    with dest.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(merged, ensure_ascii=False, indent=1))
-        handle.write("\n")
+    # CR-03: the payload is built BEFORE anything touches `dest` — this file is
+    # accumulative and holds codes that exist in no database.
+    atomic_write(dest, json.dumps(merged, ensure_ascii=False, indent=1) + "\n", newline="\n")
     return stats
 
 

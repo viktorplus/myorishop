@@ -69,6 +69,7 @@ is the job of ``scripts/import_catalogs.py --restore-shade-names``.
 import argparse
 import gzip
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -537,8 +538,7 @@ def read_overrides(path: Path) -> dict[str, dict]:
 
 def write_overrides(dest: Path, data: dict[str, dict]) -> None:
     """Reproduce the file's byte form: indent=1, CRLF, no trailing newline."""
-    with dest.open("w", encoding="utf-8", newline="\r\n") as handle:
-        handle.write(json.dumps(data, ensure_ascii=False, indent=1))
+    atomic_write(dest, json.dumps(data, ensure_ascii=False, indent=1), newline="\r\n")
 
 
 def scan_shade_candidates(files) -> tuple[dict[str, Counter], int, list[str]]:
@@ -690,6 +690,36 @@ def _open_export(path: Path, mode: str, *, encoding: str = "utf-8", newline: str
     if path.suffix.lower() == ".gz":
         return gzip.open(path, mode, encoding=encoding, newline=newline)
     return path.open(mode, encoding=encoding, newline=newline)
+
+
+def atomic_write(dest: Path, payload: str, *, newline: str) -> None:
+    """Write `payload` through a same-directory temp file and one os.replace().
+
+    The payload is computed by the CALLER and handed over whole, which is the
+    point: `open("wt")` — and `gzip.open("wt")` — TRUNCATES at open time, so
+    serializing ~42 MB after opening meant any failure in between (MemoryError,
+    ENOSPC, an interrupted process, an unfinished deflate stream) left an empty
+    or corrupt file where the previous content had just been destroyed. These
+    files are accumulative: they hold rows that exist in NO database. On any
+    exception the destination is left exactly as it was — that is the rollback.
+
+    THE TRAP: `_open_export` decides gzip-vs-plain from the SUFFIX, so a temp
+    named `dest.name + ".tmp"` would write `catalog_prices.json.gz` as PLAIN
+    text. The temp name therefore ENDS in the destination's own suffix —
+    `catalog_prices.json.gz.tmp.gz`, `products.json.tmp.json`. It sits in the
+    destination's own directory so the rename stays on one filesystem, where
+    `os.replace` is atomic on Windows as well as POSIX.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".tmp" + dest.suffix)
+    try:
+        with _open_export(tmp, "wt", newline=newline) as handle:
+            handle.write(payload)
+        os.replace(tmp, dest)
+    finally:
+        # Both the error-path cleanup and a no-op after a successful replace.
+        tmp.unlink(missing_ok=True)
 
 
 def load_export(path: Path) -> list[dict]:
@@ -864,10 +894,10 @@ def write_export(dest: Path, fresh: list[dict]) -> dict[str, int]:
     merged, stats = merge_price_export(previous, fresh)
     if stats["after"] < stats["before"]:  # unreachable by construction; a hard guard
         sys.exit(f"Refusing to write: the export would drop rows ({stats})")
-    dest.parent.mkdir(parents=True, exist_ok=True)
     # Explicit LF so a re-export on Windows and on Linux produce identical bytes.
-    with _open_export(dest, "wt", newline="\n") as handle:
-        handle.write(serialize_export(merged))
+    # serialize_export(merged) is evaluated as the ARGUMENT: the ~42 MB string
+    # exists before anything at all touches `dest`.
+    atomic_write(dest, serialize_export(merged), newline="\n")
     stats["codes"] = len({r["code"] for r in merged})
     return stats
 

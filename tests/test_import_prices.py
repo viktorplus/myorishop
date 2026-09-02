@@ -30,6 +30,7 @@ from app.models import CatalogPrice
 from scripts.import_prices import (
     EXPORT_KEYS,
     MAX_NAME,
+    atomic_write,
     build_price_rows,
     build_shade_overrides,
     collect_from_archive,
@@ -741,3 +742,94 @@ def test_neither_importer_deletes_the_whole_price_table():
 
     for script in (SCRIPT, MASTER_SCRIPT):
         assert needle not in _uncommented(script), script.name
+
+
+# ---------------------------------------------------------------------------
+# Quick task 260902-tev — CR-03: the accumulative files are written atomically.
+#
+# `open("wt")` (and `gzip.open("wt")`) TRUNCATES at open time, and the ~42 MB
+# payload was serialized after that. Anything failing in between (MemoryError,
+# ENOSPC, an interrupted process, an unfinished deflate stream) left an empty or
+# corrupt file where the previous content had just been destroyed — and these
+# files hold rows that exist in NO database.
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_write_keeps_the_gz_branch_and_the_explicit_newline(tmp_path):
+    """The temp name must end in the destination's suffix, or .gz writes plain text."""
+    gz_dest = tmp_path / "catalog_prices.json.gz"
+
+    atomic_write(gz_dest, serialize_export([PLAIN_ROW]), newline="\n")
+
+    assert gz_dest.read_bytes()[:2] == b"\x1f\x8b", "the .gz branch survived the temp file"
+    assert _tuples(load_export(gz_dest)) == _tuples([PLAIN_ROW])
+
+    crlf_dest = tmp_path / "rubric_overrides.json"
+    atomic_write(crlf_dest, '{\n "a": 1\n}', newline="\r\n")
+
+    raw = crlf_dest.read_bytes()
+    assert b"\r\n" in raw, "the explicit newline is forwarded to the temp file"
+    assert b"\n" not in raw.replace(b"\r\n", b""), "no lone LF survives"
+
+    assert list(tmp_path.glob("*.tmp*")) == [], "no temp file is left behind"
+
+
+def test_atomic_write_leaves_the_destination_untouched_when_the_write_fails(tmp_path):
+    """The rollback, stated as a test: a failed write destroys nothing."""
+    dest = tmp_path / "catalog_prices.json"
+    seed = serialize_export([PLAIN_ROW]).encode("utf-8")
+    dest.write_bytes(seed)
+
+    with pytest.raises(TypeError):
+        atomic_write(dest, 12345, newline="\n")  # handle.write() refuses a non-string
+
+    assert dest.read_bytes() == seed, "the previous file is byte-identical"
+    assert list(tmp_path.glob("*.tmp*")) == [], "no temp file is left behind"
+
+
+def test_write_export_computes_the_payload_before_touching_the_destination(
+    tmp_path, monkeypatch
+):
+    """The sharpest proof of the defect: serialization must precede truncation."""
+    dest = tmp_path / "catalog_prices.json"
+    write_export(dest, [PLAIN_ROW])
+
+    def boom(_records):
+        raise RuntimeError("MemoryError stand-in, 42 MB into the payload")
+
+    monkeypatch.setattr("scripts.import_prices.serialize_export", boom)
+
+    with pytest.raises(RuntimeError):
+        write_export(dest, [ZERO_ROW])
+
+    assert _tuples(load_export(dest)) == _tuples([PLAIN_ROW]), "the old file survived"
+
+
+def _recording_open_export(monkeypatch):
+    """Record every path `_open_export` is handed, and delegate to the real one."""
+    from scripts import import_prices
+
+    recorded = []
+    real = import_prices._open_export
+
+    def spy(path, mode, **kwargs):
+        recorded.append(Path(path))
+        return real(path, mode, **kwargs)
+
+    monkeypatch.setattr("scripts.import_prices._open_export", spy)
+    return recorded
+
+
+def test_write_overrides_never_opens_its_destination_directly(tmp_path, monkeypatch):
+    dest = tmp_path / "rubric_overrides.json"
+    recorded = _recording_open_export(monkeypatch)
+
+    write_overrides(dest, {"33155": {"conf": "series", "name": "Тушь", "rubric": "Макияж"}})
+
+    assert recorded, "the writer never went through _open_export"
+    assert recorded[0] != dest, "the destination itself must not be opened for writing"
+    assert recorded[0].name.endswith(dest.suffix), "the gzip branch keys on the suffix"
+
+    raw = dest.read_bytes()
+    assert raw.startswith(b'{\r\n "33155": {\r\n  "conf": "series",\r\n')
+    assert raw.endswith(b"\r\n }\r\n}"), "CRLF, indent=1, NO trailing newline"
