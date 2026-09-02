@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLOCKER findings of the 260902-m9g code review (guarded + snapshotted the wholesale `dictionary` replace, closed the money-field hole in the export transport, made the three accumulative writers atomic) on branch `fix/260902-import-blockers`, not yet merged
+Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLOCKER findings of the 260902-m9g code review (guarded + snapshotted the wholesale `dictionary` replace, closed the money-field hole in the export transport, made the three accumulative writers atomic); merged fast-forward into main and pushed (d609648). NOT yet deployed to s1 — the server still runs the unguarded importers
 
 ## Performance Metrics
 
