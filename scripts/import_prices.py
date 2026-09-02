@@ -223,7 +223,14 @@ def collect_from_archive(
 
     The report has three lists: ``unparsable_name`` (the three
     oriflame_prices_*.xlsx), ``unreadable`` (12-2013.xls) and
-    ``no_price_column`` (04-2024.xls / 05-2024.xls, which carry names only).
+    ``no_price_column`` — a workbook that yielded no price row at all.
+
+    That last one is deliberately "yielded nothing", not "no sheet carries a
+    ПЦ header": in 04-2024.xls and 05-2024.xls the real price sheet has ОП and
+    ДЦ but NO ПЦ, while the empty КАЛЬКУЛЯТОР template beside it does carry a
+    ПЦ header. Keying the report on the header would leave both files silently
+    unreported even though they contribute nothing — the report exists to name
+    exactly that.
 
     Deduplicates by (year, number, code): duplicate files (01-2026 vs
     01-2026_ (1)) collapse to one; last write wins.
@@ -244,11 +251,12 @@ def collect_from_archive(
         except Exception as exc:  # a corrupt workbook is expected (12-2013.xls)
             report["unreadable"].append(f"{path.name} ({exc.__class__.__name__})")
             continue
-        if not any(_find_header(rows) is not None for rows in sheets):
+        priced = collect_prices_from_sheets(sheets)
+        if not priced:
             report["no_price_column"].append(path.name)
             continue
         year, number = cat
-        for code, data in collect_prices_from_sheets(sheets).items():
+        for code, data in priced.items():
             collected[(year, number, code)] = data
     return collected, report
 

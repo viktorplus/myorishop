@@ -604,10 +604,22 @@ PRICE_SHEET = [
     (33155, "- ФАРФОРОВЫЙ", None, 399, 3),  # no ПЦ -> not a price row
     (33156, "- БЕЖЕВЫЙ НЮД", 649, None, None),
 ]
-# A real shape from the archive: 04-2024.xls / 05-2024.xls carry names, no ПЦ.
 NAMES_ONLY_SHEET = [
     ("КОД", "НАИМЕНОВАНИЕ"),
     (33154, "ТОНАЛЬНАЯ ОСНОВА - ВАНИЛЬНЫЙ"),
+]
+# The REAL shape of 04-2024.xls / 05-2024.xls: an empty КАЛЬКУЛЯТОР template
+# that DOES carry a ПЦ header, next to the actual price sheet, which carries
+# ОП and ДЦ but no ПЦ. The file yields nothing and must still be named.
+CALCULATOR_SHEET = [
+    ("КОД", "КОЛ-ВО", "СКИДКА", "НАИМЕНОВАНИЕ", "ББ", "ОП", "ДЦ", "ПЦ"),
+    ("", "", "", "С У М М А", 0, 0, 0, 0),
+    ("", "", " ", " ", " ", " ", " ", " "),
+]
+NO_CONSUMER_SHEET = [
+    ("КОД", "СКИДКА", "СТР.", "АКЦИЯ", "НАИМЕНОВАНИЕ ", "ББ", "ОП", "ДЦ"),
+    ("НОВИНКИ", "", "", "", "", "", "", ""),
+    (47122, "", "17", "", "СКЛАДНАЯ КИСТЬ 3 В 1", 3, 96, 299),
 ]
 
 
@@ -626,6 +638,7 @@ def test_collect_prices_from_sheets_is_pure_and_maps_the_price_columns():
     assert collected["33156"]["points"] is None
     assert "33155" not in collected, "a row without ПЦ is not a price row"
     assert collect_prices_from_sheets([NAMES_ONLY_SHEET]) == {}
+    assert collect_prices_from_sheets([CALCULATOR_SHEET, NO_CONSUMER_SHEET]) == {}
 
 
 def test_collect_from_archive_names_every_file_it_could_not_use(tmp_path, monkeypatch):
@@ -639,7 +652,10 @@ def test_collect_from_archive_names_every_file_it_could_not_use(tmp_path, monkey
         if path == corrupt:
             raise ValueError("File is truncated, or OLE2 MSAT is corrupt")
         if path == priceless:
-            return [NAMES_ONLY_SHEET]
+            # The real 04-2024.xls shape: the empty КАЛЬКУЛЯТОР template DOES
+            # carry a ПЦ header, so "no sheet has a price header" would miss
+            # this file. What is reported is «yielded no price row at all».
+            return [CALCULATOR_SHEET, NO_CONSUMER_SHEET]
         return [PRICE_SHEET]
 
     monkeypatch.setattr("scripts.import_prices.read_workbook_sheets", fake_reader)
