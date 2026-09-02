@@ -37,8 +37,10 @@ database: it inserts the codes that are not there yet and deletes nothing.
 """
 
 import argparse
+import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -52,7 +54,8 @@ from app.models import CatalogPrice, Dictionary  # noqa: E402
 from app.services.backup import create_backup  # noqa: E402
 from app.services.catalogs import to_json_code  # noqa: E402
 from app.services.rubrics import RUBRIC_OVERRIDES, resolve_name, resolve_rubric  # noqa: E402
-from scripts.import_prices import build_price_rows, upsert_price_rows  # noqa: E402
+from scripts.import_catalogs import export_dictionary  # noqa: E402
+from scripts.import_prices import atomic_write, build_price_rows, upsert_price_rows  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILE = "catalogs/oriflame_prices_with_calculations_fixed.xlsx"
@@ -271,6 +274,38 @@ def backup_before_replace(engine) -> Path | None:
     return snapshot
 
 
+def snapshot_dictionary(session) -> Path | None:
+    """Dump `dictionary` to a JSON file before the replace — the PORTABLE way back.
+
+    `backup_before_replace` above is `VACUUM INTO`, a SQLite-only statement, so
+    on the s1 PostgreSQL deployment (`deploy/DEPLOY.s1.md:26,60`) it prints its
+    skip line and takes NOTHING. This snapshot has no dialect at all: it reads
+    the table through `import_catalogs.export_dictionary()`, which already dumps
+    it in that script's own products.json shape, so the way back is the command
+    the shrink refusal already names —
+    `scripts/import_catalogs.py --only-missing --file <snapshot>` puts the
+    deleted codes back without touching what is there. (Dropping
+    `--only-missing` restores every name in the snapshot wholesale, for the case
+    where a replace overwrote names rather than deleting rows.)
+
+    Written through `atomic_write`: a half-written rollback artifact would be
+    worse than none. An empty table has nothing to lose and writes no file, so a
+    clean install does not litter the backup directory. Nothing is caught here —
+    like the VACUUM snapshot, no snapshot means no import.
+    """
+    rows = export_dictionary(session)
+    if not rows:
+        return None
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    # `dictionary-*.json`, never `myorishop-*.db`: it must not be mistaken for a
+    # VACUUM snapshot by prune_backups or by the operator.
+    dest = Path(settings.backup_dir) / f"dictionary-{stamp}.json"
+    atomic_write(dest, json.dumps(rows, ensure_ascii=False, indent=1) + "\n", newline="\n")
+    print(f"Dictionary snapshot ({len(rows)} codes): {dest}")
+    print(f"  restore with: scripts/import_catalogs.py --only-missing --file {dest}")
+    return dest
+
+
 def apply_master_import(
     session, collected: dict[str, dict], *, force: bool = False
 ) -> dict[str, int]:
@@ -405,6 +440,12 @@ def main() -> None:
     with SessionLocal() as session:
         before_dict = session.query(Dictionary).count()
         before_cp = session.query(CatalogPrice).count()
+
+        # The portable half of the rollback promise: backup_before_replace above
+        # is a no-op on PostgreSQL, and s1 IS PostgreSQL. Deliberately here and
+        # not inside apply_master_import — that function must stay free of
+        # filesystem side effects, because unit tests call it directly.
+        snapshot_dictionary(session)
 
         price_stats = apply_master_import(session, collected, force=args.force)
         session.commit()

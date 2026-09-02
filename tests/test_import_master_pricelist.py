@@ -14,6 +14,7 @@ against the operator's data/myorishop.db (a full-replace run there would drop
 """
 
 import ast
+import json
 import types
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from app.config import settings
 from app.core import new_id
 from app.models import CatalogPrice, Dictionary
 from app.services.rubrics import RUBRIC_OVERRIDES
+from scripts.import_catalogs import apply_dictionary_import
 from scripts.import_master_pricelist import (
     DictionaryReplaceRefused,
     apply_master_import,
@@ -34,6 +36,7 @@ from scripts.import_master_pricelist import (
     collect_price_rows,
     insert_missing_dictionary_rows,
     override_only_rows,
+    snapshot_dictionary,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -436,3 +439,121 @@ def test_the_operator_sees_the_statistics_and_the_backup_before_anything_is_writ
 
     assert stats_line < session_block, "the skip statistics are printed after the write"
     assert backup_call < session_block, "the snapshot is taken after the write"
+
+
+# ---------------------------------------------------------------------------
+# Quick task 260902-tev, commit 4 — a PORTABLE snapshot of `dictionary`.
+#
+# backup_before_replace() is `VACUUM INTO`, a SQLite-only statement, so on the
+# s1 PostgreSQL deployment (deploy/DEPLOY.s1.md:26,60) it prints its skip line
+# and takes nothing at all. A --force run there would delete 12 582 rows with no
+# way back except the baked catalogs/products.json, which does NOT carry the
+# hand-typed server names deploy/DEPLOY.s1.md:94-97 warns about. The dialect
+# gate stays; what these tests pin is a snapshot that works on BOTH dialects.
+# ---------------------------------------------------------------------------
+
+HAND_TYPED_CODE = "34473"
+HAND_TYPED_NAME = "Женская туалетная вода Sunkiss Garden объем 50 мл"
+
+
+def test_the_snapshot_is_written_before_the_delete_and_restores_the_rows(
+    session, tmp_path, monkeypatch
+):
+    """The rollback promise, end to end: snapshot -> --force replace -> restore."""
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+    session.add(
+        Dictionary(
+            id=new_id(),
+            code=HAND_TYPED_CODE,
+            name=HAND_TYPED_NAME,
+            name_lc=HAND_TYPED_NAME.lower(),
+            catalogs=["05_25"],
+        )
+    )
+    session.commit()
+
+    snapshot = snapshot_dictionary(session)
+
+    assert snapshot is not None
+    assert snapshot.is_file()
+    assert snapshot.parent == tmp_path
+    assert snapshot.match("dictionary-*.json"), "never confusable with a VACUUM .db"
+
+    # The replace the operator deliberately forced — the hand-typed name is gone.
+    apply_master_import(session, {FAKE_CODE: dict(FAKE_ROW)}, force=True)
+    session.commit()
+    assert session.scalar(select(Dictionary).where(Dictionary.code == HAND_TYPED_CODE)) is None
+
+    # The way back is the command the refusal message already names, run through
+    # the real import path rather than compared as JSON.
+    apply_dictionary_import(
+        session, json.loads(snapshot.read_text(encoding="utf-8")), only_missing=True
+    )
+    session.commit()
+
+    restored = session.scalar(select(Dictionary).where(Dictionary.code == HAND_TYPED_CODE))
+    assert restored is not None, "the snapshot puts the deleted row back"
+    assert restored.name == HAND_TYPED_NAME
+    assert restored.catalogs == ["05_25"]
+
+
+def test_the_snapshot_is_written_on_a_non_sqlite_dialect_too(
+    engine, session, tmp_path, monkeypatch
+):
+    """The entire point of this commit — pinned against the SAME dialect that
+    makes backup_before_replace a no-op."""
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+    monkeypatch.setattr(engine.dialect, "name", "postgresql")
+    _seeded_dictionary_row(session, "555555")
+
+    assert backup_before_replace(engine) is None, "precondition: VACUUM INTO is skipped"
+    assert list(tmp_path.glob("myorishop-*.db")) == [], "no .db snapshot on PostgreSQL"
+
+    snapshot = snapshot_dictionary(session)
+
+    assert snapshot is not None and snapshot.is_file(), "the portable snapshot is dialect-free"
+    payload = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert payload["555555"]["name"] == "Живая строка"
+
+
+def test_an_empty_dictionary_writes_no_snapshot(session, tmp_path, monkeypatch):
+    """A clean install has nothing to lose and must not litter the backup dir."""
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+
+    assert snapshot_dictionary(session) is None
+    # tmp_path also holds the session fixture's own test.db — look for the artifact.
+    assert list(tmp_path.glob("dictionary-*.json")) == []
+
+
+def test_a_failed_dictionary_snapshot_aborts_the_import(session, tmp_path, monkeypatch):
+    """No snapshot, no import — the same rule the VACUUM snapshot follows."""
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+
+    def boom(*_args, **_kwargs):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr("scripts.import_master_pricelist.atomic_write", boom)
+    _seeded_dictionary_row(session, "555555")
+
+    with pytest.raises(OSError):
+        snapshot_dictionary(session)
+
+    assert session.scalar(select(Dictionary).where(Dictionary.code == "555555")) is not None
+
+
+def test_the_dictionary_snapshot_is_taken_before_the_replace_in_main():
+    """Print order is not enough here — the CALL order is what saves the rows."""
+    main = _main_function(SCRIPT)
+
+    snapshot_call = min(
+        node.lineno
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call) and "snapshot_dictionary" in ast.unparse(node)
+    )
+    replace_call = min(
+        node.lineno
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call) and "apply_master_import" in ast.unparse(node)
+    )
+
+    assert snapshot_call < replace_call, "the snapshot must precede the delete"
