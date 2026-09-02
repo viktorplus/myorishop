@@ -114,11 +114,18 @@ docker compose -f docker-compose.prod.yml exec ori-app \
 
 ```bash
 docker compose -f docker-compose.prod.yml exec ori-app \
-  python scripts/import_catalogs.py --only-missing --file catalogs/products.json
+  /app/.venv/bin/python scripts/import_catalogs.py --only-missing --file catalogs/products.json
 
 docker compose -f docker-compose.prod.yml exec ori-app \
-  python scripts/import_prices.py --from-export catalogs/catalog_prices.json.gz
+  /app/.venv/bin/python scripts/import_prices.py --from-export catalogs/catalog_prices.json.gz
 ```
+
+> ⚠️ **Интерпретатор — именно `/app/.venv/bin/python`, не `python`.** В образе
+> `python` из `PATH` — это системный `/usr/local/bin/python`, у которого нет ни
+> одной зависимости проекта: `python scripts/import_prices.py` падает с
+> `ModuleNotFoundError: No module named 'sqlalchemy'`. Зависимости стоят в
+> `/app/.venv`. (Проверено при выкладке 260902-m9g; раньше здесь было написано
+> просто `python`, и это не работало.) `uv run python …` — равноценная замена.
 
 `uv run --with openpyxl` здесь не нужен: openpyxl импортируется лениво и на
 этих путях не используется. Обе команды аддитивны и идемпотентны — повторный
@@ -221,7 +228,7 @@ uv run python scripts/reset_business_data.py
 ```bash
 ssh s1
 cd /opt/myorishop
-docker compose -f docker-compose.prod.yml exec ori-app python scripts/reset_business_data.py
+docker compose -f docker-compose.prod.yml exec ori-app /app/.venv/bin/python scripts/reset_business_data.py
 ```
 
 `docker compose exec` по умолчанию выделяет псевдо-TTY, когда сама SSH-сессия
