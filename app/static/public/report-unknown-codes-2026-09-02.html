@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style><title>Неопознанные коды — склад «Офис»</title>
+</head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F5F6F9;
+  --surface:#FFFFFF;
+  --surface-2:#EEF0F5;
+  --line:#DCE0EA;
+  --line-soft:#E8EBF2;
+  --ink:#161C2B;
+  --ink-2:#3C4559;
+  --muted:#6C7590;
+  --accent:#27478C;
+  --accent-soft:#E4EAF8;
+  --warn:#8A5510;
+  --warn-soft:#F7EEDC;
+  --alert:#A32E22;
+  --alert-soft:#F9E5E2;
+  --ok:#2C6146;
+  --shadow:0 1px 2px rgba(22,28,43,.06), 0 8px 24px -16px rgba(22,28,43,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#101319;
+    --surface:#171B24;
+    --surface-2:#1E2330;
+    --line:#2B3242;
+    --line-soft:#232937;
+    --ink:#E7EAF2;
+    --ink-2:#C2C8D8;
+    --muted:#8D96AC;
+    --accent:#8FAAE8;
+    --accent-soft:#1E2740;
+    --warn:#DDA95C;
+    --warn-soft:#2E2617;
+    --alert:#EB9186;
+    --alert-soft:#331D1A;
+    --ok:#79C29C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101319;
+  --surface:#171B24;
+  --surface-2:#1E2330;
+  --line:#2B3242;
+  --line-soft:#232937;
+  --ink:#E7EAF2;
+  --ink-2:#C2C8D8;
+  --muted:#8D96AC;
+  --accent:#8FAAE8;
+  --accent-soft:#1E2740;
+  --warn:#DDA95C;
+  --warn-soft:#2E2617;
+  --alert:#EB9186;
+  --alert-soft:#331D1A;
+  --ok:#79C29C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Golos Text","Segoe UI",system-ui,sans-serif;
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 96px}
+
+/* ---------- header ---------- */
+header.masthead{
+  border-bottom:1px solid var(--line);
+  background:var(--surface);
+}
+.masthead .wrap{padding-top:34px;padding-bottom:26px;display:flex;flex-direction:column;gap:14px}
+.eyebrow{
+  font-size:11.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap
+}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:var(--line);flex:none}
+h1{
+  margin:0;font-size:clamp(28px,4.4vw,40px);line-height:1.1;font-weight:700;
+  letter-spacing:-.02em;text-wrap:balance;
+}
+.lede{margin:0;max-width:64ch;color:var(--ink-2);font-size:16px}
+.lede b{font-weight:600;color:var(--ink)}
+
+/* ---------- stats ---------- */
+.stats{
+  display:grid;gap:1px;background:var(--line-soft);
+  grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  border:1px solid var(--line-soft);border-radius:10px;overflow:hidden;margin-top:22px;
+}
+.stat{background:var(--surface);padding:14px 16px 15px;display:flex;flex-direction:column;gap:3px}
+.stat .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15
+}
+.stat .l{font-size:12px;color:var(--muted);line-height:1.35}
+.stat.is-warn .n{color:var(--warn)}
+.stat.is-alert .n{color:var(--alert)}
+
+/* ---------- controls ---------- */
+.controls{
+  position:sticky;top:0;z-index:20;background:var(--ground);
+  padding:14px 0 12px;border-bottom:1px solid var(--line);margin-top:26px;
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+}
+.search{
+  flex:1 1 240px;min-width:200px;display:flex;align-items:center;gap:8px;
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:0 11px;height:38px;
+}
+.search input{
+  flex:1;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;height:100%;outline:none
+}
+.search svg{flex:none;color:var(--muted)}
+select,.toggle{
+  height:38px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  color:var(--ink);font:inherit;font-size:14px;padding:0 12px;cursor:pointer
+}
+.toggle{display:inline-flex;align-items:center;gap:8px;user-select:none}
+.toggle input{accent-color:var(--accent);width:15px;height:15px;margin:0;cursor:pointer}
+.toggle.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+:where(select,input,button):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.count{margin-left:auto;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- table ---------- */
+.tablebox{
+  margin-top:18px;background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;box-shadow:var(--shadow);overflow-x:auto
+}
+table{border-collapse:collapse;width:100%;min-width:940px}
+thead th{
+  position:sticky;top:64px;z-index:10;background:var(--surface-2);
+  text-align:left;font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap
+}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.grp td{
+  background:var(--surface-2);padding:8px 12px;
+  font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)
+}
+tbody tr.grp .gcount{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+tbody tr:not(.grp):hover td{background:var(--accent-soft)}
+.mono{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:13.5px;letter-spacing:-.01em
+}
+td.code{font-weight:600;white-space:nowrap}
+td.qty{text-align:right;white-space:nowrap;font-weight:600}
+td.qty .empty{color:var(--alert);font-weight:600}
+td.exp{white-space:nowrap;color:var(--ink-2)}
+td.exp .raw{color:var(--muted);font-size:12px}
+td.name{min-width:230px}
+td.name .none{color:var(--muted);font-style:italic}
+td.src{color:var(--muted);white-space:nowrap;font-size:12.5px}
+td.flags{min-width:200px}
+
+.pill{
+  display:inline-block;font-size:11.5px;line-height:1.35;padding:2px 8px;border-radius:999px;
+  border:1px solid transparent;margin:1px 3px 1px 0;white-space:normal
+}
+.pill.dict{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 28%,transparent)}
+.pill.chk{background:var(--alert-soft);color:var(--alert);border-color:color-mix(in srgb,var(--alert) 28%,transparent)}
+.empty-state{padding:44px 20px;text-align:center;color:var(--muted)}
+
+/* ---------- notes ---------- */
+.notes{margin-top:34px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.note{
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px 18px;
+}
+.note h3{margin:0 0 8px;font-size:14px;font-weight:600;letter-spacing:-.01em}
+.note ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:6px}
+.note li{font-size:13.5px;color:var(--ink-2)}
+.note code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;
+  background:var(--surface-2);padding:1px 5px;border-radius:4px
+}
+footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+@media (max-width:640px){
+  thead th{top:110px}
+  .controls{padding-top:10px}
+}
+</style>
+<style>
+thead th{position:static !important;top:auto !important}
+.code{font-variant-numeric:tabular-nums}
+.section{margin-top:38px}
+.section h2{font-size:20px;margin:0 0 6px}
+.section h3{font-size:16px;margin:22px 0 6px}
+.section .sub{color:var(--muted);font-size:14px;margin:0 0 14px;max-width:74ch}
+.callout{border-left:3px solid #d97706;background:#fffbeb;padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;font-size:14px}
+.callout b{color:#92400e}
+.callout ul,.section ol{margin:8px 0 0;padding-left:20px}
+.section ol li{margin:6px 0}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .callout{background:#2a1f0a;border-left-color:#f59e0b}
+  :root:not([data-theme="light"]) .callout b{color:#fbbf24}
+}
+:root[data-theme="dark"] .callout{background:#2a1f0a;border-left-color:#f59e0b}
+:root[data-theme="dark"] .callout b{color:#fbbf24}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.toc a{font-size:13px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:inherit}
+</style>
+<header class="masthead"><div class="wrap">
+<div class="eyebrow"><span>Склад «Офис»</span><span class="dot"></span><span>неопознанные коды</span><span class="dot"></span><span>02.09.2026</span></div>
+<h1>Коды, которые не удалось опознать</h1>
+<p class="lede">Рабочий список для обхода склада. Всё, что здесь перечислено, нельзя закрыть по документам — нужно взять товар с полки и прочитать упаковку. Товар при этом лежит на остатке и продаётся; исключение оговорено отдельно.</p>
+</div></header>
+<main class="wrap">
+<section class="stats" aria-label="Сводка">
+<div class="stat is-warn"><span class="n">15</span><span class="l">без названия</span></div>
+<div class="stat"><span class="n">54</span><span class="l">штук без названия</span></div>
+<div class="stat"><span class="n">2</span><span class="l">своих кода</span></div>
+<div class="stat is-alert"><span class="n">17</span><span class="l">штук без кода</span></div>
+<div class="stat is-warn"><span class="n">44</span><span class="l">кодов без цены</span></div>
+<div class="stat"><span class="n">6</span><span class="l">полок обойти</span></div>
+</section>
+<div class="toc"><a href="#bez-nazvaniya">Без названия</a><a href="#svoi">Свои коды</a><a href="#bez-koda">Без кода</a><a href="#bez-ceny">Без цены</a><a href="#kak">Как закрывать</a><a href="#marshrut">Маршрут</a></div>
+<div class="section" id="bez-nazvaniya"><h2>Название не установлено — 15 кодов, 54 шт</h2>
+<p class="sub">Ни одного следа: ни в мастер-прайсе, ни в 232 архивных прайс-листах 2013–2026, ни в регистрационных документах Oriflame, ни в базе. На рукописных листах названий нет — только код, количество и срок. Название не выдумывалось: внесена метка «Не опознан (код NNNNN)».</p>
+<div class="tablebox"><table><thead><tr><th>Код</th><th style="text-align:right">Штук</th><th>Полка</th><th>Сроки</th><th>Лист</th></tr></thead><tbody><tr><td><b class="code">0305</b></td><td style="text-align:right">1</td><td>83</td><td>1 шт — 02/06</td><td><span class="muted">IMG_7730</span></td></tr><tr><td><b class="code">1998</b></td><td style="text-align:right">1</td><td>38</td><td>1 шт — 07/06</td><td><span class="muted">IMG_7738</span></td></tr><tr><td><b class="code">7049</b></td><td style="text-align:right">1</td><td>38</td><td>1 шт — 09/09</td><td><span class="muted">IMG_7739</span></td></tr><tr><td><b class="code">9514</b></td><td style="text-align:right">1</td><td>92</td><td>1 шт — без срока</td><td><span class="muted">IMG_7757</span></td></tr><tr><td><b class="code">11215</b></td><td style="text-align:right">1</td><td>92</td><td>1 шт — без срока</td><td><span class="muted">IMG_7757</span></td></tr><tr><td><b class="code">12663</b></td><td style="text-align:right">2</td><td>92</td><td>2 шт — без срока</td><td><span class="muted">IMG_7757</span></td></tr><tr><td><b class="code">12759</b></td><td style="text-align:right">2</td><td>83</td><td>1 шт — 01/11, 1 шт — 01/11</td><td><span class="muted">IMG_7730, IMG_7758</span></td></tr><tr><td><b class="code">14767</b></td><td style="text-align:right">3</td><td>92</td><td>3 шт — без срока</td><td><span class="muted">IMG_7755</span></td></tr><tr><td><b class="code">15824</b></td><td style="text-align:right">1</td><td>83</td><td>1 шт — 03/11</td><td><span class="muted">IMG_7729</span></td></tr><tr><td><b class="code">26847</b></td><td style="text-align:right">9</td><td>92</td><td>9 шт — без срока</td><td><span class="muted">IMG_7755</span></td></tr><tr><td><b class="code">28608</b></td><td style="text-align:right">2</td><td>92</td><td>2 шт — без срока</td><td><span class="muted">IMG_7757</span></td></tr><tr><td><b class="code">33596</b></td><td style="text-align:right">1</td><td>39</td><td>1 шт — 11/21</td><td><span class="muted">IMG_7750</span></td></tr><tr><td><b class="code">38490</b></td><td style="text-align:right">24</td><td>44</td><td>2 шт — 12/23, 2 шт — 01/23, 1 шт — 11/23, 1 шт — 04/23, 2 шт — 08/23, 2 шт — 07/23, 4 шт — 09/23, 10 шт — 06/24</td><td><span class="muted">IMG_7719</span></td></tr><tr><td><b class="code">42922</b></td><td style="text-align:right">3</td><td>39</td><td>2 шт — 02/22, 1 шт — 08/24</td><td><span class="muted">IMG_7716</span></td></tr><tr><td><b class="code">103311</b></td><td style="text-align:right">2</td><td>92</td><td>2 шт — без срока</td><td><span class="muted">IMG_7756</span></td></tr></tbody></table></div>
+<div class="callout"><b>Особый случай — код 38490.</b> Самая крупная позиция списка: 24 шт на полке 44, лист <code>IMG_7719</code>. На фотографии цифра в коде исправлена поверх написанного — возможно, это вообще другой артикул. Сверяйте код с упаковкой, а не только название, иначе рискуете закрепить неверный код за 24 единицами товара.</div>
+</div>
+<div class="section" id="svoi"><h2>Собственные коды оператора — 2 кода, 4 шт</h2>
+<p class="sub">Не артикулы Oriflame: на листе записаны словом, код присвоен вручную. Импортированы как есть, в справочник намеренно не заводились.</p>
+<div class="tablebox"><table><thead><tr><th>Код</th><th>Название</th><th style="text-align:right">Штук</th><th>Полка</th><th>Лист</th></tr></thead><tbody><tr><td><b class="code">0001</b></td><td>Барьер</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">IMG_7756</span></td></tr><tr><td><b class="code">0002</b></td><td>Соковыжималка</td><td style="text-align:right">3</td><td>92</td><td><span class="muted">IMG_7756</span></td></tr></tbody></table></div>
+</div>
+<div class="section" id="bez-koda"><h2>Строка без кода — 17 шт</h2>
+<p class="sub">Единственная позиция описи, которой в базе нет: оприходовать товар без кода некуда, импорт её пропустил.</p>
+<div class="callout"><b>Полка 59, 17 шт, лист <code>IMG_7752</code>.</b> На листе код записан как «???» — не определён самим составителем описи. Чтобы закрыть: определить код на полке и оприходовать вручную через «Приход».</div>
+</div>
+<div class="section" id="bez-ceny"><h2>Нет цены — 44 кодов, 95 шт</h2>
+<p class="sub">Цены нет ни в одном прайсе. Поля ДЦ и ПЦ оставлены пустыми, а не нулевыми: цена определится в момент продажи или будет внесена в справочник позже. Товар полноценно лежит на остатке.</p>
+<div class="tablebox"><table><thead><tr><th>Код</th><th>Название</th><th style="text-align:right">Штук</th><th>Полка</th><th>Почему нет цены</th></tr></thead><tbody><tr><td><b class="code">0001</b></td><td>Барьер</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">собственный код оператора, не артикул Oriflame</span></td></tr><tr><td><b class="code">0002</b></td><td>Соковыжималка</td><td style="text-align:right">3</td><td>92</td><td><span class="muted">собственный код оператора, не артикул Oriflame</span></td></tr><tr><td><b class="code">0305</b></td><td>Не опознан (код 0305)</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">1071</b></td><td>Очищающее молочко для чувствительной кожи Swedish </td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">1998</b></td><td>Не опознан (код 1998)</td><td style="text-align:right">1</td><td>38</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">2054</b></td><td>Кондиционер для волос Hair Solutions Balance (жирн</td><td style="text-align:right">4</td><td>21</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">2060</b></td><td>Кондиционер для окрашенных волос Hair Solutions Co</td><td style="text-align:right">1</td><td>21</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">2393</b></td><td>Тональный крем Giordani Gold Age Defying SPF 8 — L</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">4631</b></td><td>Освежающее очищающее средство Cleansing Refresher</td><td style="text-align:right">2</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">4773</b></td><td>Лосьон для сужения пор Pure Skin Perfect Pore</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">4840</b></td><td>Очищающая пенка для жирной кожи Swedish Care</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">4883</b></td><td>Матирующий увлажняющий крем Oil Control</td><td style="text-align:right">1</td><td>59</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">5056</b></td><td>Гель для мытья волос и тела Oriflame Hair and Body</td><td style="text-align:right">1</td><td>64</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">6795</b></td><td>Несмываемый уход для окрашенных волос Colour Prote</td><td style="text-align:right">1</td><td>24</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">7049</b></td><td>Не опознан (код 7049)</td><td style="text-align:right">1</td><td>38</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">7188</b></td><td>Кондиционер для светлых волос «насыщенный цвет»</td><td style="text-align:right">1</td><td>24</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">9514</b></td><td>Не опознан (код 9514)</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">11215</b></td><td>Не опознан (код 11215)</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">12484</b></td><td>Крем для тела ультрапитательный, 200 мл</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">12584</b></td><td>Гель для душа для чувствительной кожи «Манго и йог</td><td style="text-align:right">1</td><td>21</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">12663</b></td><td>Не опознан (код 12663)</td><td style="text-align:right">2</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">12759</b></td><td>Не опознан (код 12759)</td><td style="text-align:right">2</td><td>83</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">14685</b></td><td>Дезодорант-антиперспирант 24 ч Delight</td><td style="text-align:right">2</td><td>38</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">14767</b></td><td>Не опознан (код 14767)</td><td style="text-align:right">3</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">15380</b></td><td>Компактная пудра с эффектом сияния giordani gold p</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">15450</b></td><td>Шейкер и мерная ложка</td><td style="text-align:right">1</td><td>87</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">15824</b></td><td>Не опознан (код 15824)</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">16352</b></td><td>Средство против чёрных точек Pure Skin Blackhead A</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">16905</b></td><td>Мерцающая пудра giordani white gold</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">16983</b></td><td>Минеральный спрей для лица с морскими водорослями </td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">17320</b></td><td>Гелевая подводка для глаз Giordani Gold — Deep Gre</td><td style="text-align:right">1</td><td>83</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">17437</b></td><td>Витаминный крем для тела Vitamin Body Cream</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">18367</b></td><td>Питательная маска для волос Royal Velvet Deluxe</td><td style="text-align:right">1</td><td>58</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">20281</b></td><td>Защитная маска для лица Essentials Weather Protect</td><td style="text-align:right">1</td><td>59</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">20573</b></td><td>Шариковый дезодорант-антиперспирант с алоэ вера и </td><td style="text-align:right">1</td><td>38</td><td><span class="muted">название восстановлено по документам Oriflame, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">23250</b></td><td>Кружка «влюблённая пара»</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">26326</b></td><td>Роликовый массажёр</td><td style="text-align:right">1</td><td>92</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr><tr><td><b class="code">26847</b></td><td>Не опознан (код 26847)</td><td style="text-align:right">9</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">28608</b></td><td>Не опознан (код 28608)</td><td style="text-align:right">2</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">33596</b></td><td>Не опознан (код 33596)</td><td style="text-align:right">1</td><td>39</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">38490</b></td><td>Не опознан (код 38490)</td><td style="text-align:right">24</td><td>44</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">42922</b></td><td>Не опознан (код 42922)</td><td style="text-align:right">3</td><td>39</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">103311</b></td><td>Не опознан (код 103311)</td><td style="text-align:right">2</td><td>92</td><td><span class="muted">код не опознан, цены нет ни в одном прайсе</span></td></tr><tr><td><b class="code">522031</b></td><td>Термос</td><td style="text-align:right">6</td><td>92</td><td><span class="muted">есть в справочнике, но цена в прайсах отсутствует</span></td></tr></tbody></table></div>
+</div>
+<div class="section" id="kak"><h2>Как закрывать</h2>
+<h3>Название</h3>
+<p class="sub">Правится в двух местах, и порядок важен.</p>
+<ol>
+<li><b>Справочник</b> — страница <code>/dictionary</code>, найти код, отредактировать название. Это исправляет источник: подстановку при следующих приходах и поиск по коду.</li>
+<li><b>Карточка товара</b> — <code>/products?code=NNNNN</code>, изменить название. Карточка не переименовывается автоматически вслед за справочником: приход намеренно не трогает имя существующего товара, иначе любая опечатка в приходной форме переписывала бы карточку.</li>
+</ol>
+<div class="callout"><b>Ловушка, о которой стоит знать.</b> Метка «Не опознан (код NNNNN)» лежит ещё и в <code>app/services/rubric_overrides.json</code>. Правка через интерфейс её не трогает — и полный прогон <code>import_master_pricelist.py</code> (без <code>--only-missing</code>) вернёт метку обратно, затерев ваше название. Аддитивные прогоны безопасны. Чтобы исправление пережило пересборку справочника, название нужно поправить и в этом файле.</div>
+<h3>Цена</h3>
+<p class="sub">Вносится в карточке товара (ДЦ и ПЦ) или в справочнике. Пустая цена не мешает продаже — цену можно указать прямо в момент продажи.</p>
+<h3>Код на упаковке не совпал с описью</h3>
+<p class="sub">Это не переименование, а другой товар. Правильный путь: списать количество с неверного кода и оприходовать на верный, чтобы в журнале осталась история. Просто переписать код в карточке нельзя — она уже связана с партиями и операциями.</p>
+</div>
+<div class="section" id="marshrut"><h2>Маршрут обхода</h2>
+<p class="sub">Полки в порядке возрастания — чтобы пройти склад один раз. Итого 18 позиций на 6 полках.</p>
+<div class="tablebox"><table><thead><tr><th>Полка</th><th>Проверить</th></tr></thead><tbody><tr><td><b>38</b></td><td><b class="code">1998</b> (1 шт), <b class="code">7049</b> (1 шт)</td></tr><tr><td><b>39</b></td><td><b class="code">33596</b> (1 шт), <b class="code">42922</b> (3 шт)</td></tr><tr><td><b>44</b></td><td><b class="code">38490</b> (24 шт)</td></tr><tr><td><b>59</b></td><td><b class="code">???</b> (17 шт, без кода)</td></tr><tr><td><b>83</b></td><td><b class="code">0305</b> (1 шт), <b class="code">12759</b> (2 шт), <b class="code">15824</b> (1 шт)</td></tr><tr><td><b>92</b></td><td><b class="code">9514</b> (1 шт), <b class="code">11215</b> (1 шт), <b class="code">12663</b> (2 шт), <b class="code">14767</b> (3 шт), <b class="code">26847</b> (9 шт), <b class="code">28608</b> (2 шт), <b class="code">103311</b> (2 шт), <b class="code">0001</b> (1 шт, свой код), <b class="code">0002</b> (3 шт, свой код)</td></tr></tbody></table></div>
+</div>
+<footer>Источник: <code>reports/оприходование-офис-2026-08-31.csv</code> и база s1. Подробная версия: <code>reports/отчет-неопознанные-коды-2026-09-02.md</code>. Соседние страницы: <a href="/code/artifact/0ac2f0bf-4df3-4de0-864a-b87d09e87305">опись</a> · <a href="/code/report/office-import-2026-09-02">отчёт по импорту</a>.</footer>
+</main>
+</body></html>

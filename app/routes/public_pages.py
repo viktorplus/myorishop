@@ -41,3 +41,15 @@ def public_import_report():
     if not REPORT_FILE.is_file():
         raise HTTPException(status_code=404, detail="page not found")
     return FileResponse(REPORT_FILE, media_type="text/html; charset=utf-8")
+
+
+# Рабочий список для обхода склада: коды, которые нельзя закрыть по документам.
+UNKNOWN_PATH = "/code/report/unknown-codes-2026-09-02"
+UNKNOWN_FILE = Path("app/static/public/report-unknown-codes-2026-09-02.html")
+
+
+@router.get(UNKNOWN_PATH, include_in_schema=False)
+def public_unknown_codes_report():
+    if not UNKNOWN_FILE.is_file():
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(UNKNOWN_FILE, media_type="text/html; charset=utf-8")

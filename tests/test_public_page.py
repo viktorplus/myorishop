@@ -10,6 +10,8 @@ from app.routes.public_pages import (
     ARTIFACT_PATH,
     REPORT_FILE,
     REPORT_PATH,
+    UNKNOWN_FILE,
+    UNKNOWN_PATH,
 )
 
 
@@ -48,6 +50,32 @@ def test_import_report_is_served_to_anonymous_visitor(anon_client):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "Отчёт по описи склада «Офис»" in response.text
+
+
+def test_unknown_codes_report_is_served_to_anonymous_visitor(anon_client):
+    response = anon_client.get(UNKNOWN_PATH)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Коды, которые не удалось опознать" in response.text
+
+
+def test_unknown_codes_report_carries_its_working_sections(anon_client):
+    html = UNKNOWN_FILE.read_text(encoding="utf-8")
+
+    assert html.startswith("<!doctype html>")
+    assert html.rstrip().endswith("</html>")
+    for heading in (
+        "Название не установлено",
+        "Собственные коды оператора",
+        "Строка без кода",
+        "Нет цены",
+        "Как закрывать",
+        "Маршрут обхода",
+    ):
+        assert heading in html, heading
+    # ловушка с rubric_overrides.json должна быть на странице, а не только в файле
+    assert "rubric_overrides.json" in html
 
 
 def test_import_report_file_is_present_and_self_contained(anon_client):
