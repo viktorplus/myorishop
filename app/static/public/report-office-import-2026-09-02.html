@@ -211,9 +211,9 @@ thead th{position:static !important;top:auto !important}
 .toc a:hover{border-color:var(--muted)}
 </style>
 <header class="masthead"><div class="wrap">
-<div class="eyebrow"><span>Склад «Офис»</span><span class="dot"></span><span>отчёт по импорту</span><span class="dot"></span><span>02.09.2026</span></div>
+<div class="eyebrow"><span>Склад «Офис»</span><span class="dot"></span><span>отчёт по импорту</span><span class="dot"></span><span>импорт проведён 02.09.2026</span></div>
 <h1>Отчёт по описи склада «Офис»</h1>
-<p class="lede">Что уже лежало на складе, что добавляется, откуда взялись недостающие названия и где стоит перепроверить перед проведением. Все цифры посчитаны из самой описи и снимка базы — ни одна не введена руками.</p>
+<p class="lede">Что лежало на складе, что добавлено, откуда взялись недостающие названия и где стоит перепроверить. Все цифры посчитаны из самой описи и снимка базы — ни одна не введена руками.</p>
 </div></header>
 <main class="wrap">
 <section class="stats" aria-label="Сводка">
@@ -225,12 +225,18 @@ thead th{position:static !important;top:auto !important}
 <div class="stat is-warn"><span class="n">44</span><span class="l">кодов без цены</span></div>
 </section>
 <div class="toc">
-<a href="#kak">Как лягут партии</a><a href="#bylo">Уже были</a><a href="#novye">Новые товары</a>
+<a href="#itog">Результат</a><a href="#kak">Как легли партии</a><a href="#bylo">Уже были</a><a href="#novye">Новые товары</a>
 <a href="#nazvaniya">Названия</a><a href="#bez-ceny">Без цены</a><a href="#pereproverit">Перепроверить</a>
 </div>
-<div class="section" id="kak"><h2>Как лягут 413 партий описи</h2>
-<p class="sub">Ключ партии — код плюс срок годности. Совпали оба — количество прибавляется к существующей партии. Срок другой — заводится новая партия того же товара. Кода не было — новая карточка и партия.</p>
-<div class="tablebox"><table><thead><tr><th>Случай</th><th style="text-align:right">Партий</th><th style="text-align:right">Штук</th></tr></thead><tbody><tr><td>Долив в существующую партию — код и срок совпали</td><td style="text-align:right">17</td><td style="text-align:right">125</td></tr><tr><td><b>Новая партия у существующего товара — срок другой</b></td><td style="text-align:right"><b>10</b></td><td style="text-align:right"><b>21</b></td></tr><tr><td>Новый товар — кода в базе не было</td><td style="text-align:right">386</td><td style="text-align:right">2058</td></tr><tr><td><b>Итого</b></td><td style="text-align:right"><b>413</b></td><td style="text-align:right"><b>2204</b></td></tr></tbody></table></div>
+<div class="section" id="itog"><h2>Результат импорта</h2>
+<p class="sub">Импорт проведён 02.09.2026. Цифры сняты с боевой базы после записи. На складе «Офис» стало <b>484 товаров и 4046 штук</b>.</p>
+<div class="tablebox"><table><thead><tr><th></th><th style="text-align:right">До</th><th style="text-align:right">После</th><th style="text-align:right">Изменение</th></tr></thead><tbody><tr><td>Товары</td><td style="text-align:right">178</td><td style="text-align:right"><b>486</b></td><td style="text-align:right">+308</td></tr><tr><td>Партии</td><td style="text-align:right">201</td><td style="text-align:right"><b>582</b></td><td style="text-align:right">+381</td></tr><tr><td>Операции в журнале</td><td style="text-align:right">380</td><td style="text-align:right"><b>1101</b></td><td style="text-align:right">+721</td></tr><tr><td>Штук на складе</td><td style="text-align:right">1859</td><td style="text-align:right"><b>4063</b></td><td style="text-align:right">+2204</td></tr><tr><td>Справочник</td><td style="text-align:right">6894</td><td style="text-align:right"><b>12582</b></td><td style="text-align:right">+5688</td></tr><tr><td>Цены</td><td style="text-align:right">6856</td><td style="text-align:right"><b>12372</b></td><td style="text-align:right">+5516</td></tr></tbody></table></div>
+<div class="callout"><b>Сверка сошлась.</b> Прирост товаров +308 равен числу новых карточек, прирост партий +381 — числу новых партий, прирост штук +2204 — объёму описи. Перед записью снята и проверена копия базы.</div>
+</div>
+<div class="section" id="kak"><h2>Как легли 413 партий описи</h2>
+<p class="sub">Ключ партии — код плюс месяц годности. Совпали оба — количество прибавляется к существующей партии. Месяц другой — заводится новая партия того же товара. Кода не было — новая карточка и партия.</p>
+<div class="tablebox"><table><thead><tr><th>Случай</th><th style="text-align:right">Строк описи</th><th style="text-align:right">Штук</th></tr></thead><tbody><tr><td>Долив в партию, которая уже лежала на складе</td><td style="text-align:right">17</td><td style="text-align:right">125</td></tr><tr><td><b>Новая партия у существующего товара — месяц другой</b></td><td style="text-align:right"><b>10</b></td><td style="text-align:right"><b>21</b></td></tr><tr><td>Новый товар — кода в базе не было</td><td style="text-align:right">386</td><td style="text-align:right">2058</td></tr><tr><td><b>Итого</b></td><td style="text-align:right"><b>413</b></td><td style="text-align:right"><b>2204</b></td></tr></tbody></table></div>
+<div class="callout"><b>Партий получилось меньше, чем строк.</b> Если один код с одним месяцем годности встречается в описи дважды — например, лежит на двух разных полках, — обе строки идут в одну партию. Отчёт скрипта при записи: заведена <b>381</b> новая партия и сделано <b>32</b> долива, из них 17 в партии, лежавшие на складе до импорта, и 15 — слияния двух строк описи между собой. 381 + 32 = 413 строк.</div>
 </div>
 <div class="section" id="bylo"><h2>Товары, которые уже были на складе</h2>
 <p class="sub">Опись пересекается с остатком по 24 кодам. Опись — это добавление, а не пересчёт: количество прибавляется к тому, что уже лежит.</p>
