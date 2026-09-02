@@ -2,12 +2,13 @@
 quick_id: 260902-k2i
 status: complete
 date: 2026-09-02
-version: 1.48 -> 1.52
+version: 1.48 -> 1.53
 commits:
   - 19ba85a feat(dict) restore series product type for shade-only price-list rows
   - a7515d9 feat(dict) surgical --restore-shade-names update for existing rows
   - c49f26f fix(dict) match the shade of ANY variant and restore in-place overrides
   - 1ce0b0a data(dict) restore product type on 607 shade-only dictionary names
+  - 7ff09ad feat(dict) restore the product type on shade-only product cards
 key-files:
   created: []
   modified:
@@ -247,5 +248,192 @@ related to `.planning/todos/pending/2026-08-31-price-lists-backfill.md`.
 - `scripts/import_catalogs.py::restore_shade_names` / `apply_shade_name_updates` — FOUND
 - `app/services/rubrics.py::is_shade_tail` — FOUND
 - Commits `19ba85a`, `a7515d9`, `c49f26f`, `1ce0b0a` — all FOUND in `git log`
-- `app/__init__.py` — `__version__ = "1.52"`
+- `app/__init__.py` — `__version__ = "1.52"` (now 1.53, see the extension below)
 - Working tree clean apart from untracked files
+
+---
+
+# Extension: the product-card half (CARDS-SPEC, commit `7ff09ad`, 1.52 -> 1.53)
+
+The dictionary was fixed above; the CARDS-SPEC closes the other half — the
+cards in `products` that the inventory import created from a CSV holding only
+the shade. Same mode, same predicate, one extra pass. No new script, no new
+flag.
+
+## What changed
+
+`scripts/import_catalogs.py` — three new functions plus the runner wiring:
+
+| Function | Role |
+|---|---|
+| `dictionary_names_after(session, plan)` | `code -> ` the dictionary name **as it will read after the row pass**. The card pass has to see the restored справочник. |
+| `plan_product_name_updates(session, names)` | read-only; selects a card only when `is_shade_tail(card.name, names[code])` — the same predicate, not a copy of it |
+| `apply_product_name_updates(session, plan)` | writes `name` **and `name_lc`** (LIST-02), refuses anything not strictly longer (`ShadeNameWouldShrink`), looks cards up by their own id so it can neither insert nor delete |
+
+`category`, prices, quantity, code and every other column are untouched.
+Soft-deleted cards are included — the predicate, not the row's visibility, is
+the safety.
+
+### Why `dictionary_names_after` exists and is not an over-engineering
+
+Planning the cards against the *current* dictionary selects **nothing** for
+exactly the five «Офис» codes this task exists for: before the row pass both
+sides read «Фарфоровый». Overlaying the row plan (instead of re-reading after
+the write) is also what makes the **dry run predict precisely what `--apply`
+does** — the dry run is the only thing the orchestrator gets to look at before
+writing on s1. Pinned by
+`test_the_card_pass_reads_the_RESTORED_dictionary_name`.
+
+## New output lines
+
+```
+Product cards: 157
+Карточек товаров к обновлению: 5
+  32287: «Слоновая кость» -> «Ультрастойкая корректирующая тональная основа …»
+...
+Карточек товаров обновлено: 5
+Товаров: 157 -> 157  (cards are updated, never created)
+```
+
+The card counter is printed on its own line and never mixed into the dictionary
+counter, as the SPEC asks.
+
+## How many cards are selected locally: **0**
+
+Honest and uninteresting: `data/myorishop.db` holds **12 582 dictionary rows
+and 0 product cards**. The dictionary side is already restored from the first
+half of this task, so the real local run is a no-op end to end:
+
+```
+Dictionary rows: 12582      Planned name restorations: 0
+Product cards: 0            Карточек товаров к обновлению: 0
+Updated: 0                  Карточек товаров обновлено: 0
+Dictionary: 12582 -> 12582  Товаров: 0 -> 0
+```
+
+Both the dry run and `--apply` were run locally (snapshot taken first, see
+Safety). The database **content** is provably unchanged — all 12 582
+`(code, name, name_lc, rubric, catalogs)` tuples hash identically to the
+snapshot (`e9f60e58e487aad8`), products still 0. The file's md5 does differ,
+because opening the database checkpoints WAL and rewrites page headers; that is
+SQLite housekeeping, not a data change. **Nothing was run against s1.**
+
+## The 12 reverse discrepancies: measured, not asserted
+
+Because the local database has no cards, the SPEC's real risk was proved
+against **real s1 card names** without touching s1. Section 5.5 of
+`reports/отчет-опись-офис-2026-09-02.md` («что НЕ трогает импорт») lists 152
+codes **that live in the s1 products table**, with the names s1 stores. A
+throwaway SQLite database was built from: those 152 real card names + the five
+shade-only «Офис» cards from the SPEC + a **copy of the real 12 582-row
+restored dictionary**. Then the shipped planner was run over it.
+
+| | |
+|---|---|
+| Cards in the harness | **157** (152 real s1 names + 5 «Офис») |
+| Card name ≠ dictionary name | **33** |
+| → **SELECTED**, product type restored | **5** — exactly the SPEC's five, character for character |
+| → **card RICHER than the dictionary** | **13** — **0 selected, all 13 byte-identical after `--apply`** |
+| → neither (different wording/case/truncation) | 15 — none selected |
+| Names that got shorter | **0** |
+| `name_lc` ≠ `name.lower()` after the write | **0** |
+| Products table size | 157 -> **157** |
+| Second run plans | **0** |
+
+The 13 untouched richer cards, verbatim (the SPEC named the first two):
+
+```
+21566  card: Женские туалетные духи Volare Magnolia объем 50 мл
+       dict: Туалетные духи volare magnolia
+25048  card: Мужская туалетная вода Tycoon75 мл
+       dict: Туалетная вода tycoon
+21635, 22446, 23842, 25057, 25387, 30464, 31833, 34473, 35659, 41652, 41653
+```
+
+The harness asserts `selected & richer == set()` and fails loudly on a
+regression. It is scratch tooling and is deliberately **not** committed.
+
+Two caveats, stated rather than hidden:
+
+- The SPEC counted **12** reverse cases across the *whole* s1 database; this
+  152-code sample contains **13**. Different scope, same direction — the sample
+  is not the full products table, so it is a superset of the SPEC's list only
+  by accident. Every one of them is untouched, which is the property under test.
+- Section 5.5 truncates names at 60 characters, so the 15 «neither» rows
+  include report artifacts, not necessarily the exact s1 strings. That cannot
+  produce a false positive: a truncated *prefix* is never a shade *tail*. The
+  13 richer names are all ≤ 60 chars and complete.
+
+## Tests added (8, `tests/test_import_catalogs.py`)
+
+- `test_a_card_richer_than_the_dictionary_is_never_planned` — **the mandatory
+  one**: both real s1 reversals (25048 Tycoon, 21566 Volare Magnolia), asserted
+  both as «not planned» and as «byte-identical after apply»
+- `test_plan_product_name_updates_selects_only_a_bare_shade_card`
+- `test_the_card_pass_reads_the_RESTORED_dictionary_name` — the «Офис» case end
+  to end, dictionary + card in one transaction
+- `test_apply_writes_card_name_and_name_lc_and_leaves_the_rest_alone` — LIST-02
+  and «`category` не трогать»
+- `test_a_card_equal_to_the_dictionary_name_is_never_planned`
+- `test_a_card_with_no_dictionary_row_or_no_code_is_never_planned`
+- `test_apply_refuses_a_card_name_that_would_shrink`
+- `test_the_second_card_run_plans_nothing_and_creates_no_card`
+
+## Verification
+
+- `uv run pytest tests/test_import_catalogs.py -q` → **25 passed**.
+- `uv run ruff check scripts/import_catalogs.py tests/test_import_catalogs.py`
+  → clean.
+- **Full `uv run pytest`: 1 413 passed, 13 skipped, 4 failed** (6:08).
+  1 406 + 8 new − 1 = 1 413: the arithmetic closes exactly, so no existing test
+  changed state.
+
+### The 4 failures (pre-existing, NOT this task)
+
+```
+FAILED tests/test_sync_ui.py::test_sync_run_returns_oob_partial
+FAILED tests/test_sync_ui.py::test_offline_run_returns_200_ru
+FAILED tests/test_sync_ui.py::test_not_configured_run_is_a_noop
+FAILED tests/test_sync_ui.py::test_lock_hit_returns_locked_partial
+```
+
+Same `sync_client._run_lock` race as in the first half. The composition floated
+again — `test_not_configured_run_is_a_noop` is now failing *in addition to* the
+three from the earlier run, which is the nondeterminism itself, not a new
+break. Nothing in this task touches the sync path. Not fixed, per instruction.
+
+## Safety
+
+- Snapshot before the local `--apply` (no `-wal` file present, so the copy is
+  complete): `…\scratchpad\myorishop-before-k2i-cards.db` (11 333 632 bytes).
+- Nothing was run against s1; no server started, stopped or killed.
+- No new dependency, no migration, no schema change.
+- Docs were not committed, per the brief — this SUMMARY section and
+  `260902-k2i-CARDS-SPEC.md` stay untracked.
+
+## Hand-off: the s1 run is unchanged
+
+The command sequence in «Hand-off to the orchestrator» above still applies
+verbatim — it is the same flag. Expect, on s1, additionally:
+
+```
+Product cards: <N>
+Карточек товаров к обновлению: 5
+Карточек товаров обновлено: 5
+Товаров: <N> -> <N>
+```
+
+`Планируется 5` is the number to check before typing `--apply`. If the dry run
+prints anything materially larger, **stop** — 5 is the measured truth for the
+current s1 data, and the 12 hand-written cards are the reason.
+
+## Self-Check: PASSED
+
+- `scripts/import_catalogs.py::dictionary_names_after` /
+  `plan_product_name_updates` / `apply_product_name_updates` — FOUND
+- `tests/test_import_catalogs.py` — 8 new card tests FOUND, 25 pass
+- Commit `7ff09ad` — FOUND in `git log`
+- `app/__init__.py` — `__version__ = "1.53"`
+- `data/myorishop.db` — 12 582 dictionary rows, 0 products, content hash
+  identical to the pre-`--apply` snapshot
+
