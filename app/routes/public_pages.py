@@ -22,9 +22,22 @@ router = APIRouter()
 ARTIFACT_PATH = "/code/artifact/0ac2f0bf-4df3-4de0-864a-b87d09e87305"
 ARTIFACT_FILE = Path("app/static/public/artifact-0ac2f0bf-4df3-4de0-864a-b87d09e87305.html")
 
+# Спутник описи: отчёт по её импорту (что уже было, что добавляется, откуда
+# взяты названия, товары без цены, где перепроверить). Тот же режим: статический
+# файл, никаких запросов к базе и никаких параметров запроса.
+REPORT_PATH = "/code/report/office-import-2026-09-02"
+REPORT_FILE = Path("app/static/public/report-office-import-2026-09-02.html")
+
 
 @router.get(ARTIFACT_PATH, include_in_schema=False)
 def public_artifact():
     if not ARTIFACT_FILE.is_file():
         raise HTTPException(status_code=404, detail="page not found")
     return FileResponse(ARTIFACT_FILE, media_type="text/html; charset=utf-8")
+
+
+@router.get(REPORT_PATH, include_in_schema=False)
+def public_import_report():
+    if not REPORT_FILE.is_file():
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(REPORT_FILE, media_type="text/html; charset=utf-8")
