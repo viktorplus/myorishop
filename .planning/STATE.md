@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLOCKER findings of the 260902-m9g code review (guarded + snapshotted the wholesale `dictionary` replace, closed the money-field hole in the export transport, made the three accumulative writers atomic); merged fast-forward into main and pushed (d609648). NOT yet deployed to s1 — the server still runs the unguarded importers
+Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLOCKER findings of the 260902-m9g code review (guarded + snapshotted the wholesale `dictionary` replace, closed the money-field hole in the export transport, made the three accumulative writers atomic); merged fast-forward into main and pushed, then deployed to s1 2026-09-03 (bundle transport — `git pull` there still 401s; `up -d --build` because the code is COPY-baked into the image). Verified on the server: guards and `atomic_write` present INSIDE the image, ori-app healthy, `/` 200, `/m/` 200, unauthenticated `POST /api/sync/push` 401. The importers themselves were deliberately NOT run on prod, so the PostgreSQL branch of `snapshot_dictionary` is still only pinned by a dialect-monkeypatched test — exercising the (non-destructive) refusal path on s1 remains the one open check
 
 ## Performance Metrics
 
