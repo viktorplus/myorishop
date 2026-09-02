@@ -1,23 +1,28 @@
 ---
 phase: 30-offline-self-uploading-file
 verified: 2026-07-20T16:25:18Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 overrides_applied: 0
+human_verification_closed: 2026-08-09
 human_verification:
   - test: "Open the exported HTML file in a real browser on an internet-connected PC with no MyOriShop install"
     expected: "The file opens and renders (no external CSS/JS/font loads); login + upload completes end-to-end without any application installed"
     why_human: "Requires a second internet-connected machine with no MyOriShop install; cannot be exercised by TestClient (OFF-03)"
+    result: pass
+    closed_by: "30-UAT.md test 1 (2026-08-09, after fix 380387a)"
   - test: "In the opened file, verify the client-side preview and the confirm gate"
     expected: "Preview counts render from the embedded NDJSON header BEFORE any network call; nothing POSTs to the server until the «Отправить на сервер» confirm button is clicked; a wrong login shows the inline error and transmits no payload"
     why_human: "The preview render + no-post-until-confirm behaviour runs in browser JS; automated tests verify the embedded markup + JS source but not the live in-browser interaction (OFF-06/OFF-04)"
+    result: pass
+    closed_by: "30-UAT.md test 2 (2026-08-09, after fix 380387a)"
 ---
 
 # Phase 30: Offline Self-Uploading File Verification Report
 
 **Phase Goal:** Ship the upload-only offline path last, reusing the proven Phase 27 engine — the client exports all not-yet-uploaded work to a single self-contained file on a USB drive that, opened on any internet computer with no app installed, authenticates with login/password, shows a preview, and uploads its own data through the same idempotent merge, with server-side integrity and schema-version validation.
 **Verified:** 2026-07-20T16:25:18Z
-**Status:** human_needed
+**Status:** passed (human items closed 2026-08-09 — see 30-UAT.md)
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
@@ -92,14 +97,26 @@ All seven OFF-* IDs appear in plan frontmatter, in REQUIREMENTS.md (lines 59-65,
 
 CR-01 (case-sensitive `</script>` neutralization — script-injection BLOCKER) was FIXED: offline.py:128-130 uses `re.sub(..., flags=re.IGNORECASE)` with a case-preserving replacement; JS reverse at self_upload.html:153 is `/<\\\/(script)/gi` → `</$1`. Regression test `test_script_tag_escaping_round_trip_mixed_case` green. Commit ba02d29. WR-01 (splitlines over-split on U+2028/U+2029) FIXED at offline.py:215 (`.replace("\r\n","\n").replace("\r","\n").split("\n")`); regression `test_upload_unicode_line_separator_round_trips` green. Commit 5ae888e.
 
-### Human Verification Required
+### Human Verification — CLOSED 2026-08-09
 
-**1. Self-uploading file opens with no app install on an internet PC (OFF-03)**
+Both items below were executed live in a real browser and are recorded as `result: pass`
+in `30-UAT.md`. The first run found a BLOCKER (literal `</script` inside the live logic
+script's own JS comments prematurely terminated the `<script>` element, so the preview
+was empty and the JS leaked as page text); it was fixed in commit `380387a` and pinned by
+`tests/test_offline.py:591 test_logic_script_block_has_no_raw_end_tag`. The re-run on a
+regenerated export served from a separate origin was green on every checkpoint: the page
+GET was the ONLY network request, the preview rendered «Операции 23 / Товары 7 /
+Покупатели 2 / Партии 4 / Продажи 6 / Движения кассы 26», a wrong password produced
+«Неверный логин или пароль. Данные не отправлены.» with only `POST /api/offline/login`
+401 and no `/upload`, the confirm button gated the POST, and the confirmed upload returned
+`POST /api/offline/upload` 200 with server rows 0→23 operations and 0→26 cash movements.
+
+**1. Self-uploading file opens with no app install on an internet PC (OFF-03)** — ✓ PASS
 - **Test:** Copy an exported `myorishop-offline-*.html` from a USB drive to a second internet-connected computer that has no MyOriShop installed; open it in any browser.
 - **Expected:** The page renders fully (no blocked external CSS/JS/font requests); login + upload completes end-to-end against the central server.
 - **Why human:** Requires a separate internet-connected machine with no app install; TestClient cannot exercise `file://` browser behaviour.
 
-**2. In-browser preview counts + explicit confirm gate (OFF-06 / OFF-04)**
+**2. In-browser preview counts + explicit confirm gate (OFF-06 / OFF-04)** — ✓ PASS
 - **Test:** In the opened file, observe the «Будет отправлено» preview before touching the network; enter a wrong password, then a correct one; watch the confirm step.
 - **Expected:** Counts render from the embedded header with no network call; a wrong login shows the inline RU error and sends no payload; nothing POSTs until «Отправить на сервер» is clicked.
 - **Why human:** The preview render and no-post-until-confirm behaviour execute in browser JS; automated tests verify the embedded markup and JS source but not the live interaction.
@@ -108,9 +125,13 @@ CR-01 (case-sensitive `</script>` neutralization — script-injection BLOCKER) w
 
 No blocking gaps. All five success criteria and all seven OFF-* requirements are satisfied in the codebase, backed by 20 passing requirement-mapped tests. The security spine is sound: exact-prefix guard bypass, scoped CORS (sync posture provably untouched), short-lived scoped token, SHA-256 + schema gates before any DB write, and read-only export that never stamps `synced_at`. The one code-review BLOCKER (CR-01) and the first warning (WR-01) were fixed and carry regression tests; WR-02 and WR-03 are documented deliberate deferrals (WR-02 is an intentional rollback-proof design with a matching test; WR-03 belongs to the pending `/gsd-secure-phase 30`).
 
-Two success criteria (OFF-03, OFF-06) contain a browser-only behaviour — opening the file with no install and the live JS preview/confirm gate — that only a human can confirm. Per the VALIDATION §Manual-Only contract these are the sole outstanding items, so the phase status is **human_needed** rather than passed.
+Two success criteria (OFF-03, OFF-06) contained a browser-only behaviour — opening the file with no install and the live JS preview/confirm gate — that only a human could confirm. Both were exercised live on 2026-08-09 and passed (one BLOCKER found and fixed in `380387a`, regression pinned), so the phase status is now **passed**.
+
+The one remaining phase-level tail is `/gsd-secure-phase 30` (security_enforcement is on, the plans carry threat models T-30-01..10, and no `30-SECURITY.md` exists yet). Code-review warning WR-03 (an upload token stays valid for its 300 s TTL after the user is deactivated — threat T-30-04) was deliberately deferred to that run.
 
 ---
 
 _Verified: 2026-07-20T16:25:18Z_
 _Verifier: Claude (gsd-verifier)_
+_Human items closed: 2026-08-09 (see 30-UAT.md; fix commit 380387a)_
+_Status updated to passed: 2026-09-03 by /gsd-verify-work 30_
