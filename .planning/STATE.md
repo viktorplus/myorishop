@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 Phase: 32 (in-app-secure-self-update) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-09-02 - Completed quick task 260902-g1q: full dictionary + price history exported to the repo and made deployable
+Last activity: 2026-09-02 - Completed quick task 260902-k2i: restored the product type on 607 shade-only dictionary names
 
 ## Performance Metrics
 
