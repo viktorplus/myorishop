@@ -85,6 +85,47 @@ docker compose -f docker-compose.prod.yml exec ori-app \
 Скрипт делает full-replace обеих таблиц в одной транзакции; можно перезапускать.
 **`scripts/seed_demo_data.py` на сервере НЕ запускаем** — это тестовые данные.
 
+### 4.1. Полный справочник — обязательные два шага после мастер-прайса
+
+Мастер-прайс покрывает только **6 856 кодов**. Полный справочник — **12 582
+кода** и **15 798 строк цен**; без двух команд ниже на сервере останется
+выжимка, а не справочник.
+
+Источник — закоммиченные выгрузки `catalogs/products.json` и
+`catalogs/catalog_prices.json` (обе `COPY`-запечены в образ). Это НЕ
+`catalogs/price_lists/` — тот архив на 118 МБ намеренно отрезан
+`.gitignore` и `.dockerignore`, на сервере его нет и не будет.
+
+```bash
+docker compose -f docker-compose.prod.yml exec ori-app \
+  python scripts/import_catalogs.py --only-missing --file catalogs/products.json
+
+docker compose -f docker-compose.prod.yml exec ori-app \
+  python scripts/import_prices.py --from-export catalogs/catalog_prices.json --only-missing
+```
+
+`uv run --with openpyxl` здесь не нужен: openpyxl импортируется лениво и на
+этих путях не используется. Обе команды аддитивны и идемпотентны — повторный
+запуск вставляет 0 строк.
+
+> ⚠️ **Только с `--only-missing`.** Без него `--from-export` сначала удаляет
+> все строки `catalog_prices`, а дефолтный путь `import_catalogs.py`
+> перезаписывает названия — это стёрло бы названия, вписанные на сервере
+> руками (правило «побеждает последнее написание»), и все коды вне
+> мастер-прайса. По той же причине `import_master_pricelist.py` на живом
+> сервере тоже запускается только с `--only-missing`.
+
+Обновить сами выгрузки (локально, после правок справочника):
+
+```bash
+uv run python scripts/import_catalogs.py --export catalogs/products.json
+uv run python scripts/import_prices.py --export catalogs/catalog_prices.json
+```
+
+Выгрузка **накопительная**: коды, которые есть в файле, но которых нет в
+текущей базе, сохраняются — файл может только расти. Печатает
+`было / добавлено / обновлено / стало`.
+
 > ⚠️ **При ОБНОВЛЕНИИ справочника** (изменился мастер-xlsx или `app/services/rubric_overrides.json`): код и data-файлы `COPY`-запечены в образ `ori-app`, а не смонтированы томом — одного `git pull` мало. Сначала пересобери образ `docker compose -f docker-compose.prod.yml up -d --build`, дождись health и только потом запускай импорт выше, иначе контейнер перельёт СТАРЫЕ данные.
 
 ## 5. Caddy — маршрут для домена
