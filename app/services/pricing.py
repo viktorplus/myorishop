@@ -1,10 +1,13 @@
 """Catalog price lookups (CAT-05): read-only helpers over catalog_prices.
 
-D-09: one row per code = that code's LAST catalog appearance, not a
-multi-catalog price history (the table holds 6856 rows for 6856 codes —
-see 18-RESEARCH.md State of the Art). These helpers surface the latest
-known price for a code (used to autofill a new product's catalog/purchase
-price) and the full history.
+D-09 described the table as one row per code — that code's LAST catalog
+appearance, not a multi-catalog price history (6856 rows for 6856 codes, see
+18-RESEARCH.md State of the Art). Quick task 260902-m9g made that description
+obsolete: the full price-list archive is imported now, so catalog_prices really
+is a history — 230 000+ rows over 200+ catalog issues. These helpers never
+changed; only the data they read did. They surface the latest known price for a
+code (used to autofill a new product's catalog/purchase price) and the full
+history. `price_history_for_code` is still called by no route.
 """
 
 from sqlalchemy import select

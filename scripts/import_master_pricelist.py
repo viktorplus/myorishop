@@ -1,4 +1,4 @@
-"""Full-replace import of the master price list into dictionary + catalog_prices.
+"""Import the master price list into dictionary (replace) + catalog_prices (upsert).
 
 Run: uv run python scripts/import_master_pricelist.py [--file catalogs/oriflame_prices_with_calculations_fixed.xlsx]
      uv run python scripts/import_master_pricelist.py --only-missing   (additive, deletes nothing)
@@ -10,11 +10,22 @@ files: full per-catalog price history), this script imports ONE authoritative
 recent export where every code carries just its single latest catalog issue
 ("Последний каталог") and current ДЦ/ПЦ prices.
 
-Both the dictionary and catalog_prices tables are fully replaced on each run
-(delete-all + bulk insert inside one transaction) — they are pure helper
-tables (D-24), never touching Product/Batch/Operation/Sale/ledger rows.
-Dictionary.catalogs becomes a single-element list (this collapses the prior
-"history of many catalogs" down to just the latest one).
+The two helper tables are treated differently, and the difference is the whole
+point (quick task 260902-m9g). `dictionary` is still rebuilt wholesale in one
+transaction — that table has one row per code and its own rules.
+`catalog_prices` is only UPSERTED: this source owns the (year, number, code)
+triples it itself carries and nothing else, so the ~223 000 archive rows that
+scripts/import_prices.py imported survive a re-run here. Before this task it
+emptied the table too, so running the two importers in either order erased one
+of them. `upsert_price_rows` is shared with import_prices.py — ONE ownership
+rule with ONE implementation — and its no-None-overwrite rule matters here in
+particular: the master price list has no ББ column at all, so every record it
+builds carries `points=None`, which must never null the archive's bonus points.
+
+Both tables are pure helper data (D-24), never touching
+Product/Batch/Operation/Sale/ledger rows. Dictionary.catalogs becomes a
+single-element list (this collapses the prior "history of many catalogs" down
+to just the latest one).
 
 Quick task 260902-1d1 added the override-only branch: a справочник code can
 exist as a real product and appear in NO price list (the 34 «НЕТ В
@@ -39,6 +50,7 @@ from app.db import SessionLocal  # noqa: E402
 from app.models import CatalogPrice, Dictionary  # noqa: E402
 from app.services.catalogs import to_json_code  # noqa: E402
 from app.services.rubrics import RUBRIC_OVERRIDES, resolve_name, resolve_rubric  # noqa: E402
+from scripts.import_prices import build_price_rows, upsert_price_rows  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILE = "catalogs/oriflame_prices_with_calculations_fixed.xlsx"
@@ -193,21 +205,42 @@ def build_dictionary_rows(collected: dict[str, dict]) -> list[Dictionary]:
     return dict_rows
 
 
-def build_catalog_price_rows(collected: dict[str, dict]) -> list[CatalogPrice]:
-    """One row per price-list code — override-only codes never get one."""
+def build_catalog_price_records(collected: dict[str, dict]) -> list[dict]:
+    """One 7-key export record per price-list code — the shape upsert_price_rows takes.
+
+    Override-only codes never get one: they have a name and a rubric but
+    никогда a price. `points` is always None — the master price list carries no
+    ББ column at all, which is exactly the case upsert_price_rows'
+    no-None-overwrite rule exists for.
+    """
     return [
-        CatalogPrice(
-            id=new_id(),
-            year=data["year"],
-            number=data["number"],
-            code=code,
-            name=data["name"],
-            consumer_cents=data["consumer_cents"],
-            consultant_cents=data["consultant_cents"],
-            points=None,
-        )
+        {
+            "year": data["year"],
+            "number": data["number"],
+            "code": code,
+            "name": data["name"],
+            "consumer_cents": data["consumer_cents"],
+            "consultant_cents": data["consultant_cents"],
+            "points": None,
+        }
         for code, data in collected.items()
     ]
+
+
+def build_catalog_price_rows(collected: dict[str, dict]) -> list[CatalogPrice]:
+    """The same records as model objects — one implementation, not two."""
+    return build_price_rows(build_catalog_price_records(collected))
+
+
+def apply_master_import(session, collected: dict[str, dict]) -> dict[str, int]:
+    """Rebuild `dictionary` wholesale, upsert only this source's price triples.
+
+    Does not commit — the caller owns the transaction. Returns the
+    upsert_price_rows stats (inserted / updated / unchanged).
+    """
+    session.query(Dictionary).delete()
+    session.bulk_save_objects(build_dictionary_rows(collected))
+    return upsert_price_rows(session, build_catalog_price_records(collected))
 
 
 def insert_missing_dictionary_rows(session, extra: dict[str, dict]) -> list[str]:
@@ -266,11 +299,7 @@ def main() -> None:
         before_dict = session.query(Dictionary).count()
         before_cp = session.query(CatalogPrice).count()
 
-        session.query(Dictionary).delete()
-        session.query(CatalogPrice).delete()
-
-        session.bulk_save_objects(build_dictionary_rows(collected))
-        session.bulk_save_objects(build_catalog_price_rows(collected))
+        price_stats = apply_master_import(session, collected)
         session.commit()
 
         after_dict = session.query(Dictionary).count()
@@ -292,8 +321,12 @@ def main() -> None:
         f"(missing code: {skipped_missing_code}, unparsable catalog: {skipped_bad_catalog})"
     )
     print(f"Dictionary rows from overrides only (no price): {len(extra)}")
-    print(f"Dictionary: {before_dict} -> {after_dict}")
-    print(f"CatalogPrice: {before_cp} -> {after_cp}")
+    print(f"Dictionary: {before_dict} -> {after_dict} (replaced wholesale)")
+    print(f"CatalogPrice: {before_cp} -> {after_cp} (upserted, nothing removed)")
+    print(
+        f"  inserted: {price_stats['inserted']}  updated: {price_stats['updated']}  "
+        f"unchanged: {price_stats['unchanged']}"
+    )
     print(f"Rubric assigned: {rubric_filled}/{after_dict} (Прочее: {rubric_other})")
 
 

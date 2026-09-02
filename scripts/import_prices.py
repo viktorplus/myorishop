@@ -1,14 +1,15 @@
-"""Import per-catalog prices from the xlsx price lists into catalog_prices.
+"""Import the per-catalog price history from the price-list archive.
 
-Run: uv run python scripts/import_prices.py [--dir catalogs]
-     uv run python scripts/import_prices.py --export catalogs/catalog_prices.json
-     uv run python scripts/import_prices.py --from-export catalogs/catalog_prices.json \
-         --only-missing
+Run: uv run --with xlrd python scripts/import_prices.py [--dir catalogs/price_lists]
+     uv run python scripts/import_prices.py --export catalogs/catalog_prices.json.gz
+     uv run python scripts/import_prices.py --from-export catalogs/catalog_prices.json.gz
 
-Each xlsx is a catalog issue whose filename encodes month + year in one of
+Each workbook is a catalog issue whose filename encodes month + year in one of
 several formats (01-2026, 03_2024, 2025-07, 25-11, with _calc/(1) suffixes).
-Inside, the real price sheets carry a header row with `КОД` and `ПЦ`; tester
-sheets (`ПРОДУКТ`/`ЦЕНА`) and the empty `КАЛЬКУЛЯТОР` template are skipped.
+BOTH extensions are read — the archive is 118 `.xls` plus 115 `.xlsx` — through
+``read_workbook_sheets()``, which xlrd handles for the old format. Inside, the
+real price sheets carry a header row with `КОД` and `ПЦ`; tester sheets
+(`ПРОДУКТ`/`ЦЕНА`) and the empty `КАЛЬКУЛЯТОР` template are skipped.
 
 Extracted columns (Oriflame layout):
   * ПЦ -> consumer_cents   (catalog / retail price)
@@ -17,10 +18,17 @@ Extracted columns (Oriflame layout):
   * НАИМЕНОВАНИЕ -> name    (short, upper-case source name; the pretty name
                             stays in the dictionary, imported separately)
 
-Whole-ruble prices are converted to integer cents. On the xlsx path the table
-is fully replaced on each run (it is derived purely from these files), so the
-import is idempotent. Helper data only — no product/stock/ledger rows are
-touched.
+Whole-ruble prices are converted to integer cents. Helper data only — no
+product/stock/ledger rows are touched.
+
+Ownership rule (quick task 260902-m9g), and the load-bearing one: a source owns
+the ``(year, number, code)`` triples it itself carries, NOT the whole table. No
+path here empties catalog_prices any more. Before this task three code paths
+did, so whichever importer ran last erased the other's work and the table held
+a 15 798-row snapshot of the master price list instead of a 230 000-row price
+history. ``upsert_price_rows()`` is the ONE writer, and an incoming ``None``
+never overwrites a stored value — that is what keeps the master price list
+(which has no ББ column) from nulling the bonus points the archive supplies.
 
 Quick task 260902-g1q added the JSON transport, because the 118 MB
 `catalogs/price_lists/` archive is deliberately kept out of git and out of the
@@ -31,13 +39,16 @@ Docker image — the server has no price lists and never will:
                           replacing: rows already in the target file that this
                           database does not have are kept, so the file can only
                           grow.
-  ``--from-export FILE``  loads that file instead of parsing xlsx.
+  ``--from-export FILE``  loads that file instead of parsing the archive, and
+                          upserts it — the server's own rows are never touched.
   ``--only-missing``      (only with --from-export) inserts only rows whose
-                          CODE is absent from catalog_prices.
+                          CODE is absent from catalog_prices. Still meaningful,
+                          but no longer a safety mechanism: the plain path is
+                          non-destructive too.
 
-⚠ ``--from-export`` WITHOUT ``--only-missing`` deletes every existing row
-before inserting — never point it at a live server, where it would erase the
-prices that came from the master price list.
+A ``FILE`` ending in ``.gz`` is gzipped transparently on both sides (41.7 MB of
+JSON becomes ~4.7 MB) — `catalogs/catalog_prices.json.gz` is the transport that
+actually reaches the server.
 
 Second job — ``--restore-shades`` (quick task 260902-k2i)
 --------------------------------------------------------
@@ -56,6 +67,7 @@ is the job of ``scripts/import_catalogs.py --restore-shade-names``.
 """
 
 import argparse
+import gzip
 import json
 import re
 import sys
@@ -64,7 +76,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, update  # noqa: E402
 
 from app.core import new_id, to_cents  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
@@ -96,7 +108,7 @@ EXPORT_KEYS = frozenset(
 
 def parse_catalog(filename: str) -> tuple[int, int] | None:
     """Filename -> (year, number); handles MM-YYYY, YYYY-MM and YY-MM shapes."""
-    stem = re.sub(r"\.xlsx$", "", filename, flags=re.IGNORECASE)
+    stem = re.sub(r"\.xlsx?$", "", filename, flags=re.IGNORECASE)
     nums = re.findall(r"\d+", stem)
     if len(nums) < 2:
         return None
@@ -166,54 +178,79 @@ def _cell(row, colmap, role):
     return row[idx]
 
 
-def collect_from_xlsx(files) -> tuple[dict[tuple[int, int, str], dict], list[str]]:
-    """Walk the workbooks -> {(year, number, code): row-data} + skipped files.
+def collect_prices_from_sheets(sheets) -> dict[str, dict]:
+    """One workbook's sheets -> {code: row-data}.
 
-    openpyxl is imported HERE, not at module level, on purpose: it is a dev
-    dependency and the Dockerfile builds with `uv sync --frozen --no-dev`, so a
-    top-level import would make this whole script unimportable inside the
-    production image — which is exactly where --from-export has to run.
+    Pure: it takes the plain row tuples the reader already produced, so the
+    unit tests need neither openpyxl nor xlrd — the same split
+    ``collect_shade_candidates`` / ``scan_shade_candidates`` uses below.
+    Within one workbook the last write wins (repeated rows, repeated sheets).
     """
-    import openpyxl
+    collected: dict[str, dict] = {}
+    for rows in sheets:
+        header = _find_header(rows)
+        if header is None:
+            continue
+        start, colmap = header
+        for row in rows[start + 1 :]:
+            code = _cell(row, colmap, "code")
+            if not _is_code(code):
+                continue
+            consumer = _cents(_cell(row, colmap, "consumer"))
+            if consumer is None:  # section header / blank row
+                continue
+            name = _cell(row, colmap, "name")
+            name = str(name).strip()[:200] if name and str(name).strip() else None
+            points = _cell(row, colmap, "points")
+            collected[str(code).strip()] = {
+                "consumer_cents": consumer,
+                "consultant_cents": _cents(_cell(row, colmap, "consultant")),
+                "points": int(points) if isinstance(points, (int, float)) and points > 0 else None,
+                "name": name,
+            }
+    return collected
 
-    # Deduplicate by (year, number, code): duplicate files (01-2026 vs
-    # 01-2026_ (1)) and repeated rows collapse to one; last write wins.
+
+def collect_from_archive(
+    files,
+) -> tuple[dict[tuple[int, int, str], dict], dict[str, list[str]]]:
+    """Walk the archive -> {(year, number, code): row-data} + what it could not use.
+
+    Reads BOTH extensions through the readers this module already owns; no new
+    reader is written here. A corrupt workbook is expected (12-2013.xls is a
+    truncated OLE2 file) and is NAMED in the report instead of aborting the
+    walk — the same try/except ``scan_shade_candidates`` uses.
+
+    The report has three lists: ``unparsable_name`` (the three
+    oriflame_prices_*.xlsx), ``unreadable`` (12-2013.xls) and
+    ``no_price_column`` (04-2024.xls / 05-2024.xls, which carry names only).
+
+    Deduplicates by (year, number, code): duplicate files (01-2026 vs
+    01-2026_ (1)) collapse to one; last write wins.
+    """
     collected: dict[tuple[int, int, str], dict] = {}
-    skipped_files: list[str] = []
+    report: dict[str, list[str]] = {
+        "unparsable_name": [],
+        "unreadable": [],
+        "no_price_column": [],
+    }
     for path in files:
         cat = parse_catalog(path.name)
         if cat is None:
-            skipped_files.append(path.name)
+            report["unparsable_name"].append(path.name)
+            continue
+        try:
+            sheets = read_workbook_sheets(path)
+        except Exception as exc:  # a corrupt workbook is expected (12-2013.xls)
+            report["unreadable"].append(f"{path.name} ({exc.__class__.__name__})")
+            continue
+        if not any(_find_header(rows) is not None for rows in sheets):
+            report["no_price_column"].append(path.name)
             continue
         year, number = cat
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        for ws in wb.worksheets:
-            rows = list(ws.iter_rows(values_only=True))
-            header = _find_header(rows)
-            if header is None:
-                continue
-            start, colmap = header
-            for row in rows[start + 1 :]:
-                code = _cell(row, colmap, "code")
-                if not _is_code(code):
-                    continue
-                consumer = _cents(_cell(row, colmap, "consumer"))
-                if consumer is None:  # section header / blank row
-                    continue
-                code = str(code).strip()
-                name = _cell(row, colmap, "name")
-                name = str(name).strip()[:200] if name and str(name).strip() else None
-                points = _cell(row, colmap, "points")
-                collected[(year, number, code)] = {
-                    "consumer_cents": consumer,
-                    "consultant_cents": _cents(_cell(row, colmap, "consultant")),
-                    "points": int(points)
-                    if isinstance(points, (int, float)) and points > 0
-                    else None,
-                    "name": name,
-                }
-        wb.close()
-    return collected, skipped_files
+        for code, data in collect_prices_from_sheets(sheets).items():
+            collected[(year, number, code)] = data
+    return collected, report
 
 
 # --------------------------------------------------------------------------
@@ -612,12 +649,37 @@ def validate_records(records, source) -> list[dict]:
     return records
 
 
+def _open_export(path: Path, mode: str, *, encoding: str = "utf-8", newline: str | None = None):
+    """Open an export file — `gzip.open` for a `.gz` suffix, `path.open` otherwise.
+
+    `mode` is a TEXT mode ("rt" / "wt"): both backends accept it, and both
+    accept `encoding` and `newline` with the same meaning, so BOTH keyword
+    arguments are forwarded unchanged to whichever one is chosen. Neither
+    branch may fall back to a platform-dependent default — `write_export`'s
+    explicit LF has to hold on a plain `.json` exactly as it does on a `.gz`,
+    or a re-export stops being byte-stable across platforms.
+    """
+    path = Path(path)
+    if path.suffix.lower() == ".gz":
+        return gzip.open(path, mode, encoding=encoding, newline=newline)
+    return path.open(mode, encoding=encoding, newline=newline)
+
+
 def load_export(path: Path) -> list[dict]:
-    """Read + validate an --export file. Exits on anything malformed."""
+    """Read + validate an --export file, `.gz` included. Exits on anything malformed.
+
+    A truncated or corrupt gzip transport file must fail LOUDLY and by name,
+    exactly like invalid JSON — 4.7 MB arriving over the wire is precisely
+    where a silent traceback would be worst.
+    """
+    path = Path(path)
     try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        with _open_export(path, "rt") as handle:
+            raw = json.load(handle)
     except json.JSONDecodeError as exc:
         sys.exit(f"Export file is not valid JSON: {path} ({exc})")
+    except (gzip.BadGzipFile, EOFError) as exc:
+        sys.exit(f"Export file is not a readable gzip: {path} ({exc.__class__.__name__}: {exc})")
     return validate_records(raw, path)
 
 
@@ -636,6 +698,92 @@ def build_price_rows(records: list[dict]) -> list[CatalogPrice]:
         )
         for r in records
     ]
+
+
+# The four fields a source may carry for a triple it owns; `id`, `year`,
+# `number` and `code` are the identity and never change.
+MUTABLE_FIELDS = ("name", "consumer_cents", "consultant_cents", "points")
+
+
+def upsert_price_rows(session, records: list[dict], chunk: int = 5000) -> dict[str, int]:
+    """The ONE writer for catalog_prices: insert new triples, update changed ones.
+
+    A source owns the (year, number, code) triples it itself carries and
+    nothing else, so this never removes a row and never commits — everything
+    happens inside the caller's single transaction.
+
+    The merge rule is one rule with no mode flag: a field changes when the
+    incoming value is not None and differs from the stored one. An incoming
+    None NEVER overwrites a stored value, so the master price list (no ББ
+    column at all) cannot null the bonus points the archive supplies, and the
+    archive cannot impoverish the master snapshot either. It is symmetric on
+    purpose — neither source may make the other poorer.
+
+    Performance shape, and the trap to avoid: the existing triples are read in
+    ONE query (a per-row SELECT over ~238 000 rows is unusably slow), and the
+    model objects are built per chunk rather than up front — 223 000
+    CatalogPrice instances materialised at once is hundreds of MB resident.
+    """
+    stats = {"inserted": 0, "updated": 0, "unchanged": 0}
+    if not records:
+        return stats
+
+    stored = {
+        (row.year, row.number, row.code): (
+            row.id,
+            row.name,
+            row.consumer_cents,
+            row.consultant_cents,
+            row.points,
+        )
+        for row in session.execute(
+            select(
+                CatalogPrice.id,
+                CatalogPrice.year,
+                CatalogPrice.number,
+                CatalogPrice.code,
+                CatalogPrice.name,
+                CatalogPrice.consumer_cents,
+                CatalogPrice.consultant_cents,
+                CatalogPrice.points,
+            )
+        )
+    }
+
+    fresh: list[dict] = []
+    changed: list[dict] = []
+    for record in records:
+        current = stored.get(_price_key(record))
+        if current is None:
+            fresh.append(record)
+            continue
+        row_id, *values = current
+        # Every mapping handed to one session.execute(update(...)) call must
+        # carry the SAME key set or the executemany compile breaks — so build
+        # the full merged mapping, not just the delta.
+        merged = {}
+        differs = False
+        for field, old in zip(MUTABLE_FIELDS, values, strict=True):
+            incoming = record.get(field)
+            if incoming is not None and incoming != old:
+                merged[field] = incoming
+                differs = True
+            else:
+                merged[field] = old
+        if differs:
+            changed.append({"id": row_id, **merged})
+        else:
+            stats["unchanged"] += 1
+
+    for start in range(0, len(fresh), chunk):
+        batch = fresh[start : start + chunk]
+        session.bulk_save_objects(build_price_rows(batch))
+        stats["inserted"] += len(batch)
+    for start in range(0, len(changed), chunk):
+        batch = changed[start : start + chunk]
+        session.execute(update(CatalogPrice), batch)
+        stats["updated"] += len(batch)
+    return stats
 
 
 def insert_missing_price_rows(session, records: list[dict]) -> list[dict]:
@@ -691,7 +839,7 @@ def write_export(dest: Path, fresh: list[dict]) -> dict[str, int]:
         sys.exit(f"Refusing to write: the export would drop rows ({stats})")
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Explicit LF so a re-export on Windows and on Linux produce identical bytes.
-    with dest.open("w", encoding="utf-8", newline="\n") as handle:
+    with _open_export(dest, "wt", newline="\n") as handle:
         handle.write(serialize_export(merged))
     stats["codes"] = len({r["code"] for r in merged})
     return stats
@@ -730,15 +878,22 @@ def _run_from_export(src: Path, only_missing: bool) -> None:
             )
             print(f"CatalogPrice: {before} -> {after}")
             return
-        deleted = session.query(CatalogPrice).delete()
-        session.bulk_save_objects(build_price_rows(records))
+        stats = upsert_price_rows(session, records)
         session.commit()
-    print(f"Rows: replaced {deleted} -> inserted {len(records)}")
+        after = session.query(CatalogPrice).count()
+    print("Mode: upsert (a source owns its own (year, number, code) triples; nothing removed)")
+    print(
+        f"Inserted: {stats['inserted']}  updated: {stats['updated']}  "
+        f"unchanged: {stats['unchanged']}"
+    )
+    print(f"CatalogPrice: {before} -> {after}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Import catalog prices from xlsx")
-    parser.add_argument("--dir", default="catalogs", help="folder with the xlsx files")
+    parser = argparse.ArgumentParser(description="Import catalog prices from the price lists")
+    parser.add_argument(
+        "--dir", default=DEFAULT_PRICE_DIR, help="folder with the xls/xlsx price lists"
+    )
     parser.add_argument(
         "--export", metavar="FILE", help="dump catalog_prices to JSON (accumulative) and exit"
     )
@@ -758,9 +913,6 @@ def main() -> None:
     parser.add_argument(
         "--apply", action="store_true", help="actually write (requires --restore-shades)"
     )
-    parser.add_argument(
-        "--price-dir", default=DEFAULT_PRICE_DIR, help="folder with the xls/xlsx price lists"
-    )
     parser.add_argument("--products", default=DEFAULT_PRODUCTS, help="path to products.json")
     parser.add_argument("--report", metavar="FILE", help="dump the selected entries for review")
     args = parser.parse_args()
@@ -770,7 +922,7 @@ def main() -> None:
     if args.export and args.from_export:
         sys.exit("--export cannot be combined with --from-export")
     if args.only_missing and not args.from_export:
-        sys.exit("--only-missing works only with --from-export; the xlsx path is a full replace")
+        sys.exit("--only-missing works only with --from-export; the archive path upserts by triple")
     if args.restore_shades and (args.export or args.from_export):
         sys.exit(
             "--restore-shades opens no database; "
@@ -784,7 +936,7 @@ def main() -> None:
         if not products.is_file():
             sys.exit(f"products.json not found: {products}")
         _run_restore_shades(
-            _resolve(args.price_dir),
+            _resolve(args.dir),
             products,
             args.apply,
             _resolve(args.report) if args.report else None,
@@ -803,37 +955,46 @@ def main() -> None:
         return
 
     folder = _resolve(args.dir)
-    files = sorted(folder.glob("*.xlsx"))
+    files = price_list_files(folder)
     if not files:
-        sys.exit(f"No xlsx files in {folder}")
+        sys.exit(f"No price lists (*.xls / *.xlsx) in {folder}")
 
-    collected, skipped_files = collect_from_xlsx(files)
-
-    with SessionLocal() as session:
-        deleted = session.query(CatalogPrice).delete()
-        session.bulk_save_objects(
-            [
-                CatalogPrice(
-                    id=new_id(),
-                    year=year,
-                    number=number,
-                    code=code,
-                    name=data["name"],
-                    consumer_cents=data["consumer_cents"],
-                    consultant_cents=data["consultant_cents"],
-                    points=data["points"],
-                )
-                for (year, number, code), data in collected.items()
-            ]
-        )
-        session.commit()
+    collected, report = collect_from_archive(files)
 
     catalogs = {(y, n) for (y, n, _c) in collected}
     codes = {c for (_y, _n, c) in collected}
     print(f"Files: {len(files)}  catalogs: {len(catalogs)}  codes: {len(codes)}")
-    print(f"Rows: replaced {deleted} -> inserted {len(collected)}")
-    if skipped_files:
-        print(f"Skipped (unparsable filename): {skipped_files}")
+    print(f"Collected rows: {len(collected)}")
+    for label, key in (
+        ("Unparsable filename", "unparsable_name"),
+        ("Unreadable", "unreadable"),
+        ("No price column", "no_price_column"),
+    ):
+        if report[key]:
+            print(f"{label} ({len(report[key])}): {report[key]}")
+
+    # The failure that actually happened before this task: a --dir pointing at
+    # a folder whose only workbook has an unparsable name collected 0 rows and
+    # then emptied the table. Nothing is written on an empty walk.
+    if not collected:
+        sys.exit(f"Collected 0 price rows from {folder} — nothing written")
+
+    with SessionLocal() as session:
+        before = session.query(CatalogPrice).count()
+        stats = upsert_price_rows(
+            session,
+            [
+                {"year": year, "number": number, "code": code, **data}
+                for (year, number, code), data in collected.items()
+            ],
+        )
+        session.commit()
+        after = session.query(CatalogPrice).count()
+    print(
+        f"Inserted: {stats['inserted']}  updated: {stats['updated']}  "
+        f"unchanged: {stats['unchanged']}"
+    )
+    print(f"CatalogPrice: {before} -> {after}")
 
 
 if __name__ == "__main__":
