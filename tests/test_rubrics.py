@@ -48,6 +48,40 @@ def test_web_override_wins_over_name_heuristic():
     assert rubrics.resolve_rubric(code, bad_name) == "Уход за волосами"  # override wins
 
 
+FULL = "Увлажняющая тональная основа the one aqua boost - фарфоровый"
+
+
+def test_is_shade_tail_accepts_a_bare_shade_of_a_fuller_name():
+    assert rubrics.is_shade_tail("Фарфоровый", FULL)
+    assert rubrics.is_shade_tail("фарфоровый", FULL), "case-folded"
+    assert rubrics.is_shade_tail("  Фарфоровый  ", FULL), "both sides stripped"
+    # The en/em dashes the price lists also use.
+    assert rubrics.is_shade_tail("Ваниль", "Тональная основа – ваниль")
+    assert rubrics.is_shade_tail("Ваниль", "Тональная основа — ваниль")
+
+
+def test_is_shade_tail_refuses_a_name_that_already_carries_a_product_type():
+    """The 34473 case: a hand-written full name can never be selected."""
+    hand_written = "Женская туалетная вода Sunkiss Garden объем 50 мл"
+    assert not rubrics.is_shade_tail(hand_written, FULL)
+    # The realistic collision: the price list offers ANOTHER spelling of a name
+    # that already names the product. It is not the tail, so it is not touched.
+    assert not rubrics.is_shade_tail(
+        "Тональная основа фарфоровый", FULL
+    ), "a name that already carries the type is never the tail after a dash"
+
+
+def test_is_shade_tail_refuses_equal_shorter_dashless_and_empty():
+    assert not rubrics.is_shade_tail(FULL, FULL), "equal names"
+    assert not rubrics.is_shade_tail("Фарфоровый", "Фарфор"), "restored is shorter"
+    assert not rubrics.is_shade_tail(
+        "основа", "Тональная основа"
+    ), "a tail with no dash separator is not a shade"
+    assert not rubrics.is_shade_tail("", FULL)
+    assert not rubrics.is_shade_tail("   ", FULL)
+    assert not rubrics.is_shade_tail("Фарфоровый", "- фарфоровый"), "no type before the dash"
+
+
 def test_resolve_name_uses_corrected_name_for_bad_names():
     corrected = rubrics.resolve_name("25429", "Красное дерево")
     assert "краск" in corrected.lower()  # got the real product type

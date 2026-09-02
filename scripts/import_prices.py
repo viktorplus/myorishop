@@ -38,12 +38,28 @@ Docker image — the server has no price lists and never will:
 ⚠ ``--from-export`` WITHOUT ``--only-missing`` deletes every existing row
 before inserting — never point it at a live server, where it would erase the
 prices that came from the master price list.
+
+Second job — ``--restore-shades`` (quick task 260902-k2i)
+--------------------------------------------------------
+This module owns the price-list archive, so it also owns the ONE other thing
+those files know and the database does not: in an Oriflame price list the
+product type is written once, in the first row of a series, and every following
+row is a bare shade («- ФАРФОРОВЫЙ»). The dictionary import took those rows
+literally, so 33155 reads «Фарфоровый» — a colour with no object.
+
+``--restore-shades`` walks BOTH ``*.xls`` and ``*.xlsx``, inherits the series
+type onto its shade rows, and appends the recovered full names to
+``app/services/rubric_overrides.json``. It opens NO database: it reads the
+archive plus ``catalogs/products.json`` and writes one file. It is a dry run
+unless ``--apply`` is given. Applying those names to an existing dictionary row
+is the job of ``scripts/import_catalogs.py --restore-shade-names``.
 """
 
 import argparse
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,8 +69,19 @@ from sqlalchemy import select  # noqa: E402
 from app.core import new_id, to_cents  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import CatalogPrice  # noqa: E402
+from app.services.rubrics import SHADE_DASHES, classify_rubric_by_name, is_shade_tail  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PRICE_DIR = "catalogs/price_lists"
+DEFAULT_PRODUCTS = "catalogs/products.json"
+OVERRIDES_PATH = PROJECT_ROOT / "app" / "services" / "rubric_overrides.json"
+
+# Dictionary.name is String(200); a longer candidate is rejected, not truncated.
+MAX_NAME = 200
+
+# « <spaces> <dash(es)> <spaces> » — the separator between the product type and
+# the shade inside one full price-list name.
+_SERIES_SEPARATOR = re.compile(r"\s+[" + "".join(SHADE_DASHES) + r"]+\s+")
 
 # The exact shape of one exported row — the 7 model fields that carry data.
 EXPORT_KEYS = frozenset(
@@ -84,8 +111,14 @@ def _norm(value) -> str:
     return str(value).strip().upper() if value is not None else ""
 
 
-def _find_header(rows) -> tuple[int, dict[str, int]] | None:
-    """Locate the header row (КОД + ПЦ) and map roles to column indexes."""
+def _find_header(rows, require=("code", "consumer")) -> tuple[int, dict[str, int]] | None:
+    """Locate the header row (КОД + ПЦ) and map roles to column indexes.
+
+    ``require`` names the roles that must be present for the row to count as a
+    header. The price import needs a price column (the default); the shade
+    restoration needs only ("code", "name") — a sheet with names and no ПЦ
+    still carries the series structure.
+    """
     for i, row in enumerate(rows[:8]):
         cells = [_norm(c) for c in row]
         if "КОД" not in cells:
@@ -102,7 +135,7 @@ def _find_header(rows) -> tuple[int, dict[str, int]] | None:
                 colmap["points"] = j
             elif cell == "НАИМЕНОВАНИЕ" and "name" not in colmap:
                 colmap["name"] = j
-        if "code" in colmap and "consumer" in colmap:
+        if all(role in colmap for role in require):
             return i, colmap
     return None
 
@@ -176,6 +209,286 @@ def collect_from_xlsx(files) -> tuple[dict[tuple[int, int, str], dict], list[str
                 }
         wb.close()
     return collected, skipped_files
+
+
+# --------------------------------------------------------------------------
+# --restore-shades: recover the series product type for bare-shade rows
+# --------------------------------------------------------------------------
+
+
+def _normalise_cell(value):
+    """xlrd hands every number back as a float — 33155 arrives as 33155.0.
+
+    Integral floats are folded back to int at the reading boundary so that
+    `_is_code` and every other existing helper see exactly what the openpyxl
+    path gives them.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def read_workbook_sheets(path: Path) -> list[list[tuple]]:
+    """One workbook -> a list of sheets, each a list of row tuples.
+
+    openpyxl AND xlrd are imported HERE, not at module level, for the same
+    reason the price import does it: both are dev-only and the Dockerfile
+    builds with `uv sync --frozen --no-dev`, so a top-level import would make
+    this whole script unimportable inside the production image. xlrd is not a
+    project dependency at all — it is reached ad hoc via `uv run --with xlrd`.
+    """
+    suffix = path.suffix.lower()
+    if suffix == ".xlsx":
+        import openpyxl
+
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        try:
+            return [
+                [_normalise_row(row) for row in ws.iter_rows(values_only=True)]
+                for ws in wb.worksheets
+            ]
+        finally:
+            wb.close()
+    if suffix == ".xls":
+        import xlrd
+
+        book = xlrd.open_workbook(path, on_demand=True)
+        try:
+            sheets = []
+            for name in book.sheet_names():
+                ws = book.sheet_by_name(name)
+                sheets.append([_normalise_row(ws.row_values(i)) for i in range(ws.nrows)])
+                book.unload_sheet(name)
+            return sheets
+        finally:
+            book.release_resources()
+    raise ValueError(f"Unsupported workbook type: {path.name}")
+
+
+def _normalise_row(row) -> tuple:
+    return tuple(_normalise_cell(cell) for cell in row)
+
+
+def price_list_files(folder: Path) -> list[Path]:
+    """Every readable workbook in the archive, both extensions, sorted."""
+    if not folder.is_dir():
+        return []
+    return sorted(
+        (
+            p
+            for p in folder.iterdir()
+            if p.is_file()
+            and p.suffix.lower() in (".xls", ".xlsx")
+            and not p.name.startswith("~$")  # Excel lock file
+        ),
+        key=lambda p: p.name,
+    )
+
+
+def split_series_type(name: str) -> str:
+    """SPEC rule 1: the product type is everything before the LAST « - »."""
+    text = (name or "").strip()
+    matches = list(_SERIES_SEPARATOR.finditer(text))
+    if not matches:
+        return text
+    return text[: matches[-1].start()].strip()
+
+
+def is_shade_row(name: str) -> bool:
+    """SPEC rule 2: a row whose name starts with a dash is a shade of the series."""
+    return (name or "").lstrip().startswith(SHADE_DASHES)
+
+
+def shade_text(name: str) -> str:
+    """«  - ФАРФОРОВЫЙ » -> « ФАРФОРОВЫЙ »."""
+    return (name or "").lstrip().lstrip("".join(SHADE_DASHES) + " \t").strip()
+
+
+def collect_shade_candidates(sheets) -> tuple[dict[str, Counter], int]:
+    """Walk the sheets top to bottom, inheriting the series type onto shades.
+
+    Returns ``{code: Counter[(type, shade)]}`` plus the number of shade rows
+    dropped for lack of a current type — that count is the diagnostic which
+    explains any deviation from the expected number of restored names.
+
+    Pure: it takes plain row tuples, so the unit tests need neither xlrd nor
+    openpyxl.
+    """
+    candidates: dict[str, Counter] = {}
+    dropped = 0
+    for rows in sheets:
+        header = _find_header(rows, require=("code", "name"))
+        if header is None:
+            continue
+        start, colmap = header
+        current_type: str | None = None
+        for row in rows[start + 1 :]:
+            raw_name = _cell(row, colmap, "name")
+            name = str(raw_name).strip() if raw_name is not None else ""
+            if not name:
+                continue  # a blank row changes nothing
+            code = _cell(row, colmap, "code")
+            if _is_code(code):
+                if is_shade_row(name):
+                    if current_type:
+                        key = (current_type, shade_text(name))
+                        candidates.setdefault(str(code).strip(), Counter())[key] += 1
+                    else:
+                        dropped += 1
+                else:
+                    current_type = split_series_type(name)
+            elif not is_shade_row(name):
+                # SPEC rule 3: «серия обрывается на следующем заголовке» — a
+                # code-less title row («МАКИЯЖ») ends the series.
+                current_type = None
+    return candidates, dropped
+
+
+def pick_full_name(counter: Counter) -> str:
+    """SPEC: the LONGEST spelling of the type wins, ties go to the most frequent.
+
+    The last tie-break is the (type, shade) pair itself, so the result does not
+    depend on the order the archive happened to be read in.
+    """
+    (type_, shade), _count = max(
+        counter.items(), key=lambda item: (len(item[0][0]), item[1], item[0])
+    )
+    return f"{type_} - {shade}"
+
+
+def display_name(raw: str) -> str:
+    """SPEC: the справочник's own sentence case — first letter up, rest down."""
+    text = re.sub(r"\s+", " ", (raw or "").strip())
+    return text[:1].upper() + text[1:].lower()
+
+
+def build_shade_overrides(
+    candidates: dict[str, Counter], products: dict[str, dict], existing: dict[str, dict]
+) -> tuple[dict[str, dict], dict[str, int]]:
+    """The selection: which codes get a new override entry, and what it says.
+
+    A code qualifies only when it has no override yet, exists in products.json,
+    and its CURRENT dictionary name is nothing but the shade of the restored
+    one (`is_shade_tail`). A name that already carries a product type is left
+    alone — rewriting it could be a downgrade.
+    """
+    stats = {
+        "codes": len(candidates),
+        "in_products": sum(1 for code in candidates if code in products),
+        "already_override": sum(1 for code in candidates if code in existing),
+        "not_in_products": 0,
+        "rejected_has_type": 0,
+        "rejected_too_long": 0,
+        "selected": 0,
+    }
+    fresh: dict[str, dict] = {}
+    for code in sorted(candidates):
+        if code in existing:
+            continue
+        entry = products.get(code)
+        if entry is None:
+            stats["not_in_products"] += 1
+            continue
+        current = (entry.get("name") or "").strip()
+        restored = display_name(pick_full_name(candidates[code]))
+        if len(restored) > MAX_NAME:
+            stats["rejected_too_long"] += 1
+            continue
+        if not is_shade_tail(current, restored):
+            stats["rejected_has_type"] += 1
+            continue
+        # The rubric can never get WORSE than today's: an unclassifiable
+        # restored name falls back to what the bare shade already resolved to.
+        rubric = classify_rubric_by_name(restored)
+        if rubric == "Прочее":
+            rubric = classify_rubric_by_name(current)
+        fresh[code] = {"conf": "series", "name": restored, "rubric": rubric}
+        stats["selected"] += 1
+    return fresh, stats
+
+
+def merge_overrides(existing: dict[str, dict], fresh: dict[str, dict]) -> dict[str, dict]:
+    """Pure append: an existing code is never overwritten and never moves."""
+    merged = dict(existing)
+    for code in sorted(fresh):
+        if code not in merged:
+            merged[code] = fresh[code]
+    return merged
+
+
+def read_overrides(path: Path) -> dict[str, dict]:
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_overrides(dest: Path, data: dict[str, dict]) -> None:
+    """Reproduce the file's byte form: indent=1, CRLF, no trailing newline."""
+    with dest.open("w", encoding="utf-8", newline="\r\n") as handle:
+        handle.write(json.dumps(data, ensure_ascii=False, indent=1))
+
+
+def scan_shade_candidates(files) -> tuple[dict[str, Counter], int, list[str]]:
+    """Merge the per-file candidates of the whole archive; name what failed."""
+    candidates: dict[str, Counter] = {}
+    dropped = 0
+    unreadable: list[str] = []
+    for path in files:
+        try:
+            sheets = read_workbook_sheets(path)
+        except Exception as exc:  # a corrupt workbook is expected (12-2013.xls)
+            unreadable.append(f"{path.name} ({exc.__class__.__name__})")
+            continue
+        found, missed = collect_shade_candidates(sheets)
+        for code, counter in found.items():
+            candidates.setdefault(code, Counter()).update(counter)
+        dropped += missed
+    return candidates, dropped, unreadable
+
+
+SAMPLE_CODES = ("32287", "33155", "33157", "33158", "33159")
+
+
+def _run_restore_shades(price_dir: Path, products_path: Path, apply: bool, report) -> None:
+    files = price_list_files(price_dir)
+    if not files:
+        sys.exit(f"No price lists (*.xls / *.xlsx) in {price_dir}")
+    by_ext = Counter(p.suffix.lower() for p in files)
+    breakdown = "  ".join(f"{ext}: {n}" for ext, n in sorted(by_ext.items()))
+    print(f"Price lists: {len(files)}  {breakdown}")
+
+    candidates, dropped, unreadable = scan_shade_candidates(files)
+    if unreadable:
+        print(f"Unreadable ({len(unreadable)}): {unreadable}")
+
+    products = json.loads(products_path.read_text(encoding="utf-8"))
+    existing = read_overrides(OVERRIDES_PATH)
+    fresh, stats = build_shade_overrides(candidates, products, existing)
+
+    print(f"Shade codes found: {stats['codes']}")
+    print(f"  in products.json: {stats['in_products']}   absent: {stats['not_in_products']}")
+    print(f"  already have an override: {stats['already_override']}")
+    print(f"  rejected, name already carries a type: {stats['rejected_has_type']}")
+    print(f"  rejected, longer than {MAX_NAME} chars: {stats['rejected_too_long']}")
+    print(f"  shade rows dropped for lack of a series type: {dropped}")
+    print(f"SELECTED: {stats['selected']}")
+    print("Rubrics: " + ", ".join(f"{r}={n}" for r, n in Counter(
+        e["rubric"] for e in fresh.values()).most_common()))
+    for code in SAMPLE_CODES:
+        print(f"  {code}: {fresh.get(code, {}).get('name', '— not selected —')}")
+
+    if report is not None:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps(fresh, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"Report: {report}")
+
+    merged = merge_overrides(existing, fresh)
+    print(f"Overrides: {len(existing)} -> {len(merged)}")
+    if not apply:
+        print("DRY RUN — nothing written. Re-run with --apply.")
+        return
+    write_overrides(OVERRIDES_PATH, merged)
+    print(f"Written: {OVERRIDES_PATH}")
 
 
 def export_prices(session) -> list[dict]:
@@ -367,6 +680,19 @@ def main() -> None:
         action="store_true",
         help="additive: insert only rows whose code is absent (requires --from-export)",
     )
+    parser.add_argument(
+        "--restore-shades",
+        action="store_true",
+        help="recover the series product type for shade rows into rubric_overrides.json",
+    )
+    parser.add_argument(
+        "--apply", action="store_true", help="actually write (requires --restore-shades)"
+    )
+    parser.add_argument(
+        "--price-dir", default=DEFAULT_PRICE_DIR, help="folder with the xls/xlsx price lists"
+    )
+    parser.add_argument("--products", default=DEFAULT_PRODUCTS, help="path to products.json")
+    parser.add_argument("--report", metavar="FILE", help="dump the selected entries for review")
     args = parser.parse_args()
 
     # Foot-gun guards, before any DB access: --only-missing must never silently
@@ -375,6 +701,25 @@ def main() -> None:
         sys.exit("--export cannot be combined with --from-export")
     if args.only_missing and not args.from_export:
         sys.exit("--only-missing works only with --from-export; the xlsx path is a full replace")
+    if args.restore_shades and (args.export or args.from_export):
+        sys.exit(
+            "--restore-shades opens no database; "
+            "it cannot be combined with --export or --from-export"
+        )
+    if args.apply and not args.restore_shades:
+        sys.exit("--apply is meaningless without --restore-shades")
+
+    if args.restore_shades:
+        products = _resolve(args.products)
+        if not products.is_file():
+            sys.exit(f"products.json not found: {products}")
+        _run_restore_shades(
+            _resolve(args.price_dir),
+            products,
+            args.apply,
+            _resolve(args.report) if args.report else None,
+        )
+        return
 
     if args.export:
         _run_export(_resolve(args.export))

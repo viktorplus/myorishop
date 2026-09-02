@@ -69,6 +69,11 @@ _COLOR_WORDS: set[str] = set(
 
 _DEFAULT_RUBRIC = "Прочее"
 
+# The dash characters an Oriflame price list uses to introduce a shade row
+# ("- ФАРФОРОВЫЙ") and to separate the product type from the shade in a full
+# name. Shared with scripts/import_prices.py — one definition, one meaning.
+SHADE_DASHES: tuple[str, ...] = ("-", "–", "—")
+
 
 def _load_overrides() -> dict[str, dict]:
     path = Path(__file__).with_name("rubric_overrides.json")
@@ -101,6 +106,33 @@ def resolve_rubric(code: str, name: str) -> str:
     if ov and ov.get("rubric") in RUBRICS:
         return ov["rubric"]
     return classify_rubric_by_name(name)
+
+
+def is_shade_tail(current: str, restored: str) -> bool:
+    """True when `current` is nothing but the SHADE of the fuller `restored`.
+
+    The one predicate that decides whether a dictionary name may be rewritten
+    with the product type recovered from the price-list series header. It is
+    true only for a name that carries no product type at all — "Фарфоровый"
+    against "Увлажняющая тональная основа the one aqua boost - фарфоровый".
+
+    A name that already names the product ("Женская туалетная вода Sunkiss
+    Garden объем 50 мл") is structurally incapable of being the tail after a
+    « - » separator of anything, so the update path needs no allow-list and no
+    blacklist: safety comes from the shape of the data itself.
+    """
+    cur = (current or "").strip()
+    full = (restored or "").strip()
+    if not cur or len(full) <= len(cur):
+        return False
+    if full[len(full) - len(cur) :].lower() != cur.lower():
+        return False
+    prefix = full[: len(full) - len(cur)].rstrip()
+    if not prefix.endswith(SHADE_DASHES):
+        return False
+    # The part before the dash must still name something — "- фарфоровый" is
+    # not a fuller name, it is the same bare shade with a dash in front.
+    return bool(prefix.rstrip("".join(SHADE_DASHES) + " \t").strip())
 
 
 def resolve_name(code: str, name: str) -> str:

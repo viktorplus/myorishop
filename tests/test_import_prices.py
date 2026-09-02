@@ -20,6 +20,7 @@ below is synthetic data on the `session` fixture or a tmp_path file.
 
 import ast
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -29,12 +30,22 @@ from app.models import CatalogPrice
 from scripts.import_prices import (
     EXPORT_KEYS,
     build_price_rows,
+    build_shade_overrides,
+    collect_shade_candidates,
+    display_name,
     export_prices,
     insert_missing_price_rows,
+    is_shade_row,
     load_export,
+    merge_overrides,
     merge_price_export,
+    pick_full_name,
+    price_list_files,
     serialize_export,
+    shade_text,
+    split_series_type,
     write_export,
+    write_overrides,
 )
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "import_prices.py"
@@ -183,8 +194,15 @@ def test_write_export_into_an_existing_file_preserves_a_foreign_row(tmp_path):
     assert len(load_export(dest)) == 2
 
 
-def test_openpyxl_is_not_imported_at_module_level():
-    """The image is built with `uv sync --frozen --no-dev` — openpyxl is dev-only."""
+@pytest.mark.parametrize("package", ["openpyxl", "xlrd"])
+def test_excel_readers_are_not_imported_at_module_level(package):
+    """The image is built with `uv sync --frozen --no-dev`.
+
+    openpyxl is dev-only and xlrd is not a project dependency AT ALL (it is
+    reached ad hoc through `uv run --with xlrd`), so a module-level import of
+    either would make this script unimportable exactly where --from-export has
+    to run.
+    """
     tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
     top_level = []
     for node in tree.body:
@@ -193,4 +211,230 @@ def test_openpyxl_is_not_imported_at_module_level():
         elif isinstance(node, ast.ImportFrom):
             top_level.append(node.module or "")
 
-    assert not any("openpyxl" in name for name in top_level), top_level
+    assert not any(package in name for name in top_level), top_level
+
+
+# ---------------------------------------------------------------------------
+# --restore-shades (quick task 260902-k2i)
+#
+# In an Oriflame price list the product type is written ONCE, in the first row
+# of a series; every following row is a bare shade («- ФАРФОРОВЫЙ»). The rows
+# below are the exact 33154-33159 series of the SPEC, verified by hand in
+# 01-2018.xls and 01-2019.xlsx.
+# ---------------------------------------------------------------------------
+
+HEADER = ("КОД", "НАИМЕНОВАНИЕ", "ПЦ")
+SERIES_TYPE = "УВЛАЖНЯЮЩАЯ ТОНАЛЬНАЯ ОСНОВА THE ONE AQUA BOOST"
+SERIES_SHEET = [
+    ("ПРАЙС-ЛИСТ 01-2018", None, None),
+    HEADER,
+    (33154, f"{SERIES_TYPE} - ВАНИЛЬНЫЙ", 599),
+    (33155, "- ФАРФОРОВЫЙ", 599),
+    (33156, "- БЕЖЕВЫЙ НЮД", 599),
+    (33157, "- РОЗОВЫЙ НЮД", 599),
+    (33158, "- СЛОНОВАЯ КОСТЬ", 599),
+    (33159, "- ЕСТЕСТВЕННЫЙ БЕЖ", 599),
+    (None, None, None),
+]
+ARCHIVE = Path(__file__).resolve().parent.parent / "catalogs" / "price_lists"
+
+
+def test_split_series_type_cuts_at_the_last_separator():
+    assert split_series_type(f"{SERIES_TYPE} - ВАНИЛЬНЫЙ") == SERIES_TYPE
+    assert split_series_type("ТОНАЛЬНАЯ ОСНОВА") == "ТОНАЛЬНАЯ ОСНОВА", "no separator"
+    assert split_series_type("ТУШЬ THE ONE - LASH - ЧЁРНЫЙ") == "ТУШЬ THE ONE - LASH"
+    assert split_series_type("КРЕМ – ДНЕВНОЙ") == "КРЕМ", "en dash"
+    assert split_series_type("КРЕМ — НОЧНОЙ") == "КРЕМ", "em dash"
+
+
+def test_shade_row_detection_and_text():
+    assert is_shade_row("- ФАРФОРОВЫЙ")
+    assert is_shade_row("  – ВАНИЛЬ")
+    assert not is_shade_row(SERIES_TYPE)
+    assert shade_text(" -- ФАРФОРОВЫЙ ") == "ФАРФОРОВЫЙ"
+
+
+def test_collect_shade_candidates_inherits_the_series_type():
+    candidates, dropped = collect_shade_candidates([SERIES_SHEET])
+
+    assert sorted(candidates) == ["33155", "33156", "33157", "33158", "33159"]
+    assert "33154" not in candidates, "the header row is not a shade of itself"
+    assert dropped == 0
+    assert candidates["33155"] == Counter({(SERIES_TYPE, "ФАРФОРОВЫЙ"): 1})
+
+
+def test_a_shade_with_no_series_type_is_dropped_and_counted():
+    sheet = [
+        HEADER,
+        (33155, "- ФАРФОРОВЫЙ", 599),  # before any header row
+        (33154, f"{SERIES_TYPE} - ВАНИЛЬНЫЙ", 599),
+        (None, "МАКИЯЖ", None),  # a code-less title ends the series
+        (33160, "- ЯРКИЙ", 599),
+    ]
+
+    candidates, dropped = collect_shade_candidates([sheet])
+
+    assert candidates == {}
+    assert dropped == 2
+
+
+def test_longest_type_wins_over_the_most_frequent_spelling():
+    short = [HEADER, (33154, "ТОН. ОСНОВА - ВАНИЛЬНЫЙ", 1), (33155, "- ФАРФОРОВЫЙ", 1)]
+    long = [HEADER, (33154, "ТОНАЛЬНАЯ ОСНОВА - ВАНИЛЬНЫЙ", 1), (33155, "- ФАРФОРОВЫЙ", 1)]
+
+    candidates, _ = collect_shade_candidates([short, short, short, long])
+
+    assert pick_full_name(candidates["33155"]) == "ТОНАЛЬНАЯ ОСНОВА - ФАРФОРОВЫЙ"
+
+
+def test_equal_length_types_fall_back_to_the_most_frequent_then_deterministically():
+    counter = Counter({("ТУШЬ ЛАЙН", "ЧЁРНЫЙ"): 1, ("ТУШЬ ГЛЭМ", "ЧЁРНЫЙ"): 5})
+    assert pick_full_name(counter) == "ТУШЬ ГЛЭМ - ЧЁРНЫЙ"
+
+    tie = Counter({("ТУШЬ ЛАЙН", "ЧЁРНЫЙ"): 3, ("ТУШЬ ГЛЭМ", "ЧЁРНЫЙ"): 3})
+    assert pick_full_name(tie) == pick_full_name(Counter(dict(reversed(tie.items()))))
+
+
+def test_display_name_is_the_dictionarys_sentence_case():
+    assert display_name(f"{SERIES_TYPE} - ФАРФОРОВЫЙ") == (
+        "Увлажняющая тональная основа the one aqua boost - фарфоровый"
+    )
+    assert display_name("  ТУШЬ   THE\tONE  ") == "Тушь the one", "whitespace runs collapse"
+    assert display_name("") == ""
+
+
+def _products(**names):
+    return {code: {"name": name, "catalogs": []} for code, name in names.items()}
+
+
+def test_build_shade_overrides_selects_only_bare_shade_names():
+    candidates, _ = collect_shade_candidates([SERIES_SHEET])
+    products = _products(
+        **{
+            "33155": "Фарфоровый",
+            # already carries a type -> never rewritten
+            "33156": "Тональная основа бежевый нюд",
+            "33157": "Розовый нюд",
+        }
+        # 33158 / 33159 are absent from products.json
+    )
+
+    fresh, stats = build_shade_overrides(candidates, products, existing={})
+
+    assert sorted(fresh) == ["33155", "33157"]
+    assert fresh["33155"] == {
+        "conf": "series",
+        "name": "Увлажняющая тональная основа the one aqua boost - фарфоровый",
+        "rubric": "Макияж",
+    }
+    assert stats["selected"] == 2
+    assert stats["rejected_has_type"] == 1
+    assert stats["not_in_products"] == 2
+    assert stats["codes"] == 5 and stats["in_products"] == 3
+
+
+def test_build_shade_overrides_skips_a_code_that_already_has_an_override():
+    candidates, _ = collect_shade_candidates([SERIES_SHEET])
+    products = _products(**{"33155": "Фарфоровый"})
+    existing = {"33155": {"conf": "high", "name": "Уже исправлено", "rubric": "Прочее"}}
+
+    fresh, stats = build_shade_overrides(candidates, products, existing)
+
+    assert fresh == {}
+    assert stats["already_override"] == 1 and stats["selected"] == 0
+
+
+def test_a_candidate_longer_than_200_chars_is_rejected_never_truncated():
+    counter = Counter({("Т" * 250, "ФАРФОРОВЫЙ"): 1})
+    candidates = {"33155": counter}
+
+    fresh, stats = build_shade_overrides(
+        candidates, _products(**{"33155": "Фарфоровый"}), existing={}
+    )
+
+    assert fresh == {}
+    assert stats["rejected_too_long"] == 1
+
+
+def test_the_rubric_can_never_get_worse_than_todays():
+    """An unclassifiable restored name keeps the rubric the bare shade had."""
+    unclassifiable = "ЗЗЗЗ ЫЫЫЫ ЭЭЭЭ ЮЮЮЮ ЪЪЪЪ ЩЩЩЩ"
+    candidates = {"33155": Counter({(unclassifiable, "МЕДОВЫЙ"): 1})}
+
+    fresh, _ = build_shade_overrides(
+        candidates, _products(**{"33155": "Медовый"}), existing={}
+    )
+
+    assert fresh["33155"]["rubric"] == "Макияж", "fell back to the bare shade's rubric"
+
+
+def test_merge_overrides_appends_without_touching_or_moving_an_existing_entry():
+    existing = {
+        "999999": {"conf": "high", "name": "Первый", "rubric": "Прочее"},
+        "111": {"conf": "high", "name": "Второй", "rubric": "Прочее"},
+    }
+    fresh = {
+        "222": {"conf": "series", "name": "Б", "rubric": "Макияж"},
+        "111": {"conf": "series", "name": "ПЕРЕЗАПИСЬ", "rubric": "Макияж"},
+        "000": {"conf": "series", "name": "А", "rubric": "Макияж"},
+    }
+
+    merged = merge_overrides(existing, fresh)
+
+    assert list(merged) == ["999999", "111", "000", "222"], "insertion order kept, new sorted"
+    assert merged["111"] == existing["111"], "an existing code is never overwritten"
+    assert list(merged.items())[: len(existing)] == list(existing.items())
+
+
+def test_write_overrides_reproduces_the_files_byte_form(tmp_path):
+    dest = tmp_path / "rubric_overrides.json"
+
+    write_overrides(dest, {"33155": {"conf": "series", "name": "Тушь", "rubric": "Макияж"}})
+
+    raw = dest.read_bytes()
+    assert raw.startswith(b'{\r\n "33155": {\r\n  "conf": "series",\r\n')
+    assert raw.endswith(b"\r\n }\r\n}"), "CRLF, indent=1, NO trailing newline"
+    assert "Тушь".encode() in raw, "ensure_ascii=False — Cyrillic stays readable"
+    assert json.loads(raw.decode("utf-8"))["33155"]["rubric"] == "Макияж"
+
+
+def test_price_list_files_takes_both_extensions_and_skips_lock_files(tmp_path):
+    for name in ("01-2019.xlsx", "01-2018.xls", "~$01-2018.xls", "README.md", "x.csv"):
+        (tmp_path / name).write_text("", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+
+    assert [p.name for p in price_list_files(tmp_path)] == ["01-2018.xls", "01-2019.xlsx"]
+    assert price_list_files(tmp_path / "nowhere") == []
+
+
+def test_the_two_real_price_lists_rebuild_the_33154_series():
+    """The SPEC's hand-verified proof, against the real archive.
+
+    Skips when xlrd is absent (it is NOT a project dependency — run it with
+    `uv run --with xlrd pytest`) or when the gitignored archive is not on this
+    machine. Reads ONLY the two named files, never the whole 118 MB folder.
+    """
+    pytest.importorskip("xlrd", reason="run with `uv run --with xlrd pytest`")
+    from scripts.import_prices import read_workbook_sheets
+
+    sheets = []
+    for name in ("01-2018.xls", "01-2019.xlsx"):
+        path = ARCHIVE / name
+        if not path.is_file():
+            pytest.skip(f"the price-list archive is not on this machine ({name})")
+        sheets.extend(read_workbook_sheets(path))
+
+    candidates, _dropped = collect_shade_candidates(sheets)
+
+    expected = {
+        "33155": "фарфоровый",
+        "33156": "бежевый нюд",
+        "33157": "розовый нюд",
+        "33158": "слоновая кость",
+        "33159": "естественный беж",
+    }
+    for code, shade in expected.items():
+        assert code in candidates, f"{code} was not recovered from the real price lists"
+        name = display_name(pick_full_name(candidates[code]))
+        assert "тональная основа" in name, name
+        assert name.endswith(f"- {shade}"), name
