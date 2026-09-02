@@ -31,6 +31,8 @@ from scripts.import_prices import (
     EXPORT_KEYS,
     build_price_rows,
     build_shade_overrides,
+    collect_from_archive,
+    collect_prices_from_sheets,
     collect_shade_candidates,
     current_name,
     display_name,
@@ -40,17 +42,22 @@ from scripts.import_prices import (
     load_export,
     merge_overrides,
     merge_price_export,
+    parse_catalog,
     pick_full_name,
     price_list_files,
     restore_full_name,
     serialize_export,
     shade_text,
     split_series_type,
+    upsert_price_rows,
     write_export,
     write_overrides,
 )
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "import_prices.py"
+MASTER_SCRIPT = (
+    Path(__file__).resolve().parent.parent / "scripts" / "import_master_pricelist.py"
+)
 
 # "0305" is a real leading-zero code: it must survive as a string, never as 305.
 ZERO_ROW = {
@@ -506,3 +513,183 @@ def test_the_two_real_price_lists_rebuild_the_33154_series():
         assert name is not None, code
         assert "тональная основа" in name, name
         assert name.endswith(f"- {shade}"), name
+
+
+# ---------------------------------------------------------------------------
+# Quick task 260902-m9g — a source owns its own (year, number, code) triples,
+# never the whole table.
+#
+# `catalog_prices` was written by THREE table-wide deletes (the xlsx path, the
+# --from-export path and the master price list), so whichever importer ran last
+# erased the other's work and the table held a 15 798-row snapshot instead of a
+# price history. The ownership key is the UniqueConstraint that already exists
+# on (year, number, code); the tests below are its executable contract, plus the
+# both-extension archive walk and the gzip transport.
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_inserts_a_new_triple_and_leaves_a_foreign_row_untouched(session):
+    """The rule in one sentence: a foreign triple is not this source's business."""
+    _seed(session, PLAIN_ROW)
+
+    stats = upsert_price_rows(session, [ZERO_ROW])
+    session.commit()
+
+    assert stats == {"inserted": 1, "updated": 0, "unchanged": 0}
+    assert _tuples(export_prices(session)) == _tuples([PLAIN_ROW, ZERO_ROW])
+
+
+def test_upsert_updates_only_what_changed_and_a_repeat_reports_unchanged(session):
+    _seed(session, PLAIN_ROW)
+    cheaper = {**PLAIN_ROW, "consumer_cents": 44400}
+
+    first = upsert_price_rows(session, [cheaper])
+    session.commit()
+
+    assert first == {"inserted": 0, "updated": 1, "unchanged": 0}
+    row = session.scalar(select(CatalogPrice).where(CatalogPrice.code == "46413"))
+    assert row.consumer_cents == 44400
+    assert row.consultant_cents == PLAIN_ROW["consultant_cents"], "untouched field"
+    assert row.name == PLAIN_ROW["name"] and row.points == PLAIN_ROW["points"]
+
+    second = upsert_price_rows(session, [cheaper])
+    session.commit()
+
+    assert second == {"inserted": 0, "updated": 0, "unchanged": 1}
+    assert session.scalar(select(func.count()).select_from(CatalogPrice)) == 1
+
+
+def test_upsert_never_overwrites_a_known_value_with_none(session):
+    """The master-price-list-after-archive case — the whole reason for the rule.
+
+    The master price list carries no bonus points at all. Without this rule its
+    NULL `points` would null the 233 346 points the archive supplies.
+    """
+    _seed(session, PLAIN_ROW)
+    impoverished = {**PLAIN_ROW, "points": None, "name": None}
+
+    stats = upsert_price_rows(session, [impoverished])
+    session.commit()
+
+    assert stats == {"inserted": 0, "updated": 0, "unchanged": 1}
+    row = session.scalar(select(CatalogPrice).where(CatalogPrice.code == "46413"))
+    assert row.points == 3, "an incoming None never impoverishes a stored value"
+    assert row.name == PLAIN_ROW["name"]
+
+
+def test_upsert_never_deletes(session):
+    _seed(session, PLAIN_ROW, ZERO_ROW)
+
+    stats = upsert_price_rows(session, [])
+    session.commit()
+
+    assert stats == {"inserted": 0, "updated": 0, "unchanged": 0}
+    assert _tuples(export_prices(session)) == _tuples([PLAIN_ROW, ZERO_ROW])
+
+
+def test_parse_catalog_reads_xls_filenames_too():
+    """D1: the price path must take BOTH extensions, so the name parser must too."""
+    assert parse_catalog("01-2018.xls") == (2018, 1)
+    assert parse_catalog("2013-12.xls") == (2013, 12)
+    assert parse_catalog("01-2019.xlsx") == (2019, 1)
+    assert parse_catalog("oriflame_prices_with_calculations_fixed.xlsx") is None
+
+
+PRICE_HEADER = ("КОД", "НАИМЕНОВАНИЕ", "ПЦ", "ОП", "ББ")
+PRICE_SHEET = [
+    ("ПРАЙС-ЛИСТ 01-2018", None, None, None, None),
+    PRICE_HEADER,
+    (33154, "ТОНАЛЬНАЯ ОСНОВА - ВАНИЛЬНЫЙ", 599, 399, 3),
+    (None, "МАКИЯЖ", None, None, None),  # a code-less section header
+    (33155, "- ФАРФОРОВЫЙ", None, 399, 3),  # no ПЦ -> not a price row
+    (33156, "- БЕЖЕВЫЙ НЮД", 649, None, None),
+]
+# A real shape from the archive: 04-2024.xls / 05-2024.xls carry names, no ПЦ.
+NAMES_ONLY_SHEET = [
+    ("КОД", "НАИМЕНОВАНИЕ"),
+    (33154, "ТОНАЛЬНАЯ ОСНОВА - ВАНИЛЬНЫЙ"),
+]
+
+
+def test_collect_prices_from_sheets_is_pure_and_maps_the_price_columns():
+    collected = collect_prices_from_sheets([PRICE_SHEET])
+
+    assert sorted(collected) == ["33154", "33156"]
+    assert collected["33154"] == {
+        "name": "ТОНАЛЬНАЯ ОСНОВА - ВАНИЛЬНЫЙ",
+        "consumer_cents": 59900,
+        "consultant_cents": 39900,
+        "points": 3,
+    }
+    assert isinstance(collected["33154"]["points"], int)
+    assert collected["33156"]["consultant_cents"] is None
+    assert collected["33156"]["points"] is None
+    assert "33155" not in collected, "a row without ПЦ is not a price row"
+    assert collect_prices_from_sheets([NAMES_ONLY_SHEET]) == {}
+
+
+def test_collect_from_archive_names_every_file_it_could_not_use(tmp_path, monkeypatch):
+    """The corrupt 12-2013.xls must be NAMED, not fatal — the walk continues."""
+    good = tmp_path / "01-2018.xls"
+    corrupt = tmp_path / "12-2013.xls"
+    nameless = tmp_path / "oriflame_prices_compact.xlsx"
+    priceless = tmp_path / "04-2024.xls"
+
+    def fake_reader(path):
+        if path == corrupt:
+            raise ValueError("File is truncated, or OLE2 MSAT is corrupt")
+        if path == priceless:
+            return [NAMES_ONLY_SHEET]
+        return [PRICE_SHEET]
+
+    monkeypatch.setattr("scripts.import_prices.read_workbook_sheets", fake_reader)
+
+    collected, report = collect_from_archive([good, corrupt, nameless, priceless])
+
+    assert set(collected) == {(2018, 1, "33154"), (2018, 1, "33156")}
+    assert collected[(2018, 1, "33154")]["consumer_cents"] == 59900
+    assert report["unparsable_name"] == [nameless.name]
+    assert report["no_price_column"] == [priceless.name]
+    assert len(report["unreadable"]) == 1
+    assert corrupt.name in report["unreadable"][0], report["unreadable"]
+
+
+def test_the_export_round_trips_through_a_gz_with_no_loss(tmp_path):
+    """41.7 MB of JSON becomes ~4.7 MB — the ONLY transport that reaches s1."""
+    dest = tmp_path / "catalog_prices.json.gz"
+
+    stats = write_export(dest, [PLAIN_ROW, ZERO_ROW])
+
+    assert stats["after"] == 2 and stats["codes"] == 2
+    assert dest.read_bytes()[:2] == b"\x1f\x8b", "the file is genuinely gzipped"
+    assert _tuples(load_export(dest)) == _tuples([PLAIN_ROW, ZERO_ROW])
+
+    # A second write into the same .gz is still ACCUMULATIVE, not replacing.
+    again = write_export(dest, [{**ZERO_ROW, "points": 7}])
+
+    assert again == {"before": 2, "added": 0, "updated": 1, "after": 2, "codes": 2}
+    on_disk = load_export(dest)
+    assert [r["code"] for r in on_disk] == ["46413", "0305"]
+    assert on_disk[1]["points"] == 7
+
+
+def _uncommented(path: Path) -> str:
+    return "\n".join(
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.strip().startswith("#")
+    )
+
+
+def test_neither_importer_deletes_the_whole_price_table():
+    """The tripwire for the defect this task exists to close.
+
+    The needle is composed from parts on purpose: written as one literal it
+    would also match this very file, and assembling it states the intent. For
+    the same reason the two scripts must describe the ownership rule in PROSE —
+    a docstring quoting the removed call verbatim would silently re-arm this
+    gate against itself.
+    """
+    needle = ".query(" + "CatalogPrice" + ").delete()"
+
+    for script in (SCRIPT, MASTER_SCRIPT):
+        assert needle not in _uncommented(script), script.name

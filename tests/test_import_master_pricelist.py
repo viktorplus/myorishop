@@ -18,9 +18,12 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
+from app.core import new_id
 from app.models import CatalogPrice, Dictionary
 from app.services.rubrics import RUBRIC_OVERRIDES
 from scripts.import_master_pricelist import (
+    apply_master_import,
+    build_catalog_price_records,
     build_catalog_price_rows,
     build_dictionary_rows,
     collect_price_rows,
@@ -174,3 +177,88 @@ def test_gap_against_the_real_price_list_is_exactly_the_34_inventory_codes():
     assert not unexpected, f"unexpected override-only codes: {unexpected}"
     assert not missing, f"expected codes found in the price list: {missing}"
     assert gap == EXPECTED_34
+
+
+# ---------------------------------------------------------------------------
+# Quick task 260902-m9g — the master import no longer annihilates the archive.
+#
+# `dictionary` is still replaced wholesale (that table has its own rules), but
+# `catalog_prices` is only UPSERTED: this script owns the (year, number, code)
+# triples it itself carries and nothing else. Before this task it deleted every
+# row, so running it after the price-list archive walk erased 223 386 rows.
+# ---------------------------------------------------------------------------
+
+# A code that is neither FAKE_CODE nor an override — it must be gone from the
+# dictionary after a full-replace import, while its price row survives.
+FOREIGN_DICT_CODE = "888888"
+
+
+def test_apply_master_import_replaces_the_dictionary_but_only_upserts_prices(session):
+    session.add(
+        Dictionary(
+            id=new_id(),
+            code=FOREIGN_DICT_CODE,
+            name="Чужой код",
+            name_lc="чужой код",
+            catalogs=["01_26"],
+        )
+    )
+    session.add(
+        CatalogPrice(
+            id=new_id(), year=2013, number=12, code="46413",
+            name="ИЗ АРХИВА", consumer_cents=19900, consultant_cents=12900, points=2,
+        )
+    )
+    session.commit()
+
+    apply_master_import(session, {FAKE_CODE: dict(FAKE_ROW)})
+    session.commit()
+
+    archived = session.scalar(select(CatalogPrice).where(CatalogPrice.code == "46413"))
+    assert archived is not None, "the archive row of a foreign triple must survive"
+    assert (archived.year, archived.number, archived.points) == (2013, 12, 2)
+
+    gone = session.scalar(select(Dictionary).where(Dictionary.code == FOREIGN_DICT_CODE))
+    assert gone is None, "dictionary is still replaced wholesale"
+
+    priced = session.scalar(
+        select(func.count()).select_from(CatalogPrice).where(CatalogPrice.code == FAKE_CODE)
+    )
+    assert priced == 1
+
+
+def test_apply_master_import_does_not_erase_the_bonus_points_of_its_own_triple(session):
+    """The master price list carries no ББ at all — its NULL must not win."""
+    session.add(
+        CatalogPrice(
+            id=new_id(),
+            year=FAKE_ROW["year"],
+            number=FAKE_ROW["number"],
+            code=FAKE_CODE,
+            name="ИЗ АРХИВА",
+            consumer_cents=1,
+            consultant_cents=None,
+            points=17,
+        )
+    )
+    session.commit()
+
+    apply_master_import(session, {FAKE_CODE: dict(FAKE_ROW)})
+    session.commit()
+
+    row = session.scalar(select(CatalogPrice).where(CatalogPrice.code == FAKE_CODE))
+    assert row.points == 17, "the archive's bonus points survive the master import"
+    assert row.consumer_cents == FAKE_ROW["consumer_cents"], "the master price wins"
+    assert row.consultant_cents == FAKE_ROW["consultant_cents"]
+    assert session.scalar(select(func.count()).select_from(CatalogPrice)) == 1
+
+
+def test_build_catalog_price_records_is_the_seven_key_export_shape():
+    records = build_catalog_price_records({FAKE_CODE: dict(FAKE_ROW)})
+
+    assert len(records) == 1
+    assert set(records[0]) == {
+        "code", "year", "number", "name", "consumer_cents", "consultant_cents", "points",
+    }
+    assert records[0]["code"] == FAKE_CODE
+    assert records[0]["points"] is None, "the master price list has no ББ column"
