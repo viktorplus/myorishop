@@ -1,6 +1,9 @@
 """Import per-catalog prices from the xlsx price lists into catalog_prices.
 
 Run: uv run python scripts/import_prices.py [--dir catalogs]
+     uv run python scripts/import_prices.py --export catalogs/catalog_prices.json
+     uv run python scripts/import_prices.py --from-export catalogs/catalog_prices.json \
+         --only-missing
 
 Each xlsx is a catalog issue whose filename encodes month + year in one of
 several formats (01-2026, 03_2024, 2025-07, 25-11, with _calc/(1) suffixes).
@@ -14,25 +17,49 @@ Extracted columns (Oriflame layout):
   * НАИМЕНОВАНИЕ -> name    (short, upper-case source name; the pretty name
                             stays in the dictionary, imported separately)
 
-Whole-ruble prices are converted to integer cents. The table is fully
-replaced on each run (it is derived purely from these files), so the import
-is idempotent. Helper data only — no product/stock/ledger rows are touched.
+Whole-ruble prices are converted to integer cents. On the xlsx path the table
+is fully replaced on each run (it is derived purely from these files), so the
+import is idempotent. Helper data only — no product/stock/ledger rows are
+touched.
+
+Quick task 260902-g1q added the JSON transport, because the 118 MB
+`catalogs/price_lists/` archive is deliberately kept out of git and out of the
+Docker image — the server has no price lists and never will:
+
+  ``--export FILE``       dumps catalog_prices into a compact JSON array (one
+                          record per line). The export is ACCUMULATIVE, never
+                          replacing: rows already in the target file that this
+                          database does not have are kept, so the file can only
+                          grow.
+  ``--from-export FILE``  loads that file instead of parsing xlsx.
+  ``--only-missing``      (only with --from-export) inserts only rows whose
+                          CODE is absent from catalog_prices.
+
+⚠ ``--from-export`` WITHOUT ``--only-missing`` deletes every existing row
+before inserting — never point it at a live server, where it would erase the
+prices that came from the master price list.
 """
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import openpyxl  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from app.core import new_id, to_cents  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import CatalogPrice  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# The exact shape of one exported row — the 7 model fields that carry data.
+EXPORT_KEYS = frozenset(
+    {"code", "year", "number", "name", "consumer_cents", "consultant_cents", "points"}
+)
 
 
 def parse_catalog(filename: str) -> tuple[int, int] | None:
@@ -101,22 +128,20 @@ def _cell(row, colmap, role):
     return row[idx]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Import catalog prices from xlsx")
-    parser.add_argument("--dir", default="catalogs", help="folder with the xlsx files")
-    args = parser.parse_args()
+def collect_from_xlsx(files) -> tuple[dict[tuple[int, int, str], dict], list[str]]:
+    """Walk the workbooks -> {(year, number, code): row-data} + skipped files.
 
-    folder = Path(args.dir)
-    if not folder.is_absolute():
-        folder = PROJECT_ROOT / folder
-    files = sorted(folder.glob("*.xlsx"))
-    if not files:
-        sys.exit(f"No xlsx files in {folder}")
+    openpyxl is imported HERE, not at module level, on purpose: it is a dev
+    dependency and the Dockerfile builds with `uv sync --frozen --no-dev`, so a
+    top-level import would make this whole script unimportable inside the
+    production image — which is exactly where --from-export has to run.
+    """
+    import openpyxl
 
     # Deduplicate by (year, number, code): duplicate files (01-2026 vs
     # 01-2026_ (1)) and repeated rows collapse to one; last write wins.
     collected: dict[tuple[int, int, str], dict] = {}
-    skipped_files = []
+    skipped_files: list[str] = []
     for path in files:
         cat = parse_catalog(path.name)
         if cat is None:
@@ -150,6 +175,224 @@ def main() -> None:
                     "name": name,
                 }
         wb.close()
+    return collected, skipped_files
+
+
+def export_prices(session) -> list[dict]:
+    """Every catalog_prices row projected onto the 7 exported fields.
+
+    Sorted by (year, number, code) — the UNIQUE-constraint order, so a
+    re-export is byte-stable and diffs cleanly.
+    """
+    records = [
+        {
+            "code": row.code,
+            "year": row.year,
+            "number": row.number,
+            "name": row.name,
+            "consumer_cents": row.consumer_cents,
+            "consultant_cents": row.consultant_cents,
+            "points": row.points,
+        }
+        for row in session.scalars(select(CatalogPrice))
+    ]
+    return sorted(records, key=_price_key)
+
+
+def _price_key(record: dict) -> tuple[int, int, str]:
+    return (record["year"], record["number"], record["code"])
+
+
+def serialize_export(records: list[dict]) -> str:
+    """Valid JSON array with ONE record per line (15 798 rows, no indent bloat)."""
+    body = ",\n".join(json.dumps(r, ensure_ascii=False, sort_keys=True) for r in records)
+    return f"[\n{body}\n]\n" if records else "[]\n"
+
+
+def validate_records(records, source) -> list[dict]:
+    """Refuse malformed input loudly, naming the offending record index."""
+    if not isinstance(records, list):
+        sys.exit(f"Export file is not a JSON array: {source}")
+    for i, record in enumerate(records):
+        if not isinstance(record, dict):
+            sys.exit(f"{source}: record {i} is not an object")
+        if set(record) != set(EXPORT_KEYS):
+            missing = sorted(set(EXPORT_KEYS) - set(record))
+            extra = sorted(set(record) - set(EXPORT_KEYS))
+            sys.exit(f"{source}: record {i} has wrong keys (missing={missing}, extra={extra})")
+        if not isinstance(record["code"], str):
+            sys.exit(f"{source}: record {i} has a non-string code {record['code']!r}")
+        for field in ("year", "number"):
+            value = record[field]
+            if not isinstance(value, int) or isinstance(value, bool):
+                sys.exit(f"{source}: record {i} has a non-integer {field} {value!r}")
+    return records
+
+
+def load_export(path: Path) -> list[dict]:
+    """Read + validate an --export file. Exits on anything malformed."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        sys.exit(f"Export file is not valid JSON: {path} ({exc})")
+    return validate_records(raw, path)
+
+
+def build_price_rows(records: list[dict]) -> list[CatalogPrice]:
+    """Model objects carrying every exported field verbatim — no coercion."""
+    return [
+        CatalogPrice(
+            id=new_id(),
+            year=r["year"],
+            number=r["number"],
+            code=r["code"],
+            name=r["name"],
+            consumer_cents=r["consumer_cents"],
+            consultant_cents=r["consultant_cents"],
+            points=r["points"],
+        )
+        for r in records
+    ]
+
+
+def insert_missing_price_rows(session, records: list[dict]) -> list[dict]:
+    """Additive backfill filtered by CODE. Never deletes, updates or commits.
+
+    The filter is code-level, not (year, number, code)-level, on purpose: a
+    code the server already knows came from the master price list with its own
+    (year, number), and adding this file's history rows for the same code would
+    shadow it in every "latest price" lookup.
+    """
+    existing = {code for code in session.scalars(select(CatalogPrice.code).distinct())}
+    fresh = [r for r in records if r["code"] not in existing]
+    if fresh:
+        session.bulk_save_objects(build_price_rows(fresh))
+    return fresh
+
+
+def merge_price_export(
+    previous: list[dict], fresh: list[dict]
+) -> tuple[list[dict], dict[str, int]]:
+    """Accumulate `fresh` on top of `previous` — the file only ever grows.
+
+    SPEC 260902-g1q: the export is накопительный, not замещающий. A row that
+    exists in the file but not in this database is KEPT (keyed by the
+    (year, number, code) UNIQUE tuple), so exporting from a machine with a
+    thinner price history can never impoverish the accumulated file.
+    """
+    merged = {_price_key(r): r for r in previous}
+    before = len(merged)
+    added = updated = 0
+    for record in fresh:
+        key = _price_key(record)
+        if key not in merged:
+            added += 1
+        elif merged[key] != record:
+            updated += 1
+        merged[key] = record
+    ordered = [merged[key] for key in sorted(merged)]
+    stats = {
+        "before": before,
+        "added": added,
+        "updated": updated,
+        "after": len(ordered),
+    }
+    return ordered, stats
+
+
+def write_export(dest: Path, fresh: list[dict]) -> dict[str, int]:
+    """Merge `fresh` into whatever `dest` already holds and rewrite the file."""
+    previous = load_export(dest) if dest.is_file() else []
+    merged, stats = merge_price_export(previous, fresh)
+    if stats["after"] < stats["before"]:  # unreachable by construction; a hard guard
+        sys.exit(f"Refusing to write: the export would drop rows ({stats})")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Explicit LF so a re-export on Windows and on Linux produce identical bytes.
+    with dest.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(serialize_export(merged))
+    stats["codes"] = len({r["code"] for r in merged})
+    return stats
+
+
+def _resolve(path_str: str) -> Path:
+    path = Path(path_str)
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _run_export(dest: Path) -> None:
+    with SessionLocal() as session:
+        fresh = export_prices(session)
+    stats = write_export(dest, fresh)
+    print(f"Export: {dest}")
+    print(
+        f"Было: {stats['before']}  добавлено: {stats['added']}  "
+        f"обновлено: {stats['updated']}  стало: {stats['after']}"
+    )
+    print(f"Rows: {stats['after']}  codes: {stats['codes']}  size: {dest.stat().st_size} bytes")
+
+
+def _run_from_export(src: Path, only_missing: bool) -> None:
+    records = load_export(src)
+    print(f"Source: {src}  ({len(records)} rows, {len({r['code'] for r in records})} codes)")
+    with SessionLocal() as session:
+        before = session.query(CatalogPrice).count()
+        if only_missing:
+            inserted = insert_missing_price_rows(session, records)
+            session.commit()
+            after = session.query(CatalogPrice).count()
+            print("Mode: --only-missing (additive, nothing deleted)")
+            print(
+                f"Inserted: {len(inserted)} "
+                f"(skipped, code already present: {len(records) - len(inserted)})"
+            )
+            print(f"CatalogPrice: {before} -> {after}")
+            return
+        deleted = session.query(CatalogPrice).delete()
+        session.bulk_save_objects(build_price_rows(records))
+        session.commit()
+    print(f"Rows: replaced {deleted} -> inserted {len(records)}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Import catalog prices from xlsx")
+    parser.add_argument("--dir", default="catalogs", help="folder with the xlsx files")
+    parser.add_argument(
+        "--export", metavar="FILE", help="dump catalog_prices to JSON (accumulative) and exit"
+    )
+    parser.add_argument(
+        "--from-export", metavar="FILE", help="load prices from an --export file instead of xlsx"
+    )
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help="additive: insert only rows whose code is absent (requires --from-export)",
+    )
+    args = parser.parse_args()
+
+    # Foot-gun guards, before any DB access: --only-missing must never silently
+    # degrade into the destructive xlsx full replace.
+    if args.export and args.from_export:
+        sys.exit("--export cannot be combined with --from-export")
+    if args.only_missing and not args.from_export:
+        sys.exit("--only-missing works only with --from-export; the xlsx path is a full replace")
+
+    if args.export:
+        _run_export(_resolve(args.export))
+        return
+
+    if args.from_export:
+        src = _resolve(args.from_export)
+        if not src.is_file():
+            sys.exit(f"Export file not found: {src}")
+        _run_from_export(src, args.only_missing)
+        return
+
+    folder = _resolve(args.dir)
+    files = sorted(folder.glob("*.xlsx"))
+    if not files:
+        sys.exit(f"No xlsx files in {folder}")
+
+    collected, skipped_files = collect_from_xlsx(files)
 
     with SessionLocal() as session:
         deleted = session.query(CatalogPrice).delete()
