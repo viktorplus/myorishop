@@ -18,15 +18,19 @@ below is synthetic data on the `session` fixture or a tmp_path file.
 
 import json
 
+import pytest
 from sqlalchemy import func, select
 
 from app.models import Dictionary
 from app.services.rubrics import RUBRIC_OVERRIDES
 from scripts.import_catalogs import (
+    ShadeNameWouldShrink,
     apply_dictionary_import,
+    apply_shade_name_updates,
     build_dictionary_row,
     export_dictionary,
     merge_dictionary_export,
+    plan_shade_name_updates,
     read_previous_export,
     write_export,
 )
@@ -200,3 +204,131 @@ def test_write_export_into_an_existing_file_preserves_a_foreign_code(tmp_path):
     shrunk = write_export(dest, {})
     assert shrunk == {"before": 2, "added": 0, "updated": 0, "after": 2}
     assert set(read_previous_export(dest)) == {"11111", FAKE_CODE}
+
+
+# ---------------------------------------------------------------------------
+# --restore-shade-names (quick task 260902-k2i)
+#
+# The only mode in this project that UPDATES the name of an existing dictionary
+# row — and the one the orchestrator will run unattended on s1. Its whole
+# safety story is `is_shade_tail`: a name that already carries a product type
+# cannot be the shade tail of anything, so it is out of reach by construction.
+# ---------------------------------------------------------------------------
+
+SHADE_CODE = "33155"
+SHADE_ONLY = "Фарфоровый"
+RESTORED = "Увлажняющая тональная основа the one aqua boost - фарфоровый"
+ORPHAN_CODE = "33157"
+
+SHADE_OVERRIDES = {
+    SHADE_CODE: {"conf": "series", "name": RESTORED, "rubric": "Макияж"},
+    CONFLICT_CODE: {"conf": "series", "name": "Парфюмерия - духи", "rubric": "Парфюмерия"},
+    ORPHAN_CODE: {"conf": "series", "name": "Тональная основа - розовый нюд", "rubric": "Макияж"},
+}
+
+
+def _seed_dictionary(session, code, name, **extra):
+    row = Dictionary(code=code, name=name, name_lc=name.lower(), **extra)
+    session.add(row)
+    session.commit()
+    return row
+
+
+def test_plan_shade_name_updates_selects_only_a_bare_shade_row(session):
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY, catalogs=["01_18"], rubric="Макияж")
+
+    plan = plan_shade_name_updates(session, SHADE_OVERRIDES)
+
+    assert [item["code"] for item in plan] == [SHADE_CODE]
+    assert plan[0]["old"] == SHADE_ONLY
+    assert plan[0]["new"] == RESTORED
+    assert plan[0]["old_rubric"] == "Макияж"
+    assert plan[0]["new_rubric"], "the new rubric is carried, never left blank"
+    # Read-only: nothing was written.
+    session.expire_all()
+    row = session.scalar(select(Dictionary).where(Dictionary.code == SHADE_CODE))
+    assert row.name == SHADE_ONLY
+
+
+def test_a_name_that_already_carries_a_product_type_is_never_planned(session):
+    """The 34473 hand-written-name case: an override exists, the row is safe."""
+    _seed_dictionary(session, CONFLICT_CODE, S1_NAME, catalogs=["05_25"])
+
+    assert plan_shade_name_updates(session, SHADE_OVERRIDES) == []
+
+
+def test_an_override_with_no_dictionary_row_is_never_planned_or_inserted(session):
+    """ORPHAN_CODE has an override but no row — the mode cannot grow the table."""
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY)
+
+    plan = plan_shade_name_updates(session, SHADE_OVERRIDES)
+    assert [item["code"] for item in plan] == [SHADE_CODE]
+
+    apply_shade_name_updates(session, plan)
+    session.commit()
+    assert session.scalar(select(func.count()).select_from(Dictionary)) == 1
+
+
+def test_a_code_with_no_override_is_never_planned(session):
+    _seed_dictionary(session, FAKE_CODE, "Медовый")
+
+    assert plan_shade_name_updates(session, SHADE_OVERRIDES) == []
+
+
+def test_apply_writes_name_name_lc_and_rubric_and_leaves_catalogs_alone(session):
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY, catalogs=["01_18", "01_19"], rubric="Прочее")
+
+    plan = plan_shade_name_updates(session, SHADE_OVERRIDES)
+    updated = apply_shade_name_updates(session, plan)
+    session.commit()
+
+    row = session.scalar(select(Dictionary).where(Dictionary.code == SHADE_CODE))
+    assert updated == 1
+    assert row.name == RESTORED
+    assert row.name_lc == RESTORED.lower()
+    assert row.rubric == plan[0]["new_rubric"]
+    assert row.catalogs == ["01_18", "01_19"], "catalogs are not this mode's business"
+
+
+def test_apply_refuses_a_candidate_that_is_not_strictly_longer(session):
+    """«Ни одно имя не стало короче» — enforced at write time, not hoped for."""
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY)
+    forged = [
+        {
+            "code": SHADE_CODE,
+            "old": SHADE_ONLY,
+            "new": "Фарфор",
+            "old_rubric": None,
+            "new_rubric": "Макияж",
+        }
+    ]
+
+    with pytest.raises(ShadeNameWouldShrink):
+        apply_shade_name_updates(session, forged)
+
+
+def test_the_second_run_plans_nothing(session):
+    _seed_dictionary(session, SHADE_CODE, SHADE_ONLY)
+
+    apply_shade_name_updates(session, plan_shade_name_updates(session, SHADE_OVERRIDES))
+    session.commit()
+
+    assert plan_shade_name_updates(session, SHADE_OVERRIDES) == [], "idempotent"
+
+
+def test_plan_defaults_to_the_shipped_overrides(session):
+    """Called without a table it consults the real rubric_overrides.json."""
+    code, entry = next(
+        (c, e)
+        for c, e in RUBRIC_OVERRIDES.items()
+        if " - " in (e.get("name") or "") and len(e["name"]) <= 200
+    )
+    shade = entry["name"].rsplit(" - ", 1)[1]
+    _seed_dictionary(session, code, shade)
+    _seed_dictionary(session, FAKE_CODE, FAKE_NAME)  # no override -> untouched
+
+    plan = plan_shade_name_updates(session)
+
+    assert [item["code"] for item in plan] == [code]
+    assert plan[0]["new"] == entry["name"]
+    assert plan[0]["new_rubric"] == entry["rubric"], "the override's own rubric is applied"
