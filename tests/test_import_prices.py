@@ -32,6 +32,7 @@ from scripts.import_prices import (
     build_price_rows,
     build_shade_overrides,
     collect_shade_candidates,
+    current_name,
     display_name,
     export_prices,
     insert_missing_price_rows,
@@ -41,6 +42,7 @@ from scripts.import_prices import (
     merge_price_export,
     pick_full_name,
     price_list_files,
+    restore_full_name,
     serialize_export,
     shade_text,
     split_series_type,
@@ -307,12 +309,50 @@ def _products(**names):
     return {code: {"name": name, "catalogs": []} for code, name in names.items()}
 
 
+def test_restore_full_name_matches_the_shade_of_any_variant_not_the_best_one():
+    """The SPEC's load-bearing rule. Comparing against ONE «best» variant is the
+    methodology error it forbids: the same code is a series header in one price
+    list and a shade row in another."""
+    counter = Counter(
+        {
+            # the LONGEST type, but a shade the справочник does not carry
+            ("УЛЬТРАСТОЙКАЯ ТОНАЛЬНАЯ ОСНОВА THE ONE EVERLASTING", "ВАНИЛЬНЫЙ"): 4,
+            ("ТОНАЛЬНАЯ ОСНОВА", "ФАРФОРОВЫЙ"): 1,
+        }
+    )
+    # The «best» variant is the ВАНИЛЬНЫЙ one; the справочник says «Фарфоровый».
+    assert pick_full_name(counter).endswith("ВАНИЛЬНЫЙ"), "precondition"
+
+    assert restore_full_name(counter, "Фарфоровый") == "Тональная основа - фарфоровый"
+    assert restore_full_name(counter, "Ванильный").endswith("everlasting - ванильный")
+    assert restore_full_name(counter, "Медовый") is None, "no variant carries this shade"
+
+
+def test_restore_full_name_takes_the_longest_type_among_the_matching_variants():
+    counter = Counter(
+        {
+            ("ТОН. ОСНОВА", "ФАРФОРОВЫЙ"): 9,
+            ("ТОНАЛЬНАЯ ОСНОВА", "ФАРФОРОВЫЙ"): 1,
+        }
+    )
+
+    assert restore_full_name(counter, "фарфоровый") == "Тональная основа - фарфоровый"
+
+
+def test_current_name_prefers_the_override_over_products_json():
+    products = _products(**{"33155": "Фарфоровый"})
+    assert current_name("33155", products, {}) == "Фарфоровый"
+    assert current_name("33155", products, {"33155": {"name": "Исправлено"}}) == "Исправлено"
+    assert current_name("33155", products, {"33155": {"name": "  "}}) == "Фарфоровый"
+    assert current_name("нет", products, {}) == ""
+
+
 def test_build_shade_overrides_selects_only_bare_shade_names():
     candidates, _ = collect_shade_candidates([SERIES_SHEET])
     products = _products(
         **{
             "33155": "Фарфоровый",
-            # already carries a type -> never rewritten
+            # already carries a type -> equals no variant's shade -> untouched
             "33156": "Тональная основа бежевый нюд",
             "33157": "Розовый нюд",
         }
@@ -327,21 +367,42 @@ def test_build_shade_overrides_selects_only_bare_shade_names():
         "name": "Увлажняющая тональная основа the one aqua boost - фарфоровый",
         "rubric": "Макияж",
     }
-    assert stats["selected"] == 2
-    assert stats["rejected_has_type"] == 1
+    assert stats["selected"] == 2 and stats["appended"] == 2 and stats["updated"] == 0
+    assert stats["no_shade_match"] == 1, "the name that already carries a type"
     assert stats["not_in_products"] == 2
     assert stats["codes"] == 5 and stats["in_products"] == 3
 
 
-def test_build_shade_overrides_skips_a_code_that_already_has_an_override():
+def test_an_existing_override_that_is_still_a_bare_shade_is_restored_in_place():
+    """552 of the 607 are like this: an earlier task wrote the code into
+    rubric_overrides.json WITH the bare shade as its name, and the override
+    wins in resolve_name — so skipping them would undo the restoration."""
     candidates, _ = collect_shade_candidates([SERIES_SHEET])
     products = _products(**{"33155": "Фарфоровый"})
-    existing = {"33155": {"conf": "high", "name": "Уже исправлено", "rubric": "Прочее"}}
+    existing = {"33155": {"conf": "high", "name": "Фарфоровый", "rubric": "Макияж"}}
+
+    fresh, stats = build_shade_overrides(candidates, products, existing)
+
+    assert fresh["33155"]["name"] == (
+        "Увлажняющая тональная основа the one aqua boost - фарфоровый"
+    )
+    assert fresh["33155"]["conf"] == "high", "the entry keeps its own confidence"
+    assert fresh["33155"]["rubric"] == "Макияж", "a web-verified rubric is never reclassified"
+    assert stats["updated"] == 1 and stats["appended"] == 0
+
+
+def test_an_existing_override_that_already_carries_a_type_is_left_alone():
+    """The hand-corrected names (quick task 260721-oti) are out of reach."""
+    candidates, _ = collect_shade_candidates([SERIES_SHEET])
+    products = _products(**{"33155": "Фарфоровый"})
+    existing = {
+        "33155": {"conf": "high", "name": "Тональная основа фарфоровая", "rubric": "Макияж"}
+    }
 
     fresh, stats = build_shade_overrides(candidates, products, existing)
 
     assert fresh == {}
-    assert stats["already_override"] == 1 and stats["selected"] == 0
+    assert stats["selected"] == 0 and stats["no_shade_match"] == 1
 
 
 def test_a_candidate_longer_than_200_chars_is_rejected_never_truncated():
@@ -368,22 +429,27 @@ def test_the_rubric_can_never_get_worse_than_todays():
     assert fresh["33155"]["rubric"] == "Макияж", "fell back to the bare shade's rubric"
 
 
-def test_merge_overrides_appends_without_touching_or_moving_an_existing_entry():
+def test_merge_overrides_rewrites_only_the_name_and_never_moves_a_key():
     existing = {
         "999999": {"conf": "high", "name": "Первый", "rubric": "Прочее"},
-        "111": {"conf": "high", "name": "Второй", "rubric": "Прочее"},
+        "111": {"conf": "medium", "name": "Второй", "rubric": "Украшения"},
     }
     fresh = {
         "222": {"conf": "series", "name": "Б", "rubric": "Макияж"},
-        "111": {"conf": "series", "name": "ПЕРЕЗАПИСЬ", "rubric": "Макияж"},
+        "111": {"conf": "series", "name": "Тушь - второй", "rubric": "Макияж"},
         "000": {"conf": "series", "name": "А", "rubric": "Макияж"},
     }
 
     merged = merge_overrides(existing, fresh)
 
-    assert list(merged) == ["999999", "111", "000", "222"], "insertion order kept, new sorted"
-    assert merged["111"] == existing["111"], "an existing code is never overwritten"
-    assert list(merged.items())[: len(existing)] == list(existing.items())
+    assert list(merged) == ["999999", "111", "000", "222"], "positions kept, new sorted last"
+    assert merged["111"] == {
+        "conf": "medium",  # untouched
+        "name": "Тушь - второй",  # the ONLY field a restoration may change
+        "rubric": "Украшения",  # untouched — web-verified beats a classifier
+    }
+    assert merged["999999"] == existing["999999"], "a code not being restored is identical"
+    assert existing["111"]["name"] == "Второй", "the input dict is not mutated"
 
 
 def test_write_overrides_reproduces_the_files_byte_form(tmp_path):
@@ -435,6 +501,8 @@ def test_the_two_real_price_lists_rebuild_the_33154_series():
     }
     for code, shade in expected.items():
         assert code in candidates, f"{code} was not recovered from the real price lists"
-        name = display_name(pick_full_name(candidates[code]))
+        # Through the production path: the справочник holds the bare shade.
+        name = restore_full_name(candidates[code], shade.capitalize())
+        assert name is not None, code
         assert "тональная основа" in name, name
         assert name.endswith(f"- {shade}"), name

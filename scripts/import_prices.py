@@ -69,7 +69,12 @@ from sqlalchemy import select  # noqa: E402
 from app.core import new_id, to_cents  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import CatalogPrice  # noqa: E402
-from app.services.rubrics import SHADE_DASHES, classify_rubric_by_name, is_shade_tail  # noqa: E402
+from app.services.rubrics import (  # noqa: E402
+    RUBRICS,
+    SHADE_DASHES,
+    classify_rubric_by_name,
+    is_shade_tail,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PRICE_DIR = "catalogs/price_lists"
@@ -362,56 +367,119 @@ def display_name(raw: str) -> str:
     return text[:1].upper() + text[1:].lower()
 
 
+def restore_full_name(counter: Counter, current: str) -> str | None:
+    """The restored name for `current`, or None when no variant fits it.
+
+    SPEC detection rule, and the load-bearing one: the справочник name must
+    equal the shade of AT LEAST ONE recorded variant — not of the single
+    «best» one. Measuring against one best variant is the methodology error
+    the SPEC calls out by name: the same code is a series header in one price
+    list and a shade row in another, so the best variant's shade often is not
+    the shade the справочник kept. (Any-variant gives the SPEC's 607; best-only
+    gives 337.)
+
+    Among the variants that DO carry this shade the normalisation rule then
+    applies — the longest type wins, ties go to the most frequent. Restoring
+    from a shade-matched variant is also what guarantees the new name ends with
+    the old one, so no name can ever get shorter or lose its colour.
+    """
+    cur = (current or "").strip().lower()
+    hits = Counter({key: n for key, n in counter.items() if key[1].strip().lower() == cur})
+    if not hits:
+        return None
+    return display_name(pick_full_name(hits))
+
+
+def current_name(code: str, products: dict[str, dict], existing: dict[str, dict]) -> str:
+    """The name the справочник actually shows today — `resolve_name`'s rule.
+
+    An override wins over products.json, so THAT is the name the predicate has
+    to judge: a code whose override was already corrected by hand carries a
+    product type and is out of reach; a code whose override is still the bare
+    shade is exactly what this task exists to fix.
+    """
+    entry = existing.get(code)
+    if entry:
+        better = (entry.get("name") or "").strip()
+        if better:
+            return better
+    return ((products.get(code) or {}).get("name") or "").strip()
+
+
 def build_shade_overrides(
     candidates: dict[str, Counter], products: dict[str, dict], existing: dict[str, dict]
 ) -> tuple[dict[str, dict], dict[str, int]]:
-    """The selection: which codes get a new override entry, and what it says.
+    """The selection: which codes get their product type back, and under what name.
 
-    A code qualifies only when it has no override yet, exists in products.json,
-    and its CURRENT dictionary name is nothing but the shade of the restored
-    one (`is_shade_tail`). A name that already carries a product type is left
-    alone — rewriting it could be a downgrade.
+    A code qualifies only when the name the справочник shows TODAY (override
+    first, else products.json) is nothing but the shade of the restored one.
+    A name that already carries a product type cannot equal any variant's
+    shade, so it is out of reach — that is the whole safety story.
+
+    Most of the selected codes already HAVE an override entry whose name is
+    that very bare shade (earlier quick tasks wrote them that way), and
+    `resolve_name` makes the override win everywhere — so leaving them alone
+    would silently undo the restoration on the next import. Their entry keeps
+    its `conf` and its web-verified `rubric`; only the name is replaced.
     """
     stats = {
         "codes": len(candidates),
         "in_products": sum(1 for code in candidates if code in products),
-        "already_override": sum(1 for code in candidates if code in existing),
         "not_in_products": 0,
+        "no_shade_match": 0,
         "rejected_has_type": 0,
         "rejected_too_long": 0,
+        "updated": 0,
+        "appended": 0,
         "selected": 0,
     }
     fresh: dict[str, dict] = {}
     for code in sorted(candidates):
-        if code in existing:
-            continue
-        entry = products.get(code)
-        if entry is None:
+        current = current_name(code, products, existing)
+        if not current:
             stats["not_in_products"] += 1
             continue
-        current = (entry.get("name") or "").strip()
-        restored = display_name(pick_full_name(candidates[code]))
+        restored = restore_full_name(candidates[code], current)
+        if restored is None:
+            stats["no_shade_match"] += 1
+            continue
         if len(restored) > MAX_NAME:
             stats["rejected_too_long"] += 1
             continue
         if not is_shade_tail(current, restored):
             stats["rejected_has_type"] += 1
             continue
-        # The rubric can never get WORSE than today's: an unclassifiable
-        # restored name falls back to what the bare shade already resolved to.
-        rubric = classify_rubric_by_name(restored)
-        if rubric == "Прочее":
-            rubric = classify_rubric_by_name(current)
-        fresh[code] = {"conf": "series", "name": restored, "rubric": rubric}
+        prior = existing.get(code)
+        if prior is not None and prior.get("rubric") in RUBRICS:
+            # A web-verified rubric beats anything a name classifier can say.
+            conf, rubric = prior.get("conf", "series"), prior["rubric"]
+            stats["updated"] += 1
+        else:
+            # The rubric can never get WORSE than today's: an unclassifiable
+            # restored name falls back to what the bare shade resolved to.
+            conf = "series"
+            rubric = classify_rubric_by_name(restored)
+            if rubric == "Прочее":
+                rubric = classify_rubric_by_name(current)
+            stats["appended" if prior is None else "updated"] += 1
+        fresh[code] = {"conf": conf, "name": restored, "rubric": rubric}
         stats["selected"] += 1
     return fresh, stats
 
 
 def merge_overrides(existing: dict[str, dict], fresh: dict[str, dict]) -> dict[str, dict]:
-    """Pure append: an existing code is never overwritten and never moves."""
-    merged = dict(existing)
+    """Name-only merge — the same shape quick task 260721-oti used.
+
+    Not one existing key MOVES, and not one existing `conf` or `rubric`
+    changes: an entry that is being restored has ONLY its `name` replaced (and
+    only ever by a strictly longer name ending in the same shade). A code that
+    is genuinely new is appended in plain sorted order, after everything.
+    """
+    merged = {code: dict(entry) for code, entry in existing.items()}
     for code in sorted(fresh):
-        if code not in merged:
+        if code in merged:
+            merged[code]["name"] = fresh[code]["name"]
+        else:
             merged[code] = fresh[code]
     return merged
 
@@ -467,11 +535,13 @@ def _run_restore_shades(price_dir: Path, products_path: Path, apply: bool, repor
 
     print(f"Shade codes found: {stats['codes']}")
     print(f"  in products.json: {stats['in_products']}   absent: {stats['not_in_products']}")
-    print(f"  already have an override: {stats['already_override']}")
-    print(f"  rejected, name already carries a type: {stats['rejected_has_type']}")
+    print(f"  rejected, name already carries a type: "
+          f"{stats['no_shade_match'] + stats['rejected_has_type']}")
     print(f"  rejected, longer than {MAX_NAME} chars: {stats['rejected_too_long']}")
     print(f"  shade rows dropped for lack of a series type: {dropped}")
-    print(f"SELECTED: {stats['selected']}")
+    print(f"SELECTED: {stats['selected']}  "
+          f"(name-only update of an existing entry: {stats['updated']}, "
+          f"appended as new: {stats['appended']})")
     print("Rubrics: " + ", ".join(f"{r}={n}" for r, n in Counter(
         e["rubric"] for e in fresh.values()).most_common()))
     for code in SAMPLE_CODES:
