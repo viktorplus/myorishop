@@ -45,9 +45,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import openpyxl  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.core import new_id, to_cents  # noqa: E402
-from app.db import SessionLocal  # noqa: E402
+from app.db import SessionLocal, engine  # noqa: E402
 from app.models import CatalogPrice, Dictionary  # noqa: E402
+from app.services.backup import create_backup  # noqa: E402
 from app.services.catalogs import to_json_code  # noqa: E402
 from app.services.rubrics import RUBRIC_OVERRIDES, resolve_name, resolve_rubric  # noqa: E402
 from scripts.import_prices import build_price_rows, upsert_price_rows  # noqa: E402
@@ -56,6 +58,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILE = "catalogs/oriflame_prices_with_calculations_fixed.xlsx"
 SHEET_NAME = "Прайс-лист"
 EXPECTED_HEADERS = ["Код", "Название", "ДЦ", "ПЦ", "Последний каталог"]
+
+
+class DictionaryReplaceRefused(RuntimeError):
+    """The wholesale `dictionary` replace was refused before it deleted anything.
+
+    Mirrors ShadeNameWouldShrink in scripts/import_catalogs.py — the last line
+    of defence for the unattended server run. Named `Refused` rather than
+    `WouldShrink` because it carries two distinct messages: an empty price list
+    (which is not a shrink at all when the table is empty too) and a replace
+    that would leave fewer rows stored than there are now.
+    """
 
 
 def parse_last_catalog(value) -> tuple[int, int] | None:
@@ -232,14 +245,71 @@ def build_catalog_price_rows(collected: dict[str, dict]) -> list[CatalogPrice]:
     return build_price_rows(build_catalog_price_records(collected))
 
 
-def apply_master_import(session, collected: dict[str, dict]) -> dict[str, int]:
+def backup_before_replace(engine) -> Path | None:
+    """VACUUM INTO snapshot before the wholesale replace — the way back.
+
+    SQLite only: `VACUUM INTO` is a SQLite statement, so on any other dialect
+    this prints one skip line and returns None — the policy
+    `.env.production.example:25` already states for BACKUP_ON_STARTUP. A server
+    run must not crash here, and must not stay silent either.
+
+    The exception `create_backup` raises is deliberately NOT caught: a snapshot
+    that cannot be taken must ABORT the import before anything is deleted.
+    Takes the engine (not a session) and is called from main() before the
+    session is opened on purpose — apply_master_import is called directly by
+    unit tests on throwaway engines, and a filesystem side effect inside it
+    would spray backups into the developer's real data/backups/.
+    """
+    if engine.dialect.name != "sqlite":
+        print(
+            "Rollback snapshot skipped: VACUUM INTO is SQLite-only "
+            f"(dialect: {engine.dialect.name})"
+        )
+        return None
+    snapshot = create_backup(engine, Path(settings.backup_dir))
+    print(f"Rollback snapshot: {snapshot}")
+    return snapshot
+
+
+def apply_master_import(
+    session, collected: dict[str, dict], *, force: bool = False
+) -> dict[str, int]:
     """Rebuild `dictionary` wholesale, upsert only this source's price triples.
 
     Does not commit — the caller owns the transaction. Returns the
     upsert_price_rows stats (inserted / updated / unchanged).
+
+    Both guards live HERE rather than in main(), so every caller is protected.
+    THE THRESHOLD IS 0 %, AND IT STAYS 0 % — no tolerance band.
+    `deploy/DEPLOY.s1.md:73-121` documents the install order: this importer runs
+    FIRST (§4, line 82) and
+    `scripts/import_catalogs.py --only-missing --file catalogs/products.json`
+    runs after it (§4.1, line 117), so on a clean install `dictionary` is EMPTY
+    here — 0 -> 6 856 is growth and the guard is silent on the happy path. The
+    case it DOES fire on is a re-run against an already-loaded server, where
+    `deploy/DEPLOY.s1.md:101-105` gives the numbers: the master price list
+    covers 6 856 codes while the full справочник holds 12 582. That is a 45 %
+    loss — precisely the destruction this guard exists to stop, guarded until
+    now by nothing but the prose warning at `deploy/DEPLOY.s1.md:94-97`. A 20 %
+    tolerance would not even catch that case (45 % > 20 %); it would only weaken
+    the small-drift case, so it buys nothing and costs protection.
     """
+    if not collected:
+        raise DictionaryReplaceRefused(
+            "refusing to replace `dictionary` from an empty price list: nothing was "
+            "collected, so the replace would delete every row and put nothing back"
+        )
+    rows = build_dictionary_rows(collected)
+    before = session.query(Dictionary).count()
+    if len(rows) < before and not force:
+        raise DictionaryReplaceRefused(
+            f"refusing to replace `dictionary`: stored {before} -> about to write "
+            f"{len(rows)}. Restore the fuller справочник with "
+            "`scripts/import_catalogs.py --only-missing --file catalogs/products.json`; "
+            "pass --force only if this shrink is a deliberate rebuild"
+        )
     session.query(Dictionary).delete()
-    session.bulk_save_objects(build_dictionary_rows(collected))
+    session.bulk_save_objects(rows)
     return upsert_price_rows(session, build_catalog_price_records(collected))
 
 
@@ -267,7 +337,17 @@ def main() -> None:
         action="store_true",
         help="additive: insert only the missing override-only codes; delete nothing",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="permit a full replace that leaves FEWER dictionary rows than are stored",
+    )
     args = parser.parse_args()
+
+    # Foot-gun guard, in the style of the sibling scripts: --only-missing deletes
+    # nothing at all, so there is no shrink for --force to permit.
+    if args.force and args.only_missing:
+        sys.exit("--force is meaningless with --only-missing; that mode deletes nothing")
 
     src = Path(args.file)
     if not src.is_absolute():
@@ -280,6 +360,18 @@ def main() -> None:
     skipped_missing_code = stats["skipped_missing_code"]
     skipped_bad_catalog = stats["skipped_bad_catalog"]
     extra = override_only_rows(set(collected))
+
+    # The same empty-input refusal the sibling script has (import_prices.py:988).
+    # It guards BOTH modes on purpose: with a degraded parse --only-missing would
+    # insert a priceless «Не опознан» row for every override code that actually IS
+    # in the price list. It deletes nothing, but it is still junk, and fail-closed
+    # is the rule here.
+    if not collected:
+        sys.exit(
+            f"Collected 0 price rows from {src} "
+            f"(missing code: {skipped_missing_code}, "
+            f"unparsable catalog: {skipped_bad_catalog}) — nothing written"
+        )
 
     if args.only_missing:
         with SessionLocal() as session:
@@ -295,11 +387,26 @@ def main() -> None:
         print(f"Dictionary: {before_dict} -> {after_dict}")
         return
 
+    # The pre-write half of the summary, and the snapshot, BEFORE the first row
+    # is deleted: statistics an operator reads after session.commit() cannot stop
+    # anything. The post-write half stays below — those numbers do not exist yet.
+    print(f"Source: {src}")
+    print(f"Sheet: {SHEET_NAME}")
+    print(f"Data rows scanned: {total_rows}")
+    print(f"Rows imported: {len(collected)}")
+    print(
+        "Rows skipped: "
+        f"{skipped_missing_code + skipped_bad_catalog} "
+        f"(missing code: {skipped_missing_code}, unparsable catalog: {skipped_bad_catalog})"
+    )
+    print(f"Dictionary rows from overrides only (no price): {len(extra)}")
+    backup_before_replace(engine)
+
     with SessionLocal() as session:
         before_dict = session.query(Dictionary).count()
         before_cp = session.query(CatalogPrice).count()
 
-        price_stats = apply_master_import(session, collected)
+        price_stats = apply_master_import(session, collected, force=args.force)
         session.commit()
 
         after_dict = session.query(Dictionary).count()
@@ -311,16 +418,6 @@ def main() -> None:
             session.query(Dictionary).filter(Dictionary.rubric == "Прочее").count()
         )
 
-    print(f"Source: {src}")
-    print(f"Sheet: {SHEET_NAME}")
-    print(f"Data rows scanned: {total_rows}")
-    print(f"Rows imported: {len(collected)}")
-    print(
-        "Rows skipped: "
-        f"{skipped_missing_code + skipped_bad_catalog} "
-        f"(missing code: {skipped_missing_code}, unparsable catalog: {skipped_bad_catalog})"
-    )
-    print(f"Dictionary rows from overrides only (no price): {len(extra)}")
     print(f"Dictionary: {before_dict} -> {after_dict} (replaced wholesale)")
     print(f"CatalogPrice: {before_cp} -> {after_cp} (upserted, nothing removed)")
     print(

@@ -13,16 +13,21 @@ against the operator's data/myorishop.db (a full-replace run there would drop
 `session` fixture, or read-only on the tracked master price list.
 """
 
+import ast
+import types
 from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.core import new_id
 from app.models import CatalogPrice, Dictionary
 from app.services.rubrics import RUBRIC_OVERRIDES
 from scripts.import_master_pricelist import (
+    DictionaryReplaceRefused,
     apply_master_import,
+    backup_before_replace,
     build_catalog_price_records,
     build_catalog_price_rows,
     build_dictionary_rows,
@@ -33,6 +38,7 @@ from scripts.import_master_pricelist import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MASTER = PROJECT_ROOT / "catalogs" / "oriflame_prices_with_calculations_fixed.xlsx"
+SCRIPT = PROJECT_ROOT / "scripts" / "import_master_pricelist.py"
 
 # The 34 «НЕТ В СПРАВОЧНИКЕ» codes of the «Офис» inventory — the complete,
 # intended override-only set. If the real-price-list gap test below reports
@@ -262,3 +268,171 @@ def test_build_catalog_price_records_is_the_seven_key_export_shape():
     }
     assert records[0]["code"] == FAKE_CODE
     assert records[0]["points"] is None, "the master price list has no ББ column"
+
+
+# ---------------------------------------------------------------------------
+# Quick task 260902-tev — CR-01: the wholesale `dictionary` replace is guarded,
+# and the operator gets a snapshot plus the skip statistics BEFORE the delete.
+#
+# The input goes empty silently and plausibly: the headers are all in place, but
+# every row is dropped by `skipped_bad_catalog` when the «Последний каталог»
+# column changes shape in a new export. Before this task that turned a full
+# replace into a wipe, and the statistics that would have shown it were printed
+# after `session.commit()`.
+# ---------------------------------------------------------------------------
+
+
+def _seeded_dictionary_row(session, code: str) -> None:
+    session.add(
+        Dictionary(
+            id=new_id(), code=code, name="Живая строка", name_lc="живая строка", catalogs=[]
+        )
+    )
+    session.commit()
+
+
+def test_apply_master_import_refuses_an_empty_price_list(session):
+    """A degraded parse must not be able to empty the справочник."""
+    _seeded_dictionary_row(session, "555555")
+    before = session.scalar(select(func.count()).select_from(Dictionary))
+
+    with pytest.raises(DictionaryReplaceRefused):
+        apply_master_import(session, {})
+
+    session.rollback()
+    assert session.scalar(select(func.count()).select_from(Dictionary)) == before
+    kept = session.scalar(select(Dictionary).where(Dictionary.code == "555555"))
+    assert kept is not None, "the guard fires BEFORE the delete"
+
+
+def test_apply_master_import_refuses_a_replace_that_would_shrink_the_dictionary(session):
+    """The s1 case: 12 582 stored codes replaced by the 6 856 a price list covers."""
+    # Never hardcode the override count — it grows. Ask the function itself.
+    planned = len(build_dictionary_rows({FAKE_CODE: dict(FAKE_ROW)}))
+    session.bulk_save_objects(
+        [
+            Dictionary(
+                id=new_id(),
+                code=f"77{i:05d}",
+                name=f"Строка {i}",
+                name_lc=f"строка {i}",
+                catalogs=[],
+            )
+            for i in range(planned + 1)
+        ]
+    )
+    session.commit()
+
+    with pytest.raises(DictionaryReplaceRefused) as exc:
+        apply_master_import(session, {FAKE_CODE: dict(FAKE_ROW)})
+
+    session.rollback()
+    assert session.scalar(select(func.count()).select_from(Dictionary)) == planned + 1
+
+    # ACTIONABLE, not merely alarming: an operator who hits this must be able to
+    # read the way out of the message instead of reaching for --force reflexively.
+    message = str(exc.value)
+    assert str(planned + 1) in message, message
+    assert str(planned) in message, message
+    assert "import_catalogs.py" in message, message
+    assert "--force" in message, message
+
+
+def test_force_allows_the_shrinking_replace(session):
+    planned = len(build_dictionary_rows({FAKE_CODE: dict(FAKE_ROW)}))
+    session.bulk_save_objects(
+        [
+            Dictionary(
+                id=new_id(),
+                code=f"77{i:05d}",
+                name=f"Строка {i}",
+                name_lc=f"строка {i}",
+                catalogs=[],
+            )
+            for i in range(planned + 1)
+        ]
+    )
+    session.commit()
+
+    apply_master_import(session, {FAKE_CODE: dict(FAKE_ROW)}, force=True)
+    session.commit()
+
+    assert session.scalar(select(func.count()).select_from(Dictionary)) == planned
+
+
+def test_backup_before_replace_takes_a_vacuum_snapshot(engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+
+    snapshot = backup_before_replace(engine)
+
+    assert snapshot is not None
+    assert snapshot.is_file()
+    assert snapshot.parent == tmp_path
+    assert snapshot.match("myorishop-*.db")
+    assert snapshot.stat().st_size > 0
+
+
+def test_backup_before_replace_is_a_printed_noop_on_postgresql(tmp_path, monkeypatch, capsys):
+    """A server run must not crash on VACUUM INTO — and must not stay silent."""
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+    postgres = types.SimpleNamespace(dialect=types.SimpleNamespace(name="postgresql"))
+
+    assert backup_before_replace(postgres) is None
+
+    assert list(tmp_path.iterdir()) == [], "nothing is written on a non-SQLite dialect"
+    assert capsys.readouterr().out.strip(), "the skip must be reported, not silent"
+
+
+def test_a_failed_snapshot_aborts_the_import(engine, session, tmp_path, monkeypatch):
+    """A snapshot that cannot be taken must abort, never degrade to a warning.
+
+    The behaviour is free today — the point of the test is to stop a future
+    `except Exception: print(...)` from quietly demoting the last line of defence.
+    """
+    monkeypatch.setattr(settings, "backup_dir", str(tmp_path))
+
+    def boom(*_args, **_kwargs):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr("scripts.import_master_pricelist.create_backup", boom)
+    _seeded_dictionary_row(session, "555555")
+
+    with pytest.raises(OSError):
+        backup_before_replace(engine)
+
+    assert session.scalar(select(Dictionary).where(Dictionary.code == "555555")) is not None
+
+
+def _main_function(path: Path) -> ast.FunctionDef:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+
+
+def test_the_operator_sees_the_statistics_and_the_backup_before_anything_is_written():
+    """Print order as a tripwire: statistics after the commit are useless."""
+    main = _main_function(SCRIPT)
+
+    stats_line = min(
+        node.lineno
+        for node in ast.walk(main)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and "Rows skipped" in node.value
+    )
+    backup_call = min(
+        node.lineno
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call) and "backup_before_replace" in ast.unparse(node)
+    )
+    session_block = max(
+        node.lineno
+        for node in ast.walk(main)
+        if isinstance(node, ast.With) and "SessionLocal" in ast.unparse(node.items[0])
+    )
+
+    assert stats_line < session_block, "the skip statistics are printed after the write"
+    assert backup_call < session_block, "the snapshot is taken after the write"
