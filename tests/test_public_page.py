@@ -8,6 +8,8 @@
 from app.routes.public_pages import (
     ARTIFACT_FILE,
     ARTIFACT_PATH,
+    RECEIPT_FILE,
+    RECEIPT_PATH,
     REPORT_FILE,
     REPORT_PATH,
     UNKNOWN_FILE,
@@ -94,3 +96,29 @@ def test_import_report_file_is_present_and_self_contained(anon_client):
         "Где перепроверить",
     ):
         assert heading in html, heading
+
+
+def test_office_receipt_report_is_served_to_anonymous_visitor(anon_client):
+    response = anon_client.get(RECEIPT_PATH)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Приход на склад «Офис», 3 сентября 2026" in response.text
+
+
+def test_office_receipt_report_keeps_its_own_dark_theme(anon_client):
+    """Обёртка этой страницы НАМЕРЕННО отличается от трёх соседних.
+
+    Страница сама объявляет и светлую, и тёмную палитру и сама красит body —
+    светлая обёртка соседей сломала бы её в тёмной теме.
+    """
+    html = RECEIPT_FILE.read_text(encoding="utf-8")
+
+    assert html.startswith("<!doctype html>")
+    assert html.rstrip().endswith("</html>")
+    assert html.count("<title>") == 1
+    assert "@media (prefers-color-scheme: dark)" in html
+    assert ':root[data-theme="dark"]' in html
+    # маркеры соседской светлой обёртки — если её скопируют сюда, тест покраснеет
+    assert "color-scheme:light" not in html
+    assert "background:#faf9f5" not in html
