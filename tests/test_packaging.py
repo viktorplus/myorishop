@@ -331,6 +331,12 @@ def test_iss_referenced_paths_exist_in_dist(tmp_path):
     assert 'Parameters: "-m launcher"' in text, (
         "the shortcut target is an interpreter — without -m launcher it opens a REPL"
     )
+    # Inno reads ONE [Icons] entry per line: a wrapped entry would silently drop
+    # Parameters/WorkingDir (the source uses a backslash line-continuation).
+    icon_lines = [line for line in text.splitlines() if line.startswith("Name: ")]
+    assert len(icon_lines) == 1 and icon_lines[0].endswith('WorkingDir: "{app}"'), (
+        f"the [Icons] entry must be a single line — got {icon_lines}"
+    )
 
     def _under_app(value: str) -> Path:
         assert value.startswith("{app}\\"), f"unexpected non-{{app}} target {value!r}"

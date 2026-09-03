@@ -329,6 +329,20 @@ def generate_iss(*, dist_dir: Path, version: str, dest: Path) -> Path:
     beside app\\ (PKG-03). [Files] Source paths are relative to the script dir
     (Inno's SourceDir default), so the .iss is generated INTO dist\\ and compiled
     with `iscc dist\\MyOriShop.iss` (Plan 05).
+
+    Every referenced path MUST be a file the installer actually ships — asserted
+    by tests/test_packaging.py::test_iss_referenced_paths_exist_in_dist. A dead
+    target inside a user-writable per-user install root is not merely a broken
+    shortcut, it is a plant-and-hijack surface (T-31-08). Hence the shortcut runs
+    ``launcher\\python.exe -m launcher`` on the runtime
+    ``assemble_launcher_runtime`` bundles. ``python.exe`` (console), not
+    ``pythonw.exe``, is deliberate: it mirrors run.bat and is the only place the
+    operator sees the «Migration failed - server not started» abort. WorkingDir
+    is cosmetic — the launcher ._pth puts the interpreter in isolated mode, so
+    the search path (not the cwd) is what resolves ``-m launcher``.
+
+    The Start-Menu icon is the stock Python one until a real .ico is added
+    (cosmetic, out of scope).
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -340,7 +354,7 @@ AppVersion={version}
 PrivilegesRequired=lowest
 DefaultDirName={{localappdata}}\\MyOriShop
 DisableProgramGroupPage=yes
-UninstallDisplayIcon={{app}}\\launcher\\launcher.exe
+UninstallDisplayIcon={{app}}\\launcher\\python.exe
 OutputBaseFilename=MyOriShop-Setup-{version}
 
 [Files]
@@ -350,7 +364,8 @@ Source: "app\\*"; DestDir: "{{app}}\\app"; Flags: recursesubdirs
 ; NOTE: data\\ is NOT shipped — created on first run under {{app}}\\data (PKG-03).
 
 [Icons]
-Name: "{{autoprograms}}\\MyOriShop"; Filename: "{{app}}\\launcher\\launcher.exe"
+Name: "{{autoprograms}}\\MyOriShop"; Filename: "{{app}}\\launcher\\python.exe"; \
+Parameters: "-m launcher"; WorkingDir: "{{app}}"
 """
     dest.write_text(iss, encoding="utf-8")
     return dest
