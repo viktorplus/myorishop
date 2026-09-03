@@ -53,3 +53,16 @@ def public_unknown_codes_report():
     if not UNKNOWN_FILE.is_file():
         raise HTTPException(status_code=404, detail="page not found")
     return FileResponse(UNKNOWN_FILE, media_type="text/html; charset=utf-8")
+
+
+# Отчёт по приходу 1355 шт на склад «Офис» 03.09.2026. Режим тот же: статический
+# файл, никаких запросов к базе и никаких параметров запроса.
+RECEIPT_PATH = "/code/artifact/143c5a2c-d93f-4361-ae44-0059c828962a"
+RECEIPT_FILE = Path("app/static/public/artifact-143c5a2c-d93f-4361-ae44-0059c828962a.html")
+
+
+@router.get(RECEIPT_PATH, include_in_schema=False)
+def public_office_receipt_report():
+    if not RECEIPT_FILE.is_file():
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(RECEIPT_FILE, media_type="text/html; charset=utf-8")
