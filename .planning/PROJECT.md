@@ -28,9 +28,30 @@ Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Last Milestone (closed 2026-09-03): v4.0 Distribution & Delivery
+## Current Milestone: v5.0 Corrections, Dates & Currency
 
-> No milestone is currently active. Start the next one with `/gsd-new-milestone`. The scope below is kept as the historical record of what v4.0 set out to do.
+**Goal:** Let the operator repair and correctly date their own data — reverse a wrong operation from История, record an operation with the date it actually happened, run warehouses in separate currencies without ever summing across them, and fix product and customer cards from the phone.
+
+**Target features:**
+- **Back-dated operations** — a business date, operator-supplied and defaulting to the technical timestamp, so a sale made yesterday and entered today lands in yesterday's period on every report. The technical timestamp stays untouched: it is the sync cursor and the audit trail.
+- **Per-warehouse currency (RUB/UAH/EUR)** — `Warehouse.currency` with no conversion, no rate table, no base-currency roll-up. Reports become single-currency behind a mandatory warehouse/currency filter; cross-currency totals must not exist; a basket may not mix warehouses.
+- **One-tap reversal of a wrong operation** — a confirmed «сторно» control in История that writes a *new compensating operation* through the existing sanctioned write paths, linked back to the operation it reverses. Covers receipts, write-offs, transfers and cash movements. The append-only ledger stays append-only.
+- **Mobile editing of product and customer cards** — mobile route pairs mirroring the desktop edit/update pair and reusing the same services, so min sale price, cost, category, low-stock threshold and customer details are reachable from the phone.
+
+**Phase order (dependency-driven, not preference-driven):**
+1. Back-dated operations — ledger schema change; every period-scoped report reads it. Follows the project's established "schema before its readers" rule (v2.0 sequenced price consolidation as Phase 18 ahead of every page rebuild that read the price shape).
+2. Per-warehouse currency — second schema change; introduces a warehouse dimension that `reports.py`/`dashboard.py`/`finance.py` do not have at all, plus a currency-aware money render across desktop and mobile.
+3. One-tap reversal — consumer of both: a compensating row must carry the business date, and История must render sums with a currency.
+4. Mobile editing — last, against the finished feature set (v1.1 precedent: the mobile flow was built once, after every operation type existed). Its edit forms display prices, so it needs the final money render.
+
+**Scoping notes:**
+- All four were captured from live-usage audits (2026-08-09 and 2026-08-13) and verified by reading the code — see `.planning/ROADMAP.md` Backlog and `.planning/OPEN-WORK-AUDIT-2026-09-04.md`.
+- The append-only ledger constraint is not negotiable: `record_operation` stays the sole sanctioned write path and the DB triggers that ABORT any UPDATE stay in place. Reversal is a new row, never an edit or a delete.
+- `needs verification` before planning currency: what happens when a new-schema client pushes `currency` to an old-schema server. `merge.KIND_TO_FIELDS` derives fields from model columns, so the field likely drops silently — cover with a version-mismatch test.
+- The two open human-only v4.0 commitments (bare-Windows installer run, first tag-triggered signed release) are unaffected by this milestone and remain outstanding.
+
+<details>
+<summary>Archived: v4.0 Distribution & Delivery (SHIPPED 2026-09-03)</summary>
 
 **Goal:** Turn the app from a run.bat/uv dev checkout into a self-contained, self-updating local client distribution for Windows operators; the central server (s1, ori.viktorplus.com) stays a plain Docker deployment and is out of scope for packaging/auto-update — it is the sync/update target, not a client.
 
@@ -45,6 +66,8 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - Central server packaging/auto-update is OUT of scope — the server is the update target, deployed via Docker
 - SECURITY-SENSITIVE: the client runs fetched code → release signature/checksum verification, safe unpack, and rollback on failure are mandatory
 - Open questions for requirements/roadmap: update-check cadence (startup vs periodic), auto-apply vs notify, Windows launcher self-restart after update, release-archive staging, and how GitHub Releases are produced (manual vs CI on tag)
+
+</details>
 
 <details>
 <summary>Archived: v3.0 Multi-Operator Sync, Central Server & Roles (phases complete 2026-07-20; verification/security tails open)</summary>
@@ -186,19 +209,19 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 
 ### Active
 
-None — v4.0 closed 2026-09-03 and the next milestone is not yet scoped. `.planning/REQUIREMENTS.md` is intentionally absent until `/gsd-new-milestone` generates a fresh one.
+Milestone v5.0 Corrections, Dates & Currency — scoped 2026-09-04, requirements being defined. See `.planning/REQUIREMENTS.md` once generated.
 
 Two carried-over commitments that belong to no milestone but must happen before v4.0 is real to an operator: the bare-Windows installer run, and the first tag-triggered signed release.
 
 ### Future (next milestone, deferred)
 
-- [ ] Multi-operator sync across countries via a central server, server-based (online) + USB flash-drive (offline) (SYNC-V2-01)
-- [ ] Multi-currency support (CUR-V2-01)
-- [ ] User roles: administrator, operator, report viewer (AUTH-V2-01)
+- [ ] User roles: administrator, operator, report viewer — the third "report viewer" role only; administrator/operator shipped in v3.0 (AUTH-V2-01)
 - [ ] Customer purchase-frequency analysis and "running low" reminders (CST-V2-01)
 - [ ] On goods receipt, show customers likely interested in the product based on purchase history (CST-V2-02)
 - [ ] CSV export includes warehouse/batch columns (EXP-V2-01)
-- [ ] Mobile CRUD parity: warehouses, products/catalog, customers, dictionary, full reports (deferred from v1.2 mobile audit)
+- [ ] Mobile CRUD parity beyond v5.0's product/customer cards: warehouses, dictionary, full reports (deferred from v1.2 mobile audit)
+- [x] Multi-operator sync across countries via a central server, server-based (online) + USB flash-drive (offline) — shipped in v3.0 (SYNC-V2-01)
+- [~] Multi-currency support — scoped into v5.0 as per-warehouse currency with no conversion (CUR-V2-01)
 
 ### Out of Scope
 
@@ -224,7 +247,7 @@ Two carried-over commitments that belong to no milestone but must happen before 
 - **Phase 17 shipped 2026-07-15 (final phase of v1.3)**: read-only aggregation services (`cash_expense_total`, `stock_valuation`, `cash_flow_report`) plus period-scoped CSV export, Финансы dashboard tiles (gross/net profit, stock valuation) on desktop and mobile, a cash-flow report page with CSV download, and mobile parity via shared `finance_base`-parameterised partials. Gap-closure plan 17-05 added missing navigation entry points to the new report pages (desktop top-nav, mobile home tile, dashboard buttons), found by UAT Test 2.
 - **v1.3 shipped 2026-07-15** (started 2026-07-14, 2 days): 3 phases (15-17), 13 plans, 102 commits, 142 files changed, +11,114/-10,521 lines. Stack held unchanged: FastAPI + SQLAlchemy 2.0 + SQLite (WAL) + HTMX 2.0.10 (vendored) + Jinja2, uv, Alembic. All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close — both skipped by explicit operator decision at completion time (2026-07-15), a deviation from the v1.0/v1.1/v1.2 pattern of auditing/security-checking before archiving. One new advisory (non-blocking) warning: desktop `/finance` history renders literal `None` for an empty comment (mobile cards handle it correctly); guard with `{{ movement.note or "" }}` when next touching finance templates. The two advisory transfers.py/writeoffs.py warnings from v1.1 remain untouched.
 - **v2.0 shipped 2026-07-17** (started 2026-07-16, 2 days): 7 phases (18-24), 42 plans, 103 tasks, 339 files changed, +39,747/-9,967 lines, 354 commits (since v1.3 tag). Stack held unchanged. `/gsd-audit-milestone` run (full scope, all 7 phases) passed with status `tech_debt`: 46/46 requirements satisfied across three independent sources, cross-phase integration checker found no wiring gaps or dangling `catalog_cents` references across Phase 18→19→20→22→23, 919/919 tests green. Open item: Phase 22 (Sales) shipped 4 human-verification test cases (live JS basket-total math, incomplete-row marker, customer-mode round-trip, mobile basket preservation) with no completed UAT confirming them in a live browser — unlike the structurally identical Phase 18/20 items, both of which have a passed UAT file. Roughly half of REQUIREMENTS.md's checkboxes were stale (marked unchecked despite being fully verified) at every phase's own VERIFICATION.md — a tracking-doc lag only, not a code gap; see `.planning/v2.0-MILESTONE-AUDIT.md` for the full breakdown.
-- **Next milestone (not yet scoped):** leading candidates carried from the v1.1-era Future list — multi-operator sync across countries via a central server (server-based online + USB flash-drive offline), multi-currency support, user roles (administrator, operator, report viewer), customer purchase-frequency "running low" reminders, likely-interested-customer suggestions on goods receipt. Run `/gsd-new-milestone` to scope and prioritize.
+- **v5.0 scoped 2026-09-04:** the operator chose all four backlog phases captured from the 2026-08-09/2026-08-13 live-usage audits — back-dated operations, per-warehouse currency, one-tap reversal, mobile card editing. `.planning/OPEN-WORK-AUDIT-2026-09-04.md` records the full open-work picture at that moment, including 21 stale bookkeeping entries whose work had in fact shipped (4 debug sessions, 17 quick tasks) and 3 real hygiene gaps (`25-SECURITY.md` missing, `29-UAT.md` missing, v3.0 never archived).
 
 ## Constraints
 
@@ -279,4 +302,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-03 after v4.0 milestone close*
+*Last updated: 2026-09-04 at v5.0 milestone start*

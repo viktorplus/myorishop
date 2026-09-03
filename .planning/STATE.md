@@ -1,34 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.0
-milestone_name: Distribution & Delivery
-status: Awaiting next milestone
-stopped_at: Milestone v4.0 archived — 27 open artifacts acknowledged as deferred
-last_updated: "2026-09-03T22:05:11.882Z"
-last_activity: 2026-09-03 — Milestone v4.0 completed and archived
+milestone: v5.0
+milestone_name: Corrections, Dates & Currency
+status: planning
+last_updated: "2026-09-03T23:16:00.607Z"
+last_activity: 2026-09-03
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-22)
+See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Planning next milestone (v4.0 shipped and archived 2026-09-03)
+**Current focus:** v5.0 Corrections, Dates & Currency — defining requirements for back-dated operations, per-warehouse currency, one-tap reversal, and mobile card editing
 
 ## Current Position
 
-Phase: Milestone v4.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-03 — Milestone v4.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-03 — Milestone v5.0 started
 
 ## Performance Metrics
 
