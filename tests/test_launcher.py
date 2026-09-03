@@ -564,6 +564,42 @@ def test_run_once_applies_app_written_marker(tmp_path, monkeypatch):
     assert not (data / "pending.json").exists()
 
 
+def test_stage_pending_writes_the_marker_atomically(tmp_path, monkeypatch):
+    """WR-03 (producer half): ``pending.json`` appears whole or not at all.
+
+    ``Path.write_text`` truncates then writes, and the launcher polls that exact
+    file every 2 s — a read landing in the window yielded ``""`` or a prefix.
+    The proof is structural: the marker path is never written directly, it only
+    ever materialises via ``os.replace`` of an ALREADY complete temp file. The
+    patch is keyed on the destination argument, not on a call counter, so an
+    unrelated ``os.replace`` elsewhere cannot make this pass for the wrong
+    reason."""
+    from app.services import update  # noqa: PLC0415
+
+    marker = tmp_path / "data" / "pending.json"
+    observed: list = []
+    real_replace = os.replace
+
+    def watching_replace(src, dst):
+        if Path(dst) == marker:
+            observed.append((Path(src).read_text(encoding="utf-8"), marker.exists()))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(update.os, "replace", watching_replace)
+    update.stage_pending(tmp_path, "staged", "1.60", "data/backups/b.db")
+
+    assert observed, "stage_pending never went through os.replace — the write is not atomic"
+    payload, existed_before_swap = observed[0]
+    assert not existed_before_swap, "the marker path was written in place, not swapped in"
+    assert json.loads(payload) == {
+        "staged_dir": "staged",
+        "expected_version": "1.60",
+        "db_backup_path": "data/backups/b.db",
+    }, "the temp file was not already complete at swap time"
+    assert json.loads(marker.read_text(encoding="utf-8")) == json.loads(payload)
+    assert not list(marker.parent.glob("*.partial")), "temp file left behind"
+
+
 # --- PKG-04 GAP-3: the marker is ALWAYS consumed, the watch loop survives ----
 
 

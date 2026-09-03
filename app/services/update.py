@@ -17,6 +17,7 @@ Composed from four shipped idioms:
 """
 
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -354,11 +355,18 @@ def stage_pending(install_root, staged_rel, version, backup_rel) -> None:
     RELATIVE paths only (so parse_pending's confinement accepts them, T-32-06).
     The app writes the marker and keeps running; the watching launcher performs
     the stop/swap/migrate/restart (or the matched-pair rollback on failure).
+
+    The write is ATOMIC (temp file + ``os.replace``, which is atomic on NTFS).
+    ``Path.write_text`` truncates then writes, and the launcher polls every 2 s —
+    a read landing in that window saw an empty or truncated file. The launcher
+    now quarantines rather than deletes such a marker, but the staged update was
+    still lost for that cycle; writing atomically removes the window entirely.
     """
     install_root = Path(install_root)
     marker = install_root / "data" / "pending.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
+    tmp = marker.with_name(marker.name + ".partial")
+    tmp.write_text(
         json.dumps(
             {
                 "staged_dir": staged_rel,
@@ -368,6 +376,7 @@ def stage_pending(install_root, staged_rel, version, backup_rel) -> None:
         ),
         encoding="utf-8",
     )
+    os.replace(tmp, marker)
 
 
 def apply(release: dict | None = None, *, engine=None, install_root=None) -> ApplyResult:
