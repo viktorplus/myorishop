@@ -87,6 +87,53 @@
 
 ---
 
+## Milestone: v4.0 — Distribution & Delivery
+
+**Shipped:** 2026-09-03
+**Phases:** 2 (31, 32) | **Plans:** 13 (8 + 5) | **Tasks:** 29
+
+> Note: v3.0 (phases 25-30) has no section here — it was never run through `/gsd-complete-milestone`, so it produced no retrospective and no archive. The gap is in this document and in `.planning/milestones/`, not in the milestone's delivery.
+
+### What Was Built
+
+A self-contained Windows distribution and the secure self-update on top of it: bundled Python 3.13 embeddable runtime in an onedir layout, an unsigned per-user Inno Setup installer, operator data moved to a physical sibling of the swappable `app\` directory, a stdlib-only out-of-tree launcher (stop → swap → migrate → health-check → restart, with matched-pair code+DB rollback), a tag-triggered GitHub Actions pipeline publishing a draft release signed with an OFFLINE minisign key, and an in-app notify-and-confirm updater that verifies SHA-256 + Ed25519 signature before it unpacks anything and is a hard no-op on the PostgreSQL server.
+
+### What Worked
+
+- **Physical layout as the safety mechanism (PKG-03).** Making operator data a *sibling* of the swappable directory means a directory swap cannot reach it — no careful code, no exclusion list, no bug surface. This is the single design decision the whole milestone rests on.
+- **Wave-0 RED contracts again.** Both phases opened with executable acceptance tests (PKG-01..05, then 7 named UPD tests) written before any implementation module existed. Same pattern as v1.0/v2.0, still the cheapest way to keep a phase honest.
+- **Reusing shipped mechanisms instead of inventing.** `backup.create_backup()` VACUUM INTO as the pre-update anchor, the `engine.dialect.name == "sqlite"` gate for the server no-op, the `_auto_sync_loop` background-loop shape, the `POST /settings/sync` thin-route shape for the update panel. Almost none of the update path is new machinery.
+- **Forced phase ordering held.** Phase 32 genuinely could not be built or tested before Phase 31 existed, and the roadmap said so up front rather than discovering it mid-execution.
+
+### What Was Inefficient
+
+- **Three of Phase 31's eight plans were gap-closure waves.** The original four waves passed their tests and still produced an install that did not work: a fresh install created a schema-less DB and served HTTP 500 (`no such table: users`) because the launcher never ran `alembic upgrade head` (GAP-1), and the Start-Menu shortcut pointed at a file the installer did not ship (GAP-2). Both were found by looking at a real install, not by the suite.
+- **A hand-built test fixture hid a total self-update failure behind 15 green tests (CR-01).** The swap/update tests staged a `staged\` directory assembled by hand instead of one produced by the real `build_release.py` archive; the shapes differed, so the tests proved nothing about the real path. The fix — build the fixture from the actual archive — is now a standing rule.
+- **The rollback path needed three separate corrections after it was "done":** both swap renames had to move inside the rollback-guarded region, every directory rename had to clear its destination first (Windows `os.replace` refuses an existing directory, even an empty one), and the pending marker had to be quarantined instead of replayed every 2 seconds.
+- **Nyquist validation was retrofitted.** Five coverage gaps in the self-update gate were closed by a post-hoc audit rather than being caught while the tests were being written.
+- **No `/gsd-audit-milestone` was run.** v2.0 ran the full audit gate before archiving; v4.0 did not, and closed instead by acknowledging 27 open planning artifacts as deferred.
+
+### Patterns Established
+
+- **Test fixtures for a packaging/update path must be produced by the real build script.** A fixture assembled by hand tests the fixture, not the product.
+- **Verify-before-unpack as a hard gate**, with the signature taken over an immutable signed manifest rather than a mutable git tag, and zip-slip confinement via `is_relative_to` on the unpack.
+- **Version compare on the integer of the `1.<N>` scheme**, never string compare — and test the 9→10 boundary, where string compare silently inverts.
+- **Two-stage build-in-CI / sign-offline-attach**, which is how "the pipeline publishes a signature" and "the secret key never leaves the operator's machine" can both be true.
+- **`data\pending.json` as the app→launcher IPC contract**, path-confined and validated, so the privileged swap lives entirely outside the code being replaced.
+
+### Key Lessons
+
+1. **A green suite is not an install.** The two GAP waves and CR-01 all shared one cause: the tests exercised a model of the artifact rather than the artifact. For anything that ships as a *file the operator runs*, the acceptance evidence has to come from running that file.
+2. **The v2.0 lesson recurred, unchanged.** "A `human_needed` VERIFICATION.md needs a tracked UAT follow-up before milestone close" was written down at the v2.0 close as something to watch in v3.0. v3.0 never closed at all; v4.0 shipped with two pending Phase-31 UAT scenarios plus phases 25 and 26 still `human_needed`. Three milestones on, this is a process defect, not a reminder problem.
+3. **A "Distribution & Delivery" milestone that has never been installed or released is not delivered.** Every requirement is checked, every test is green, the pipeline is wired — and the two things that would prove it (a bare-Windows install, a real signed release) are exactly the two things still open.
+4. **Windows filesystem semantics deserve their own tests.** `os.replace` on directories, destination clearing, and PID ownership each produced a real defect; none is discoverable by reading the Python docs casually.
+
+### Cost Observations
+- Model mix and per-session cost still not tracked in state files — the same `needs verification` gap noted at v1.0 and v2.0, now four milestones old.
+- Timeline 2026-07-22 → 2026-09-03 (43 days) across 95 phase-31/32 commits, but the calendar is misleading: substantial unrelated work (dictionary/price-list imports, s1 deploys, 17 quick tasks) ran in the same window.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -96,6 +143,8 @@
 | v1.0 | not tracked | 6 | First milestone — established single-write-path ledger discipline and Wave-0 RED contracts |
 | v1.1-v1.3 | not tracked | 5, 3, 3 | Retrospective sections not written at these milestones' close — gap in this document, not in the milestones themselves (see their MILESTONES.md entries for delivered scope) |
 | v2.0 | not tracked | 7 | Fastest pace to date (2 days/7 phases); full `/gsd-audit-milestone` run at close (status: tech_debt, no blockers) — first milestone since v1.0/v1.1 to run the full audit gate before archiving (v1.2 ran it, v1.3 explicitly skipped it) |
+| v3.0 | not tracked | 6 | Never closed — phases 25-30 all complete on disk, but no `/gsd-complete-milestone`, so no archive, no MILESTONES entry, no retrospective section |
+| v4.0 | not tracked | 2 | First milestone whose deliverable is an artifact the operator installs rather than a page they open; 3 of 8 Phase-31 plans were gap-closure waves found by running the real install, not by the suite. No `/gsd-audit-milestone`; closed by acknowledging 27 open artifacts as deferred |
 
 ### Cumulative Quality
 
@@ -103,9 +152,11 @@
 |-----------|-------|----------|-------------------|
 | v1.0 | not tracked in state files | not tracked | not tracked |
 | v2.0 | 919 passing at close (0 failed) | not tracked | not tracked |
+| v4.0 | not counted at close; 4 known-flaky `test_sync_ui.py` failures are pre-existing (lifespan auto-sync thread holds `sync_client._run_lock`), not a v4.0 regression | not tracked | `launcher/` is stdlib-only; `cryptography` 49.0.0 added for Ed25519 |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Single write path + Wave-0 RED contracts (v1.0) — carried forward through v2.0 (`record_operation()` still the sole ledger write path; Wave-0 RED tests used again in Phase 21/22).
 2. Stale REQUIREMENTS.md checkboxes recur every milestone (v1.0's OPS-02/03/04; v2.0's ~half of 46 requirements) — still unresolved as a process gap after 3+ milestones; needs tooling, not another reminder.
-3. A `human_needed` VERIFICATION.md status needs a tracked UAT follow-up before milestone close, not just before phase close (v2.0, Phase 22) — new lesson, watch whether it recurs in v3.0.
+3. A `human_needed` VERIFICATION.md status needs a tracked UAT follow-up before milestone close, not just before phase close (v2.0, Phase 22) — **recurred in v4.0** (2 pending Phase-31 UAT scenarios; phases 25 and 26 still `human_needed`), and v3.0 never closed at all. Confirmed process defect across 3 milestones; needs a gate, not a note.
+4. A green test suite does not prove the shipped artifact works (v4.0) — three Phase-31 gap-closure waves and CR-01 all came from fixtures/tests modelling the artifact instead of exercising it. Corollary: build packaging fixtures from the real build script's output.
