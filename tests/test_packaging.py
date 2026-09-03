@@ -365,8 +365,11 @@ def test_generate_iss_is_per_user_with_shortcut_and_uninstaller(tmp_path):
     (dist_dir / "app").mkdir(parents=True)
     (dist_dir / "launcher").mkdir(parents=True)
 
+    # dest MUST be inside dist_dir — [Files] Source paths are relative to the
+    # script's own directory, so a mismatch points the installer at the wrong
+    # tree (this call used to pass tmp_path/MyOriShop.iss and still succeed).
     iss = build_release.generate_iss(
-        dist_dir=dist_dir, version="1.42", dest=tmp_path / "MyOriShop.iss"
+        dist_dir=dist_dir, version="1.42", dest=dist_dir / "MyOriShop.iss"
     )
     text = Path(iss).read_text(encoding="utf-8")
 
@@ -384,6 +387,32 @@ def test_generate_iss_is_per_user_with_shortcut_and_uninstaller(tmp_path):
     assert not any("data\\" in line for line in source_lines), (
         "data\\ must NOT be shipped by the installer (PKG-03)"
     )
+
+
+def test_generate_iss_refuses_a_dest_outside_dist_dir(tmp_path):
+    """WR-07: ``dist_dir`` is authoritative, not a dead parameter.
+
+    ``generate_iss`` never referenced ``dist_dir``: the emitted ``[Files]
+    Source:`` paths are relative to the .iss file's OWN directory (Inno's
+    ``SourceDir`` default), so correctness silently depended on
+    ``dest.parent == dist_dir``. A mismatched pair produced a normal-looking
+    script pointing at a tree that need not even exist — and the unit test above
+    passed exactly such a pair, which is how the dead parameter survived."""
+    import build_release  # noqa: PLC0415
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+
+    with pytest.raises(ValueError, match="generated INTO dist_dir"):
+        build_release.generate_iss(
+            dist_dir=dist_dir, version="1.42", dest=tmp_path / "MyOriShop.iss"
+        )
+    assert not (tmp_path / "MyOriShop.iss").exists(), "a misplaced .iss was written anyway"
+
+    with pytest.raises(ValueError, match="generated INTO dist_dir"):
+        build_release.generate_iss(
+            dist_dir=tmp_path / "nowhere", version="1.42", dest=dist_dir / "MyOriShop.iss"
+        )
 
 
 def test_iss_referenced_paths_exist_in_dist(tmp_path):
