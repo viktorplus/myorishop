@@ -1,21 +1,28 @@
 ---
-status: testing
+status: partial
 phase: 31-packaging-launcher-signed-release-pipeline
 source: [31-VERIFICATION.md]
 started: 2026-07-22T13:34:37Z
-updated: 2026-09-03T11:05:00Z
+updated: 2026-09-03T18:50:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Bare-Windows install + launch (PKG-01, PKG-02)
-expected: |
-  A compiled installer (`iscc dist\MyOriShop.iss`) runs on a clean Windows machine
-  with no Python/uv/git: SmartScreen cleared via «Подробнее → Выполнить в любом
-  случае», Start-Menu shortcut launches the app, login page reachable, per-user
-  uninstaller registered under %LOCALAPPDATA%\MyOriShop.
-awaiting: user response
+[testing paused — 2 of 4 items are machine/offline-only and stay open]
+
+Open items, both awaiting an environment this terminal does not have:
+- Test 1 — run the now-COMPILED MyOriShop-Setup-1.60.exe on a clean Windows VM
+  (SmartScreen, Start-Menu shortcut, per-user uninstaller).
+- Test 4 — push a release tag and cut the first real signed release (stages B and C
+  are offline human actions by design).
+
+## Session note (2026-09-03, /gsd-verify-work 31)
+
+Test 2 was RE-RUN live on the post-fix build and passes (39/39 checks) — see its
+`evidence` block. Test 1's compile blocker is closed (Inno Setup was installed
+per-user all along; MyOriShop-Setup-1.60.exe now exists) but its clean-VM half is
+still human-only. Test 4 was deliberately left open by the operator rather than
+push a release tag. Session status: partial, 2 passed / 2 pending, 0 issues.
 
 ## Re-test note (2026-09-03)
 
@@ -32,13 +39,36 @@ verbatim because they document how each blocker was found.
 ### 1. Bare-Windows install + launch (PKG-01, PKG-02)
 expected: On a clean Windows VM with no Python/uv/git, run MyOriShop-Setup-*.exe, clear SmartScreen via «Подробнее → Выполнить в любом случае», launch from the Start-Menu shortcut, reach the login page at http://127.0.0.1:8000 on the distribution's OWN bundled runtime; the uninstaller is registered per-user under %LOCALAPPDATA%\MyOriShop.
 result: pending
+partial_evidence: |
+  2026-09-03 — the "no installer has ever been compiled" half of this item is CLOSED.
+  Inno Setup 6.7.3 turned out to be installed per-user (C:\Users\Admin\AppData\Local\
+  Programs\Inno Setup 6\ISCC.exe), not under Program Files and not on PATH, which is
+  why the earlier check reported it missing; `winget install JRSoftware.InnoSetup`
+  answered "Найден существующий установленный пакет … Доступные обновления не найдены".
+  Compiling the post-fix script succeeded:
+    ISCC.exe dist\MyOriShop.iss  ->  Successful compile, EXIT=0
+    dist\Output\MyOriShop-Setup-1.60.exe, 38 539 646 bytes,
+    sha256 98da797d61e8a433af2ce0d5d3cdde21b6e440bf12ba95d095ab0d8c63ebac27
+  The generated script targets {app}\launcher\python.exe with `-m launcher` for both
+  the Start-Menu icon and UninstallDisplayIcon — no launcher.exe anywhere — and
+  tests/test_packaging.py::test_iss_referenced_paths_exist_in_dist existence-checks
+  every Source:/Filename:/UninstallDisplayIcon path against the real dist tree
+  (47 passed, 1 skipped over test_packaging/test_launcher/test_release_verify; the
+  skip is test_launcher.py:912, which cannot bind 127.0.0.1:8000 because the
+  operator's own instance holds it — an environment gate, not a defect).
+
+  The distribution's autonomy is separately proven by test 2's live run: the same
+  1.60 archive booted on its OWN bundled runtime against an EMPTY data dir, migrated,
+  answered /health 200 {"version":"1.60"} and served GET / → 303 (not 500).
 blocked_on: |
-  No installer has ever been compiled: `iscc` is not installed and there is no
-  C:\Program Files (x86)\Inno Setup 6. The only setup exe on disk,
-  dist/Output/MyOriShop-Setup-1.14.exe (2026-07-22), predates every gap fix and
-  still carries the dead launcher.exe shortcut — do not test with it.
-  Prerequisite: install Inno Setup 6, rebuild (`uv run python build_release.py
-  --version v1.60`), then `iscc dist\MyOriShop.iss`.
+  STILL HUMAN-ONLY, and deliberately not attempted on this machine: running
+  MyOriShop-Setup-1.60.exe on a clean Windows VM with no Python/uv/git, clearing
+  SmartScreen via «Подробнее → Выполнить в любом случае», launching the Start-Menu
+  shortcut, and confirming the per-user uninstall entry. Installing it here was
+  declined by the operator (2026-09-03) — it would change this machine's state, and
+  the packaged launcher hardcodes port 8000, which the operator's own instance
+  (PID 39100) is holding, so an installed copy could not start anyway.
+  Prerequisite for the re-test: a clean VM + dist\Output\MyOriShop-Setup-1.60.exe.
 prior_result: issue (blocker) — root cause closed by plan 31-06, re-test required
 prior_report: |
   Verified 2026-08-09 by building the real distribution locally
@@ -80,8 +110,46 @@ prior_report: |
 
 ### 2. Live launcher swap → migrate → restart + matched-pair rollback (PKG-04)
 expected: On a packaged install, hand-place a staged\ dir + data\pending.json and watch the launcher stop the app, rename app→app.prev, rename staged→app, run alembic upgrade head, restart, and drop app.prev on success. Then inject a failing migration and watch the matched-pair rollback restore app.prev→app AND the pre-update DB (with -wal/-shm deleted).
-result: pending
-retest_scope: |
+result: pass
+evidence: |
+  Re-run for real on 2026-09-03 against the POST-FIX build (HEAD 4df8a60, __version__
+  1.60). Install root assembled the way the installer assembles one: launcher\ =
+  dist\launcher verbatim (its OWN embeddable runtime, python313._pth = python313.zip/./..),
+  app\ = dist\MyOriShop-1.60.zip extracted at the archive root (the CR-01 layout),
+  data\ = absent so the run started from a genuinely empty data dir. The driver ran ON
+  the shipped launcher runtime (`root\launcher\python.exe driver.py`) and called the
+  REAL launcher.__main__.boot / run_once with the REAL adapters — real subprocess, real
+  `app\python.exe -m alembic upgrade head`, real HTTP health poll, real os.replace
+  renames. Only adapters._PORT was redirected to 8061; the operator's own instance on
+  8000 (PID 39100) was never touched, and no listener was left behind.
+
+  39 checks, 39 passed, 0 failed. Observed:
+
+  BOOT (first run, empty data dir) — /health 200 {"version":"1.60"} on the bundled
+  runtime; GET / → 303 (NOT the 500 / `no such table: users` of the original blocker);
+  data\myorishop.db created.
+
+  A — happy path 1.60 → 1.61: run_once True; app\ = 1.61; app.prev REMOVED; staged
+  consumed; pending.json deleted; no pending.failed.json; /health 200 {"version":"1.61"};
+  GET / not 500; DB 245760 → 245760 bytes.
+
+  B1 — failing migration 1.61 → 1.62 (alembic revision 0027 that raises): the real
+  CalledProcessError propagated; app\ EXISTS with python.exe and is rolled back to 1.61;
+  app.failed\ holds the bad update; app.prev\ cleaned up; pending.json QUARANTINED to
+  pending.failed.json; the DB half of the matched pair really fired — a sentinel table
+  written into the live DB after the backup was taken is gone afterwards; the app
+  restarted and serves 1.61.
+
+  B2 — the very next watch-loop tick (the original brick): run_once returned False and
+  raised nothing, app\ and app\python.exe still present, still 1.61, still serving. The
+  2-second loop can no longer replay a consumed marker.
+
+  B3 — a SECOND failing update with app.failed\ already present: rollback fires again,
+  app.failed rotates to the new bad update, app\ stays 1.61 and runnable, the marker is
+  quarantined again, the DB is restored again (second sentinel gone), GET / → 303.
+
+  Harness + full log: scratchpad\uat31_driver.py, scratchpad\uat31_run.log.
+prior_retest_scope: |
   Re-run the live swap on a POST-FIX build (v1.60 or later), and extend it to the
   case the unit suite structurally cannot reach: two consecutive ticks with one
   FAILING update, asserting app\ still exists and is runnable afterwards, then a
@@ -155,13 +223,22 @@ unblocked: |
   Note: the release-verify minisign round-trip job IS proven green on real CI
   (GitHub Actions run 33699733177) — it is the tag-triggered release.yml build
   that has never run.
+deferred: |
+  2026-09-03 — the operator explicitly chose NOT to push a release tag now: a tag
+  creates a public draft release, and stage B (signing manifest.txt with the offline
+  secret key) and stage C (Publish) are human-only regardless. This item stays open
+  until the first real release is cut. The local equivalent of stage A is proven —
+  build_release.py produced dist\MyOriShop-1.60.zip + SHA256SUMS + manifest.txt and
+  ISCC compiled MyOriShop-Setup-1.60.exe from them (see test 1) — so what remains
+  unproven is only that release.yml wires those same steps together on the Windows
+  runner and drafts a release with the four artifacts.
 
 ## Summary
 
 total: 4
-passed: 1
+passed: 2
 issues: 0
-pending: 3
+pending: 2
 skipped: 0
 blocked: 0
 
