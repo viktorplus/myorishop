@@ -13,6 +13,7 @@ controlled-shutdown contract is DEFERRED to Phase 32 (RESEARCH Open Question 4).
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 import webbrowser
@@ -98,10 +99,43 @@ def _open_browser_soon(url: str = _URL, delay: float = _BROWSER_DELAY) -> None:
     threading.Timer(delay, lambda: webbrowser.open(url)).start()
 
 
+def boot(paths: Paths, app_process, *, migrate=adapters.migrate) -> None:
+    """Migrate the schema, THEN start the app — run.bat's contract, packaged.
+
+    ``run.bat`` runs ``alembic upgrade head`` before uvicorn and, on failure,
+    prints a message and does NOT start the server. The packaged path had no
+    equivalent: ``main()`` called ``app_process.start()`` directly and
+    ``adapters.migrate`` was reachable only from ``apply_update`` — i.e. the
+    update-swap path — so a FIRST launch of an installed copy never migrated. The
+    DB file was created without a schema and every page answered HTTP 500
+    (``no such table: users``), which is the Phase-31 UAT blocker this closes
+    (PKG-01 «the operator launches the distribution and reaches a working UI»,
+    PKG-04 boot/migrate/restart).
+
+    No second migration mechanism is introduced: the already-shipped
+    ``adapters.migrate`` is reused as-is. It carries no exception handling here on
+    purpose — a ``CalledProcessError`` from ``alembic`` propagates and
+    ``start()`` is never reached, so the app can never serve traffic on an
+    unmigrated or half-migrated schema (T-31-06); ``main()`` turns that into a
+    visible message plus a non-zero exit (T-31-07).
+
+    No ``mkdir`` belongs here: ``alembic/env.py`` already creates a missing
+    parent directory for the sqlite URL, so the migration itself materialises
+    ``data\\``.
+    """
+    migrate(paths)
+    app_process.start()
+
+
 def main() -> None:
     paths = build_paths()
     app_process = adapters.AppProcess(paths)
-    app_process.start()
+    try:
+        boot(paths, app_process)
+    except Exception as exc:
+        # run.bat parity: report and exit non-zero WITHOUT starting the server.
+        print(f"Migration failed - server not started: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
     _open_browser_soon()
     try:
         while True:
