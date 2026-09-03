@@ -13,6 +13,7 @@ controlled-shutdown contract is DEFERRED to Phase 32 (RESEARCH Open Question 4).
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -24,6 +25,7 @@ from launcher.swap import Paths, apply_update, parse_pending
 
 _URL = "http://127.0.0.1:8000"
 _MARKER_NAME = "pending.json"
+_FAILED_MARKER_NAME = "pending.failed.json"
 _DB_NAME = "myorishop.db"
 _WATCH_INTERVAL = 2.0
 _BROWSER_DELAY = 2.0
@@ -48,6 +50,19 @@ def build_paths(launcher_dir: Path | None = None) -> Paths:
     )
 
 
+def _quarantine_marker(marker: Path) -> None:
+    """Move a failed ``pending.json`` aside so the watch loop cannot replay it.
+
+    ``os.replace`` atomically overwrites any previous quarantine. A failure here
+    must never mask the real update error, so it is swallowed — the worst case is
+    a marker that the next tick refuses again (its staged dir is gone by then).
+    """
+    try:
+        os.replace(marker, marker.with_name(_FAILED_MARKER_NAME))
+    except OSError:
+        pass
+
+
 def run_once(
     paths: Paths,
     app_process,
@@ -63,8 +78,20 @@ def run_once(
     ``backup_restore`` to drive a single real ``os.replace`` swap on tmp dirs.
 
     Refuses to swap on a missing or invalid marker (T-31-04): an unparseable
-    marker is discarded without touching ``app\\``. On success the marker is
-    deleted. Returns True iff a swap cycle ran.
+    marker is discarded without touching ``app\\``. It also refuses to BEGIN the
+    cycle when the staged code is gone — both ``pending.staged_dir`` (what the
+    marker names and ``parse_pending`` confines) and ``paths.staged`` (what
+    ``apply_update`` actually renames) must exist. They are NOT the same path:
+    they coincide only when the marker literally names ``staged``, which is what
+    Phase 31 hand-places and what Phase 32's ``update.stage_pending`` writes — so
+    both are checked rather than one being assumed to imply the other.
+
+    The marker is ALWAYS consumed: deleted on success, moved to
+    ``data\\pending.failed.json`` on any failure. A failed update can therefore
+    never be replayed by ``main()``'s 2-second watch loop — the 31-UAT blocker
+    where a stuck marker destroyed the install on the next tick.
+
+    Returns True iff a swap cycle ran.
     """
     marker = Path(paths.data) / _MARKER_NAME
     if not marker.exists():
@@ -78,18 +105,30 @@ def run_once(
         marker.unlink(missing_ok=True)
         return False
 
+    if not Path(pending.staged_dir).exists() or not Path(paths.staged).exists():
+        # Unsatisfiable marker (usually one an earlier rollback already consumed):
+        # quarantine it BEFORE any side effect instead of replaying it forever.
+        _quarantine_marker(marker)
+        return False
+
     db_path = Path(paths.data) / _DB_NAME
-    apply_update(
-        paths,
-        pending,
-        stop_app=app_process.stop,
-        start_app=app_process.start,
-        migrate=lambda: migrate(paths),
-        # UPD-04: bind the marker's expected_version so the post-swap health check
-        # confirms the NEW code actually serves (a stale/wrong swap -> rollback).
-        health_ok=lambda: health_ok(expected_version=pending.expected_version),
-        backup_restore=lambda backup: backup_restore(backup, db_path),
-    )
+    try:
+        apply_update(
+            paths,
+            pending,
+            stop_app=app_process.stop,
+            start_app=app_process.start,
+            migrate=lambda: migrate(paths),
+            # UPD-04: bind the marker's expected_version so the post-swap health check
+            # confirms the NEW code actually serves (a stale/wrong swap -> rollback).
+            health_ok=lambda: health_ok(expected_version=pending.expected_version),
+            backup_restore=lambda backup: backup_restore(backup, db_path),
+        )
+    except Exception:
+        # The rollback already restored the install; consume the marker so the
+        # watch loop cannot replay the failed cycle, then let the caller log.
+        _quarantine_marker(marker)
+        raise
     marker.unlink(missing_ok=True)
     return True
 
@@ -139,7 +178,16 @@ def main() -> None:
     _open_browser_soon()
     try:
         while True:
-            run_once(paths, app_process)
+            try:
+                run_once(paths, app_process)
+            except Exception as exc:
+                # apply_update's rollback already restarted the app on the previous
+                # version — keep watching instead of exiting and stopping it.
+                print(
+                    f"Обновление не применено, приложение работает на прежней "
+                    f"версии: {exc}",
+                    file=sys.stderr,
+                )
             time.sleep(_WATCH_INTERVAL)
     except KeyboardInterrupt:
         pass
