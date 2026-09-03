@@ -1,8 +1,14 @@
 """Launcher entry point: start app, open browser, watch marker, drive swap (PKG-04).
 
-Runs as ``python -m launcher`` (or the compiled ``launcher.exe`` stub). The
-launcher lives OUTSIDE the swappable ``app\\`` directory: it derives the install
-root from its own location (``launcher\\``'s parent) and treats ``app\\``,
+Runs as ``launcher\\python.exe -m launcher`` — the Start-Menu shortcut's target —
+on its OWN embeddable runtime shipped inside ``launcher\\``
+(``build_release.assemble_launcher_runtime``). There is no compiled ``.exe`` stub
+and none is planned. It must NOT run on ``app\\python.exe``: a running
+interpreter image cannot be deleted, so the post-swap
+``shutil.rmtree(app.prev)`` would silently fail and leak a full copy of the
+previous bundle on every successful update. The launcher therefore lives OUTSIDE
+the swappable ``app\\`` directory: it derives the install root from its own
+location (``launcher\\``'s parent) and treats ``app\\``,
 ``app.prev\\``, ``app.failed\\``, ``staged\\`` and ``data\\`` as siblings
 (RESEARCH install-root layout). It never imports ``app.*`` — that would lock the
 directory the swap renames (RESEARCH Pitfall 3).

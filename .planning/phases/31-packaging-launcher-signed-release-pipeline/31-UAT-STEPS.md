@@ -123,7 +123,7 @@ GitHub Actions), поэтому их нельзя проверить из тер
 ## Тест 2 — Живой свап + откат парой (PKG-04)
 
 Выполняется на **установленном** экземпляре. Корень установки
-`R = %LOCALAPPDATA%\MyOriShop`; лаунчер (`R\launcher\launcher.exe`) должен быть
+`R = %LOCALAPPDATA%\MyOriShop`; лаунчер (`R\launcher\python.exe -m launcher`) должен быть
 **запущен** — он раз в 2 секунды смотрит `R\data\pending.json`.
 Схема маркера строгая: ровно ключи `staged_dir`, `expected_version`, `db_backup_path`;
 пути **относительные** к `R`, без `..`, не абсолютные.
