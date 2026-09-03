@@ -324,13 +324,20 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 ## Backlog
 
-### Phase 999.1: Per-Warehouse Currency (RUB/UAH/EUR) (BACKLOG)
+### Phase 999.1: Per-Warehouse Currency (RUB/UAH/EUR) — ✅ SHIPPED 2026-08-10, NOT A PHASE
 
-**Goal:** [Captured for future planning] Each warehouse carries its own currency; money is never silently summed across currencies.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Goal:** Each warehouse carries its own currency; money is never silently summed across currencies.
+**Status:** Delivered as quick task `260810-2g3` (plus its part-1 predecessor) — 9 `feat(cur)` commits starting at `cdcec66`, migrations 0023–0026, requirement IDs CUR-01/CUR-02.
+**Plans:** shipped outside the phase system
 
-Decisions already locked by the operator (2026-08-09):
+> ⚠ **The scope survey below is dated 2026-08-09 and was overtaken the NEXT DAY.** Do not plan from it. Verified in HEAD 2026-09-04: `Warehouse.currency`, `CashMovement.currency`, `Batch.cost_cents`, `CURRENCIES`/`currency_symbol()`/`format_money()` (`app/core.py:56-86`), the `money` Jinja filter (`app/routes/__init__.py:227`), currency-scoped `/reports/sales` via a shared `operation_currency_clause` (OUTER-joined so legacy `batch_id IS NULL` rows bucket as RUB rather than vanishing), currency-scoped finance reports plus a `/finance` switcher, a Главная dashboard switcher, currency labels on CSV exports, required destination-currency cost on cross-currency transfers, and rejection of mixed-currency sale baskets before any write (`faff73d`).
+>
+> **What actually remains** is a coverage tail, carried into v5.0 as a plan rather than a phase: 42 templates still use the bare `|cents` filter against 1 using `|money` — triage which are legitimate (a column already labelled with a currency) versus a real gap (an amount standing alone with no currency visible). Plus `needs verification`: does `writeoff_report` sum money across currencies, and does a rejected mixed-currency basket preserve the operator's typed work on re-render?
+
+<details>
+<summary>Superseded scope survey (2026-08-09) — kept for the record</summary>
+
+Decisions locked by the operator (2026-08-09):
 
 - **Field:** `Warehouse.currency`, fixed list RUB/UAH/EUR. Migration backfills `RUB` for every existing warehouse; the warehouse form gets a select defaulting to RUB.
 - **No conversion:** no FX rates, no rate table, no base-currency roll-up. Currencies live side by side.
@@ -347,6 +354,8 @@ Scope discovered by reading the code (2026-08-09) — this is a full phase, not 
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+</details>
 
 ### Phase 999.2: One-Tap Reversal of a Wrong Operation (BACKLOG)
 

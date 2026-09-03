@@ -34,21 +34,26 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 
 **Target features:**
 - **Back-dated operations** — a business date, operator-supplied and defaulting to the technical timestamp, so a sale made yesterday and entered today lands in yesterday's period on every report. The technical timestamp stays untouched: it is the sync cursor and the audit trail.
-- **Per-warehouse currency (RUB/UAH/EUR)** — `Warehouse.currency` with no conversion, no rate table, no base-currency roll-up. Reports become single-currency behind a mandatory warehouse/currency filter; cross-currency totals must not exist; a basket may not mix warehouses.
-- **One-tap reversal of a wrong operation** — a confirmed «сторно» control in История that writes a *new compensating operation* through the existing sanctioned write paths, linked back to the operation it reverses. Covers receipts, write-offs, transfers and cash movements. The append-only ledger stays append-only.
+- **One-tap reversal of a wrong operation** — a confirmed «сторно» control in История that writes a *new compensating operation of the same type and opposite sign* through the existing sanctioned write paths, linked back to the operation it reverses, and carrying the ORIGINAL operation's business date. Covers receipts, write-offs, transfers and cash movements. The append-only ledger stays append-only.
 - **Mobile editing of product and customer cards** — mobile route pairs mirroring the desktop edit/update pair and reusing the same services, so min sale price, cost, category, low-stock threshold and customer details are reachable from the phone.
+- **Per-warehouse currency finishing pass** — *not* a build; the feature shipped 2026-08-10. Close the render-coverage tail so no amount stands alone unlabelled, and run the human browser check that was never done.
 
 **Phase order (dependency-driven, not preference-driven):**
-1. Back-dated operations — ledger schema change; every period-scoped report reads it. Follows the project's established "schema before its readers" rule (v2.0 sequenced price consolidation as Phase 18 ahead of every page rebuild that read the price shape).
-2. Per-warehouse currency — second schema change; introduces a warehouse dimension that `reports.py`/`dashboard.py`/`finance.py` do not have at all, plus a currency-aware money render across desktop and mobile.
-3. One-tap reversal — consumer of both: a compensating row must carry the business date, and История must render sums with a currency.
-4. Mobile editing — last, against the finished feature set (v1.1 precedent: the mobile flow was built once, after every operation type existed). Its edit forms display prices, so it needs the final money render.
+1. Back-dated operations — the milestone's only schema change; every period-scoped report reads it. Follows the project's established "schema before its readers" rule (v2.0 sequenced price consolidation as Phase 18 ahead of every page rebuild that read the price shape). It is a **hard** prerequisite for reversal, not a soft one: a reversal must post to the original's business date, so shipping storno first would land every reversal in the wrong period.
+2. One-tap reversal — consumer of the business date. Writing the compensating row as the same type with an opposite sign means every existing report nets automatically, with no report changes.
+3. Mobile editing — last, against the finished feature set (v1.1 precedent: the mobile flow was built once, after every operation type existed). Shares no files with the ledger work, so it may also run in parallel.
+- Currency coverage rides along as a plan, sequenced wherever it fits — it blocks nothing.
 
 **Scoping notes:**
-- All four were captured from live-usage audits (2026-08-09 and 2026-08-13) and verified by reading the code — see `.planning/ROADMAP.md` Backlog and `.planning/OPEN-WORK-AUDIT-2026-09-04.md`.
 - The append-only ledger constraint is not negotiable: `record_operation` stays the sole sanctioned write path and the DB triggers that ABORT any UPDATE stay in place. Reversal is a new row, never an edit or a delete.
-- `needs verification` before planning currency: what happens when a new-schema client pushes `currency` to an old-schema server. `merge.KIND_TO_FIELDS` derives fields from model columns, so the field likely drops silently — cover with a version-mismatch test.
+- **Every new column on `operations`/`cash_movements` must extend the append-only trigger's column enumeration in the SAME migration.** Migration `0026` exists solely because that was missed once for `cash_movements.currency`. Order within the migration matters: `add_column` → UPDATE backfill (which passes only while the column is absent from the trigger's WHEN list) → then extend the trigger.
+- Lock dates / closed accounting periods are an **anti-feature** here: they protect a statutory month-end close that a single reseller does not have, and their only observable effect would be locking the operator out of fixing their own data.
+- Back-dating is structurally cheap in this codebase because batch selection is manual and cost is frozen per row — the FIFO cost-layer recalculation that makes back-dating painful in larger ERPs does not apply and must not be introduced.
+- `needs verification` before planning: what an old-schema server does with a `business_date` field from a new-schema client (`merge.KIND_TO_FIELDS` derives fields from model columns); whether `CashMovement` has a `payload` column at all, since a cash-reversal link may need a real column; whether `writeoff_report` sums money; whether any report COUNTs operations rather than summing signed quantities, since that shape counts a storno as a second event instead of netting it.
+- **Open operator decision (R20):** a mis-entered *sale* is not a return. Routing storno-on-a-sale through `register_return` is arithmetically correct but pollutes the returns report, customer spend statistics and the «Возврат» cash category. To be settled during requirements.
 - The two open human-only v4.0 commitments (bare-Windows installer run, first tag-triggered signed release) are unaffected by this milestone and remain outstanding.
+
+**Correction on record:** this milestone was initially scoped with per-warehouse currency as a full fourth phase, on the strength of a code survey dated 2026-08-09 recorded in `.planning/ROADMAP.md`. That survey had been overtaken on 2026-08-10 by quick task `260810-2g3`. Two independent researchers caught it during milestone research and it was verified in HEAD before requirements were written. See the correction block at the top of `.planning/OPEN-WORK-AUDIT-2026-09-04.md`.
 
 <details>
 <summary>Archived: v4.0 Distribution & Delivery (SHIPPED 2026-09-03)</summary>
@@ -221,7 +226,7 @@ Two carried-over commitments that belong to no milestone but must happen before 
 - [ ] CSV export includes warehouse/batch columns (EXP-V2-01)
 - [ ] Mobile CRUD parity beyond v5.0's product/customer cards: warehouses, dictionary, full reports (deferred from v1.2 mobile audit)
 - [x] Multi-operator sync across countries via a central server, server-based (online) + USB flash-drive (offline) — shipped in v3.0 (SYNC-V2-01)
-- [~] Multi-currency support — scoped into v5.0 as per-warehouse currency with no conversion (CUR-V2-01)
+- [x] Multi-currency support — shipped 2026-08-10 as per-warehouse currency (RUB/UAH/EUR) with no conversion, quick task `260810-2g3`, migrations 0023–0026 (CUR-V2-01 → CUR-01/CUR-02). A render-coverage tail rides along in v5.0
 
 ### Out of Scope
 
