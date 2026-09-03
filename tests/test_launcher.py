@@ -762,6 +762,33 @@ def test_run_once_refuses_marker_whose_staged_dir_is_gone(tmp_path):
     assert (data / "pending.failed.json").exists()
 
 
+def test_ctrl_c_mid_swap_rolls_back_and_quarantines_the_marker(tmp_path):
+    """WR-06: both handlers key on ``BaseException``, not ``Exception``.
+
+    The shipped launcher is a CONSOLE process (the Start-Menu shortcut targets
+    ``launcher\\python.exe``), so Ctrl+C and closing the window are the normal
+    ways an operator stops it. A ``KeyboardInterrupt`` raised between the two
+    ``os.replace`` calls or during ``migrate()`` previously bypassed BOTH
+    ``apply_update``'s rollback and ``run_once``'s marker quarantine, leaving
+    ``app\\`` = new code, ``app.prev\\`` = old code, an un-migrated schema and a
+    live ``pending.json``. Driving it through ``run_once`` covers both guards at
+    once."""
+    _root, app_dir, _staged, data, paths, _pending = _swap_fixture(tmp_path)
+    _write_marker(data)
+
+    def interrupted_migrate(*_a, **_k):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _tick(paths, migrate=interrupted_migrate)
+
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ not restored"
+    assert (paths.app_failed / "marker.txt").read_text() == "v2", "bad code not parked"
+    assert not paths.app_prev.exists(), "app.prev/ leaked"
+    assert not (data / "pending.json").exists(), "the marker survived for replay"
+    assert (data / "pending.failed.json").exists(), "the marker was not quarantined"
+
+
 def test_run_once_quarantines_an_undecodable_marker(tmp_path):
     """CR-02 (T-31-04): a non-UTF-8 pending.json is consumed, never replayed.
 

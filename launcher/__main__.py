@@ -145,9 +145,11 @@ def run_once(
             health_ok=lambda: health_ok(expected_version=pending.expected_version),
             backup_restore=lambda backup: backup_restore(backup, db_path),
         )
-    except Exception:
-        # The rollback already restored the install; consume the marker so the
-        # watch loop cannot replay the failed cycle, then let the caller log.
+    except BaseException:
+        # BaseException mirrors apply_update's rollback guard (WR-06): a Ctrl+C
+        # or console-close mid-swap must consume the marker too, or the next
+        # launch replays a cycle whose staged dir is already gone. The rollback
+        # already restored the install; the caller logs the re-raised error.
         _quarantine_marker(marker)
         raise
     marker.unlink(missing_ok=True)

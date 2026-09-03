@@ -159,7 +159,13 @@ def apply_update(
         start_app()
         if not health_ok():
             raise RuntimeError("post-update health check failed")
-    except Exception:
+    except BaseException:
+        # BaseException, not Exception: the shipped launcher is a CONSOLE process,
+        # so Ctrl+C and closing the window are the NORMAL ways an operator stops
+        # it. A KeyboardInterrupt between the two os.replace calls, or during
+        # migrate(), otherwise bypassed this whole handler and left app\ = new
+        # code, app.prev\ = old code, an un-migrated schema and a live marker
+        # (WR-06). The original exception is always re-raised at the end.
         # Proportional matched-pair rollback: code + DB revert together (T-31-06).
         # This stop is best-effort, so its OWN failure must be recorded: on the
         # health-check path the NEW app has already been started, and
