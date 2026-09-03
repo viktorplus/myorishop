@@ -650,6 +650,41 @@ def test_run_once_refuses_marker_whose_staged_dir_is_gone(tmp_path):
     assert (data / "pending.failed.json").exists()
 
 
+def test_run_once_quarantines_an_undecodable_marker(tmp_path):
+    """CR-02 (T-31-04): a non-UTF-8 pending.json is consumed, never replayed.
+
+    ``UnicodeDecodeError`` IS a ``ValueError``, but the read sat OUTSIDE the
+    guard, so it escaped ``run_once`` entirely: the marker was neither deleted
+    nor quarantined and ``main()``'s 2-second watch loop re-read the same bytes
+    forever. The marker is attacker-controlled input (T-31-04) and Phase 31's
+    documented workflow hand-places it, so a cp1251-saved file was enough to
+    wedge the update channel permanently and flood stderr."""
+    _root, app_dir, _staged, data, paths, _pending = _swap_fixture(tmp_path)
+    (data / "pending.json").write_bytes(b"\xff\xfe{ not utf-8 }")
+
+    def never_called(*_a, **_k):  # pragma: no cover - must never run
+        raise AssertionError("apply_update was entered on an undecodable marker")
+
+    assert _tick(paths, migrate=never_called) is False
+    assert not (data / "pending.json").exists(), "undecodable marker left for replay"
+    assert (data / "pending.failed.json").exists(), "undecodable marker not quarantined"
+    assert (app_dir / "marker.txt").read_text() == "v1"
+
+
+def test_run_once_quarantines_a_torn_marker_instead_of_deleting_it(tmp_path):
+    """WR-03: a truncated read must leave evidence, not silently destroy the
+    staged update. The old handler called ``marker.unlink()``, so a read landing
+    inside a non-atomic write deleted the marker the app had just staged — the
+    operator clicked «Обновить и перезапустить», a VACUUM backup was taken,
+    staged\\ was populated, and then nothing happened, with no record of why."""
+    _root, _app_dir, _staged, data, paths, _pending = _swap_fixture(tmp_path)
+    (data / "pending.json").write_text('{"staged_dir": "sta', encoding="utf-8")
+
+    assert _tick(paths, migrate=lambda *_a, **_k: None) is False
+    assert not (data / "pending.json").exists()
+    assert (data / "pending.failed.json").read_text() == '{"staged_dir": "sta'
+
+
 def test_run_once_quarantines_marker_after_failed_apply(tmp_path):
     """PKG-04: the quarantine overwrites atomically — two failing ticks leave
     exactly ONE pending.failed.json and the quarantine itself never raises."""

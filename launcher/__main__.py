@@ -95,7 +95,16 @@ def run_once(
     The marker is ALWAYS consumed: deleted on success, moved to
     ``data\\pending.failed.json`` on any failure. A failed update can therefore
     never be replayed by ``main()``'s 2-second watch loop — the 31-UAT blocker
-    where a stuck marker destroyed the install on the next tick.
+    where a stuck marker destroyed the install on the next tick. The READ itself
+    is inside that guard: a non-UTF-8 marker raises ``UnicodeDecodeError`` (a
+    ``ValueError``), and with the read outside the guard it escaped ``run_once``
+    uncaught, so the marker was neither consumed nor quarantined and the watch
+    loop replayed the same bytes every 2 s forever (T-31-04: the marker is
+    attacker-controlled input).
+
+    An ``OSError`` on that read is the ONE case that does NOT consume the marker:
+    it means a transient sharing violation while the app is writing it, so the
+    next tick retries instead of destroying a marker that is simply in flight.
 
     Returns True iff a swap cycle ran.
     """
@@ -103,12 +112,18 @@ def run_once(
     if not marker.exists():
         return False
 
-    raw = marker.read_text(encoding="utf-8")
     try:
-        pending = parse_pending(raw, paths.install_root)
+        pending = parse_pending(marker.read_text(encoding="utf-8"), paths.install_root)
     except ValueError:
-        # Invalid marker: never act on it — discard and keep the app running.
-        marker.unlink(missing_ok=True)
+        # Invalid or undecodable marker: never act on it — QUARANTINE rather than
+        # delete. `update.stage_pending` writes the marker atomically, but a
+        # hand-placed or half-written one must leave evidence behind instead of
+        # vanishing silently with the staged update it named.
+        _quarantine_marker(marker)
+        return False
+    except OSError:
+        # Transient (the marker is being written right now): do not consume it —
+        # the next tick reads it whole.
         return False
 
     if not Path(pending.staged_dir).exists() or not Path(paths.staged).exists():
