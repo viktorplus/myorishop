@@ -4,13 +4,13 @@ milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
 stopped_at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
-last_updated: "2026-09-03T07:07:05.481Z"
-last_activity: "2026-09-03 - Completed 31-06: launcher boot() runs alembic upgrade head before starting the app on every boot; a fresh install now reaches the login page instead of 500 (no such table: users)"
+last_updated: "2026-09-03T07:25:32.190Z"
+last_activity: 2026-09-03
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 17
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 ## Current Position
 
 Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
-Plan: 2 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
-Status: 31-06 complete — GAP-1 (fresh install never migrated) closed and regression-tested
-Last activity: 2026-09-03 - Completed 31-06: added launcher.__main__.boot() (migrate-then-start, abort on failure) wired into main(), 3 launcher regressions + a skip-gated first-run test that boots the real assembled dist against an empty data dir and asserts GET / is not 500
+Plan: 3 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
+Status: Ready to execute
+Last activity: 2026-09-03
 
 ## Performance Metrics
 
@@ -93,6 +93,7 @@ Last activity: 2026-09-03 - Completed 31-06: added launcher.__main__.boot() (mig
 | Phase 32 P03 | 20m | 2 tasks | 2 files |
 | Phase 32 P05 | 20m | 2 tasks | 5 files |
 | Phase 31 P06 | 34min | 2 tasks | 4 files |
+| Phase 31 P07 | 38min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -167,6 +168,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 32-05: #update-panel self-contained div swapped via hx-swap=outerHTML so the target id survives every swap (test_manual_check contract)
 - [Phase ?]: 32-05: apply route echoes release notes from cached status so autoescaped notes render deterministically regardless of update.apply network outcome
 - [Phase ?]: Plan 31-06: launcher boot() reuses the shipped adapters.migrate (migrate-then-start); a failed migration aborts the boot with SystemExit(1) so the app never serves an unmigrated schema
+- [Phase 31]: Rollback is proportional: backup_restore fires only when the migration was attempted — A failure before the swap cannot have changed the schema; restoring an older DB there would discard operator writes made since the backup (T-31-06b)
+- [Phase 31]: Every directory rename clears its destination first — Windows os.replace refuses an existing directory with WinError 5 even when it is empty (measured), so a stale app.prev/app.failed would otherwise block the swap or the rollback itself (T-31-06c)
+- [Phase 31]: The pending marker is always consumed - quarantined to data/pending.failed.json on failure — A stuck marker made main()'s 2-second watch loop replay an unsatisfiable cycle and destroy the install (31-UAT GAP-3, T-31-04)
 
 ### Pending Todos
 
@@ -232,7 +236,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-03T07:06:07.606Z
+Last session: 2026-09-03T07:23:32.449Z
 Stopped at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
 Resume file: None
 
