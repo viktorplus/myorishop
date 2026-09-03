@@ -277,9 +277,9 @@ Plans:
 **Build order (dependency-ordered — forced):** packaging + a stable launcher + code/data physical separation + a signed-release pipeline first (there is nothing safe to update *to*, and no safe over-the-top swap, until these exist) → in-app secure self-update second (the security-critical, threat-modelled phase where fetched code is executed). Phase B cannot even be tested until two real signed releases exist.
 
 - [x] **Phase 31: Packaging, Launcher & Signed-Release Pipeline** - Bundled-runtime Windows distributable + unsigned Inno Setup installer, operator data physically separated from swappable code, a stable stop/swap/migrate/restart launcher, and a GitHub Actions pipeline publishing an offline-Ed25519-minisign-signed release (archive + SHA-256 + signature)
- (completed 2026-07-22)
+ (completed 2026-09-03)
 
-- [x] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server (completed 2026-07-22)
+- [x] **Phase 32: In-App Secure Self-Update** - Startup + manual update-check vs GitHub Releases, signature+checksum verify before unpack, notify-and-confirm UI with release notes, backup→migrate→rollback apply, integer-scheme version tie-in with anti-downgrade, and a hard no-op on the PostgreSQL server (completed 2026-09-03)
 
 #### Phase 31: Packaging, Launcher & Signed-Release Pipeline
 
@@ -397,7 +397,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
-| 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete   | 2026-07-22 |
+| 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
 
 ## Backlog
 

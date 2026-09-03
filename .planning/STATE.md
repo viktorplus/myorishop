@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: executing
-stopped_at: Phase 31 closed after UAT (2 of 4 passed, 2 acknowledged human-only gaps)
-last_updated: "2026-09-03T16:52:05.497Z"
-last_activity: 2026-09-03
+status: milestone-complete
+stopped_at: Phase 32 closed (verified + UAT + secured) — v4.0 awaiting /gsd-complete-milestone
+last_updated: "2026-09-04T00:00:00.000Z"
+last_activity: 2026-09-04
 progress:
-  total_phases: 6
+  total_phases: 2
   completed_phases: 2
   total_plans: 13
   completed_plans: 13
-  percent: 33
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 32 — in-app-secure-self-update
+**Current focus:** v4.0 Distribution & Delivery — all phases closed, milestone archive pending
 
 ## Current Position
 
-Phase: 32 (in-app-secure-self-update)
-Plan: 5 of 5 — all plans already executed and summarised (2026-07-22)
-Status: Executed — awaiting `/gsd-verify-work 32` and `/gsd-secure-phase 32`
-Last activity: 2026-09-03
+Phase: 32 (in-app-secure-self-update) — COMPLETE
+Plan: 5 of 5 complete
+Status: Milestone v4.0 complete (phases 31, 32) — next step `/gsd-complete-milestone`
+Last activity: 2026-09-04
 
 **Phase 31 close-out (2026-09-03):** marked complete with two acknowledged,
 human-only gaps recorded in `31-VERIFICATION.md` → `## Acknowledged Gaps` —
@@ -41,7 +41,7 @@ rollback was re-run for real and passed 39/39 checks.
 
 **Velocity:**
 
-- Total plans completed: 105 (v1.0-v2.0)
+- Total plans completed: 110 (v1.0-v2.0)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -54,6 +54,7 @@ rollback was re-run for real and passed 39/39 checks.
 | 28 | 6 | - | - |
 | 29 | 5 | - | - |
 | 31 | 8 | - | - |
+| 32 | 5 | - | - |
 
 **Recent Trend:**
 
