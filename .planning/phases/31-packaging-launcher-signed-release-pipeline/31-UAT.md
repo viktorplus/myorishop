@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 31-packaging-launcher-signed-release-pipeline
 source: [31-VERIFICATION.md]
 started: 2026-07-22T13:34:37Z
@@ -132,6 +132,8 @@ blocked: 0
   reason: "Nothing on the first-run path runs `alembic upgrade head`, so the DB file is created without a schema and every page returns HTTP 500 (`no such table: users`). Proven: /health 200 but / 500 on the built distribution with a clean data dir; after running `alembic upgrade head` manually with the bundled python.exe the same build serves / → 303 → /setup (200, «MyOriShop 1.15»)."
   severity: blocker
   test: 1
+  root_cause: "launcher/__main__.py:101-113 — main() calls app_process.start() with no migration step. adapters.migrate is reachable ONLY from apply_update (launcher/__main__.py:86), i.e. the update-swap path, so a first launch never migrates."
+  verified_at_head: "2026-09-03 — re-read at HEAD 9642261; still true, diagnosis not stale."
   artifacts:
     - path: "launcher/__main__.py"
       issue: "main() calls app_process.start() with no migration step; adapters.migrate is only reachable from apply_update (the update path)."
@@ -146,6 +148,8 @@ blocked: 0
   reason: "The generated .iss points [Icons] and UninstallDisplayIcon at {app}\\launcher\\launcher.exe (build_release.py:276, :286) but no launcher.exe exists and nothing builds one; dist/launcher/ and the release zip carry only __init__.py, __main__.py, adapters.py, swap.py."
   severity: blocker
   test: 1
+  root_cause: "generate_iss() hardcodes {app}\\launcher\\launcher.exe at build_release.py:276 (UninstallDisplayIcon) and :286 ([Icons] Filename), but assemble_onedir copies only the launcher .py package (build_release.py:205-207) and nothing compiles a stub. The shipped tree has no .exe under launcher\\, so the Start-Menu target does not exist."
+  verified_at_head: "2026-09-03 — re-read at HEAD 9642261; grep for 'launcher.exe' shows the two build_release.py lines plus the already-generated dist/MyOriShop.iss:9,19 carrying the same broken target. Still true."
   artifacts:
     - path: "build_release.py"
       issue: "Lines 276 and 286 reference launcher\\launcher.exe; assemble_onedir only copies the launcher .py tree (line 205-207)."
@@ -160,6 +164,8 @@ blocked: 0
   reason: "The failure path never clears data\\pending.json, and main() re-runs run_once every 2 seconds. On the next tick the marker is still valid, staged\\ is already consumed, and swap.py:87-88 rename app→app.prev BEFORE the try block at line 89 — so os.replace(staged→app) raises FileNotFoundError outside the guarded region. Observed end state: app=False, app.prev=True, app.failed=True, marker=True, app\\python.exe missing. One failed update bricks the installation."
   severity: blocker
   test: 2
+  root_cause: "Two independent defects compound. (a) launcher/swap.py:86-88 — stop_app() and BOTH os.replace calls sit outside the try: that opens at line 89, so once app\\ has been renamed to app.prev\\ a missing staged\\ raises FileNotFoundError with no rollback handler in scope. (b) launcher/__main__.py:92 — marker.unlink() runs only after apply_update returns normally, so a raised exception leaves data\\pending.json in place and main()'s 2-second loop (line 107-109) replays the now-unsatisfiable cycle."
+  verified_at_head: "2026-09-03 — re-read at HEAD 9642261; both line ranges unchanged. Still true."
   artifacts:
     - path: "launcher/swap.py"
       issue: "Lines 87-88 (the two os.replace calls) sit outside the try: at line 89, so a missing staged\\ escapes the rollback entirely."
