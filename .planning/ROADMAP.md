@@ -315,7 +315,7 @@ Plans:
 
 - [x] 31-06-PLAN.md — GAP-1 PKG-01/04: launcher runs `alembic upgrade head` before starting the app on every boot, so a fresh install reaches the login page (gap wave 1)
 - [x] 31-07-PLAN.md — GAP-3 PKG-04: a failed update never bricks the install — staged pre-flight guard, renames inside the rollback-guarded region, marker quarantined instead of replayed (gap wave 2)
-- [ ] 31-08-PLAN.md — GAP-2 PKG-01/02: Start-Menu shortcut targets a shipped file — launcher gets its own embeddable runtime in `launcher\`, and every .iss path is test-asserted to exist (gap wave 3)
+- [x] 31-08-PLAN.md — GAP-2 PKG-01/02: Start-Menu shortcut targets a shipped file — launcher gets its own embeddable runtime in `launcher\`, and every .iss path is test-asserted to exist (gap wave 3)
 
 > **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
 
@@ -396,7 +396,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 7/8 | In Progress|  |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete   | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete   | 2026-07-22 |
 
 ## Backlog

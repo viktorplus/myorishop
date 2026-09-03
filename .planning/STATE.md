@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
-stopped_at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
-last_updated: "2026-09-03T07:25:32.190Z"
+stopped_at: Completed 31-08-PLAN.md (GAP-2 Start-Menu shortcut target)
+last_updated: "2026-09-03T07:42:24.793Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 13
-  completed_plans: 12
-  percent: 17
+  completed_plans: 13
+  percent: 33
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-22)
 ## Current Position
 
 Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
-Plan: 3 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
+Plan: 4 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
 Status: Ready to execute
 Last activity: 2026-09-03
 
@@ -94,6 +94,7 @@ Last activity: 2026-09-03
 | Phase 32 P05 | 20m | 2 tasks | 5 files |
 | Phase 31 P06 | 34min | 2 tasks | 4 files |
 | Phase 31 P07 | 38min | 2 tasks | 4 files |
+| Phase 31 P08 | 33min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 31]: Rollback is proportional: backup_restore fires only when the migration was attempted — A failure before the swap cannot have changed the schema; restoring an older DB there would discard operator writes made since the backup (T-31-06b)
 - [Phase 31]: Every directory rename clears its destination first — Windows os.replace refuses an existing directory with WinError 5 even when it is empty (measured), so a stale app.prev/app.failed would otherwise block the swap or the rollback itself (T-31-06c)
 - [Phase 31]: The pending marker is always consumed - quarantined to data/pending.failed.json on failure — A stuck marker made main()'s 2-second watch loop replay an unsatisfiable cycle and destroy the install (31-UAT GAP-3, T-31-04)
+- [Phase 31]: 31-08: the launcher gets its OWN embeddable runtime in launcher\ (second extraction of the same SHA-256-verified zip, no second download); the .iss shortcut targets {app}\launcher\python.exe -m launcher, a file the installer actually ships. Its ._pth is exactly python313.zip / . / .. — a ._pth forces isolated mode (cwd and PYTHONPATH ignored) so only .. resolves the sibling package; Lib\site-packages and app are omitted to keep the launcher stdlib-only
+- [Phase 31]: 31-08: no launcher.exe stub is built or promised anywhere (PyInstaller is rejected by CLAUDE.md); every path the generated .iss references is existence-asserted by test_iss_referenced_paths_exist_in_dist before the installer is compiled — a dead target in a user-writable per-user install root is a plant-and-hijack surface (T-31-08)
 
 ### Pending Todos
 
@@ -236,8 +239,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-03T07:23:32.449Z
-Stopped at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
+Last session: 2026-09-03T07:42:24.760Z
+Stopped at: Completed 31-08-PLAN.md (GAP-2 Start-Menu shortcut target)
 Resume file: None
 
 ## Operator Next Steps
