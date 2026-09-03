@@ -15,6 +15,7 @@ code+DB rollback with WAL-sidecar delete). PKG-04.
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -460,3 +461,132 @@ def test_health_ok_requires_version_match(tmp_path):
 
     # Connection refused ⇒ False even with an expected version.
     assert health_ok(expected_version="1.16", timeout=1.0) is False
+
+
+# --- PKG-01/PKG-04 GAP-1: first-run boot migration --------------------------
+
+
+class _RecordingProc:
+    """Fake AppProcess recording start/stop so boot ordering is observable."""
+
+    def __init__(self, events: list):
+        self.events = events
+
+    def start(self):
+        self.events.append("start")
+
+    def stop(self, *args, **kwargs):
+        self.events.append("stop")
+
+
+def test_boot_migrates_before_starting_the_app(tmp_path):
+    """PKG-01 (T-31-06): ``boot`` runs the migration STRICTLY before the app is
+    started, mirroring run.bat's «migrate, then serve» contract. Without this the
+    packaged first run creates an empty DB file with no schema and every page is
+    HTTP 500 (`no such table: users`) — the 31-UAT blocker."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    root = tmp_path / "MyOriShop"
+    paths = Paths(
+        app=root / "app",
+        app_prev=root / "app.prev",
+        staged=root / "staged",
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=root / "data",
+    )
+
+    events: list = []
+    seen: list = []
+
+    def fake_migrate(given_paths):
+        events.append("migrate")
+        seen.append(given_paths)
+
+    launcher_main.boot(paths, _RecordingProc(events), migrate=fake_migrate)
+
+    assert events == ["migrate", "start"], "the app must not start before migrating"
+    assert seen == [paths], "migrate takes the launcher-derived paths"
+
+
+def test_boot_aborts_when_migration_fails(tmp_path):
+    """PKG-01 (T-31-07): a failing ``alembic upgrade head`` aborts the boot — the
+    exception propagates and ``start()`` is NEVER called, so the app can never
+    serve traffic against an unmigrated / half-migrated schema."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    root = tmp_path / "MyOriShop"
+    paths = Paths(
+        app=root / "app",
+        app_prev=root / "app.prev",
+        staged=root / "staged",
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=root / "data",
+    )
+
+    events: list = []
+
+    def failing_migrate(_paths):
+        raise subprocess.CalledProcessError(1, "alembic")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        launcher_main.boot(paths, _RecordingProc(events), migrate=failing_migrate)
+
+    assert "start" not in events, "app started on an unmigrated schema"
+
+
+def test_main_boots_through_migration_before_the_watch_loop(tmp_path, monkeypatch):
+    """PKG-01 wiring: ``main()`` goes through ``boot`` (migrate-then-start) BEFORE
+    the watch loop — the gap the UAT found was that main() called
+    ``app_process.start()`` directly and ``adapters.migrate`` was reachable only
+    from the update-swap path.
+
+    The patched ``boot`` raises ``SystemExit(0)`` (a BaseException, so main()'s
+    ``except Exception`` boot guard does not swallow it) which stops main() before
+    ``_open_browser_soon`` — this test must never open a browser window.
+    """
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    root = tmp_path / "MyOriShop"
+    paths = Paths(
+        app=root / "app",
+        app_prev=root / "app.prev",
+        staged=root / "staged",
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=root / "data",
+    )
+
+    calls: list = []
+
+    def guard_browser(*_a, **_k):  # pragma: no cover - must never run
+        raise AssertionError("main() opened a browser before/without booting")
+
+    class _NoopProc:
+        def __init__(self, _paths):
+            pass
+
+        def start(self):
+            raise AssertionError("main() must start the app through boot(), not directly")
+
+        def stop(self, *args, **kwargs):
+            pass
+
+    def fake_boot(given_paths, _proc, **_kwargs):
+        calls.append(given_paths)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(launcher_main, "build_paths", lambda *a, **k: paths)
+    monkeypatch.setattr(launcher_main.adapters, "AppProcess", _NoopProc)
+    monkeypatch.setattr(launcher_main, "_open_browser_soon", guard_browser)
+    monkeypatch.setattr(launcher_main, "boot", fake_boot)
+
+    with pytest.raises(SystemExit) as excinfo:
+        launcher_main.main()
+
+    assert excinfo.value.code == 0
+    assert calls == [paths], "main() did not boot through the migration step"
