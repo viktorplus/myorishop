@@ -1022,3 +1022,148 @@ def test_main_boots_through_migration_before_the_watch_loop(tmp_path, monkeypatc
 
     assert excinfo.value.code == 0
     assert calls == [paths], "main() did not boot through the migration step"
+
+
+def test_hold_console_waits_only_on_a_terminal(monkeypatch):
+    """CR-03: ``_hold_console`` is run.bat's ``pause``, and nothing more.
+
+    Windows destroys the console it allocates for a shortcut-spawned
+    console-subsystem process the instant that process exits, so printing and
+    raising SystemExit(1) showed the operator a window flash and nothing else.
+    The wait must happen only when stdin is a real terminal, or every test and
+    CI run would block forever."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+
+    prompts: list = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt))
+
+    class _Stdin:
+        def __init__(self, tty):
+            self._tty = tty
+
+        def isatty(self):
+            return self._tty
+
+    monkeypatch.setattr(launcher_main.sys, "stdin", _Stdin(True))
+    launcher_main._hold_console()
+    assert len(prompts) == 1, "the abort did not wait for the operator"
+    assert "Enter" in prompts[0]
+
+    monkeypatch.setattr(launcher_main.sys, "stdin", _Stdin(False))
+    launcher_main._hold_console()
+    assert len(prompts) == 1, "_hold_console blocked on a non-terminal stdin"
+
+    monkeypatch.setattr(launcher_main.sys, "stdin", None)
+    launcher_main._hold_console()
+    assert len(prompts) == 1
+
+
+def test_main_holds_the_console_open_on_the_migration_abort(tmp_path, monkeypatch, capsys):
+    """CR-03: the GAP-1 abort message must be readable, and in Russian.
+
+    ``run.bat`` prints the abort and then ``pause``s. ``main()`` printed an
+    ENGLISH line — the only non-Russian operator-facing string in the launcher —
+    and raised SystemExit(1) immediately, which closed the shortcut's console.
+    The hold must run BEFORE the exit."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    root = tmp_path / "MyOriShop"
+    paths = Paths(
+        app=root / "app",
+        app_prev=root / "app.prev",
+        staged=root / "staged",
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=root / "data",
+    )
+
+    order: list = []
+
+    class _NoopProc:
+        def __init__(self, _paths):
+            pass
+
+        def start(self):  # pragma: no cover - must never run
+            raise AssertionError("the app was started after a failed migration")
+
+        def stop(self, *args, **kwargs):
+            pass
+
+    def failing_boot(*_a, **_k):
+        raise subprocess.CalledProcessError(1, "alembic")
+
+    monkeypatch.setattr(launcher_main, "build_paths", lambda *a, **k: paths)
+    monkeypatch.setattr(launcher_main.adapters, "AppProcess", _NoopProc)
+    monkeypatch.setattr(launcher_main, "boot", failing_boot)
+    monkeypatch.setattr(launcher_main, "_hold_console", lambda: order.append("hold"))
+    monkeypatch.setattr(
+        launcher_main,
+        "_open_browser_soon",
+        lambda *a, **k: order.append("browser"),  # pragma: no cover
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        launcher_main.main()
+
+    assert excinfo.value.code == 1
+    assert order == ["hold"], "the console was not held open before the abort exit"
+    err = capsys.readouterr().err
+    assert "Миграция не выполнена" in err, f"the abort is not the RU message: {err!r}"
+
+
+def test_watch_loop_reports_a_failed_tick_without_asserting_recovery(
+    tmp_path, monkeypatch, capsys
+):
+    """WR-02: never claim a recovery state ``main()`` cannot guarantee.
+
+    Every exception out of ``run_once`` was reported as «приложение работает на
+    прежней версии». That is false in at least two reachable states: a failed
+    stop (WR-01), and ``swap.py``'s documented double-fault branch where ``app\\``
+    deliberately keeps the BAD code — there ``swap.py`` prints «Откат неполный…»
+    and ``main()`` immediately contradicted it on the next line. An operator
+    reading only the last line believed the install was healthy."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    root = tmp_path / "MyOriShop"
+    paths = Paths(
+        app=root / "app",
+        app_prev=root / "app.prev",
+        staged=root / "staged",
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=root / "data",
+    )
+
+    class _NoopProc:
+        def __init__(self, _paths):
+            pass
+
+        def stop(self, *args, **kwargs):
+            pass
+
+    class _NoSleep:
+        """Breaks the watch loop after exactly one tick (main() catches this)."""
+
+        @staticmethod
+        def sleep(_seconds):
+            raise KeyboardInterrupt
+
+    def failing_run_once(*_a, **_k):
+        raise RuntimeError("post-update health check failed")
+
+    monkeypatch.setattr(launcher_main, "build_paths", lambda *a, **k: paths)
+    monkeypatch.setattr(launcher_main.adapters, "AppProcess", _NoopProc)
+    monkeypatch.setattr(launcher_main, "boot", lambda *a, **k: None)
+    monkeypatch.setattr(launcher_main, "_open_browser_soon", lambda *a, **k: None)
+    monkeypatch.setattr(launcher_main, "run_once", failing_run_once)
+    monkeypatch.setattr(launcher_main, "time", _NoSleep)
+
+    launcher_main.main()
+
+    err = capsys.readouterr().err
+    assert "Обновление не применено: post-update health check failed" in err
+    assert "прежней версии" not in err, (
+        "main() asserted a recovery state it cannot guarantee"
+    )

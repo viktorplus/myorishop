@@ -336,10 +336,13 @@ def generate_iss(*, dist_dir: Path, version: str, dest: Path) -> Path:
     shortcut, it is a plant-and-hijack surface (T-31-08). Hence the shortcut runs
     ``launcher\\python.exe -m launcher`` on the runtime
     ``assemble_launcher_runtime`` bundles. ``python.exe`` (console), not
-    ``pythonw.exe``, is deliberate: it mirrors run.bat and is the only place the
-    operator sees the «Migration failed - server not started» abort. WorkingDir
-    is cosmetic — the launcher ._pth puts the interpreter in isolated mode, so
-    the search path (not the cwd) is what resolves ``-m launcher``.
+    ``pythonw.exe``, is deliberate: it mirrors run.bat and gives the operator a
+    place to READ the «Миграция не выполнена — сервер не запущен» abort. That
+    only works because ``launcher.__main__._hold_console`` waits for Enter on
+    that path — Windows destroys a shortcut-spawned console the instant the
+    process exits, so a console alone buys nothing. WorkingDir is cosmetic — the
+    launcher ._pth puts the interpreter in isolated mode, so the search path (not
+    the cwd) is what resolves ``-m launcher``.
 
     The Start-Menu icon is the stock Python one until a real .ico is added
     (cosmetic, out of scope).

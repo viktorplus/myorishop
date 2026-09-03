@@ -189,14 +189,40 @@ def boot(paths: Paths, app_process, *, migrate=adapters.migrate) -> None:
     app_process.start()
 
 
+def _hold_console() -> None:
+    """Keep a shortcut-spawned console window open so an abort stays readable.
+
+    ``run.bat`` ends its failed-migration branch with ``pause``; the packaged
+    launcher had no equivalent, and the Start-Menu shortcut runs a
+    console-subsystem ``python.exe``, so Windows tears the console down the
+    moment the process exits. Without this the operator sees a window flash and
+    the app simply "does not start".
+
+    No-ops when stdin is not a terminal (CI, tests, redirected output) and
+    swallows every failure — a broken prompt must never change the exit path.
+    """
+    try:
+        if sys.stdin is not None and sys.stdin.isatty():
+            input("Нажмите Enter, чтобы закрыть окно...")
+    except (OSError, ValueError, EOFError):
+        pass
+
+
 def main() -> None:
     paths = build_paths()
     app_process = adapters.AppProcess(paths)
     try:
         boot(paths, app_process)
     except Exception as exc:
-        # run.bat parity: report and exit non-zero WITHOUT starting the server.
-        print(f"Migration failed - server not started: {exc}", file=sys.stderr)
+        # run.bat parity, INCLUDING its `pause`. run.bat prints the abort and
+        # waits; the launcher printed and exited, and Windows destroys the
+        # console it allocated for a shortcut-spawned process the instant that
+        # process ends — so the operator saw a window flash and nothing else,
+        # with no log on disk either. Hold the console open HERE and only here.
+        # The isatty() guard keeps main() non-blocking under CI/tests and when
+        # stdout is redirected.
+        print(f"Миграция не выполнена — сервер не запущен: {exc}", file=sys.stderr)
+        _hold_console()
         raise SystemExit(1) from exc
     _open_browser_soon()
     try:
@@ -204,13 +230,13 @@ def main() -> None:
             try:
                 run_once(paths, app_process)
             except Exception as exc:
-                # apply_update's rollback already restarted the app on the previous
-                # version — keep watching instead of exiting and stopping it.
-                print(
-                    f"Обновление не применено, приложение работает на прежней "
-                    f"версии: {exc}",
-                    file=sys.stderr,
-                )
+                # Report the failure WITHOUT asserting a recovery state: neither
+                # "работает на прежней версии" nor its opposite is guaranteed
+                # here (a failed stop, or swap.py's double-fault branch where
+                # app\ deliberately keeps the BAD code). swap.py prints its own
+                # stderr line for those; contradicting it on the next line would
+                # tell the operator the install is healthy when it is not.
+                print(f"Обновление не применено: {exc}", file=sys.stderr)
             time.sleep(_WATCH_INTERVAL)
     except KeyboardInterrupt:
         pass
