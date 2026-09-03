@@ -75,9 +75,23 @@ git tag v1.42
 git push origin v1.42
 ```
 
+> **The launcher is NOT self-updating — a launcher change means "re-install".**
+> The in-app update swaps `app\` only; `launcher\` is written exclusively by the
+> installer. So a fix in `launcher/swap.py`, `launcher/adapters.py` or
+> `launcher/__main__.py` reaches operators ONLY through a new
+> `MyOriShop-Setup-1.<N>.exe` run — never through the self-update. Check
+> `git log -- launcher/` before writing the release notes and, if anything there
+> changed, say in the notes that this release requires running the installer.
+>
+> For the same reason `dist\MyOriShop-1.<N>.zip` contains the contents of
+> `dist\app` at its ROOT and no `launcher/` member: the launcher renames the
+> extracted `staged\` directly onto `app\`, so every member of that archive lands
+> inside the operator's `app\`.
+
 `.github/workflows/release.yml` runs on the `v1.*` tag and, on a Windows runner:
 
-- builds the onedir (`dist\app` + `dist\launcher` + `dist\MyOriShop-1.42.zip`),
+- builds the onedir (`dist\app` + `dist\launcher` + `dist\MyOriShop-1.42.zip`,
+  the zip carrying `dist\app`'s contents at its root),
 - compiles the per-user installer (`dist\MyOriShop-Setup-1.42.exe`) with Inno Setup,
 - writes `dist\SHA256SUMS` + `dist\manifest.txt`,
 - creates a **DRAFT** GitHub Release with those four assets.
