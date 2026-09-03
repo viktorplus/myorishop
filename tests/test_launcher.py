@@ -824,6 +824,30 @@ def test_run_once_quarantines_a_torn_marker_instead_of_deleting_it(tmp_path):
     assert (data / "pending.failed.json").read_text() == '{"staged_dir": "sta'
 
 
+def test_run_once_refuses_a_marker_naming_another_dir(tmp_path):
+    """WR-05 (T-31-05): ``staged_dir`` must name the dir the swap actually renames.
+
+    ``apply_update`` always renames ``paths.staged`` and never consults
+    ``pending.staged_dir``, so the confinement ``parse_pending`` performs on that
+    field guarded nothing: a marker declaring ``staged_dir: "data"`` passed
+    validation AND the existence check, and the launcher swapped the unrelated
+    ``staged\\`` anyway. That reads like a security control while being a
+    decoration — exactly what invites a future caller to trust it."""
+    _root, app_dir, staged, data, paths, _pending = _swap_fixture(tmp_path)
+    # "data" exists and is confined under the install root, so it clears every
+    # other gate — only the equality check can refuse it.
+    _write_marker(data, staged_dir="data")
+
+    def never_called(*_a, **_k):  # pragma: no cover - must never run
+        raise AssertionError("apply_update was entered on a mismatched marker")
+
+    assert _tick(paths, migrate=never_called) is False
+    assert (app_dir / "marker.txt").read_text() == "v1", "the unrelated staged\\ was swapped"
+    assert (staged / "marker.txt").read_text() == "v2", "staged\\ was consumed"
+    assert not (data / "pending.json").exists()
+    assert (data / "pending.failed.json").exists()
+
+
 def test_run_once_quarantines_marker_after_failed_apply(tmp_path):
     """PKG-04: the quarantine overwrites atomically — two failing ticks leave
     exactly ONE pending.failed.json and the quarantine itself never raises."""

@@ -84,13 +84,19 @@ def run_once(
     ``backup_restore`` to drive a single real ``os.replace`` swap on tmp dirs.
 
     Refuses to swap on a missing or invalid marker (T-31-04): an unparseable
-    marker is discarded without touching ``app\\``. It also refuses to BEGIN the
-    cycle when the staged code is gone — both ``pending.staged_dir`` (what the
-    marker names and ``parse_pending`` confines) and ``paths.staged`` (what
-    ``apply_update`` actually renames) must exist. They are NOT the same path:
-    they coincide only when the marker literally names ``staged``, which is what
-    Phase 31 hand-places and what Phase 32's ``update.stage_pending`` writes — so
-    both are checked rather than one being assumed to imply the other.
+    marker is discarded without touching ``app\\``.
+
+    ``pending.staged_dir`` must EQUAL ``paths.staged`` (T-31-05). ``apply_update``
+    always renames ``paths.staged`` and never consults the marker's field, so
+    without this gate the ASVS V12 confinement in ``parse_pending`` was
+    decorative: a marker declaring ``staged_dir: "data"`` passed validation and
+    the existence check, and the launcher swapped the unrelated ``staged\\``
+    anyway. Requiring equality is what makes the confinement load-bearing while
+    keeping ``apply_update``'s single source of truth for the path it renames.
+    Both Phase 31's hand-placed marker and Phase 32's ``update.stage_pending``
+    write literally ``"staged"``, so nothing legitimate is refused.
+
+    It then refuses to BEGIN the cycle when the staged code is gone.
 
     The marker is ALWAYS consumed: deleted on success, moved to
     ``data\\pending.failed.json`` on any failure. A failed update can therefore
@@ -126,7 +132,13 @@ def run_once(
         # the next tick reads it whole.
         return False
 
-    if not Path(pending.staged_dir).exists() or not Path(paths.staged).exists():
+    staged = Path(paths.staged).resolve()
+    if Path(pending.staged_dir) != staged:
+        # The marker may only name the ONE dir apply_update actually renames —
+        # otherwise parse_pending's confinement guards a field nobody reads.
+        _quarantine_marker(marker)
+        return False
+    if not staged.exists():
         # Unsatisfiable marker (usually one an earlier rollback already consumed):
         # quarantine it BEFORE any side effect instead of replaying it forever.
         _quarantine_marker(marker)
