@@ -1,9 +1,12 @@
 ---
 phase: 32-in-app-secure-self-update
 verified: 2026-07-22T22:30:00Z
-status: human_needed
+uat_completed: 2026-09-03T20:20:00Z
+status: passed
 score: 5/5 must-haves verified
 overrides_applied: 0
+uat: 3/3 passed, 0 issues (63 live checks, 63 passed) — see 32-UAT.md
+human_verification_resolved: true
 human_verification:
   - test: "Two-release round-trip on a bare Windows box: install release N, publish a signed release N+1, launch the client"
     expected: "The Настройки «Обновление приложения» notice appears with the new version + notes; clicking «Обновить и перезапустить» stages the update, the launcher swaps + migrates + restarts, the header chip then shows v(N+1), and the ledger/data is intact (matched-pair, nothing lost)."
@@ -105,6 +108,46 @@ The security-critical apply path is fully code-verified with GREEN tests, but th
 3. **Live launcher matched-pair rollback (UPD-04).** A forced migration failure or a failed post-swap /health version match restores the previous code + DB together, data unharmed.
 
 These match the post-phase UAT items recorded in 32-05-SUMMARY.md — routed to `/gsd-verify-work 32`.
+
+**RESOLVED 2026-09-03 by `/gsd-verify-work 32`.** All three ran live against a
+scratch install assembled from the shipped `dist/MyOriShop-1.60.zip` +
+`dist/launcher`, upgraded to a real `build_release.py`-built 1.61 whose
+`manifest.txt` the operator signed with the production minisign private key and
+which was re-verified against the vendored `app/minisign.pub`. Driven by the
+shipped `launcher\python.exe` and `app\python.exe` on port 8061 (the operator's
+own instance on 8000 untouched): **63 live checks, 63 passed** — real
+`os.replace` swap, real `alembic upgrade head`, real `/health` version-match
+probe (43.2 s poll before the mismatch fired), real `VACUUM INTO` backup, real
+matched-pair rollback in BOTH failure modes, and three refusals (older signed
+release, one flipped archive byte, one flipped signature character) that left
+nothing staged. Full evidence in `32-UAT.md`.
+
+Also established, and previously unverified anywhere: the vendored
+`app/minisign.pub` really is the counterpart of the operator's private key
+(`minisign -V -p app/minisign.pub` verified both operator-signed manifests).
+
+## Acknowledged Gaps
+
+Accepted, not closed — carried forward rather than claimed as verified:
+
+1. **Bare-Windows-VM install run.** The round trip used a scratch install root
+   on the dev machine, not `MyOriShop-Setup-1.61.exe` on a clean box. Same gap
+   the Phase-31 verification acknowledged.
+2. **No published GitHub release exists** (`releases/latest` → 404), so the live
+   `api.github.com` fetch and the `objects.githubusercontent.com` asset-host
+   allow-list were substituted by a local HTTP server plus a runtime widening of
+   `_ALLOWED_ASSET_HOSTS`. Both remain covered only by unit tests. Closing this
+   needs a real tag push plus the human-only offline signing stage.
+3. **The Настройки «Обновление приложения» panel was not clicked in a browser.**
+   Its rendering, «Позже» defer and HTMX swap stay covered by
+   `test_confirm_and_defer` and the UI-SPEC review; the apply path itself was
+   driven through the same service call the route makes.
+
+Observed while testing, not a code defect: `dist/MyOriShop-1.59.zip` is a stale
+pre-fix artifact whose archive root is `app/` + `launcher/` instead of
+`python.exe`, so staging it makes the swapped app fail to start at all. 1.60 and
+1.61 both carry the correct single-root layout
+(`tests/test_packaging.py::test_release_archive_extracts_into_a_runnable_app_dir`).
 
 ### Gaps Summary
 
