@@ -338,6 +338,44 @@ def test_rollback_restarts_the_app_when_stop_fails(tmp_path):
     assert restored == [], "nothing was swapped or migrated — the DB must not be rolled back"
 
 
+def test_rollback_skips_the_db_restore_when_the_app_could_not_be_stopped(tmp_path, capsys):
+    """WR-04: never copy a backup over a DB the running app still holds open.
+
+    On the health-check-failure path the NEW app has already been started, so if
+    the rollback's stop fails, ``backup_restore``'s ``shutil.copy`` would
+    overwrite a live SQLite file byte-for-byte and delete its ``-wal``/``-shm``
+    sidecars underneath an open connection. The rollback's stop is best-effort
+    and SWALLOWED that failure, then restored the DB anyway. The operator is told
+    to restore by hand instead."""
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    _root, _app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
+
+    restored: list = []
+    stops: list = []
+
+    def stop_app():
+        stops.append(1)
+        if len(stops) > 1:  # the forward stop works; the rollback's does not
+            raise PermissionError(5, "Access is denied")
+
+    with pytest.raises(RuntimeError, match="health check"):
+        apply_update(
+            paths,
+            pending,
+            stop_app=stop_app,
+            start_app=lambda: None,
+            migrate=lambda: None,
+            health_ok=lambda: False,
+            backup_restore=lambda path: restored.append(path),
+        )
+
+    assert restored == [], "the DB was copied over while the app was still running"
+    assert "БД не откачена" in capsys.readouterr().err, (
+        "the operator was not told the DB half of the rollback was skipped"
+    )
+
+
 def test_rollback_succeeds_when_app_failed_already_exists(tmp_path):
     """PKG-04 (T-31-06c): a previous rollback leaves app.failed\\ behind and
     Windows os.replace CANNOT replace an existing directory (WinError 5, empty or

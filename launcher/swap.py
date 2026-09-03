@@ -93,11 +93,19 @@ def apply_update(
     it undoes only the steps that actually ran: stop the app; if the staged code
     was swapped in, park it at ``app_failed``; restore the previous ``app\\``;
     restore the pre-update DB via ``backup_restore(pending.db_backup_path)``
-    (copy + delete -wal/-shm) ONLY when the migration was attempted (a failure
-    before that point cannot have touched the schema, and restoring an older
-    backup there would discard operator writes made since it was taken); restart
-    the app on the restored code; re-raise the ORIGINAL exception. Code and DB
-    revert together.
+    (copy + delete -wal/-shm) ONLY when the migration was attempted AND the app
+    is confirmed stopped; restart the app on the restored code; re-raise the
+    ORIGINAL exception. Code and DB revert together.
+
+    The DB half carries TWO preconditions, both of them data-loss guards:
+    ``migrate_attempted`` because a failure before that point cannot have touched
+    the schema and restoring an older backup there would discard operator writes
+    made since it was taken (T-31-06b); and ``stopped`` because
+    ``backup_restore`` does ``shutil.copy`` over the DB file and unlinks its
+    ``-wal``/``-shm`` sidecars — on the health-check path the new app has already
+    been STARTED, so doing that while it still holds the file open corrupts it.
+    When the stop fails, the DB is left alone and a Russian stderr line tells the
+    operator to restore the backup by hand (WR-04).
 
     Every rollback step is best-effort so no secondary failure can prevent the
     restoration or mask the real error. ONE double-fault branch does not keep the
@@ -121,7 +129,6 @@ def apply_update(
     prev_renamed = False
     staged_swapped = False
     migrate_attempted = False
-    stopped = False
     try:
         # INSIDE the guard on purpose: AppProcess.stop can raise for real on
         # Windows (Popen.terminate re-raises PermissionError when
@@ -133,7 +140,6 @@ def apply_update(
         # launcher has already lost the handle) or the app was left dead with the
         # watch loop spinning against nothing.
         stop_app()
-        stopped = True
         # Clear the destination first: Windows os.replace CANNOT replace an
         # existing directory (WinError 5 — measured, for an EMPTY one too). A
         # stale app.prev\ left by an earlier cycle whose cleanup rmtree partially
@@ -155,7 +161,17 @@ def apply_update(
             raise RuntimeError("post-update health check failed")
     except Exception:
         # Proportional matched-pair rollback: code + DB revert together (T-31-06).
-        _best_effort(stop_app)
+        # This stop is best-effort, so its OWN failure must be recorded: on the
+        # health-check path the NEW app has already been started, and
+        # backup_restore does shutil.copy over the live DB file and unlinks its
+        # -wal/-shm sidecars. Doing that under an open SQLite connection is
+        # corruption, so `stopped` gates the DB half below (WR-04).
+        stopped = False
+        try:
+            stop_app()
+            stopped = True
+        except Exception:  # noqa: BLE001 — a rollback step must never mask the cause
+            pass
         if staged_swapped:
             # Park the bad code for forensics; clear the destination first.
             shutil.rmtree(paths.app_failed, ignore_errors=True)
@@ -181,8 +197,17 @@ def apply_update(
                     "сохранена в app.prev\\",
                     file=sys.stderr,
                 )
-        if migrate_attempted:
+        if migrate_attempted and stopped:
             _best_effort(lambda: backup_restore(pending.db_backup_path))
+        elif migrate_attempted:
+            # WR-04: restoring here would shutil.copy over a DB the running app
+            # still holds open and delete its -wal/-shm sidecars. A stale schema
+            # the operator can recover from beats a corrupted DB file.
+            print(
+                "БД не откачена: приложение не удалось остановить — "
+                "восстановите резервную копию вручную",
+                file=sys.stderr,
+            )
         _best_effort(start_app)
         raise
     else:
