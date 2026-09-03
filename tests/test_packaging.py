@@ -219,3 +219,89 @@ def test_generate_iss_is_per_user_with_shortcut_and_uninstaller(tmp_path):
     assert not any("data\\" in line for line in source_lines), (
         "data\\ must NOT be shipped by the installer (PKG-03)"
     )
+
+
+# --- PKG-01: first run of the REAL assembled dist ---------------------------
+
+# Skip-gated (same convention as the minisign / vendored-pubkey gates in
+# tests/test_release_verify.py): this test needs a real ~27 MB assembled onedir
+# with a bundled python.exe, which CI never builds — only a local
+# `uv run python build_release.py --version v1.<N>` produces it.
+
+
+@pytest.mark.skipif(
+    not (_REPO_ROOT / "dist" / "app" / "python.exe").exists(),
+    reason="needs the real assembled onedir — build it with "
+    "`uv run python build_release.py --version v1.<N>` (CI does not build it)",
+)
+def test_assembled_dist_boots_against_empty_data_dir(tmp_path, monkeypatch):
+    """PKG-01 first-run gate: the REAL bundled runtime, booted through the
+    launcher against an EMPTY data dir, must serve ``GET /`` with a non-500
+    status.
+
+    This automates the 31-UAT reproduction: the built distribution answered
+    ``/health`` 200 but every page 500 (``no such table: users``) because nothing
+    on the first-run path ran ``alembic upgrade head``. Only ``boot()``'s
+    migrate-then-start makes it green — a launcher that merely starts the app
+    fails here exactly as the operator's install did.
+    """
+    import http.client  # noqa: PLC0415
+    import socket  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+    from launcher import adapters  # noqa: PLC0415
+    from launcher.swap import Paths  # noqa: PLC0415
+
+    # A FREE ephemeral port — never 8000, where the operator's own instance runs.
+    # AppProcess.start() reads adapters._PORT at call time, so patching the module
+    # attribute retargets the child process.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    assert port != 8000
+    monkeypatch.setattr(adapters, "_PORT", port)
+
+    dist = _REPO_ROOT / "dist"
+    data = tmp_path / "data"  # deliberately EMPTY: the migration must create the DB
+    paths = Paths(
+        app=dist / "app",
+        app_prev=dist / "app.prev",
+        staged=dist / "staged",
+        app_failed=dist / "app.failed",
+        install_root=dist,
+        data=data,
+    )
+
+    proc = adapters.AppProcess(paths)
+    launcher_main.boot(paths, proc)
+    try:
+        # A LOCAL poll helper on purpose: adapters.health_ok treats ANY status —
+        # including the 500 this test exists to catch — as "alive".
+        status = None
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+            try:
+                conn.request("GET", "/")
+                response = conn.getresponse()
+                response.read()
+                status = response.status
+                break
+            except (OSError, http.client.HTTPException):
+                pass
+            finally:
+                conn.close()
+            time.sleep(0.5)
+
+        returncode = proc.proc.returncode if proc.proc is not None else "no child"
+        assert status is not None, (
+            f"the bundled app never answered on 127.0.0.1:{port} "
+            f"(child returncode={returncode})"
+        )
+        assert status != 500, "fresh install serves 500 — the schema was never migrated"
+        assert status in (200, 302, 303, 307), f"unexpected first-run status {status}"
+    finally:
+        proc.stop()
+
+    assert (data / "myorishop.db").exists(), "the boot migration created no DB"
