@@ -242,8 +242,14 @@ def assemble_onedir(
                 "the onedir would ship an incomplete migration history (Pitfall 5)"
             )
     except Exception:
-        # Delete-partial-on-failure (backup.py:45-47 idiom).
+        # Delete-partial-on-failure (backup.py:45-47 idiom) — BOTH halves of the
+        # install-root layout. assemble_launcher_runtime runs at step 5, INSIDE
+        # this try, and the migration-count gate at step 6 (the most likely
+        # failure here) fires AFTER it, so wiping only dest\ left a fully
+        # assembled dist\launcher\ behind: a rerun of `iscc dist\MyOriShop.iss`
+        # against that residue would package a launcher with no app.
         shutil.rmtree(dest, ignore_errors=True)
+        shutil.rmtree(dest.parent / "launcher", ignore_errors=True)
         raise
 
     return dest

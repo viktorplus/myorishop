@@ -265,6 +265,45 @@ def test_real_launcher_runtime_resolves_the_sibling_package(tmp_path):
     )
 
 
+def test_assemble_onedir_removes_both_halves_on_failure(tmp_path, monkeypatch):
+    """WR-08: delete-partial-on-failure must cover the launcher it just built.
+
+    ``assemble_launcher_runtime`` runs at step 5, inside the try, and the
+    migration-count gate at step 6 — the most likely failure in this block —
+    fires AFTER it. The handler only wiped ``dist\\app``, so a failed build left
+    a fully assembled ``dist\\launcher\\`` behind and the documented invariant
+    ("a half-written bundle is removed so it can never pass for a valid one")
+    was false for the launcher half. A rerun of ``iscc dist\\MyOriShop.iss``
+    against that residue packages a launcher with no app."""
+    import build_release  # noqa: PLC0415
+
+    dest = tmp_path / "dist" / "app"
+    real_version_files = build_release._version_files
+
+    def short_bundled_count(versions_dir):
+        found = real_version_files(versions_dir)
+        # Only the BUNDLED count comes up short — the step-6 gate's real shape.
+        if Path(versions_dir).is_relative_to(dest):
+            return found[:-1]
+        return found
+
+    monkeypatch.setattr(build_release, "_version_files", short_bundled_count)
+
+    with pytest.raises(RuntimeError, match="migration count mismatch"):
+        build_release.assemble_onedir(
+            embeddable_zip=_fake_embeddable_zip(tmp_path),
+            wheel_dir=_fake_wheel_dir(tmp_path),
+            dest=dest,
+            repo_root=_REPO_ROOT,
+        )
+
+    assert not dest.exists(), "the partial app bundle survived"
+    assert not (dest.parent / "launcher").exists(), (
+        "the launcher assembled at step 5 survived a step-6 failure — iscc would "
+        "package it with no app"
+    )
+
+
 # --- PKG-01/PKG-04: the release archive IS the future app\ ------------------
 
 
