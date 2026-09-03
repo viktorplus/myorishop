@@ -302,6 +302,62 @@ def test_generate_iss_is_per_user_with_shortcut_and_uninstaller(tmp_path):
     )
 
 
+def test_iss_referenced_paths_exist_in_dist(tmp_path):
+    """PKG-02 / T-31-08: EVERY path the generated .iss names must exist in the
+    assembled dist — the [Files] Source patterns (relative to the script dir),
+    the [Icons] Filename targets and UninstallDisplayIcon.
+
+    31-UAT GAP-2: the shortcut pointed at ``{app}\\launcher\\launcher.exe``,
+    which nothing ever built. Besides being a dead shortcut, a missing target
+    inside a user-writable per-user install root is a plant-and-hijack surface —
+    whoever can create that file owns the operator's click."""
+    import build_release  # noqa: PLC0415
+
+    dist_app = build_release.assemble_onedir(
+        embeddable_zip=_fake_embeddable_zip(tmp_path),
+        wheel_dir=_fake_wheel_dir(tmp_path),
+        dest=tmp_path / "dist" / "app",
+        repo_root=_REPO_ROOT,
+    )
+    dist_dir = Path(dist_app).parent
+    iss = build_release.generate_iss(
+        dist_dir=dist_dir, version="1.42", dest=dist_dir / "MyOriShop.iss"
+    )
+    text = Path(iss).read_text(encoding="utf-8")
+
+    assert "launcher.exe" not in text, (
+        "the .iss still promises a launcher.exe stub that nothing builds"
+    )
+    assert 'Parameters: "-m launcher"' in text, (
+        "the shortcut target is an interpreter — without -m launcher it opens a REPL"
+    )
+
+    def _under_app(value: str) -> Path:
+        assert value.startswith("{app}\\"), f"unexpected non-{{app}} target {value!r}"
+        return dist_dir.joinpath(*value[len("{app}\\") :].split("\\"))
+
+    referenced: list[Path] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(";"):
+            continue
+        if line.startswith("Source:"):
+            pattern = line.split(";")[0].partition(":")[2].strip().strip('"')
+            matches = list(dist_dir.glob(pattern.replace("\\", "/")))
+            assert matches, f"[Files] Source {pattern!r} matches nothing under {dist_dir}"
+            referenced.extend(matches)
+        elif line.startswith("UninstallDisplayIcon="):
+            referenced.append(_under_app(line.partition("=")[2].strip()))
+        elif line.startswith("Name:") and "Filename:" in line:
+            referenced.append(
+                _under_app(line.split("Filename:")[1].split(";")[0].strip().strip('"'))
+            )
+
+    assert len(referenced) >= 3, "parsed nothing to check — the .iss shape changed"
+    for path in referenced:
+        assert path.exists(), f"the .iss references {path}, which the build does not ship"
+
+
 # --- PKG-01: first run of the REAL assembled dist ---------------------------
 
 # Skip-gated (same convention as the minisign / vendored-pubkey gates in
