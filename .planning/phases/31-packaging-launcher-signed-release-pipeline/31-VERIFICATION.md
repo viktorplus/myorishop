@@ -1,9 +1,20 @@
 ---
 phase: 31-packaging-launcher-signed-release-pipeline
 verified: 2026-09-03T09:02:24Z
-status: human_needed
-score: 5/5 must-haves code-verified (3 require machine/offline confirmation)
+status: passed
+score: 5/5 must-haves code-verified; 1 of 3 human items closed live, 2 acknowledged as open
 overrides_applied: 0
+uat_closeout:
+  date: 2026-09-03
+  session: "/gsd-verify-work 31"
+  uat_status: partial (2 passed, 2 pending, 0 issues)
+  closed_live:
+    - "Human item 2 (live packaged failed-update, two consecutive ticks): RE-RUN for real on the post-fix 1.60 build using the SHIPPED launcher runtime and the REAL adapters. 39/39 checks passed — happy-path swap drops app.prev, a failing alembic revision triggers the matched-pair rollback (code AND DB, proven by a sentinel table written after the backup), the next tick is a no-op with app\\ intact and serving, and a second failure with app.failed already present rolls back again. See 31-UAT.md test 2 `evidence`."
+  partially_closed:
+    - "Human item 1: the installer has now been COMPILED — Inno Setup 6.7.3 was installed per-user (%LOCALAPPDATA%\\Programs\\Inno Setup 6\\ISCC.exe), not under Program Files and not on PATH, which is why it read as missing. `ISCC.exe dist\\MyOriShop.iss` → Successful compile, dist\\Output\\MyOriShop-Setup-1.60.exe (38 539 646 B, sha256 98da797d61e8a433af2ce0d5d3cdde21b6e440bf12ba95d095ab0d8c63ebac27). The clean-VM run, SmartScreen and the per-user uninstall entry remain unobserved."
+  acknowledged_open:
+    - "Bare-Windows install run of MyOriShop-Setup-1.60.exe (SmartScreen, Start-Menu shortcut, per-user uninstaller) — needs a clean VM this environment does not have."
+    - "Real tag-triggered release.yml run + offline minisign signature + Publish — the operator deliberately deferred pushing a release tag; stages B and C are human-only by design (T-31-02)."
 re_verification:
   previous_status: human_needed
   previous_score: 5/5 code contracts verified (4 require machine/offline UAT confirmation)
@@ -145,6 +156,24 @@ Three items remain, all inherently machine-level or offline-operator. See the `h
 1. **Compile the installer and run it on a bare Windows machine (PKG-01, PKG-02)** — `iscc` is not installed here, so no setup exe has ever been produced from the fixed `.iss`; SmartScreen, the Start-Menu click, the per-user uninstaller and the bare-machine condition are unobserved. The runtime half is already proven against the real 27 MB build.
 2. **Live packaged failed-update, two consecutive ticks (PKG-04)** — the fix is unit-proven with real `os.replace`, but the original brick was found by a live run, so the post-fix live confirmation is the honest close-out. Fold into the VM session from item 1.
 3. **Real signed-release pipeline run + offline signature (PKG-05)** — `gh release list` and `gh run list --workflow=release.yml` are both empty; no `.minisig` exists anywhere. The signing step is deliberately a human offline action (T-31-02).
+
+## Acknowledged Gaps
+
+Recorded 2026-09-03 during `/gsd-verify-work 31`. The operator reviewed the two
+remaining items and chose to close the phase with them acknowledged rather than hold
+it open. Both are environment deliverables, not code defects.
+
+| # | Open item | Why it stays open | What would close it |
+|---|-----------|-------------------|---------------------|
+| 1 | Bare-Windows install run (PKG-01, PKG-02) | No clean Windows VM is available here, and installing the setup exe on the dev machine was declined — it changes machine state and the packaged launcher hardcodes port 8000, which the operator's own instance (PID 39100) holds, so an installed copy could not start anyway. | Copy `dist\Output\MyOriShop-Setup-1.60.exe` (now compiled) to a clean VM with no Python/uv/git, clear SmartScreen, click the Start-Menu «MyOriShop» shortcut, reach the login page, confirm the per-user uninstall entry. |
+| 2 | Real signed-release pipeline run (PKG-05) | Pushing a tag creates a public draft release, and signing `manifest.txt` with the offline secret key plus Publish are human-only by design (T-31-02). The operator chose not to cut a release now. | Push `v1.<N>` matching `__version__`, let `release.yml` draft the release with the four artifacts, sign `manifest.txt` offline, attach `manifest.txt.minisig`, Publish, verify with `minisign -Vm manifest.txt -p app/minisign.pub`. |
+
+**Closed live during this session:** human item 2 (live packaged failed-update, two
+consecutive ticks) — the honest close-out the prior verification asked for. The
+post-fix build was re-run for real on the shipped launcher runtime with real
+subprocess / alembic / HTTP / `os.replace`; 39 of 39 checks passed, including the
+exact two-tick sequence that originally bricked the install and a second failure
+with `app.failed\` already present. Full evidence in `31-UAT.md` test 2.
 
 **Closed since the prior verification:** the offline minisign keygen item — `app/minisign.pub` is present and committed, no `*.key` is tracked, `.gitignore` blocks them, and `test_vendored_pubkey_present_and_bundled` now RUNS green instead of skipping.
 

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
 status: executing
-stopped_at: Completed 31-08-PLAN.md (GAP-2 Start-Menu shortcut target)
-last_updated: "2026-09-03T07:42:24.793Z"
+stopped_at: Phase 31 closed after UAT (2 of 4 passed, 2 acknowledged human-only gaps)
+last_updated: "2026-09-03T16:52:05.497Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 6
@@ -21,20 +21,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 31 — packaging-launcher-signed-release-pipeline
+**Current focus:** Phase 32 — in-app-secure-self-update
 
 ## Current Position
 
-Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
-Plan: 4 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
-Status: Ready to execute
+Phase: 32 (in-app-secure-self-update)
+Plan: 5 of 5 — all plans already executed and summarised (2026-07-22)
+Status: Executed — awaiting `/gsd-verify-work 32` and `/gsd-secure-phase 32`
 Last activity: 2026-09-03
+
+**Phase 31 close-out (2026-09-03):** marked complete with two acknowledged,
+human-only gaps recorded in `31-VERIFICATION.md` → `## Acknowledged Gaps` —
+(1) the bare-Windows install run of the now-compiled
+`dist\Output\MyOriShop-Setup-1.60.exe`, and (2) the first real tag-triggered
+signed release. Neither is a code defect. The live launcher swap + matched-pair
+rollback was re-run for real and passed 39/39 checks.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 97 (v1.0-v2.0)
+- Total plans completed: 105 (v1.0-v2.0)
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -46,6 +53,7 @@ Last activity: 2026-09-03
 | 25-30 (v3.0) | TBD | - | - |
 | 28 | 6 | - | - |
 | 29 | 5 | - | - |
+| 31 | 8 | - | - |
 
 **Recent Trend:**
 

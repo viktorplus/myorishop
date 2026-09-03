@@ -396,7 +396,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 28. Central Server — Hosting & Sync API | v3.0 | 6/6 | Complete    | 2026-07-19 |
 | 29. Online Client Sync | v3.0 | 5/5 | Complete    | 2026-07-20 |
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
-| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete   | 2026-09-03 |
+| 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete   | 2026-07-22 |
 
 ## Backlog
@@ -422,6 +422,7 @@ Scope discovered by reading the code (2026-08-09) — this is a full phase, not 
 - Sync needs no schema edit: `merge.KIND_TO_FIELDS` (`app/services/merge.py:80`) derives fields from the model columns, so `currency` propagates automatically. **Needs verification:** behaviour when a new-schema client pushes to an old-schema server — the field is likely dropped silently; cover with a version-mismatch test.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.2: One-Tap Reversal of a Wrong Operation (BACKLOG)
@@ -442,6 +443,7 @@ The problem, verified in code:
 Scope sketch (not a plan): a reversal service per operation type that writes the compensating row(s) through the existing sanctioned write paths; a payload link back to the reversed operation id so История can show «сторно операции X»; guards against double-reversal and against reversing a row whose stock has already moved on; the same control on desktop and mobile История. Returns (`app/services/returns.py:117`) are the existing precedent for a linked, capped compensating write.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.3: Back-Dated Operations (BACKLOG)
@@ -460,6 +462,7 @@ The problem, verified in code:
 Known risks to settle before planning: the operation date is currently the same value used for ordering, for the sync cursor and for the append-only audit trail — an operator-supplied date must NOT overwrite the audit timestamp. The likely shape is a separate "business date" column defaulting to the technical timestamp, with reports switching to it; that touches the ledger, the sync payload and every report query, so this is a real phase, not a field.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.4: Mobile Editing of Product and Customer Cards (BACKLOG)
@@ -479,4 +482,5 @@ The problem, verified in code:
 Scope sketch (not a plan): mobile route pairs mirroring the desktop edit/update pair and reusing the same services (no second validation path), following the `/m/batches/{id}/edit` precedent shipped in quick task 260813-i28, plus entry points from the mobile product card and the customer list.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
