@@ -300,6 +300,44 @@ def test_rollback_leaves_db_untouched_when_no_swap_happened(tmp_path, monkeypatc
     assert starts, "start_app must run again so the install is left serving"
 
 
+def test_rollback_restarts_the_app_when_stop_fails(tmp_path):
+    """WR-01: ``stop_app()`` sits INSIDE the guarded region.
+
+    ``AppProcess.stop`` can raise for real on Windows — ``Popen.terminate()``
+    re-raises ``PermissionError`` when ``TerminateProcess`` fails on a
+    still-``STILL_ACTIVE`` process — and its ``finally: self.proc = None`` drops
+    the child handle even then. With the stop above the ``try`` such a failure
+    skipped the ENTIRE rollback: ``start_app`` never ran, so the install was left
+    either with an orphan serving old code on 8000 that the launcher no longer
+    owns, or with nothing serving at all while the watch loop spun."""
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    _root, app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
+
+    events: list = []
+    restored: list = []
+
+    def stop_app():
+        events.append("stop")
+        raise PermissionError(5, "Access is denied")
+
+    with pytest.raises(PermissionError):
+        apply_update(
+            paths,
+            pending,
+            stop_app=stop_app,
+            start_app=lambda: events.append("start"),
+            migrate=lambda: events.append("migrate"),
+            health_ok=lambda: True,
+            backup_restore=lambda path: restored.append(path),
+        )
+
+    assert "start" in events, "a failed stop skipped the rollback's restart"
+    assert "migrate" not in events, "the swap proceeded on a still-running app"
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ was touched after a failed stop"
+    assert restored == [], "nothing was swapped or migrated — the DB must not be rolled back"
+
+
 def test_rollback_succeeds_when_app_failed_already_exists(tmp_path):
     """PKG-04 (T-31-06c): a previous rollback leaves app.failed\\ behind and
     Windows os.replace CANNOT replace an existing directory (WinError 5, empty or

@@ -118,11 +118,22 @@ def apply_update(
             "renamed away with nothing to put back (PKG-04, T-31-06)"
         )
 
-    stop_app()
     prev_renamed = False
     staged_swapped = False
     migrate_attempted = False
+    stopped = False
     try:
+        # INSIDE the guard on purpose: AppProcess.stop can raise for real on
+        # Windows (Popen.terminate re-raises PermissionError when
+        # TerminateProcess fails on a still-STILL_ACTIVE process, and
+        # wait(timeout) can raise beyond TimeoutExpired). With the stop above the
+        # try, such a failure skipped the ENTIRE rollback: start_app never ran, so
+        # either an orphaned server kept serving old code on 8000 (AppProcess.stop
+        # drops self.proc in its finally even when terminate raised, so the
+        # launcher has already lost the handle) or the app was left dead with the
+        # watch loop spinning against nothing.
+        stop_app()
+        stopped = True
         # Clear the destination first: Windows os.replace CANNOT replace an
         # existing directory (WinError 5 — measured, for an EMPTY one too). A
         # stale app.prev\ left by an earlier cycle whose cleanup rmtree partially
