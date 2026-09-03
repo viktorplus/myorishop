@@ -210,6 +210,158 @@ def test_apply_update_rolls_back_on_failed_health_check(tmp_path):
     assert starts
 
 
+# --- PKG-04 GAP-3: a failed update must never brick the install -------------
+
+
+def _swap_fixture(tmp_path):
+    """Fake install layout + the Paths/Pending pair the swap state machine takes."""
+    from launcher.swap import Paths, Pending  # noqa: PLC0415
+
+    root, app_dir, staged, data = _install_layout(tmp_path)
+    backup = data / "backup.db"
+    backup.write_text("BACKUP", encoding="utf-8")
+    paths = Paths(
+        app=app_dir,
+        app_prev=root / "app.prev",
+        staged=staged,
+        app_failed=root / "app.failed",
+        install_root=root,
+        data=data,
+    )
+    pending = Pending(staged_dir=staged, expected_version="1.2", db_backup_path=backup)
+    return root, app_dir, staged, data, paths, pending
+
+
+def test_apply_update_refuses_when_staged_dir_is_missing(tmp_path):
+    """PKG-04 (T-31-06), 31-UAT blocker: with staged\\ gone the cycle is refused
+    BEFORE stop_app and before any rename — app\\ is never renamed away with
+    nothing to put back. Today the first os.replace sits outside the try, so the
+    app dir is destroyed and the install is bricked."""
+    import shutil  # noqa: PLC0415
+
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    root, app_dir, staged, _data, paths, pending = _swap_fixture(tmp_path)
+    shutil.rmtree(staged)
+
+    events: list = []
+
+    with pytest.raises(FileNotFoundError):
+        apply_update(
+            paths,
+            pending,
+            stop_app=lambda: events.append("stop"),
+            start_app=lambda: events.append("start"),
+            migrate=lambda: events.append("migrate"),
+            health_ok=lambda: True,
+            backup_restore=lambda path: events.append(("restore", path)),
+        )
+
+    assert events == [], "the cycle must not begin — not even stop_app"
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ was renamed away"
+    assert not (root / "app.prev").exists()
+    assert not (root / "app.failed").exists()
+
+
+def test_rollback_leaves_db_untouched_when_no_swap_happened(tmp_path, monkeypatch):
+    """PKG-04 (T-31-06b): when the FIRST rename fails nothing was swapped and no
+    migration ran, so the rollback must NOT restore the DB — that would silently
+    discard every operator write made since the backup was taken. app/ stays
+    intact and the app is restarted."""
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    _root, app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
+
+    restored: list = []
+    starts: list = []
+    real_replace = os.replace
+    calls: list = []
+
+    def failing_replace(src, dst):
+        calls.append((src, dst))
+        if len(calls) == 1:
+            raise OSError(32, "The process cannot access the file")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(OSError):
+        apply_update(
+            paths,
+            pending,
+            stop_app=lambda: None,
+            start_app=lambda: starts.append(1),
+            migrate=lambda: restored.append("migrate-ran"),
+            health_ok=lambda: True,
+            backup_restore=lambda path: restored.append(path),
+        )
+
+    assert restored == [], "nothing was swapped or migrated — the DB must not be rolled back"
+    assert (app_dir / "marker.txt").read_text() == "v1"
+    assert starts, "start_app must run again so the install is left serving"
+
+
+def test_rollback_succeeds_when_app_failed_already_exists(tmp_path):
+    """PKG-04 (T-31-06c): a previous rollback leaves app.failed\\ behind and
+    Windows os.replace CANNOT replace an existing directory (WinError 5, empty or
+    not). The rollback therefore clears its destination first; app/ is restored
+    and the ORIGINAL migrate error propagates, never a PermissionError raised by
+    the rollback's own rename."""
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    root, app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
+    stale = root / "app.failed"
+    stale.mkdir()
+    (stale / "marker.txt").write_text("v0-stale", encoding="utf-8")
+
+    starts: list = []
+    restored: list = []
+
+    def migrate():
+        raise RuntimeError("alembic upgrade head failed")
+
+    with pytest.raises(RuntimeError, match="alembic upgrade head failed"):
+        apply_update(
+            paths,
+            pending,
+            stop_app=lambda: None,
+            start_app=lambda: starts.append(1),
+            migrate=migrate,
+            health_ok=lambda: True,
+            backup_restore=lambda path: restored.append(path),
+        )
+
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ not restored"
+    assert (stale / "marker.txt").read_text() == "v2", "stale app.failed/ not rotated out"
+    assert restored == [pending.db_backup_path], "matched-pair DB restore not invoked"
+    assert starts
+
+
+def test_apply_update_rotates_a_stale_app_prev(tmp_path):
+    """PKG-04 (T-31-06c): a stale app.prev\\ left by a partially failed cleanup
+    must not block the forward swap — without clearing the destination the first
+    os.replace raises WinError 5 and no update could ever apply again."""
+    from launcher.swap import apply_update  # noqa: PLC0415
+
+    root, app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
+    stale_prev = root / "app.prev"
+    stale_prev.mkdir()
+    (stale_prev / "marker.txt").write_text("v0-stale", encoding="utf-8")
+
+    apply_update(
+        paths,
+        pending,
+        stop_app=lambda: None,
+        start_app=lambda: None,
+        migrate=lambda: None,
+        health_ok=lambda: True,
+        backup_restore=lambda path: None,
+    )
+
+    assert (app_dir / "marker.txt").read_text() == "v2"
+    assert not stale_prev.exists()
+
+
 def test_backup_restore_deletes_wal_sidecars(tmp_path):
     """PKG-04 / RESEARCH Pitfall 4 (T-31-06): the backup_restore adapter copies
     the backup over data/myorishop.db then DELETES the -wal/-shm sidecars,
