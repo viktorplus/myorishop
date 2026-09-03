@@ -1,5 +1,41 @@
 # Milestones
 
+## v4.0 Distribution & Delivery (Shipped: 2026-09-03)
+
+**Delivered:** The app stopped being a `run.bat` + uv dev checkout and became a self-contained, self-updating Windows client — a bundled Python 3.13 embeddable runtime + app source in an onedir layout, an unsigned per-user Inno Setup installer, operator data physically relocated to a sibling of the swappable `app\` directory, a stable out-of-tree launcher that can stop/swap/migrate/health-check/restart with matched-pair code+DB rollback, a tag-triggered GitHub Actions release pipeline signed with an OFFLINE Ed25519 minisign key, and an in-app notify-and-confirm self-update that verifies SHA-256 + signature before it unpacks anything and is a hard no-op on the PostgreSQL server.
+
+**Phases completed:** 2 phases (31, 32), 13 plans, 29 tasks
+**Timeline:** 2026-07-22 → 2026-09-03
+**Git range:** `bc94dae` (test(31-01): RED scaffold for PKG-03 data separation) → `f6639af` (docs(phase-32): close phase 32) — 95 phase-31/32 commits, app version 1.0 → 1.62
+**Requirements:** 12/12 checked off — PKG-01..05 (Phase 31), UPD-01..07 (Phase 32)
+**Security:** both phases carry a SECURITY.md; Phase 32 was threat-modelled (ASVS L1) with 11/11 threats closed and 3 accepted risks
+
+**Known gaps at close (not code defects, human-only):**
+
+- The bare-Windows install run of `dist\Output\MyOriShop-Setup-1.60.exe` has never been executed — the installer is built and its generated `.iss` is test-pinned, but no one has clicked through it on a clean machine.
+- The first real tag-triggered signed release has never been cut — the pipeline, the offline-signing runbook and the CI `release-verify` round-trip are green, but no production release exists yet, so the end-to-end self-update has only been exercised against staged fixtures.
+- Both are recorded in `.planning/phases/31-*/31-VERIFICATION.md` → `## Acknowledged Gaps` and in `31-UAT.md` (2 pending scenarios).
+
+**Known deferred items at close:** 27 (see STATE.md → `## Deferred Items`) — 4 diagnosed-but-unclosed debug sessions, 3 UAT gaps, 2 `human_needed` verifications (phases 25, 26), 17 unstamped quick tasks, 1 pending todo. All predate v4.0 except the Phase 31 UAT gaps above.
+
+**Key accomplishments:**
+
+- Three RED-by-design test files that pin PKG-01..05 (onedir layout, per-user Inno Setup installer, sibling data separation, launcher swap/rollback + path confinement, signed-release manifest+minisign verify) as executable acceptance contracts before any implementation module exists.
+- Roots every operator-state path (SQLite DB, `.env`, per-install `secret_key`/`device_id`, and `backups/`) under a single import-time absolute data dir supplied by `MYORISHOP_DATA_DIR` (default `"data"`), so the operator's data lives as a physical sibling of the swappable `app\` directory and an over-the-top app-dir swap can never reach or destroy it.
+- A stdlib-only `launcher/` package living outside the swappable `app\` dir: a pure callback-injected `apply_update` state machine (stop → rename app→app.prev → rename staged→app → migrate → health-check → drop app.prev, with matched-pair code+DB rollback on any failure), Windows PID-owning adapters, and a `python -m launcher` entry that watches `data\pending.json` and drives one swap cycle on a valid, path-confined marker.
+- `build_release.py`, the single repeatable build SUT that turns the git+uv checkout into a self-contained Windows onedir (Python 3.13 embeddable runtime + a site-packages-enabled `python313._pth` + vendored wheels + app source + all 22 alembic migrations + the stable launcher), computes the release SHA-256 into a signable `manifest.txt`, enforces the `v1.<N>` tag ↔ `__version__` contract by parsing `app/__init__.py` without importing the app, and generates the per-user Inno Setup `MyOriShop.iss` — never a self-locking single-file exe.
+- A tag-triggered GitHub Actions workflow that builds the MyOriShop distributable on a Windows runner and publishes a DRAFT release (archive + installer + SHA256SUMS + manifest.txt) with NO repo secrets, plus the offline-signing runbook that reconciles "the pipeline publishes a signature" with "the secret key is OFFLINE" via a two-stage build-in-CI / sign-offline-attach flow, the RU SmartScreen operator doc, a `.gitignore` guard so the minisign secret key can never be committed, and a CI `release-verify` job that installs minisign so the sign→verify + tamper-fail round-trip runs green.
+- The packaged launcher now runs `alembic upgrade head` before starting the app on every boot — closing the GAP-1 blocker where a fresh install created a schema-less DB and served HTTP 500 (`no such table: users`) on every page.
+- A failed update now leaves the operator running on the previous version indefinitely: both swap renames are inside the rollback-guarded region, every directory rename clears its destination first (Windows `os.replace` refuses an existing directory — even an empty one), and the pending marker is quarantined instead of being replayed every 2 seconds.
+- The Start-Menu shortcut now targets a file the installer actually ships — `{app}\launcher\python.exe -m launcher`, running on a second extraction of the same SHA-256-verified embeddable runtime that lives OUTSIDE the swappable `app\`, with a test that fails the build if any path the generated `.iss` names is missing.
+- Executable RED test contract for the in-app secure self-update — 7 named UPD tests in tests/test_update.py plus the UPD-04 app-marker->launcher integration and /health version-match contract in tests/test_launcher.py — collection green, execution RED, ready for Waves 02-05 to flip GREEN.
+- Added the PyCA `cryptography` 49.0.0 Ed25519 provider and vendored the `RW`-prefixed `app/minisign.pub` trust anchor — the two human-owned prerequisites that unblock the Wave 2/3 release-verify gate.
+- The read half of the updater: `app/services/minisign_verify.py` (pure-Python Ed25519/minisign `verify_minisign` + `sha256_matches`) and `check_for_update`, which is dialect-gated to a hard no-op on PostgreSQL, offline-safe by construction, and compares versions on the integer of the `1.<N>` scheme read from a *verified* manifest — so a downgrade or a tampered tag can never be offered.
+- The write half: `apply()` with a verify-before-unpack hard gate, zip-slip confinement via `is_relative_to`, a VACUUM-INTO pre-update backup, a `data\pending.json` marker handing the swap to the launcher, and a public `GET /health` returning `{version, status}` that the launcher probes for an exact version match before it drops the previous code directory.
+- The operator-facing surface: an SQLite-only «Обновление приложения» section in Настройки with a self-contained `#update-panel` htmx partial covering every update state, three always-200 thin routes (`check`/`apply`/`dismiss`) mirroring the shipped `POST /settings/sync` shape, and a one-shot non-blocking startup check in the app lifespan — notify-and-confirm, never a silent auto-apply.
+
+---
+
 ## v2.0 UX Overhaul & Navigation Restructure (Shipped: 2026-07-17)
 
 **Delivered:** Product pricing consolidated to exactly two fields (ДЦ cost / ПЦ sale) with a colour cue against the catalog reference price everywhere it's edited; the products page rebuilt as a code-grouped stock list with per-batch breakout; full warehouse CRUD via dedicated forms plus batch-split transfers that carry a different expiry/condition without corrupting the source batch; customer profiles expanded with multi-value contacts (phone/Telegram/email/social), address, most-recent-order date, spend totals, and ranked favorite products; the sales page rebuilt as a plain code/name/qty/price table with a live running total and a single new/existing/anonymous customer control; a rebuilt Главная (date/catalog/revenue-profit-expense/stock/recent-ops) and a type-first, filterable/sortable/paginated История; and a navigation restructure that nests every secondary action under the page it belongs to, with a new Настройки page and full mobile tab parity.

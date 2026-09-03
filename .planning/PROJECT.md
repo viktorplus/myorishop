@@ -10,6 +10,16 @@ The operator can quickly and reliably record receipts and sales so stock counts 
 
 ## Current State
 
+**Shipped: v4.0 Distribution & Delivery (2026-09-03)**
+
+The app stopped being a `run.bat` + uv dev checkout. Phase 31 delivered a self-contained Windows onedir distribution (bundled Python 3.13 embeddable runtime + app source + all 22 alembic migrations), an unsigned per-user Inno Setup installer, operator data (SQLite DB, `.env`, `secret_key`/`device_id`, `backups/`) physically relocated to a *sibling* of the swappable `app\` directory, a stdlib-only out-of-tree launcher that can stop/swap/migrate/health-check/restart with matched-pair code+DB rollback, and a tag-triggered GitHub Actions pipeline publishing a draft release signed with an OFFLINE Ed25519 minisign key. Phase 32 delivered the in-app self-update: SHA-256 + signature verified against the vendored public key *before* anything is unpacked, zip-slip-confined unpack, VACUUM-INTO pre-update backup, integer-`1.<N>` anti-downgrade compare, a notify-and-confirm «Обновление приложения» section in Настройки, and a hard no-op on the PostgreSQL server. All 12 requirements (PKG-01..05, UPD-01..07) shipped complete; Phase 32 was threat-modelled at ASVS L1 with 11/11 threats closed and 3 accepted risks.
+
+**Two human-only gaps remain open at close** (not code defects): nobody has run `dist\Output\MyOriShop-Setup-1.60.exe` on a bare Windows machine, and no real tag-triggered signed release has been cut — so the end-to-end update has only been exercised against staged fixtures. No `/gsd-audit-milestone` was run for v4.0, and 27 open planning artifacts were acknowledged as deferred at close (STATE.md → `## Deferred Items`). See `.planning/milestones/v4.0-ROADMAP.md`, `v4.0-REQUIREMENTS.md`, and `.planning/MILESTONES.md`.
+
+**Shipped (never formally archived): v3.0 Multi-Operator Sync, Central Server & Roles (2026-07-18 → 2026-07-20)**
+
+Phases 25-30 are all complete on disk — mandatory login with administrator/operator roles and per-user attribution (AUTH-01..05, USER-01..06, ROLE-01..04), PostgreSQL portability with append-only parity, a shared idempotent UUID-keyed merge engine proven on both dialects in CI, the central server on s1 (ori.viktorplus.com) with token-authenticated push/pull sync, online client sync with status/badge/interval, and the upload-only offline self-uploading file (OFF-01..07). The milestone was never run through `/gsd-complete-milestone`: there is no `.planning/milestones/v3.0-ROADMAP.md` and no v3.0 entry in MILESTONES.md.
+
 **Shipped: v2.0 UX Overhaul & Navigation Restructure (2026-07-17)**
 
 Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against the catalog reference, editable everywhere), a code-grouped products page with batch breakout, warehouse CRUD via dedicated forms plus batch-split transfers, extended customer profiles (multi-value contacts, address, spend/favorites), a rebuilt sales page (plain table, live running total, single new/existing/anonymous control), a rebuilt Главная/История, and a full navigation restructure nesting every secondary action under its owning page with a new Настройки hub and mobile tab parity. All 46 requirements (NAV-01..08, DASH-01..05, PROD-01..08, WH-01..03, XFER-01, SALE-01..07, CUST-01..08, HIST-01..04, RPT-01, MOB-01) shipped complete. `/gsd-audit-milestone` passed with status `tech_debt` (no blockers): 46/46 requirements satisfied, cross-phase integration PASS, 919/919 tests green. One open item carried forward: Phase 22 (Sales) has 4 human-verification test cases never confirmed in a live browser (unlike the equivalent Phase 18/20 items, both UAT-confirmed) — see `.planning/v2.0-MILESTONE-AUDIT.md`. See `.planning/milestones/v2.0-ROADMAP.md`, `v2.0-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
@@ -18,7 +28,9 @@ Delivered the two-price model consolidation (ДЦ/ПЦ with a colour cue against
 
 Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on every sale and auto-debits symmetrically on every return, with the live balance shown in a new «Финансы» section (desktop + mobile); manual withdrawal (mandatory category + comment) and deposit entry with a warn-but-allow negative-balance gate; a paginated/filterable movement history; a period cash-flow report broken down by income vs. expense category; CSV export of period movements; and a Финансы dashboard showing gross profit, net profit, and stock valuation (at cost and at sale price). All 12 requirements (FIN-01..12) shipped complete. No `/gsd-audit-milestone` or `17-SECURITY.md` threat-verification pass was run before close (operator chose to skip both gates). See `.planning/milestones/v1.3-ROADMAP.md`, `v1.3-REQUIREMENTS.md`, and `.planning/MILESTONES.md` for full details.
 
-## Current Milestone: v4.0 Distribution & Delivery
+## Last Milestone (closed 2026-09-03): v4.0 Distribution & Delivery
+
+> No milestone is currently active. Start the next one with `/gsd-new-milestone`. The scope below is kept as the historical record of what v4.0 set out to do.
 
 **Goal:** Turn the app from a run.bat/uv dev checkout into a self-contained, self-updating local client distribution for Windows operators; the central server (s1, ori.viktorplus.com) stays a plain Docker deployment and is out of scope for packaging/auto-update — it is the sync/update target, not a client.
 
@@ -163,10 +175,20 @@ Delivered a cash ledger (`cash_movements`, append-only) that auto-credits on eve
 - ✓ Home-page dashboard: date/weekday/time, active catalog number + days until close, day/week/month revenue/profit/expense totals, total stock codes + valuation, type-adaptive recent-operations feed with customer column — Phase 23 (DASH-01..05)
 - ✓ History page rebuilt: operation-type-first selection with type-specific columns, filters by code/date-range/customer/category, sort, pagination (desktop + mobile parity) — Phase 23 (HIST-01..04)
 - ✓ Top-level navigation reduced to 8 first-class pages (Главная, Товары, Продажи, Покупатели, История, Отчёты, Финансы, Настройки); Приход/Списание/Справочник nested under Товары, Перемещение under the product context, Склады/Резервные копии under a new Настройки page, Экспорт under Резервные копии, a back-link on every report detail page, mobile nav parity (7 tabs, excluding Настройки) — Phase 24 (NAV-01..08, RPT-01, MOB-01)
+- ✓ Mandatory login over the whole app (desktop + mobile + export/backup), two roles, user management, per-user attribution of every operation, per-install `device_id` — Phase 25 (AUTH-01..05, USER-01..06, ROLE-01..04, RPT-01)
+- ✓ One model set and one Alembic history proven to run on PostgreSQL with the same append-only ledger guarantee — Phase 26
+- ✓ Shared idempotent merge core: UUID-keyed ledger replay, post-merge recompute, server-authoritative reference-data conflict policy, proven on SQLite + PostgreSQL in CI — Phase 27
+- ✓ Central server on s1 (ori.viktorplus.com): PostgreSQL + both online interfaces + token-authenticated push/pull sync endpoints — Phase 28
+- ✓ Online client sync: «Синхронизировать» push/pull, sync status + last-sync time, unsynced-count badge, optional interval sync, offline-safe failure — Phase 29
+- ✓ Offline self-uploading file: upload-only USB path that authenticates, previews and uploads itself through the same merge engine — Phase 30 (OFF-01..07)
+- ✓ Self-contained Windows distribution: bundled runtime onedir, unsigned per-user installer, operator data physically separated from swappable code, stable stop/swap/migrate/restart launcher with matched-pair rollback, offline-signed GitHub Actions release pipeline — Phase 31 (PKG-01..05)
+- ✓ In-app secure self-update: startup + manual check vs GitHub Releases, signature + checksum verified before unpack, notify-and-confirm with release notes, backup→migrate→rollback apply, integer anti-downgrade version compare, hard no-op on the PostgreSQL server — Phase 32 (UPD-01..07)
 
 ### Active
 
-Milestone v3.0 (Multi-Operator Sync, Central Server & Roles) — requirements being defined in this cycle. See `.planning/REQUIREMENTS.md` once generated. Scope: central PostgreSQL server, online + offline-USB sync of the append-only ledger, mandatory login with user profiles, administrator/operator roles.
+None — v4.0 closed 2026-09-03 and the next milestone is not yet scoped. `.planning/REQUIREMENTS.md` is intentionally absent until `/gsd-new-milestone` generates a fresh one.
+
+Two carried-over commitments that belong to no milestone but must happen before v4.0 is real to an operator: the bare-Windows installer run, and the first tag-triggered signed release.
 
 ### Future (next milestone, deferred)
 
@@ -257,4 +279,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-22 — v4.0 milestone scoped (Distribution & Delivery)*
+*Last updated: 2026-09-03 after v4.0 milestone close*

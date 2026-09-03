@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: milestone-complete
-stopped_at: Phase 32 closed (verified + UAT + secured) — v4.0 awaiting /gsd-complete-milestone
-last_updated: "2026-09-04T00:00:00.000Z"
-last_activity: 2026-09-04
+status: Awaiting next milestone
+stopped_at: Milestone v4.0 archived — 27 open artifacts acknowledged as deferred
+last_updated: "2026-09-03T22:05:11.882Z"
+last_activity: 2026-09-03 — Milestone v4.0 completed and archived
 progress:
   total_phases: 2
   completed_phases: 2
@@ -21,21 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** v4.0 Distribution & Delivery — all phases closed, milestone archive pending
+**Current focus:** Planning next milestone (v4.0 shipped and archived 2026-09-03)
 
 ## Current Position
 
-Phase: 32 (in-app-secure-self-update) — COMPLETE
-Plan: 5 of 5 complete
-Status: Milestone v4.0 complete (phases 31, 32) — next step `/gsd-complete-milestone`
-Last activity: 2026-09-04
-
-**Phase 31 close-out (2026-09-03):** marked complete with two acknowledged,
-human-only gaps recorded in `31-VERIFICATION.md` → `## Acknowledged Gaps` —
-(1) the bare-Windows install run of the now-compiled
-`dist\Output\MyOriShop-Setup-1.60.exe`, and (2) the first real tag-triggered
-signed release. Neither is a code defect. The live launcher swap + matched-pair
-rollback was re-run for real and passed 39/39 checks.
+Phase: Milestone v4.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-03 — Milestone v4.0 completed and archived
 
 ## Performance Metrics
 
@@ -245,17 +238,29 @@ Items acknowledged and carried forward from previous milestone close:
 | verification_gap | Phase 15: 15-VERIFICATION.md — manual browser check of `/finance` and `/m/finance` balance display through real sale/return forms | confirmed_working | 2026-07-14 (phase 15 execution), confirmed by operator 2026-07-15 |
 | doc_drift | `export.py`: `stream_customers_csv` docstring claims a *"Full customer profile dump"* — becomes false once Phase 21 ships address + contacts. Out of scope by design (contacts are 1-to-many and don't fit the flat CSV shape). If `address` is ever added it must go through the existing `_csv_safe`. | acknowledged | 2026-07-17 (phase 21 planning) — accepted debt, close in a future phase |
 | uat_gap | Phase 22: no 22-UAT.md for 4 human_needed items (live basket-total math, incomplete-row marker, customer-mode round-trip, mobile basket preservation) — server-side tests all pass, only client-side JS behavior unconfirmed | testing | 2026-07-18 (v2.0 close) — see `.planning/v2.0-MILESTONE-AUDIT.md` |
+| uat_gap | Phase 31: 31-UAT.md — 2 pending scenarios, both human-only: (1) install `dist\Output\MyOriShop-Setup-1.60.exe` on a bare Windows machine, (2) the first real tag-triggered signed release. Neither is a code defect; see `31-VERIFICATION.md` → `## Acknowledged Gaps` | partial | 2026-09-03 (v4.0 close) |
+| uat_gap | Phase 31: 31-UAT-STEPS.md — manual step script, no status marker (parsed as `unknown`); superseded by 31-UAT.md | unknown | 2026-09-03 (v4.0 close) |
+| uat_gap | Phase 28: 28-UAT.md — status `passed` with 0 pending scenarios; flagged only by the audit parser, no real gap | passed | 2026-09-03 (v4.0 close) |
+| verification_gap | Phase 25: 25-VERIFICATION.md — `human_needed` | human_needed | 2026-09-03 (v4.0 close) |
+| verification_gap | Phase 26: 26-VERIFICATION.md — `human_needed` | human_needed | 2026-09-03 (v4.0 close) |
+| debug | finance-report-nav-entry-missing — hypothesis CONFIRMED, session never marked resolved | diagnosed | 2026-09-03 (v4.0 close) |
+| debug | history-return-button-and-code-column — hypothesis CONFIRMED, session never marked resolved | diagnosed | 2026-09-03 (v4.0 close) |
+| debug | receipt-batch-chooser-ux — hypothesis CONFIRMED (three root causes), session never marked resolved | diagnosed | 2026-09-03 (v4.0 close) |
+| debug | sale-batch-picker-not-submitted — hypothesis CONFIRMED, investigation complete for goal=find_root_cause_only | diagnosed | 2026-09-03 (v4.0 close) |
+| todo | `2026-08-31-price-lists-backfill.md` — докачать недостающие прайс-листы и пополнить справочник | pending | 2026-09-03 (v4.0 close) |
+| quick_task | 17 quick tasks carry no completion marker and parse as `unknown`: 260714-2w6, 260720-wqc, 260721-doa, 260721-ebn, 260721-egc, 260721-f39, 260721-fu0, 260721-oti, 260813-ezt, 260813-i28, 260813-l0y, 260814-je0, 260902-eyv, 260902-g1q, 260902-m9g, 260902-tev, 260903-31d. Their full records (description, date, commit, directory) are in the quick-task table above in this file — most shipped and were simply never status-stamped | unknown | 2026-09-03 (v4.0 close) |
+
+Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs query audit-open`.
 
 ## Session Continuity
 
 Last session: 2026-09-03T07:42:24.760Z
-Stopped at: Completed 31-08-PLAN.md (GAP-2 Start-Menu shortcut target)
+Stopped at: Milestone v4.0 archived (phases 31, 32 closed; 27 open artifacts deferred)
 Resume file: None
 
 ## Operator Next Steps
 
-- v4.0 roadmap is written (ROADMAP.md) with two dependency-ordered phases and full traceability (REQUIREMENTS.md). Next: `/gsd-plan-phase 31` (Packaging, Launcher & Signed-Release Pipeline).
-- Phase 31 is research-flagged — expect a bundled-runtime spike (Python embeddable vs PyInstaller `--onedir`) before `build_release.py` is written.
-- Phase 32 is security-critical (`security_enforcement=true`, ASVS L1) — it carries a threat model; plan it with `/gsd-plan-phase 32 --research-phase` for the trust model + controlled-shutdown/IPC contract. It cannot be end-to-end tested until two real signed releases from Phase 31 exist.
-- Carried-forward, non-blocking tails (re-checked 2026-08-09 against the actual phase reports): `/gsd-verify-work` for 30, 31, 32 (all three VERIFICATION.md are `human_needed`); `/gsd-secure-phase` for 29, 30, 31, 32 (no SECURITY.md exists for those four); plus the Phase 22 browser-UAT items (see Blockers/Concerns above).
-- Phase 27 is fully closed — `27-VERIFICATION.md` verified (20/20), `27-UAT.md` complete (PG-CI run 29688176513 green), `27-SECURITY.md` secured (threats_open: 0), and ROADMAP carries both the `[x]` checkbox and the `Complete 4/4 2026-07-19` progress row. The old "phase.complete 27" reminder was stale and has been dropped; do not re-run it (it would only re-stamp today's date). Phase 28 is likewise fully closed.
+- Start the next milestone with `/gsd-new-milestone`.
+- **Before v4.0 can honestly be called shipped to an operator:** run `dist\Output\MyOriShop-Setup-1.60.exe` on a bare Windows machine, then cut the first real signed release by pushing a `v1.<N>` tag and following the offline-signing runbook. Both are the two acknowledged Phase-31 gaps; nothing in code blocks them.
+- **v3.0 was never archived** — there is no `.planning/milestones/v3.0-ROADMAP.md` and no v3.0 entry in MILESTONES.md, even though phases 25-30 are all complete. Run `/gsd-complete-milestone` for v3.0 retroactively if that history matters.
+- Still-open hygiene, non-blocking: no SECURITY.md for phases 29 and 30; `25-VERIFICATION.md` and `26-VERIFICATION.md` are `human_needed`; 4 debug sessions sit at `diagnosed` without a resolution stamp. Full list in `## Deferred Items`.
