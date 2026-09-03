@@ -15,6 +15,7 @@ code+DB rollback with WAL-sidecar delete). PKG-04.
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -237,8 +238,6 @@ def test_apply_update_refuses_when_staged_dir_is_missing(tmp_path):
     BEFORE stop_app and before any rename — app\\ is never renamed away with
     nothing to put back. Today the first os.replace sits outside the try, so the
     app dir is destroyed and the install is bricked."""
-    import shutil  # noqa: PLC0415
-
     from launcher.swap import apply_update  # noqa: PLC0415
 
     root, app_dir, staged, _data, paths, pending = _swap_fixture(tmp_path)
@@ -563,6 +562,113 @@ def test_run_once_applies_app_written_marker(tmp_path, monkeypatch):
     # Staged content is now live at app/, and the consumed marker is deleted.
     assert (app_dir / "marker.txt").read_text() == "v2"
     assert not (data / "pending.json").exists()
+
+
+# --- PKG-04 GAP-3: the marker is ALWAYS consumed, the watch loop survives ----
+
+
+def _write_marker(data: Path, staged_dir: str = "staged") -> Path:
+    """Hand-place a valid data/pending.json (what Phase 31 drives the swap with)."""
+    marker = data / "pending.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "staged_dir": staged_dir,
+                "expected_version": "1.2",
+                "db_backup_path": "data/backup.db",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return marker
+
+
+class _NoopProc:
+    """Fake AppProcess for the run_once integration ticks."""
+
+    def start(self):
+        pass
+
+    def stop(self, *args, **kwargs):
+        pass
+
+
+def _tick(paths, *, migrate):
+    """One run_once tick with fake adapters (real os.replace on tmp dirs)."""
+    from launcher import __main__ as launcher_main  # noqa: PLC0415
+
+    return launcher_main.run_once(
+        paths,
+        _NoopProc(),
+        migrate=migrate,
+        health_ok=lambda *_a, **_k: True,
+        backup_restore=lambda *_a, **_k: None,
+    )
+
+
+def test_two_ticks_with_one_failing_update_keep_app_dir(tmp_path):
+    """PKG-04 (T-31-04/T-31-06), THE 31-UAT regression: a failed update must not
+    be replayed. Tick 1 fails and rolls back; the marker is quarantined to
+    data/pending.failed.json. Tick 2 is a no-op and app\\ is still there.
+
+    Today tick 2 renames app\\ away and dies with FileNotFoundError — one failed
+    update bricks the install."""
+    _root, app_dir, _staged, data, paths, _pending = _swap_fixture(tmp_path)
+    _write_marker(data)
+
+    def failing_migrate(*_a, **_k):
+        raise RuntimeError("alembic upgrade head failed")
+
+    # TICK 1 — the update fails and rolls back.
+    with pytest.raises(RuntimeError):
+        _tick(paths, migrate=failing_migrate)
+
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ not restored"
+    assert (paths.app_failed / "marker.txt").read_text() == "v2"
+    assert not (data / "pending.json").exists(), "failed marker left for replay"
+    assert (data / "pending.failed.json").exists(), "failed marker not quarantined"
+
+    # TICK 2 — the very next watch-loop tick, identical arguments.
+    assert _tick(paths, migrate=failing_migrate) is False
+    assert (app_dir / "marker.txt").read_text() == "v1", "app/ destroyed by the replay"
+    assert not paths.app_prev.exists()
+
+
+def test_run_once_refuses_marker_whose_staged_dir_is_gone(tmp_path):
+    """PKG-04 (T-31-04): a valid marker whose staged\\ no longer exists is refused
+    at the marker level — before any side effect — and quarantined."""
+    _root, app_dir, staged, data, paths, _pending = _swap_fixture(tmp_path)
+    _write_marker(data)
+    shutil.rmtree(staged)
+
+    def never_called(*_a, **_k):  # pragma: no cover - must never run
+        raise AssertionError("apply_update was entered on an unsatisfiable marker")
+
+    assert _tick(paths, migrate=never_called) is False
+    assert (app_dir / "marker.txt").read_text() == "v1"
+    assert not (data / "pending.json").exists()
+    assert (data / "pending.failed.json").exists()
+
+
+def test_run_once_quarantines_marker_after_failed_apply(tmp_path):
+    """PKG-04: the quarantine overwrites atomically — two failing ticks leave
+    exactly ONE pending.failed.json and the quarantine itself never raises."""
+    root, app_dir, _staged, data, paths, _pending = _swap_fixture(tmp_path)
+
+    def failing_migrate(*_a, **_k):
+        raise RuntimeError("alembic upgrade head failed")
+
+    for _attempt in range(2):
+        staged = root / "staged"
+        staged.mkdir(exist_ok=True)
+        (staged / "marker.txt").write_text("v2", encoding="utf-8")
+        _write_marker(data)
+        with pytest.raises(RuntimeError, match="alembic upgrade head failed"):
+            _tick(paths, migrate=failing_migrate)
+
+    assert [p.name for p in data.glob("pending.failed*.json")] == ["pending.failed.json"]
+    assert not (data / "pending.json").exists()
+    assert (app_dir / "marker.txt").read_text() == "v1"
 
 
 def test_health_ok_requires_version_match(tmp_path):
