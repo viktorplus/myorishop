@@ -37,13 +37,27 @@ _REPO_ROOT = Path(__file__).resolve().parent
 
 # The install-root layout the launcher (Plan 03) and the .iss (PKG-02) assume:
 #   <root>\app\      <- SWAPPABLE embeddable bundle (this is `dest`)
-#   <root>\launcher\ <- STABLE PID owner, OUTSIDE app\ (never swapped)
+#   <root>\launcher\ <- STABLE PID owner, OUTSIDE app\ (never swapped). Holds its
+#                       OWN embeddable runtime (python.exe + a launcher ._pth)
+#                       PLUS the launcher package — it is the Start-Menu target
+#                       and must not run on app\python.exe (see below).
 #   <root>\data\     <- SIBLING operator state (created on first run, NOT shipped)
 
 # RESEARCH Pattern 1 / Pitfall 1 — the #1 embeddable gotcha. The stock
 # embeddable ._pth restricts sys.path and omits site-packages + site, so
 # vendored wheels are un-importable. These five lines fix it.
 _PTH_LINES = ("python313.zip", ".", "app", "Lib\\site-packages", "import site")
+
+# The launcher runtime's own search path. A ._pth file puts the interpreter in
+# ISOLATED mode (measured: sys.flags.isolated == 1, safe_path True), so the cwd
+# and PYTHONPATH are NOT on sys.path — a WorkingDir- or PYTHONPATH-based
+# `-m launcher` cannot work. The `..` entry resolves to the install root, which
+# is what makes the SIBLING `launcher\` package importable as `launcher` from any
+# cwd. `Lib\site-packages` and `app` are deliberately omitted: the launcher is
+# stdlib-only and must never depend on anything inside the swappable app\ (it
+# must not even be able to import it — that would lock the rename target,
+# RESEARCH Pitfall 3).
+_LAUNCHER_PTH_LINES = ("python313.zip", ".", "..")
 
 # App-tree assets vendored read-only into the bundle (offline convention,
 # PATTERNS "Vendored-offline asset"). The minisign public key (Phase 32 verify)
@@ -142,9 +156,13 @@ def vendor_wheels(target: Path, *, repo_root: Path, requirements: Path | None = 
     return target
 
 
-def _write_pth(dest_app: Path) -> None:
-    """Overwrite the extracted embeddable ._pth with the site-packages-enabled one."""
-    (dest_app / "python313._pth").write_text("\n".join(_PTH_LINES) + "\n", encoding="utf-8")
+def _write_pth(dest_dir: Path, lines: tuple[str, ...] = _PTH_LINES) -> None:
+    """Overwrite the extracted embeddable ._pth with one of our search paths.
+
+    The filename is matched by the interpreter against ``python313.dll``, so the
+    single ``python313._pth`` also governs ``pythonw.exe``.
+    """
+    (dest_dir / "python313._pth").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def assemble_onedir(
@@ -159,7 +177,8 @@ def assemble_onedir(
     Extracts the embeddable runtime, fixes ``python313._pth`` (Lib\\site-packages
     + import site, Pattern 1), vendors <wheel_dir> into ``Lib\\site-packages``,
     copies app/, alembic/ (incl. versions/), alembic.ini and the vendored assets
-    verbatim, and drops the launcher/ tree next to <dest> (OUTSIDE app\\). Asserts
+    verbatim, and drops the launcher/ tree PLUS its own runtime next to <dest>
+    (OUTSIDE app\\, see ``assemble_launcher_runtime``). Asserts
     every repo alembic migration is bundled (Pitfall 5). Delete-partial-on-failure:
     a half-written bundle is removed so it can never pass for a valid one.
 
@@ -200,11 +219,14 @@ def assemble_onedir(
             if src.exists():
                 _copy(src, dest / asset)
 
-        # 5. Launcher -> sibling of the swappable app\ (STABLE PID owner). Must
-        #    live outside app\ or it would lock the rename target (Pitfall 3).
-        launcher_src = repo_root / "launcher"
-        if launcher_src.exists():
-            _copy(launcher_src, dest.parent / "launcher")
+        # 5. Launcher + its OWN runtime -> sibling of the swappable app\ (STABLE
+        #    PID owner). Must live outside app\ or it would lock the rename
+        #    target (Pitfall 3). Same already-verified zip, second extraction.
+        assemble_launcher_runtime(
+            embeddable_zip=embeddable_zip,
+            dest=dest.parent / "launcher",
+            repo_root=repo_root,
+        )
 
         # 6. Pitfall 5 gate: every repo migration MUST be bundled, or
         #    `alembic upgrade head` no-ops on the operator box. Compare the
@@ -219,6 +241,51 @@ def assemble_onedir(
                 f"{len(bundled_versions)} != repo {len(repo_versions)} — "
                 "the onedir would ship an incomplete migration history (Pitfall 5)"
             )
+    except Exception:
+        # Delete-partial-on-failure (backup.py:45-47 idiom).
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+
+    return dest
+
+
+def assemble_launcher_runtime(*, embeddable_zip: Path, dest: Path, repo_root: Path) -> Path:
+    """Assemble the launcher's own runtime at <dest> (the STABLE ``launcher\\``).
+
+    The Start-Menu shortcut runs ``launcher\\python.exe -m launcher``, so the
+    launcher needs an interpreter that is NOT inside the directory the update
+    swap renames: a running image cannot be deleted, and while renaming
+    ``app\\``→``app.prev\\`` succeeds even with ``app\\python.exe`` live, the
+    follow-up ``shutil.rmtree(app.prev, ignore_errors=True)`` then silently fails
+    and leaks a full copy of the previous bundle on every successful update
+    (measured). Hence a second extraction of the SAME
+    SHA-256-verified embeddable zip ``assemble_onedir`` unpacks — one verified
+    download, two extractions, no extra network fetch (T-31-SC) — at the price of
+    roughly 15 MB on disk.
+
+    Owns the whole ``launcher\\`` output dir: wipes it, extracts the runtime,
+    overwrites ``python313._pth`` with the ``..``-bearing launcher variant
+    (see ``_LAUNCHER_PTH_LINES``) and copies the launcher package in.
+    Delete-partial-on-failure: a half-written launcher dir is removed so it can
+    never pass for a valid one.
+
+    Returns the launcher dir (<dest>).
+    """
+    embeddable_zip = Path(embeddable_zip)
+    dest = Path(dest)
+    repo_root = Path(repo_root)
+
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+
+    try:
+        with zipfile.ZipFile(embeddable_zip) as zf:
+            zf.extractall(dest)
+        _write_pth(dest, _LAUNCHER_PTH_LINES)
+        # copytree drops the package's CONTENTS into <dest>, so the package
+        # itself is <install_root>\launcher — importable as `launcher` via `..`.
+        _copy(repo_root / "launcher", dest)
     except Exception:
         # Delete-partial-on-failure (backup.py:45-47 idiom).
         shutil.rmtree(dest, ignore_errors=True)
