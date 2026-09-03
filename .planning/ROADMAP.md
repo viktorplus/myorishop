@@ -294,7 +294,7 @@ Plans:
   4. A stable launcher process (living outside the swappable code directory) starts the app and can stop it, swap in a staged application directory, run `alembic upgrade head`, and restart — proven by hand-placing a staged directory + a pending marker and watching the launcher swap → migrate → restart, with a failed apply rolling back to the previous code directory and the pre-update database as a matched pair. (PKG-04)
   5. Pushing a version tag runs a GitHub Actions pipeline that builds the distributable and publishes, as release assets, the archive, its SHA-256 checksum, and an Ed25519 minisign signature over the signed asset/manifest; the signature is produced with an OFFLINE secret key and verifies against the public key vendored into the client. (PKG-05)
 
-**Plans**: 5 plans (4 waves)
+**Plans**: 8 plans (4 original waves + 3 gap-closure waves)
 
 Plans:
 **Wave 1**
@@ -310,6 +310,12 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 31-05-PLAN.md — PKG-02/05 pipeline: release.yml draft build + offline-sign runbook + vendored minisign.pub + CI verify (wave 3)
+
+**Gap closure** *(3 blockers from 31-UAT.md, planned 2026-09-03; run via `/gsd-execute-phase 31 --gaps-only`)*
+
+- [ ] 31-06-PLAN.md — GAP-1 PKG-01/04: launcher runs `alembic upgrade head` before starting the app on every boot, so a fresh install reaches the login page (gap wave 1)
+- [ ] 31-07-PLAN.md — GAP-3 PKG-04: a failed update never bricks the install — staged pre-flight guard, renames inside the rollback-guarded region, marker quarantined instead of replayed (gap wave 2)
+- [ ] 31-08-PLAN.md — GAP-2 PKG-01/02: Start-Menu shortcut targets a shipped file — launcher gets its own embeddable runtime in `launcher\`, and every .iss path is test-asserted to exist (gap wave 3)
 
 > **Research flag:** Recommend a small spike to settle bundled-runtime strategy (Python embeddable package vs PyInstaller `--onedir`) before committing `build_release.py` — the tradeoff (AV surface, Alembic `versions/` bundling, `._pth` config) is real and version-sensitive. Also verify current SmartScreen / post-2023 CA/B hardware-key code-signing specifics if a cert is ever pursued (deferred for now — installer ships unsigned per PKG-02).
 
