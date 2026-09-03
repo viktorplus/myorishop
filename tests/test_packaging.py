@@ -184,6 +184,87 @@ def test_onedir_bundles_all_alembic_versions(tmp_path):
     assert {p.name for p in bundled} == {p.name for p in repo_versions}
 
 
+def test_launcher_runtime_is_bundled_outside_app(tmp_path):
+    """PKG-02/PKG-04: the launcher ships its OWN embeddable runtime in a SIBLING
+    ``launcher\\`` dir, never inside the swappable ``app\\``.
+
+    The Start-Menu shortcut targets ``launcher\\python.exe``, so that file must
+    actually exist in the shipped tree (31-UAT GAP-2). Its ``._pth`` is the
+    launcher variant — ``python313.zip`` / ``.`` / ``..`` — because a ``._pth``
+    puts the interpreter in isolated mode (cwd and PYTHONPATH are ignored), so
+    only the ``..`` entry (the install root) makes the sibling ``launcher``
+    package importable. ``Lib\\site-packages`` and ``app`` are deliberately
+    absent: the launcher is stdlib-only and must not depend on the bundle it
+    swaps."""
+    import build_release  # noqa: PLC0415
+
+    dist_app = build_release.assemble_onedir(
+        embeddable_zip=_fake_embeddable_zip(tmp_path),
+        wheel_dir=_fake_wheel_dir(tmp_path),
+        dest=tmp_path / "dist" / "app",
+        repo_root=_REPO_ROOT,
+    )
+    dist_launcher = Path(dist_app).parent / "launcher"
+
+    assert (dist_launcher / "python.exe").exists(), (
+        "the launcher has no runtime — the Start-Menu shortcut would target nothing"
+    )
+
+    pth_text = (dist_launcher / "python313._pth").read_text(encoding="utf-8")
+    pth_lines = [line.strip() for line in pth_text.splitlines() if line.strip()]
+    assert pth_lines == ["python313.zip", ".", ".."], (
+        f"launcher ._pth must be exactly python313.zip / . / .. — got {pth_lines}"
+    )
+    assert "Lib\\site-packages" not in pth_text
+    assert "\napp\n" not in "\n" + pth_text
+
+    for module in ("__main__.py", "swap.py", "adapters.py"):
+        assert (dist_launcher / module).exists(), f"launcher/{module} not shipped"
+
+    assert not (Path(dist_app) / "launcher").exists(), (
+        "the launcher landed INSIDE the swappable app dir — a running launcher "
+        "there would leave app.prev undeletable after a successful update"
+    )
+
+
+# Skip-gated (same convention as the first-run gate below): every other assertion
+# in this file runs against `_fake_embeddable_zip`, whose `python.exe` is 11 bytes
+# of `MZ fake exe` and can execute nothing. Only a real local build produces a
+# runtime that can prove the `..` search-path entry actually resolves.
+
+
+@pytest.mark.skipif(
+    not (_REPO_ROOT / "dist" / "launcher" / "python.exe").exists(),
+    reason="needs the real assembled launcher runtime — build it with "
+    "`uv run python build_release.py --version v1.<N>` (CI does not build it)",
+)
+def test_real_launcher_runtime_resolves_the_sibling_package(tmp_path):
+    """PKG-02/PKG-04: the SHIPPED ``launcher\\python.exe`` can import the sibling
+    ``launcher`` package from an unrelated working directory.
+
+    That is the whole mechanism behind the Start-Menu shortcut
+    (``launcher\\python.exe -m launcher``): isolated mode ignores the cwd, so the
+    import can only succeed through the ``..`` line of the launcher's own
+    ``._pth``. Imports the package rather than running ``-m launcher`` on
+    purpose — the latter would start the app and open a browser window."""
+    import subprocess  # noqa: PLC0415
+
+    runtime = _REPO_ROOT / "dist" / "launcher" / "python.exe"
+    result = subprocess.run(  # noqa: S603 — fixed argv, no shell
+        [str(runtime), "-c", "import launcher; print(launcher.__file__)"],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 0, (
+        f"the shipped launcher runtime cannot import its sibling package: {result.stderr}"
+    )
+    printed = Path(result.stdout.strip()).resolve()
+    assert printed == (_REPO_ROOT / "dist" / "launcher" / "__init__.py").resolve(), (
+        f"imported the wrong launcher package: {printed}"
+    )
+
+
 # --- PKG-02: per-user Inno Setup installer ----------------------------------
 
 
