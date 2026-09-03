@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Distribution & Delivery
-status: verifying
-stopped_at: Completed 32-02-PLAN.md (verify-gate prerequisites)
-last_updated: "2026-09-03T00:30:00.000Z"
-last_activity: "2026-09-03 - Completed quick task 260903-31d: publish the «Офис» goods-receipt report on the app's own domain (4th page in public_pages.py)"
+status: executing
+stopped_at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
+last_updated: "2026-09-03T07:07:05.481Z"
+last_activity: "2026-09-03 - Completed 31-06: launcher boot() runs alembic upgrade head before starting the app on every boot; a fresh install now reaches the login page instead of 500 (no such table: users)"
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 10
-  completed_plans: 10
-  percent: 67
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 13
+  completed_plans: 11
+  percent: 17
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-22)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** Phase 32 — in-app-secure-self-update
+**Current focus:** Phase 31 — packaging-launcher-signed-release-pipeline
 
 ## Current Position
 
-Phase: 32 (in-app-secure-self-update) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLOCKER findings of the 260902-m9g code review (guarded + snapshotted the wholesale `dictionary` replace, closed the money-field hole in the export transport, made the three accumulative writers atomic); merged fast-forward into main and pushed, then deployed to s1 2026-09-03 (bundle transport — `git pull` there still 401s; `up -d --build` because the code is COPY-baked into the image). Verified on the server: guards and `atomic_write` present INSIDE the image, ori-app healthy, `/` 200, `/m/` 200, unauthenticated `POST /api/sync/push` 401. The importers themselves were deliberately NOT run on prod, so the PostgreSQL branch of `snapshot_dictionary` is still only pinned by a dialect-monkeypatched test — exercising the (non-destructive) refusal path on s1 remains the one open check
+Phase: 31 (packaging-launcher-signed-release-pipeline) — EXECUTING
+Plan: 2 of 8 (gap-closure wave: 31-06 done, 31-07 and 31-08 remain)
+Status: 31-06 complete — GAP-1 (fresh install never migrated) closed and regression-tested
+Last activity: 2026-09-03 - Completed 31-06: added launcher.__main__.boot() (migrate-then-start, abort on failure) wired into main(), 3 launcher regressions + a skip-gated first-run test that boots the real assembled dist against an empty data dir and asserts GET / is not 500
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Last activity: 2026-09-02 - Completed quick task 260902-tev: fixed the three BLO
 | Phase 32 P02 | 5min | 2 tasks | 3 files |
 | Phase 32 P03 | 20m | 2 tasks | 2 files |
 | Phase 32 P05 | 20m | 2 tasks | 5 files |
+| Phase 31 P06 | 34min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -165,6 +166,7 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: Update check: dialect no-op on non-sqlite + offline-safe never raises; __version__ kept at 1.15 as anti-downgrade baseline
 - [Phase ?]: 32-05: #update-panel self-contained div swapped via hx-swap=outerHTML so the target id survives every swap (test_manual_check contract)
 - [Phase ?]: 32-05: apply route echoes release notes from cached status so autoescaped notes render deterministically regardless of update.apply network outcome
+- [Phase ?]: Plan 31-06: launcher boot() reuses the shipped adapters.migrate (migrate-then-start); a failed migration aborts the boot with SystemExit(1) so the app never serves an unmigrated schema
 
 ### Pending Todos
 
@@ -230,8 +232,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T11:35:07.702Z
-Stopped at: Completed 32-02-PLAN.md (verify-gate prerequisites)
+Last session: 2026-09-03T07:06:07.606Z
+Stopped at: Completed 31-06-PLAN.md (GAP-1 first-run boot migration)
 Resume file: None
 
 ## Operator Next Steps
