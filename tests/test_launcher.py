@@ -266,7 +266,17 @@ def test_rollback_leaves_db_untouched_when_no_swap_happened(tmp_path, monkeypatc
     """PKG-04 (T-31-06b): when the FIRST rename fails nothing was swapped and no
     migration ran, so the rollback must NOT restore the DB — that would silently
     discard every operator write made since the backup was taken. app/ stays
-    intact and the app is restarted."""
+    intact and the app is restarted.
+
+    WR-12: the failure is selected by the DESTINATION ARGUMENT, not by a global
+    call counter. ``os.replace`` is stdlib and the patch is process-wide, so any
+    other replace executed while it is live — another thread's atomic write, a
+    library temp-file rename, a future ``_quarantine_marker`` on this path —
+    would consume call #1 and the intended first-rename failure would never
+    happen, turning this test green for the wrong reason. This suite already has
+    a documented history of cross-test interference from process-global state
+    (``reload_config`` had to snapshot ``app.config.settings``)."""
+    from launcher import swap as launcher_swap  # noqa: PLC0415
     from launcher.swap import apply_update  # noqa: PLC0415
 
     _root, app_dir, _staged, _data, paths, pending = _swap_fixture(tmp_path)
@@ -274,15 +284,13 @@ def test_rollback_leaves_db_untouched_when_no_swap_happened(tmp_path, monkeypatc
     restored: list = []
     starts: list = []
     real_replace = os.replace
-    calls: list = []
 
     def failing_replace(src, dst):
-        calls.append((src, dst))
-        if len(calls) == 1:
+        if Path(dst) == Path(paths.app_prev):  # the app\ -> app.prev\ rename
             raise OSError(32, "The process cannot access the file")
-        real_replace(src, dst)
+        return real_replace(src, dst)
 
-    monkeypatch.setattr(os, "replace", failing_replace)
+    monkeypatch.setattr(launcher_swap.os, "replace", failing_replace)
 
     with pytest.raises(OSError):
         apply_update(
