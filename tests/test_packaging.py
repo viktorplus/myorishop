@@ -428,6 +428,53 @@ def test_generate_iss_is_per_user_with_shortcut_and_uninstaller(tmp_path):
     )
 
 
+def test_iss_pins_appid_ignoreversion_and_sweeps_swap_residue(tmp_path):
+    """WR-09: three under-specifications in a script whose job is a correct install.
+
+    1. No ``[UninstallDelete]``: Inno removes only what it installed, so an
+       uninstall left ``app.prev\\``, ``app.failed\\`` and ``staged\\`` behind —
+       each a full ~30 MB bundle copy, and ``app.failed\\`` is retained by design
+       until the NEXT rollback rotates it, i.e. forever on a healthy install.
+       ``data\\`` must NOT be swept: it is the operator's DB and backups.
+    2. No ``AppId``: Inno falls back to ``AppName``, so any future rename creates
+       a SECOND uninstall entry instead of upgrading in place.
+    3. No ``ignoreversion``: Inno's default skips replacing a file whose installed
+       copy has an equal-or-higher version resource, so a repair/reinstall over an
+       install whose ``app\\`` had already self-updated could keep stale binaries."""
+    import build_release  # noqa: PLC0415
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    text = Path(
+        build_release.generate_iss(
+            dist_dir=dist_dir, version="1.42", dest=dist_dir / "MyOriShop.iss"
+        )
+    ).read_text(encoding="utf-8")
+
+    # Inno escapes a literal '{' as '{{', so the emitted line is `AppId={{GUID}`.
+    assert "AppId={{1BF2D689-291E-4E44-B502-BC4EAEBE4C32}\n" in text, (
+        "AppId is missing or not Inno-escaped as {{GUID}"
+    )
+
+    source_lines = [line for line in text.splitlines() if line.startswith("Source:")]
+    assert source_lines, "the installer ships nothing"
+    for line in source_lines:
+        assert "ignoreversion" in line, f"[Files] entry without ignoreversion: {line}"
+
+    assert "[UninstallDelete]" in text
+    swept = [
+        line.split('Name:')[1].strip().strip('"')
+        for line in text.splitlines()
+        if line.startswith("Type: ")
+    ]
+    assert swept == [r"{app}\app.prev", r"{app}\app.failed", r"{app}\staged"], (
+        f"the uninstaller sweeps the wrong set of paths: {swept}"
+    )
+    assert not any("data" in path for path in swept), (
+        "the uninstaller would delete the operator's DB, backups and identity"
+    )
+
+
 def test_generate_iss_refuses_a_dest_outside_dist_dir(tmp_path):
     """WR-07: ``dist_dir`` is authoritative, not a dead parameter.
 
