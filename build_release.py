@@ -464,19 +464,31 @@ def assert_tag_matches_version(tag: str, *, repo_root: Path | None = None) -> No
 
 
 def _zip_onedir(dist_dir: Path, version: str) -> Path:
-    """Zip the assembled app\\ + launcher\\ into dist/MyOriShop-<version>.zip."""
+    """Zip the assembled app\\ so the archive ROOT is what staged\\ must become.
+
+    The update chain is: Phase 32 ``update.apply`` extracts THIS archive verbatim
+    into ``install_root\\staged``, then ``launcher.swap.apply_update`` does
+    ``os.replace(staged, app)`` — the whole staged dir BECOMES ``app\\``. Every
+    member therefore lands directly inside the operator's ``app\\``, so
+    ``python.exe`` must sit at the archive root with no ``app/`` prefix.
+
+    ``launcher\\`` is deliberately EXCLUDED: it is installer-only payload. The
+    swap never applies it (the launcher is not self-updating — see
+    ``launcher/__init__.py``), and shipping it here previously gave the archive
+    TWO top-level dirs, so a staged release produced ``app\\app\\python.exe`` and
+    no ``app\\python.exe`` — every self-update failed the health check and rolled
+    back. Pinned by tests/test_packaging.py::
+    test_release_archive_extracts_into_a_runnable_app_dir.
+    """
     dist_dir = Path(dist_dir)
     archive = dist_dir / f"MyOriShop-{version}.zip"
     tmp = archive.with_suffix(".zip.partial")
+    root = dist_dir / "app"
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
-            for sub in ("app", "launcher"):
-                root = dist_dir / sub
-                if not root.exists():
-                    continue
-                for path in sorted(root.rglob("*")):
-                    if path.is_file():
-                        zf.write(path, path.relative_to(dist_dir).as_posix())
+            for path in sorted(root.rglob("*")):
+                if path.is_file():
+                    zf.write(path, path.relative_to(root).as_posix())
         tmp.replace(archive)
     except Exception:
         tmp.unlink(missing_ok=True)

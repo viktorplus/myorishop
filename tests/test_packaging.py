@@ -265,6 +265,90 @@ def test_real_launcher_runtime_resolves_the_sibling_package(tmp_path):
     )
 
 
+# --- PKG-01/PKG-04: the release archive IS the future app\ ------------------
+
+
+def test_release_archive_extracts_into_a_runnable_app_dir(tmp_path):
+    """CR-01: the published archive's ROOT must be what ``staged\\`` becomes.
+
+    Drives the REAL shipping chain instead of a hand-built fixture:
+    ``assemble_onedir`` -> ``_zip_onedir`` -> extract the archive verbatim into
+    ``install_root\\staged`` (what Phase 32's ``update.apply`` does) ->
+    ``apply_update`` (``os.replace(staged, app)``). The swapped ``app\\`` must
+    then hold ``python.exe`` at its top level.
+
+    Hand-building ``staged\\`` in the app-root shape — which every other launcher
+    test does — is exactly why the two-top-level-dir archive shipped undetected:
+    the real zip carried ``app/`` and ``launcher/`` members, so the swap produced
+    ``app\\app\\python.exe`` and no self-update could ever succeed."""
+    import build_release  # noqa: PLC0415
+
+    from launcher.swap import Paths, Pending, apply_update  # noqa: PLC0415
+
+    dist_dir = tmp_path / "dist"
+    build_release.assemble_onedir(
+        embeddable_zip=_fake_embeddable_zip(tmp_path),
+        wheel_dir=_fake_wheel_dir(tmp_path),
+        dest=dist_dir / "app",
+        repo_root=_REPO_ROOT,
+    )
+    archive = build_release._zip_onedir(dist_dir, "1.42")
+
+    names = zipfile.ZipFile(archive).namelist()
+    assert "python.exe" in names, (
+        "the archive root is not the app dir — the swap renames staged\\ ONTO "
+        f"app\\, so python.exe must be a top-level member; got {names[:5]}"
+    )
+    assert not any(n.startswith("launcher/") for n in names), (
+        "launcher\\ is installer-only payload; a launcher/ member lands at "
+        "app\\launcher\\ after the swap"
+    )
+
+    # Phase 32's update.apply: extract the archive VERBATIM into staged\.
+    install_root = tmp_path / "MyOriShop"
+    staged = install_root / "staged"
+    app_dir = install_root / "app"
+    data = install_root / "data"
+    for directory in (app_dir, data):
+        directory.mkdir(parents=True)
+    (app_dir / "python.exe").write_bytes(b"MZ old exe")
+    backup = data / "backup.db"
+    backup.write_text("BACKUP", encoding="utf-8")
+    staged.mkdir(parents=True)
+    zipfile.ZipFile(archive).extractall(staged)
+
+    apply_update(
+        Paths(
+            app=app_dir,
+            app_prev=install_root / "app.prev",
+            staged=staged,
+            app_failed=install_root / "app.failed",
+            install_root=install_root,
+            data=data,
+        ),
+        Pending(staged_dir=staged, expected_version="1.42", db_backup_path=backup),
+        stop_app=lambda: None,
+        start_app=lambda: None,
+        migrate=lambda: None,
+        health_ok=lambda: True,
+        backup_restore=lambda _path: None,
+    )
+
+    assert (app_dir / "python.exe").exists(), (
+        "the swapped app\\ has no top-level python.exe — adapters.migrate and "
+        "AppProcess.start both resolve app\\python.exe and would raise "
+        "FileNotFoundError, so every self-update rolls back"
+    )
+    # app\app\ IS the FastAPI package (app\app\main.py) — but a nested RUNTIME
+    # there is the CR-01 signature: it means the archive carried an app/ prefix.
+    assert not (app_dir / "app" / "python.exe").exists(), (
+        "the archive nested a second runtime at app\\app\\python.exe — its root "
+        "carried an app/ prefix instead of BEING the app dir"
+    )
+    assert (app_dir / "app" / "main.py").exists(), "the app package is not swapped in"
+    assert (app_dir / "alembic" / "versions").is_dir(), "the migration tree is not swapped in"
+
+
 # --- PKG-02: per-user Inno Setup installer ----------------------------------
 
 
