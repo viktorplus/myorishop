@@ -64,16 +64,18 @@ _LAUNCHER_PTH_LINES = ("python313.zip", ".", "..")
 # is committed by the OFFLINE operator; absent on dev/CI so it is optional here.
 VENDORED_APP_ASSETS: tuple[str, ...] = ("minisign.pub",)
 
-# Pinned Python embeddable releases. The SHA-256 MUST be the value published on
-# python.org for the amd64 embeddable zip of that exact release. It is left
-# empty on purpose: an UNVERIFIED hash would silently defeat the supply-chain
-# guard (T-31-SC). Add an entry only after verifying the digest against
-# https://www.python.org/downloads/release/ — fetch_embeddable refuses to
-# download a version whose digest is not pinned (or passed in explicitly).
+# Pinned Python embeddable releases. A version absent from this map is REFUSED
+# by fetch_embeddable (T-31-SC), so a build can never assemble an unverified
+# runtime. NEVER add an entry without recording below how its digest was
+# established — an unaudited hash pins the wrong thing just as firmly.
 EMBEDDABLE_SHA256: dict[str, str] = {
-    # Verified via python.org: the published MD5 for python-3.13.1-embed-amd64.zip
-    # (d5c8030976b5eaf55ed6b321c073dda7) was confirmed against the downloaded file,
-    # then this SHA-256 was computed from that same authenticated download.
+    # Provenance, stated exactly: python.org publishes an MD5 for the embeddable
+    # zips. The download was MD5-matched against the published
+    # d5c8030976b5eaf55ed6b321c073dda7 and this SHA-256 was then computed FROM
+    # THAT SAME FILE. So this is a download-integrity pin, not an independent
+    # publisher attestation: MD5 is not collision-resistant and the SHA-256 is
+    # self-computed rather than python.org-published. Upgrade path: verify the
+    # release's GPG/sigstore signature instead when bumping.
     "3.13.1": "7b7923ff0183a8b8fca90f6047184b419b108cb437f75fc1c002f9d2f8bcec16",
 }
 
@@ -86,9 +88,11 @@ def fetch_embeddable(
     """Download the pinned python-<version>-embed-amd64.zip, SHA-256 verified.
 
     Heavy / network-bound — never exercised by the unit tests (they inject a
-    synthetic zip). Verifies the download against the python.org-published
-    digest (T-31-SC); refuses any version whose digest is not pinned so a build
-    can never assemble an unverified runtime.
+    synthetic zip). Verifies the download against the digest pinned in
+    ``EMBEDDABLE_SHA256`` (T-31-SC) — read that map's provenance note before
+    trusting the word "verified": it is a download-integrity pin, not a
+    publisher attestation. Refuses any version whose digest is not pinned, so a
+    build can never assemble an unverified runtime.
     """
     sha = expected_sha256 or EMBEDDABLE_SHA256.get(version)
     if not sha:
