@@ -321,7 +321,6 @@ def test_release_archive_extracts_into_a_runnable_app_dir(tmp_path):
     the real zip carried ``app/`` and ``launcher/`` members, so the swap produced
     ``app\\app\\python.exe`` and no self-update could ever succeed."""
     import build_release  # noqa: PLC0415
-
     from launcher.swap import Paths, Pending, apply_update  # noqa: PLC0415
 
     dist_dir = tmp_path / "dist"
