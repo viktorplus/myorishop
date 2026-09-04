@@ -11,12 +11,22 @@ fixtures are literal ISO strings and an explicit tz name, exactly the idiom
 """
 
 import json
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app.config import settings
-from app.core import business_date_bounds, local_day_bounds_utc, local_today_iso
+from app.core import (
+    business_date_bounds,
+    local_day_bounds_utc,
+    local_today_iso,
+    new_id,
+    utcnow_iso,
+)
 from app.models import Operation
 from app.services import merge
 from app.services.ledger import (
@@ -614,3 +624,188 @@ def test_null_business_date_still_reported(session, product, past_sale, customer
     later_start, later_end = business_date_bounds(day + timedelta(days=1), day + timedelta(days=1))
     assert sales_profit_report(session, later_start, later_end)["totals"]["units_sold"] == 0
     assert writeoff_report(session, start, end)["total_qty"] == 0  # it is a sale, not a write-off
+
+
+# --- VA-15 (DATE-01/D-16): the locked list of 14 write surfaces -------------
+#
+# The surface list below IS the D-16 contract, kept in ONE place on purpose.
+# DATE-01's requirement text says «6 desktop forms and 5 mobile wizards», which
+# UNDERCOUNTS what the code actually has: the two cash forms are shared write
+# surfaces of their own (D-16 put them in scope because DATE-03 buckets the
+# cash-flow report by the business date), and возврат exists on BOTH desktop and
+# mobile. The locked number is 14, and this table is the only place it is
+# written down as something runnable rather than as prose.
+#
+# Three documented exceptions are encoded as DATA in the rows, never as branches
+# in the assertion body, so they stay visible to the next reader:
+#   * снятие / внесение use PREFIXED ids (they render on one page — T-33-33);
+#   * both возврат surfaces carry a plain `field` class WITHOUT the `op-date`
+#     full-row modifier (their compact one-row layout is deliberate).
+
+
+class _Surface(NamedTuple):
+    """One write surface of the D-16 list.
+
+    `fetch(ctx)` performs the MINIMUM navigation needed to reach the screen: a
+    plain GET for most, a terminal-step request for the two shell-less mobile
+    wizards, and an origin-sale query for the two возврат screens, which do not
+    exist without something to return.
+    """
+
+    key: str  # latin pytest id
+    name: str  # the RU surface name, quoted in every failure message
+    fetch: Callable
+    input_id: str
+    field_class: str
+
+
+_WRITE_SURFACES = (
+    # --- desktop ledger forms (6) ---
+    _Surface("receipt", "приход (desktop)",
+             lambda ctx: ctx.client.get("/receipts/new"), "op_date", "field op-date"),
+    _Surface("sale", "продажа (desktop)",
+             lambda ctx: ctx.client.get("/sales/new"), "op_date", "field op-date"),
+    _Surface("writeoff", "списание (desktop)",
+             lambda ctx: ctx.client.get("/writeoff"), "op_date", "field op-date"),
+    _Surface("correction", "корректировка (desktop)",
+             lambda ctx: ctx.client.get("/corrections"), "op_date", "field op-date"),
+    _Surface("transfer", "перемещение (desktop)",
+             lambda ctx: ctx.client.get("/transfers"), "op_date", "field op-date"),
+    # EXCEPTION 1: the compact one-row возврат layout omits the full-row modifier.
+    _Surface("return", "возврат (desktop)",
+             lambda ctx: ctx.client.get(
+                 "/returns", params={"origin_op_id": ctx.origin_op.id}
+             ), "op_date", "field"),
+    # --- cash forms (2), SHARED desktop<->mobile, both on ONE page ---
+    # EXCEPTIONS 2 and 3: prefixed ids, because a shared one would be duplicated
+    # in the document and break the second form's <label for> association.
+    _Surface("withdraw", "снятие (общая форма)",
+             lambda ctx: ctx.client.get("/finance"), "withdraw-op-date", "field op-date"),
+    _Surface("deposit", "внесение (общая форма)",
+             lambda ctx: ctx.client.get("/finance"), "deposit-op-date", "field op-date"),
+    # --- mobile wizard shells (3) ---
+    _Surface("mobile-receipt", "приход (mobile)",
+             lambda ctx: ctx.client.get("/m/receipts"), "op_date", "field op-date"),
+    _Surface("mobile-sale", "продажа (mobile)",
+             lambda ctx: ctx.client.get("/m/sales"), "op_date", "field op-date"),
+    _Surface("mobile-writeoff", "списание (mobile)",
+             lambda ctx: ctx.client.get("/m/writeoff"), "op_date", "field op-date"),
+    # --- mobile shell-less wizards: the field rides the FINAL step ---
+    _Surface("mobile-correction", "корректировка (mobile, финальный шаг)",
+             lambda ctx: ctx.client.post(
+                 "/m/corrections/step/value",
+                 data={"code": ctx.product.code, "batch_id": ctx.batch.id, "mode": "count"},
+             ), "op_date", "field op-date"),
+    _Surface("mobile-transfer", "перемещение (mobile, финальный шаг)",
+             lambda ctx: ctx.client.get(
+                 "/m/transfers/step/batch-pick",
+                 params={"code": ctx.product.code, "batch_id": ctx.batch.id},
+             ), "op_date", "field op-date"),
+    # EXCEPTION 1 again, on the mobile twin.
+    _Surface("mobile-return", "возврат (mobile)",
+             lambda ctx: ctx.client.get(
+                 "/m/returns", params={"origin_op_id": ctx.origin_op.id}
+             ), "op_date", "field"),
+)
+
+
+def test_the_write_surface_list_has_exactly_fourteen_entries():
+    """D-16: the count is locked. A 15th write surface must be added to this
+    table deliberately, not discovered later by an operator whose operation
+    silently booked as today."""
+    assert len(_WRITE_SURFACES) == 14
+    assert len({s.key for s in _WRITE_SURFACES}) == 14
+    # The three documented exceptions, asserted as a property of the DATA.
+    assert {s.key for s in _WRITE_SURFACES if s.input_id != "op_date"} == {
+        "withdraw",
+        "deposit",
+    }
+    assert {s.key for s in _WRITE_SURFACES if "op-date" not in s.field_class} == {
+        "return",
+        "mobile-return",
+    }
+
+
+def _surface_context(client, session, stocked_product):
+    """Everything the 14 `fetch` callables can need: the authenticated client,
+    a product with exactly one open batch, and a real origin sale — the two
+    возврат screens 404-equivalent (422 «продажа не найдена») without one, so
+    seeding it IS the minimum navigation to reach them."""
+    from types import SimpleNamespace
+
+    from app.models import Sale
+    from app.services.batches import open_batches
+
+    batches = open_batches(session, stocked_product.id)
+    assert len(batches) == 1
+
+    header = Sale(
+        id=new_id(),
+        customer_id=None,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(header)
+    origin_op = record_operation(
+        session,
+        type_="sale",
+        product_id=stocked_product.id,
+        qty_delta=-1,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        sale_id=header.id,
+        batch_id=batches[0].id,
+    )
+    return SimpleNamespace(
+        client=client,
+        product=stocked_product,
+        batch=batches[0],
+        origin_op=origin_op,
+    )
+
+
+def _wrapper_class(text: str, input_id: str) -> str:
+    """The class= of the .field div wrapping the given date input.
+
+    Read backwards from the input's own id — no HTML parser, matching the
+    shipped markup-assertion idiom (tests/test_receipts.py:441-445). The app's
+    uniform field shape is <div class="..."><label ...><input ...>, so the last
+    <div class=" before the input IS its wrapper.
+    """
+    head = text[: text.index(f'id="{input_id}"')]
+    opener = '<div class="'
+    start = head.rindex(opener) + len(opener)
+    return head[start : head.index('"', start)]
+
+
+@pytest.mark.parametrize(
+    "surface", _WRITE_SURFACES, ids=[s.key for s in _WRITE_SURFACES]
+)
+def test_every_write_surface_renders_op_date(client, session, stocked_product, surface):
+    """VA-15 / DATE-01: all 14 write surfaces render the field, pre-filled with today.
+
+    THIS TEST IS THE D-16 SURFACE CONTRACT. DATE-01's requirement text says «6
+    desktop forms and 5 mobile wizards»; the code has 14 surfaces, and the extra
+    three (the two shared cash forms and mobile возврат) are exactly the ones a
+    prose checklist loses. Removing the field from any one template reddens this
+    test naming that surface.
+    """
+    ctx = _surface_context(client, session, stocked_product)
+    today = local_today_iso(settings.display_tz)
+
+    response = surface.fetch(ctx)
+
+    assert response.status_code == 200, f"{surface.name}: не отрисовалась"
+    assert 'name="op_date"' in response.text, f"{surface.name}: нет поля op_date"
+    assert f'id="{surface.input_id}"' in response.text, (
+        f"{surface.name}: ожидался id={surface.input_id}"
+    )
+    assert f'<label for="{surface.input_id}">Дата операции</label>' in response.text, (
+        f"{surface.name}: подпись не связана со своим полем"
+    )
+    assert f'value="{today}"' in response.text, (
+        f"{surface.name}: поле не заполнено сегодняшней датой"
+    )
+    assert _wrapper_class(response.text, surface.input_id) == surface.field_class, (
+        f"{surface.name}: ожидался class=\"{surface.field_class}\""
+    )
