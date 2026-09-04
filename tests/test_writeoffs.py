@@ -381,3 +381,41 @@ def test_writeoff_malformed_op_date_gets_a_different_message(session, stocked_pr
     assert errors["op_date"] == OP_DATE_FORMAT_ERROR
     assert OP_DATE_FORMAT_ERROR != OP_DATE_FUTURE_ERROR
     assert _writeoff_ops(session) == []
+
+
+def test_web_writeoff_form_renders_the_prefilled_capped_date_field(client):
+    """DATE-01/D-10: GET /writeoff renders «Дата операции», pre-filled with
+    today's LOCAL day and capped at it (D-13), with NO `required` and — unlike
+    «Примечание» right above it — NO «(необязательно)» hint."""
+    response = client.get("/writeoff")
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert 'class="field op-date"' in response.text
+    assert "Дата операции <span" not in response.text
+
+
+def test_web_writeoff_future_date_returns_422_and_echoes_the_typed_value(
+    client, session, stocked_product
+):
+    """DATE-02: the refusal is in Russian, next to the field, and the operator's
+    own date is still in the input so they can correct it."""
+    tomorrow = _today_plus(1)
+    response = client.post(
+        "/writeoff",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "1",
+            "reason_code": "expired",
+            "note": "",
+            "batch_id": _only_batch(session, stocked_product).id,
+            "op_date": tomorrow,
+        },
+    )
+    assert response.status_code == 422
+    assert "Дата операции не может быть в будущем." in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _writeoff_ops(session) == []

@@ -208,10 +208,14 @@ def receipt_create(
     expiry: str = Form(""),
     location: str = Form(""),
     comment: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money/qty fields arrive as strings on purpose: Pydantic v2 rejects ""
-    # for int | None, and parsing in the service gives the RU errors.
+    # for int | None, and parsing in the service gives the RU errors. DATE-01:
+    # op_date is a string for the same reason and rides the SAME `form` echo
+    # dict, so a 422 re-render redisplays whatever the operator typed
+    # (receipt_form.html's `form.op_date or today_iso()`).
     form_echo = {
         "code": code,
         "name": name,
@@ -223,6 +227,7 @@ def receipt_create(
         "expiry": expiry,
         "location": location,
         "comment": comment,
+        "op_date": op_date,
     }
     try:
         result, errors = register_receipt(
@@ -237,6 +242,7 @@ def receipt_create(
             expiry_raw=expiry,
             location_raw=location,
             comment_raw=comment,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # CR-01: defensive rollback before re-querying the session, mirroring

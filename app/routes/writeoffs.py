@@ -111,17 +111,21 @@ def writeoff_create(
     note: str = Form(""),
     batch_id: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money/qty/reason fields arrive as strings on purpose: Pydantic v2
     # rejects "" for int | None, and parsing/validation happens in the
-    # service, which returns RU errors.
+    # service, which returns RU errors. DATE-01: op_date rides the SAME `form`
+    # echo dict, so a 422 (and the oversell warn re-render) redisplays whatever
+    # the operator typed — writeoff_form.html reads `form.op_date or today_iso()`.
     form_echo = {
         "code": code,
         "name": name,
         "qty": qty,
         "reason_code": reason_code,
         "note": note,
+        "op_date": op_date,
     }
     # LOT-05/D-10: resolve the picked batch (if any) for the re-echoed picker
     # on a 422/warn re-render — re-validate ownership the same way
@@ -147,6 +151,7 @@ def writeoff_create(
             note=note,
             batch_id=batch_id,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # WR-03: defensive rollback, mirroring the fix applied to

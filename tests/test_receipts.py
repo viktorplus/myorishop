@@ -1400,3 +1400,39 @@ def test_existing_batch_name_is_never_rewritten_by_a_backdated_top_up(
     assert errors == {}
     assert result["batch"].name == "Историческое имя партии"
     assert result["operation"].business_date == back_date
+
+
+def test_web_receipt_form_renders_the_prefilled_capped_date_field(client):
+    """DATE-01/D-10: GET /receipts/new renders «Дата операции», pre-filled with
+    today's LOCAL day and capped at it (D-13), with NO `required`."""
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert 'class="field op-date"' in response.text
+
+
+def test_web_receipt_future_date_returns_422_and_echoes_the_typed_value(
+    client, warehouse
+):
+    """DATE-02: the refusal is in Russian, next to the field, and the operator's
+    own date is still in the input so they can correct it (the echo contract)."""
+    tomorrow = _today_plus(1)
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "WEB-FUT-1",
+            "name": "Товар из будущего",
+            "qty": "3",
+            "cost": "",
+            "sale": "",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+            "op_date": tomorrow,
+        },
+    )
+    assert response.status_code == 422
+    assert "Дата операции не может быть в будущем." in response.text
+    assert f'value="{tomorrow}"' in response.text
