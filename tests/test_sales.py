@@ -1778,3 +1778,73 @@ def test_sale_op_date_error_rides_alongside_the_per_line_errors(session, stocked
     assert errors["op_date"] == OP_DATE_FUTURE_ERROR
     assert errors["qty-0"] == QTY_ERROR
     assert _sale_ops(session) == []
+
+
+def test_web_sale_form_renders_the_prefilled_capped_date_field(client):
+    """DATE-01/D-10: the desktop basket renders «Дата операции», pre-filled with
+    today's LOCAL day and capped at it (D-13), carrying the full-row `op-date`
+    modifier that keeps it off the muted hint's row, with NO `required` and no
+    «(необязательно)» hint."""
+    response = client.get("/sales/new")
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert 'class="field op-date"' in response.text
+    assert "Дата операции <span" not in response.text
+    tag = _input_tag(response.text, "op_date")
+    assert tag is not None
+    assert "required" not in tag
+
+
+def test_web_sale_future_date_returns_422_and_echoes_the_typed_value(
+    client, session, stocked_product
+):
+    """DATE-02: the refusal is in Russian, beside the field, the operator's own
+    date is still in the input, and zero rows were written."""
+    tomorrow = _today_plus(1)
+    bid = _only_batch(session, stocked_product)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["1"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "op_date": tomorrow,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Дата операции не может быть в будущем." in response.text
+    assert _input_value(response.text, "op_date") == tomorrow
+    assert _sale_ops(session) == []
+    assert _all_cash(session) == []
+
+
+def test_web_sale_back_date_survives_to_the_ledger_and_the_cash_row(
+    client, session, stocked_product
+):
+    """The real POST path, not the service boundary: a back-dated basket posted
+    through /sales lands the same business date on the sale op and the credit."""
+    back_date = _today_plus(-7)
+    bid = _only_batch(session, stocked_product)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [stocked_product.code],
+            "qty[]": ["2"],
+            "price[]": ["15,00"],
+            "batch_id[]": [bid],
+            "op_date": back_date,
+        },
+    )
+
+    assert response.status_code == 200
+    assert _sale_ops(session)[0].business_date == back_date
+    assert _sale_cash(session)[0].business_date == back_date
+    # A saved sale starts the next basket from today again.
+    assert _input_value(response.text, "op_date") == local_today_iso(settings.display_tz)

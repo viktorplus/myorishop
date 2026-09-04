@@ -41,7 +41,13 @@ def _return_ops(session):
 
 
 def _make_sale(
-    session, product, qty, unit_price_cents=1500, unit_cost_cents=1000, batch_id=None
+    session,
+    product,
+    qty,
+    unit_price_cents=1500,
+    unit_cost_cents=1000,
+    batch_id=None,
+    business_date=None,
 ):
     """Build a real BATCHED sale inline: one Sale header + one `sale` op through
     the single write path (mirrors tests/test_ledger.py::test_record_operation_sets_sale_id).
@@ -49,6 +55,10 @@ def _make_sale(
     Phase 9: a sale is batch-attributed. When no batch_id is given, the first
     open batch of the product is used, so the origin op carries a batch_id the
     return can inherit (D-08) and the sale survives the mandatory D-12 flip.
+
+    Phase 33: `business_date` defaults to None, which is record_operation's own
+    default — the origin then gets today's local day, exactly as before. Pass it
+    only when the test is about an origin sale that was itself back-dated (D-24).
     """
     header = Sale(
         id=new_id(),
@@ -69,6 +79,7 @@ def _make_sale(
         unit_price_cents=unit_price_cents,
         sale_id=header.id,
         batch_id=batch_id,
+        business_date=business_date,
     )
     return header, op
 
@@ -446,3 +457,83 @@ def test_backdated_return_still_respects_the_returnable_cap(session, stocked_pro
     assert ok_result
     assert _return_ops(session)[0].business_date == back_date
     assert returnable_qty(session, header.id, stocked_product.id) == 0
+
+
+def test_web_return_form_renders_the_date_field_without_the_full_row_modifier(
+    client, session, stocked_product
+):
+    """DATE-01 + the surface-6 layout exception: возврат renders the pre-filled,
+    capped «Дата операции» inside a plain `.field` — deliberately WITHOUT the
+    `op-date` full-row modifier, so it stays on the compact confirmation row
+    beside «Количество к возврату» (33-UI-SPEC.md)."""
+    header, _sale_op = _make_sale(session, stocked_product, qty=2)
+
+    response = client.get(
+        "/returns", params={"sale_id": header.id, "product_id": stocked_product.id}
+    )
+
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert "op-date" not in response.text
+
+
+def test_web_return_future_date_returns_422_and_echoes_the_typed_value(
+    client, session, stocked_product
+):
+    """DATE-02 on the возврат surface: RU refusal beside the field, the typed
+    date still in the input, zero rows written."""
+    _header, sale_op = _make_sale(session, stocked_product, qty=2)
+    tomorrow = _today_plus(1)
+
+    response = client.post(
+        "/returns",
+        data={"origin_op_id": sale_op.id, "qty": "1", "op_date": tomorrow},
+    )
+
+    assert response.status_code == 422
+    assert "Дата операции не может быть в будущем." in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _return_ops(session) == []
+    assert _all_cash(session) == []
+
+
+def test_web_return_label_names_the_origin_sales_business_date(
+    client, session, stocked_product
+):
+    """D-24: «Возврат из продажи от …» identifies the origin by its BUSINESS
+    date, rendered dd.mm.yyyy with NO time part — a back-dated sale must not be
+    labelled with the day it was typed in."""
+    back_date = _today_plus(-45)
+    _header, sale_op = _make_sale(session, stocked_product, qty=2, business_date=back_date)
+    assert sale_op.business_date == back_date
+    assert sale_op.created_at[:10] != back_date
+
+    response = client.get("/returns", params={"origin_op_id": sale_op.id})
+
+    assert response.status_code == 200
+    expected = date.fromisoformat(back_date).strftime("%d.%m.%Y")
+    assert f"Возврат из продажи от {expected} —" in response.text
+    # The entry timestamp is NOT what identifies the sale here.
+    entered_today = date.fromisoformat(local_today_iso(settings.display_tz)).strftime("%d.%m.%Y")
+    assert f"Возврат из продажи от {entered_today}" not in response.text
+
+
+def test_web_return_label_falls_back_to_created_at_for_a_null_business_date(
+    client, session, customer, stocked_product, past_sale
+):
+    """DATE-08: a row pushed by a pre-0027 client has business_date IS NULL —
+    the label falls back to the created_at day and still renders dd.mm.yyyy with
+    no time part. past_sale INSERTs directly on purpose: the operations_no_update
+    trigger makes clearing the column afterwards impossible."""
+    _sale, sale_op = past_sale(
+        customer, stocked_product, created_at="2026-03-14T09:30:00+00:00", qty=2
+    )
+    assert sale_op.business_date is None
+
+    response = client.get("/returns", params={"origin_op_id": sale_op.id})
+
+    assert response.status_code == 200
+    assert "Возврат из продажи от 14.03.2026 —" in response.text

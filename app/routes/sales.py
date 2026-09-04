@@ -518,6 +518,7 @@ def sale_create(
     surname: str = Form(""),
     consultant_number: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # D-10: keep register_sale's signature untouched and POST /sales/customer
@@ -525,6 +526,12 @@ def sale_create(
     # guard only fires when a field is non-blank; all three blank must still
     # walk in unchanged (D-05 must not regress).
     new_customer_form = {"name": name, "surname": surname, "consultant_number": consultant_number}
+    # DATE-01: op_date rides the SAME echo dict the customer header already uses
+    # (UI-SPEC surface inventory row 2 — sale_form.html reads
+    # `form.op_date or today_iso()`), so every 422/warn re-render redisplays the
+    # date the operator typed. sale_customer.html never iterates this dict, it
+    # only reads its own three named keys, so the extra key is inert there.
+    form_echo = {**new_customer_form, "op_date": op_date}
     guard_mode = customer_mode if customer_mode in _CUSTOMER_MODES else "existing"
     if (
         guard_mode == "new"
@@ -532,7 +539,7 @@ def sale_create(
         and (name.strip() or surname.strip() or consultant_number.strip())
     ):
         context = {
-            **_customer_context(session, "new", customer_id, new_customer_form),
+            **_customer_context(session, "new", customer_id, form_echo),
             "customer_id_keep": "",
             "errors": {"new_customer": NEW_CUSTOMER_REQUIRES_BUTTON_ERROR},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
@@ -552,6 +559,7 @@ def sale_create(
             prices=price,
             batch_ids=batch_id,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # WR-01: rollback FIRST — an unexpected failure may have left the
@@ -566,7 +574,7 @@ def sale_create(
         # server-side on this branch too — a bare customer-id-only literal
         # with no `selected` is the exact chip-loss bug this phase closes.
         context = {
-            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            **_customer_context(session, customer_mode, customer_id, form_echo),
             "customer_id_keep": "",
             "errors": {"form": SAVE_FAILED_ERROR},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
@@ -585,7 +593,7 @@ def sale_create(
     # fall through this guard and reach the success-write branch below.
     if result and (result.get("oversell") or result.get("below_minimum")):
         context = {
-            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            **_customer_context(session, customer_mode, customer_id, form_echo),
             "customer_id_keep": "",
             "errors": {},
             "lines": _build_lines(session, code, qty, price, batch_id, {}),
@@ -598,7 +606,7 @@ def sale_create(
 
     if errors:
         context = {
-            **_customer_context(session, customer_mode, customer_id, new_customer_form),
+            **_customer_context(session, customer_mode, customer_id, form_echo),
             "customer_id_keep": "",
             "errors": errors,
             "lines": _build_lines(session, code, qty, price, batch_id, errors),
