@@ -17,7 +17,14 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import business_date_bounds, local_today_iso, new_id, utcnow_iso
+from app.core import (
+    business_date_bounds,
+    format_ru_date,
+    iso_to_local,
+    local_today_iso,
+    new_id,
+    utcnow_iso,
+)
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services.batches import open_batches
 from app.services.dashboard import recent_operations
@@ -868,3 +875,119 @@ def test_backdated_filter_and_marker_diverge_only_on_utc_straddle(
 
     # The converse never happens: EVERY marked row is inside «Только задним числом».
     assert {op_id for op_id, r in unfiltered.items() if r["is_backdated"]} <= set(returned)
+
+
+# --- Phase 33 desktop markup (D-18/D-19/D-20): the «Когда» cell + the 4th filter ---
+#
+# VA-16, desktop half. `| local_dt` on a date-only string does not raise — it
+# builds a naive datetime and confidently prints a fabricated time — so every
+# assertion below reads the RENDERED cell, never a service return value.
+
+
+def _when_cell(op) -> str:
+    """The exact «Когда» cell an UNMARKED row must still render, byte for byte."""
+    return f"<td>{iso_to_local(op.created_at, settings.display_tz)}</td>"
+
+
+def test_web_history_dated_cell_is_one_line_when_the_two_dates_match(
+    client, session, stocked_product
+):
+    """D-18: a row entered and attributed to the same day renders EXACTLY what it
+    rendered before this phase — one line, no second line, no marker."""
+    op = _same_day_correction(session, stocked_product)
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert _when_cell(op) in response.text
+    # The «Только задним числом» option label is always on the page; the marker
+    # itself is the longer phrase, so this is a safe negative assertion.
+    assert "задним числом · внесено" not in response.text
+
+
+def test_web_history_dated_null_business_date_row_renders_like_today(
+    client, session, stocked_product
+):
+    """DATE-08 at the surface: a pre-0027 client's row (business_date NULL) must
+    render byte-identically to today and carry no marker."""
+    legacy = _insert_legacy_op(session, stocked_product, type_="correction", qty_delta=1)
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert _when_cell(legacy) in response.text
+    assert "задним числом · внесено" not in response.text
+
+
+def test_web_history_dated_cell_shows_both_dates_when_they_differ(
+    client, session, stocked_product
+):
+    """D-19: the business date is PRIMARY; the entry timestamp drops to a muted
+    second line prefixed with the RU words — the marker is never colour alone."""
+    op = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert f"<td>{format_ru_date('2026-07-10')}<br>" in response.text
+    entered = iso_to_local(op.created_at, settings.display_tz)
+    assert f'<span class="muted">задним числом · внесено {entered}</span>' in response.text
+    # `| ru_date`, not `| local_dt`: a String(10) through local_dt prints a
+    # fabricated 00:00 without raising.
+    assert "10.07.2026 00:00" not in response.text
+
+
+def test_web_history_dated_marker_renders_in_the_narrowed_type_layout(
+    client, session, stocked_product
+):
+    """The «Когда» cell exists TWICE — the generic 10-column layout and the
+    per-type narrowed one. Editing only the first leaves the marker invisible on
+    every type-filtered view, and the generic-layout test cannot see it."""
+    op = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+
+    response = client.get("/history?type=correction")
+
+    assert response.status_code == 200
+    # The narrowed layout drops the «Тип» column; the generic one always has it.
+    assert "<th>Тип</th>" not in response.text
+    assert "<th>Срок</th>" in response.text  # correction -> expiry/qty/reason
+    entered = iso_to_local(op.created_at, settings.display_tz)
+    assert f'<span class="muted">задним числом · внесено {entered}</span>' in response.text
+
+
+def test_web_history_dated_select_renders_and_reselects_after_a_swap(
+    client, session, stocked_product
+):
+    """D-20: the 4th filter with three Latin-keyed options, re-selecting itself
+    on an htmx outerHTML swap — without that the operator's choice visually
+    resets to «Все» on every filter change."""
+    default = client.get("/history")
+    assert default.status_code == 200
+    assert '<select id="dated" name="dated"' in default.text
+    assert '<option value="" selected>Все</option>' in default.text
+    assert "Только задним числом</option>" in default.text
+    assert "Только в день операции</option>" in default.text
+
+    swapped = client.get("/history?dated=backdated", headers={"HX-Request": "true"})
+    assert swapped.status_code == 200
+    assert '<option value="backdated" selected>Только задним числом</option>' in swapped.text
+
+    same_day = client.get("/history?dated=same_day", headers={"HX-Request": "true"})
+    assert '<option value="same_day" selected>Только в день операции</option>' in same_day.text
+
+
+def test_web_history_dated_empty_state_names_the_filters(client, session, stocked_product):
+    """Both empty-state conditions must learn about `dated`: filtering to «Только
+    задним числом» with no matches must NOT say «Операций пока нет.» — copy that
+    tells the operator the app is empty when it is not."""
+    # Only the fixture's own same-day receipt exists, so «backdated» matches none.
+    generic = client.get("/history?dated=backdated")
+    assert generic.status_code == 200
+    assert "Нет операций по выбранным фильтрам." in generic.text
+    assert "Операций пока нет." not in generic.text
+
+    # …and again in the per-type narrowed layout, whose condition is a separate line.
+    narrowed = client.get("/history?type=correction&dated=backdated")
+    assert narrowed.status_code == 200
+    assert "Нет операций по выбранным фильтрам." in narrowed.text
+    assert "Операций пока нет." not in narrowed.text

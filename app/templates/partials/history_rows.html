@@ -61,6 +61,24 @@
         {% endfor %}
       </select>
     </div>
+    {# DATE-06 (D-20): the 4th filter. A <select>, NOT a checkbox — a boolean
+       cannot express «Только в день операции», and an unchecked checkbox posts
+       nothing, so the hx-include idiom would silently drop the state. The six
+       HTMX attributes are byte-identical to the three siblings above. Option
+       values are Latin keys (matching sort=oldest and the cash categories);
+       an unknown/tampered value falls back to «Все» server-side, the same
+       allow-list discipline as _SORT_MAP.get(sort, default). #}
+    <div class="field">
+      <label for="dated">Задним числом</label>
+      <select id="dated" name="dated"
+              hx-get="/history" hx-trigger="change"
+              hx-include="#history-rows input, #history-rows select"
+              hx-target="#history-rows" hx-swap="outerHTML" hx-push-url="true">
+        <option value=""{% if not dated %} selected{% endif %}>Все</option>
+        <option value="backdated"{% if dated == "backdated" %} selected{% endif %}>Только задним числом</option>
+        <option value="same_day"{% if dated == "same_day" %} selected{% endif %}>Только в день операции</option>
+      </select>
+    </div>
   </div>
   {# D-05: date range is universal — visible for every type, including the
      untyped generic view. Reused verbatim, unmodified partial. #}
@@ -116,13 +134,32 @@
       {% if not rows %}
       <tr>
         <td colspan="10" class="empty-state muted">
-          {% if type_filter or product_id or category or customer or author_id or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+          {% if type_filter or product_id or category or customer or author_id or from_date or dated %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
         </td>
       </tr>
       {% else %}
       {% for r in rows %}
       <tr>
-        <td>{{ r.op.created_at | local_dt }}</td>
+        {# DATE-05/DATE-06 (D-18/D-19): the PRIMARY date is the business date;
+           the entry timestamp becomes a muted SECOND LINE, and only when the
+           two differ. Same shape as the D-15 batch attribution in the «Товар»
+           cell below — muted second line, NO extra column — which is exactly
+           why it was chosen: colspan="10" and `3 + columns|length + 1` are
+           both untouched, and the identical markup works in both layouts.
+           A row whose dates match, and every `business_date IS NULL` row from
+           a client that has not updated yet, renders BYTE-IDENTICALLY to
+           today. `| ru_date` on business_day is mandatory — it is a String(10)
+           and `| local_dt` would build a naive datetime and print a bogus
+           time. The marker is the RU WORDS on the second line, never colour
+           alone (style.css:363-368 / 18-REVIEW WR-03). #}
+        <td>
+          {%- if r.is_backdated -%}
+          {{ r.business_day | ru_date }}<br>
+          <span class="muted">задним числом · внесено {{ r.op.created_at | local_dt }}</span>
+          {%- else -%}
+          {{ r.op.created_at | local_dt }}
+          {%- endif -%}
+        </td>
         <td>{{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</td>
         {# 09-07: dedicated «Код» column (scannable), mirroring recent_sales.html /
            purchase_history.html which keep code and name in separate columns. Sits
@@ -231,13 +268,23 @@
       {% if not rows %}
       <tr>
         <td colspan="{{ 3 + columns|length + 1 }}" class="empty-state muted">
-          {% if type_filter or product_id or category or customer or author_id or from_date %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
+          {% if type_filter or product_id or category or customer or author_id or from_date or dated %}Нет операций по выбранным фильтрам.{% else %}Операций пока нет.{% endif %}
         </td>
       </tr>
       {% else %}
       {% for r in rows %}
       <tr>
-        <td>{{ r.op.created_at | local_dt }}</td>
+        {# DATE-05/DATE-06: byte-identical to the «Когда» cell in the generic
+           layout above — see its comment. D-18's shape needs no adjustment
+           here, which is the whole reason a second line beat a new column. #}
+        <td>
+          {%- if r.is_backdated -%}
+          {{ r.business_day | ru_date }}<br>
+          <span class="muted">задним числом · внесено {{ r.op.created_at | local_dt }}</span>
+          {%- else -%}
+          {{ r.op.created_at | local_dt }}
+          {%- endif -%}
+        </td>
         <td>{{ r.product.code }}</td>
         <td>{{ r.product.name }}</td>
         {% for key in columns %}
