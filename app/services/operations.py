@@ -93,12 +93,32 @@ def _is_backdated(op: Operation, tz: ZoneInfo) -> bool:
     DATE-07's «existing operations keep reporting exactly as they do today»
     visibly false in the UI.
 
-    Accepted consequence: «Только задним числом» can return a row that carries
-    no marker (the filter over-includes in that night window); the converse
-    never happens, so no marked row is ever lost. Computing the marker in
-    Python AFTER the page was fetched is not an option — `total` would then
-    disagree with the rows and pagination would break, the exact defect
-    `test_history_period_count_agrees_with_its_own_rows` pins. Pinned by
+    ACCEPTED CONSEQUENCE — BOTH DIRECTIONS (WR-05, 33-REVIEW). The divergence
+    set is the same for both filter values (rows entered in the UTC-straddle
+    window, roughly 00:00-03:00 local at Europe/Moscow), but it costs each of
+    them something different, and only the first half used to be written down:
+
+    * «Только задним числом» OVER-includes: it can return a row that carries no
+      marker. No MARKED row is ever lost, so nothing the operator can see as
+      «задним числом» goes missing.
+    * «Только в день операции» UNDER-includes, the mirror image: a row entered
+      at 00:30 local has `business_date = 2026-09-05` while
+      `substr(created_at, 1, 10)` is still `2026-09-04`, so the equality fails
+      and the row is EXCLUDED — even though the UI renders it with no marker,
+      i.e. as an ordinary same-day row. At Europe/Moscow that is every row
+      entered between 00:00 and 03:00 local.
+
+    So this filter pair is an APPROXIMATION, not a partition, and the label
+    «Только в день операции» promises more than the predicate delivers. Making
+    it exact needs either a stored marker column (the ledger is append-only and
+    only four columns land this phase) or a change to the locked filter copy in
+    `33-UI-SPEC.md` § Copywriting Contract — an operator decision, deliberately
+    NOT taken here.
+
+    Computing the marker in Python AFTER the page was fetched is not an option —
+    `total` would then disagree with the rows and pagination would break, the
+    exact defect `test_history_period_count_agrees_with_its_own_rows` pins.
+    Pinned by
     `tests/test_history.py::test_backdated_filter_and_marker_diverge_only_on_utc_straddle`.
 
     DATE-08: a `business_date IS NULL` row (pushed by a pre-0027 client) is
@@ -295,6 +315,13 @@ def history_view(
             # pushed by a pre-0027 client) instead of vanishing it — such a row
             # was not back-dated, so it belongs to «Только в день операции».
             # `NULL != x` is NULL in SQL, so the IS NULL branch is load-bearing.
+            #
+            # WR-05 (33-REVIEW): this branch UNDER-includes in the UTC-straddle
+            # window — a row entered at 00:30 local is dropped even though it is
+            # rendered with no marker. Read `_is_backdated`'s «ACCEPTED
+            # CONSEQUENCE — BOTH DIRECTIONS» block before changing anything
+            # here: widening the predicate breaks the backdated/same_day
+            # complementarity, so it is an operator decision, not a local edit.
             dated_where = (
                 or_(
                     Operation.business_date.is_(None),
