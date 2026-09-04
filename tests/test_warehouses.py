@@ -4,6 +4,7 @@ Naming convention (mirrors test_dictionary.py/test_catalog.py): route/e2e
 tests are prefixed test_web_, everything else is service/schema level.
 """
 
+import re
 import sqlite3
 from contextlib import closing
 
@@ -11,7 +12,7 @@ from alembic.config import Config
 
 from alembic import command
 from app.config import settings
-from app.core import new_id
+from app.core import local_today_iso, new_id
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.ledger import next_seq, record_operation
 from app.services.warehouses import (
@@ -347,7 +348,11 @@ def test_list_warehouses_last_receipt_date_uses_grouped_outerjoin(session, produ
     rows = list_warehouses(session)["warehouses"]
 
     row = next(w for w in rows if w.id == warehouse.id)
-    assert row.last_receipt == "2026-02-01T00:00:00Z"
+    # Phase 33/D-24: last_receipt is now a date-only business day, not the raw
+    # created_at timestamp. Both rows are inserted directly, so business_date is
+    # NULL and DATE-08's COALESCE dates them by substr(created_at, 1, 10) — the
+    # grouped-outerjoin MAX() behaviour this test guards is unchanged.
+    assert row.last_receipt == "2026-02-01"
 
 
 def test_list_warehouses_last_receipt_none_when_never_received(session):
@@ -382,6 +387,71 @@ def test_list_warehouses_last_receipt_ignores_transfer_only_stock(session, produ
 
     row = next(w for w in rows if w.id == warehouse.id)
     assert row.last_receipt is None
+
+
+# --- Phase 33 (D-24/DATE-03): «Последняя приёмка» is the BUSINESS date ---
+
+
+def test_list_warehouses_last_receipt_uses_the_business_date(session, product, warehouse):
+    """D-24: a receipt ENTERED today for an older delivery dates the shelf to
+    the delivery day, not to today.
+
+    This is the reader whose disposition `.planning/research/ARCHITECTURE.md:195`
+    got the other way round (open decision #5); D-24 overrides it. The receipt
+    goes through the single write path, so `created_at` is genuinely now while
+    `business_date` is the operator's day.
+    """
+    batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
+    session.add(batch)
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=4,
+        batch_id=batch.id,
+        business_date="2026-04-07",
+    )
+
+    row = next(w for w in list_warehouses(session)["warehouses"] if w.id == warehouse.id)
+    assert row.last_receipt == "2026-04-07"
+    assert row.last_receipt != local_today_iso(settings.display_tz)
+
+
+def test_web_warehouses_last_receipt_cell_is_a_date_without_a_time(client, session):
+    """T-33-24, through the REAL route and template: the cell renders
+    `dd.mm.yyyy` and contains NO time part.
+
+    `| local_dt` on a date-only string builds a naive datetime and prints a
+    fabricated «, 00:00» — a wrong fact rendered confidently. Only a rendered
+    assertion catches that; the service-level test above cannot.
+    """
+    warehouse, _ = add_warehouse(session, name="Склад с прошлой приёмкой", address="")
+    product = Product(id=new_id(), code="WH33-001", name="Товар приёмки", quantity=0)
+    session.add(product)
+    session.commit()
+    batch = Batch(id=new_id(), product_id=product.id, warehouse_id=warehouse.id, quantity=0)
+    session.add(batch)
+    session.commit()
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=5,
+        unit_cost_cents=1000,
+        unit_price_cents=1500,
+        batch_id=batch.id,
+        business_date="2026-04-07",
+    )
+
+    response = client.get("/warehouses")
+
+    assert response.status_code == 200
+    row = response.text.split("Склад с прошлой приёмкой")[1].split("</tr>")[0]
+    cell = re.search(r"<td>(\d{2}\.\d{2}\.\d{4})</td>", row)
+    assert cell is not None, row
+    assert cell.group(1) == "07.04.2026"
+    assert ":" not in cell.group(1)
 
 
 # --- Web slice (routes + templates, Plan 08-02) ---

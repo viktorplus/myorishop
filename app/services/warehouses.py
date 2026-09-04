@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core import CURRENCIES, DEFAULT_CURRENCY, new_id, utcnow_iso
 from app.models import Batch, Operation, Warehouse
 from app.services.pagination import paginate
+from app.services.reports import business_date_expr
 
 NAME_REQUIRED_ERROR = "Укажите название склада."
 WAREHOUSE_NOT_FOUND_ERROR = "Склад не найден."
@@ -96,8 +97,25 @@ def list_warehouses(
         w.item_count = item_counts.get(w.id, 0)
 
     if warehouse_ids:
+        # Phase 33 (D-24/DATE-03): «Последняя приёмка» is the BUSINESS date of
+        # the last receipt — «когда сюда в последний раз приехал товар» is a
+        # question about the goods, not about when the row was typed in. A
+        # receipt entered today for last month's delivery must date the shelf
+        # to last month.
+        #
+        # This DELIBERATELY OVERRIDES .planning/research/ARCHITECTURE.md:195,
+        # which said to leave this reader on created_at. That was open operator
+        # decision #5 and D-24 (33-CONTEXT.md, newer and binding) decided it the
+        # other way. Do not "restore" the older document's advice.
+        #
+        # MAX() over the expression is still chronological: business_date is a
+        # String(10) ISO day and ISO dates sort lexicographically. The COALESCE
+        # inside business_date_expr keeps a pre-0027 row dated by its entry day
+        # (DATE-08) instead of making the shelf look never-received. `w.last_receipt`
+        # is therefore now a DATE, not a timestamp — warehouse_rows.html renders
+        # it with `| ru_date` (T-33-24).
         last_receipt_rows = session.execute(
-            select(Batch.warehouse_id, func.max(Operation.created_at))
+            select(Batch.warehouse_id, func.max(business_date_expr(Operation)))
             .outerjoin(
                 Operation,
                 (Operation.batch_id == Batch.id) & (Operation.type == "receipt"),

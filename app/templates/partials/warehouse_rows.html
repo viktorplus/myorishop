@@ -68,11 +68,19 @@
         <td>{{ w.address or '' }}</td>
         <td>{{ w.currency }} {{ CURRENCIES.get(w.currency, '') }}</td>
         <td class="num">{{ w.item_count }}</td>
-        {# w.last_receipt is Operation.created_at (full ISO timestamp, not a
-           date-only string like batch.expiry) — the `local_dt` filter,
-           not `ru_date`, is the established display filter for it
-           (e.g. history_rows.html:79, ledger_rows.html:23). #}
-        <td>{% if w.last_receipt %}{{ w.last_receipt | local_dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        {# Phase 33 (D-24/DATE-03) — this comment used to instruct the exact
+           OPPOSITE and had to be rewritten, not just left in place, the moment
+           the value changed type.
+
+           w.last_receipt is now MAX(business_date_expr(Operation)) — a
+           `String(10)` date-only day ('yyyy-mm-dd'), NOT an Operation.created_at
+           timestamp. So `ru_date` is the correct filter here, exactly as for
+           batch.expiry. `local_dt` would call iso_to_local() on a date-only
+           string, build a NAIVE datetime and print a fabricated 00:00 time
+           (T-33-24). The `local_dt` precedents (history_rows.html,
+           ledger_rows.html) still apply to genuine timestamps — just not to
+           this cell. #}
+        <td>{% if w.last_receipt %}{{ w.last_receipt | ru_date }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           {% if not w.deleted_at %}
           <a href="/warehouses/{{ w.id }}/edit">Изменить</a>
