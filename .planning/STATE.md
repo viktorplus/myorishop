@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-12-PLAN.md
-last_updated: "2026-09-04T13:33:13.363Z"
+stopped_at: Completed 33-09-PLAN.md
+last_updated: "2026-09-04T14:00:09.466Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 12 of 15
+Plan: 13 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 11/15 done (33-01 … 33-08, 33-10 … 33-12); 33-09, 33-13 … 33-15 outstanding |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 12/15 done (33-01 … 33-12); 33-13 … 33-15 outstanding |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -127,6 +127,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P10 | 55min | 3 tasks | 17 files |
 | Phase 33 P11 | 70min | 3 tasks | 16 files |
 | Phase 33 P12 | 45min | 3 tasks | 15 files |
+| Phase 33 P09 | ~50min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -259,6 +260,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-12: a transfer resolves the business date ONCE and stamps both ledger rows with it — two halves of one operation can never straddle local midnight (T-33-31)
 - [Phase 33]: 33-12: on the two shell-less mobile wizards the date lives on the FINAL step and MUST be echoed back on every re-render — the inverse of the shell wizards' no-echo rule; their fragments ARE swapped, unlike the three shell wizards
 - [Phase 33]: 33-12: корректировка's loop-all error block is filtered on the KEYS, not inside the loop — its <div> wraps the loop, so filtering the body would emit an empty red block
+- [Phase 33]: 33-09: 33-09-PLAN.md:102's claim that 33-07 switched finance.py:379 and mobile_finance.py:377 to business_date_bounds was FALSE — verified against live code and both were switched HERE, in the same commit as export.py's predicate (T-33-20)
+- [Phase 33]: 33-09 (CD-9): export.py:214's ORDER BY switched alongside :135 and PROVEN load-bearing — reverting only the CD-9 clause reddens test_csv_first_column_non_decreasing, so its coverage is not an accident of the sales twin
+- [Phase 33]: 33-09: four of the five local_day_bounds_utc sites in tests/test_export.py pass the export PERIOD, not a created_at — the plan's 'leave all five' criterion was unsatisfiable and they moved to business_date_bounds
+- [Phase 33]: 33-09: NO requirement marked complete — DATE-03 was already done by 33-07/33-08, and DATE-05 is co-owned by 33-14 which carries its Istoriya half
 
 ### Pending Todos
 
@@ -353,7 +358,7 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T13:33:13.333Z
+Last session: 2026-09-04T13:57:37.824Z
 Stopped at: Completed 33-12-PLAN.md
 Resume file: None
 

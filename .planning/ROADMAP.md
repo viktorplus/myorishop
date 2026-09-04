@@ -349,7 +349,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4)*
 
-- [ ] 33-09-PLAN.md — CSV: «Когда» becomes the business date, «Внесено» appended last, both ORDER BYs incl. the CD-9 gap (DATE-03/05) (wave 5)
+- [x] 33-09-PLAN.md — CSV: «Когда» becomes the business date, «Внесено» appended last, both ORDER BYs incl. the CD-9 gap (DATE-03/05) (wave 5)
 - [ ] 33-13-PLAN.md — Cash forms (shared desktop↔mobile) + VA-15 all-14-surfaces proof (DATE-01/02) (wave 5)
 - [ ] 33-14-PLAN.md — История both-dates rendering + «задним числом» filter, desktop AND mobile (DATE-05/06) (wave 5)
 
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 11/15 | In Progress|  |
+| 33. Back-Dated Operations | v5.0 | 12/15 | In Progress|  |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 
