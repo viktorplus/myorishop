@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-01-PLAN.md (SYNC-10/SYNC-11 push schema gate)
-last_updated: "2026-09-04T09:04:29.726Z"
-last_activity: 2026-09-04 -- Phase 33 plan 01 complete (sync schema gate)
+stopped_at: "Completed 33-02-PLAN.md (SYNC-10 client half: schema_mismatch status + D-09 back-off)"
+last_updated: "2026-09-04T09:32:26.460Z"
+last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 1
-  percent: 7
+  completed_plans: 2
+  percent: 0
 ---
 
 # Project State
@@ -26,15 +26,15 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 2 of 15
+Plan: 3 of 15
 Status: Ready to execute
-Last activity: 2026-09-04 -- Phase 33 plan 01 complete (SYNC-10/SYNC-11 push schema gate)
+Last activity: 2026-09-04
 
 **Phase set for v5.0:**
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 1/15 done (33-01) |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 2/15 done (33-01, 33-02) |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -114,6 +114,7 @@ backfill (plan 33-04). Do not re-measure; do not assume `.env.production` sets i
 | Phase 31 P07 | 38min | 2 tasks | 4 files |
 | Phase 31 P08 | 33min | 3 tasks | 5 files |
 | Phase 33 P01 | 32min | 3 tasks | 4 files |
+| Phase 33 P02 | 24min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -213,6 +214,8 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-01 (D-04): push_schema_ok compares LEXICOGRAPHICALLY, sound only while every Alembic revision id stays fixed-width numeric; the docstring names tests/test_migrations.py::test_revision_ids_are_fixed_width (plan 33-03) as the tripwire — relax that test and this predicate must switch to a parsed comparison in the same commit.
 - [Phase 33]: 33-01 (D-05): the 409 gate sits between parse_exchange and the owned transaction, reading the already-parsed batch.schema_version (two lines, vs the eight the bundle-upload path needs). Stated trade-off: a future NEW-KIND schema bump makes parse_exchange raise 400 MALFORMED_BATCH_ERROR first — a worse message but not a loss, since any non-2xx returns before the client's synced_at stamp.
 - [Phase 33]: 33-01 (D-07): SYNC-11 needs a TEST, not code — synced_at is stamped only after raise_for_status() and last_sync_at advances only for ok/partial, so a 409 already leaves every client row re-pushable; test_refused_push_leaves_rows_unsynced drives a real client->server push over the ASGI bridge and pins it. Refused-client retry back-off (T-33-03) is deliberately deferred to plan 33-02.
+- [Phase ?]: 33-02 (D-08): a 409 push refusal gets its own SyncResult status and one fixed RU sentence; #sync-badge is deliberately NOT suppressed, since its growing count is the pressure signal SYNC-11 guarantees is recoverable
+- [Phase ?]: 33-02 (D-09): the auto-sync back-off to MAX_INTERVAL_SECONDS is derived from the already-persisted sync_state.last_status, so it needs no new column and self-clears on the first non-mismatch tick
 
 ### Pending Todos
 
@@ -302,8 +305,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T09:04:29.692Z
-Stopped at: Completed 33-01-PLAN.md (SYNC-10/SYNC-11 push schema gate)
+Last session: 2026-09-04T09:32:26.430Z
+Stopped at: Completed 33-02-PLAN.md (SYNC-10 client half: schema_mismatch status + D-09 back-off)
 Resume file: None
 
 ## Operator Next Steps
