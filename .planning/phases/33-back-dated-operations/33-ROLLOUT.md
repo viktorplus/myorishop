@@ -325,6 +325,32 @@ Results are recorded per row in `33-VALIDATION.md` § Per-Task Verification Map.
 
 ## Browser checks
 
+**SUPERSEDED 2026-09-04 (later session): all seven checks B-1 … B-7 were RUN, and all seven
+PASSED.** Full observations, with evidence per check, live in `33-UAT.md`. The result rows in the
+table below are updated; the reproduction steps are unchanged.
+
+**The original "NOT RUN" reason below was wrong**, and the wrong diagnosis is worth keeping visible
+so it is not repeated. It blamed a missing Claude-in-Chrome site permission for `localhost`. The
+real cause was that **two Chrome browsers were connected to the account and the tooling was driving
+the wrong one.** Re-measured: the first navigation returned `ERR_CONNECTION_REFUSED` — read out of
+the error page's own text — which is a connection failure, not a permission denial. After listing
+the connected browsers and selecting "Browser 1", the same tooling rendered the app on the first
+try. No permission was ever granted or needed.
+
+A second stale claim in the original text: it named PID 39100 on port 8000 as "the operator's own
+instance". That port does hold a `uvicorn` process, but it answers `404 {"detail":…}` on `/` and
+`/login` — it is **not** MyOriShop. No MyOriShop was running locally at all. It was still never
+touched: not started, not stopped, not restarted (CLAUDE.md PC-9, T-33-39).
+
+The passing runs used a fresh isolated instance on **port 8137, PID 36160**, scratch data dir,
+`BACKUP_ON_STARTUP=false`, `SYNC_SERVER_URL=""`, version banner **1.101**, and a **copy** of the
+operator's real local `myorishop.db`. Two by-products: migration `0026 → 0027` ran cleanly on that
+copy of real operator data, and the local database turned out to hold 0 products / 0 batches /
+0 operations with a full 12 582-row dictionary — the business data lives on s1, not locally.
+
+<details>
+<summary>Original (incorrect) 2026-09-04 note, preserved</summary>
+
 **All seven checks B-1 … B-7: NOT RUN, 2026-09-04.** The operator was asked and explicitly chose to
 record them as NOT RUN. None is inferred from source; none is marked observed.
 
@@ -343,15 +369,17 @@ record them as NOT RUN. None is inferred from source; none is marked observed.
 The operator's own instance on port 8000 (PID 39100) was never touched — not started, not stopped,
 not restarted (CLAUDE.md PC-9, T-33-39).
 
+</details>
+
 | # | Check | Reproduction steps (preserved verbatim for a later human run) | Expected | Result |
 |---|---|---|---|---|
-| B-1 | Native bubble on a future date, desktop | Откройте `/receipts`, поставьте «Дата операции» на завтра, нажмите «Сохранить приход». | Всплывающая подсказка самого браузера, и во вкладке Network запрос НЕ уходит. | **NOT RUN (2026-09-04)** |
-| B-2 | Server guard on mobile, where `max` is inert | `/m/receipts`, шаг 4: поставьте дату в шапке на завтра, нажмите «Сохранить приход». | Запрос УХОДИТ, и в ответе первой строкой подменённого шага, прямо под всё ещё заполненным полем даты, появляется «Дата операции не может быть в будущем.» | **NOT RUN (2026-09-04)** |
-| B-3 | Date survives the mobile basket round-trip | `/m/sales`: поставьте дату, добавьте товар, вернитесь в корзину, добавьте второй. | Дата осталась той, что вы поставили, и НЕ сбросилась на сегодня. | **NOT RUN (2026-09-04)** |
-| B-4 | Two cash date fields, correct label association | `/finance` и `/m/finance`. | Два поля даты; клик по каждой подписи ставит фокус в СВОЁ поле (id `withdraw-op-date` и `deposit-op-date`). | **NOT RUN (2026-09-04)** |
-| B-5 | `.filter-bar` overflow at 1024 px | `/history` при ширине окна 1024 px, все четыре фильтра на экране. | Нет горизонтальной полосы прокрутки. Если полоса появилась — только сообщить, не исправлять. | **NOT RUN (2026-09-04)** — see the open observation below |
-| B-6 | Nothing changed before any back-dating exists | `/history` и `/m/history` ДО того, как появится хоть одна операция задним числом. | Каждая ячейка «Когда» и каждая шапка мобильной карточки выглядят ровно как раньше — одна строка `дд.мм.гггг чч:мм`, без пометки. | **NOT RUN (2026-09-04)** |
-| B-7 | CSV column contract | Выгрузите `sales.csv` и `cash_movements.csv` после того, как появится хотя бы одна операция задним числом. | Одна новая колонка, заголовок «Внесено» — последний; первая колонка не убывает сверху вниз; `Код` / `Цена` / `Сумма` на прежних местах. | **NOT RUN (2026-09-04)** |
+| B-1 | Native bubble on a future date, desktop | Откройте `/receipts`, поставьте «Дата операции» на завтра, нажмите «Сохранить приход». | Всплывающая подсказка самого браузера, и во вкладке Network запрос НЕ уходит. | **PASS (2026-09-04)** — bubble shown; `POST /receipts` count in the server log = 0. Page is `/receipts/new`; bare `/receipts` is POST-only |
+| B-2 | Server guard on mobile, where `max` is inert | `/m/receipts`, шаг 4: поставьте дату в шапке на завтра, нажмите «Сохранить приход». | Запрос УХОДИТ, и в ответе первой строкой подменённого шага, прямо под всё ещё заполненным полем даты, появляется «Дата операции не может быть в будущем.» | **PASS (2026-09-04)** — `POST /m/receipts → 422`, message first line of the swapped step, `operations` stayed 0. Confirmed the premise too: mobile `op_date` has `max` but sits OUTSIDE `#wizard-step` |
+| B-3 | Date survives the mobile basket round-trip | `/m/sales`: поставьте дату, добавьте товар, вернитесь в корзину, добавьте второй. | Дата осталась той, что вы поставили, и НЕ сбросилась на сегодня. | **PASS (2026-09-04)** — 2026-09-03 held across all six swaps of the full round-trip; basket ended with two lines |
+| B-4 | Two cash date fields, correct label association | `/finance` и `/m/finance`. | Два поля даты; клик по каждой подписи ставит фокус в СВОЁ поле (id `withdraw-op-date` и `deposit-op-date`). | **PASS (2026-09-04)** — 4 of 4 label→field focus assertions true across both pages; both ids unique |
+| B-5 | `.filter-bar` overflow at 1024 px | `/history` при ширине окна 1024 px, все четыре фильтра на экране. | Нет горизонтальной полосы прокрутки. Если полоса появилась — только сообщить, не исправлять. | **PASS (2026-09-04)** — no scrollbar: `scrollWidth == clientWidth == 1024`. `flex-wrap:nowrap` confirmed, but 4 selects use 876 px of 960 px. **No fix applied**; see the open observation below |
+| B-6 | Nothing changed before any back-dating exists | `/history` и `/m/history` ДО того, как появится хоть одна операция задним числом. | Каждая ячейка «Когда» и каждая шапка мобильной карточки выглядят ровно как раньше — одна строка `дд.мм.гггг чч:мм`, без пометки. | **PASS (2026-09-04)** — same-day «Когда» cell is bare text, `children.length == 0`, desktop and mobile; a back-dated row in the same table has `children.length == 2` |
+| B-7 | CSV column contract | Выгрузите `sales.csv` и `cash_movements.csv` после того, как появится хотя бы одна операция задним числом. | Одна новая колонка, заголовок «Внесено» — последний; первая колонка не убывает сверху вниз; `Код` / `Цена` / `Сумма` на прежних местах. | **PASS (2026-09-04)** — both headers verified against `3a9c19c` (pre-phase): prior columns unmoved, «Внесено» appended last; first column non-decreasing on real multi-date data. Cash dump is at `/finance/report.csv`, not under `/export` |
 
 **B-5 is additionally a genuinely OPEN observation, carried forward from plan `33-14`.** That plan's
 SUMMARY reports that it added the **fourth** `.filter-bar` `<select>`, and `.filter-bar`
@@ -474,10 +502,10 @@ is, so the next phase can find it without re-deriving it.
 
 **Verification still owed**
 
-1. **Browser checks B-1 … B-7 are NOT RUN** (§ Browser checks above). The blocker is a tooling
-   permission, not the app: the Claude-in-Chrome extension has no site permission for `localhost` /
-   `127.0.0.1`. Either grant that permission or have the operator run the seven steps in their own
-   instance. The reproduction steps are preserved above verbatim.
+1. ~~**Browser checks B-1 … B-7 are NOT RUN.**~~ **CLOSED 2026-09-04 (later session): all seven RUN
+   and PASSED** (§ Browser checks above, observations in `33-UAT.md`). The stated blocker — a
+   missing `localhost` site permission — was a misdiagnosis; the real cause was that two Chrome
+   browsers were connected and the wrong one was being driven.
 2. **The pre-update-client push against live s1 is unverified** (§ Executed rollout, gap 1). Needs a
    real client at revision `0026` with a valid device token. Do not use the developer's own token.
 3. **The client release tag has not been cut** (§ Executed rollout, gap 2). Blocked on item 2 by
