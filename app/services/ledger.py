@@ -5,11 +5,13 @@ products.quantity. Everything else reads. Cached quantity is a projection
 of SUM(operations.qty_delta) and is always recomputable (FND-01).
 """
 
+from datetime import date
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import new_id, utcnow_iso
+from app.core import local_today_iso, new_id, utcnow_iso
 from app.models import OPERATION_TYPES, Batch, Operation, Product
 from app.services.security import author_fields
 
@@ -19,6 +21,56 @@ from app.services.security import author_fields
 STOCK_AFFECTING_TYPES = frozenset(
     {"receipt", "sale", "writeoff", "return", "correction", "transfer"}
 )
+
+# Copy taken verbatim from 33-UI-SPEC.md's Copywriting Contract, "Error state —
+# malformed date" and "Error state — future date". Two DISTINCT messages on
+# purpose (D-12): a typo and a date in the future are different operator
+# mistakes and must never share one message.
+OP_DATE_FORMAT_ERROR = "Укажите дату в формате ГГГГ-ММ-ДД."
+OP_DATE_FUTURE_ERROR = "Дата операции не может быть в будущем."
+
+
+# Home-placement rationale: all nine real `record_operation` call sites already
+# do `from app.services.ledger import record_operation`, so this adds nothing to
+# any import graph; `ledger.py` imports only config/core/models/security, so
+# `finance.py` importing from it creates no cycle.
+def parse_op_date(raw: str, errors: dict[str, str], key: str = "op_date") -> str | None:
+    """Validate the operator-supplied business date (DATE-02), mirroring parse_optional_expiry.
+
+    Empty (after strip) -> None with NO error: an empty value is not a mistake,
+    it means «today», and the caller's default supplies it — exactly as
+    `receipts.parse_optional_expiry` returns None on an empty string
+    (app/services/receipts.py:58-60).
+
+    Otherwise the value must be an ISO yyyy-mm-dd date — which
+    `<input type="date">` always posts, regardless of the browser's locale.
+    Form values are untrusted (ASVS V5), so that browser guarantee is
+    re-checked server-side. This differs from `parse_optional_expiry` in
+    exactly one place: a SECOND branch after the parse succeeds, refusing a
+    date later than today.
+
+    The returned value NEVER reaches SQL as text: it is re-serialised through
+    `date.isoformat()` and passed only as a bound ORM parameter, so there is no
+    interpolation surface (T-33-16). Callers MUST check `errors` before
+    writing — a refusal writes ZERO rows.
+
+    «Today» is `local_today_iso(settings.display_tz)`, the SAME definition the
+    `today_iso()` Jinja global uses for the field's `value=`/`max=`. If the two
+    ever diverged, a date typed at 23:30 local would be pre-filled and then
+    refused.
+    """
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        parsed = date.fromisoformat(s)
+    except ValueError:
+        errors[key] = OP_DATE_FORMAT_ERROR
+        return None
+    if parsed.isoformat() > local_today_iso(settings.display_tz):
+        errors[key] = OP_DATE_FUTURE_ERROR
+        return None
+    return parsed.isoformat()
 
 
 def next_seq(session: Session, device_id: str) -> int:
@@ -45,6 +97,7 @@ def record_operation(
     payload: dict | None = None,
     sale_id: str | None = None,
     batch_id: str | None = None,
+    business_date: str | None = None,
     commit: bool = True,
 ) -> Operation:
     """Append one immutable ledger row and update the cached stock projection.
@@ -71,6 +124,13 @@ def record_operation(
     client-submitted batch_id naming another product's batch is rejected), and
     Batch.quantity is incremented in the SAME transaction as Product.quantity
     (D-11).
+
+    business_date (DATE-01/D-17) is the operator's LOCAL calendar day for this
+    operation — the day the goods actually moved, which may be earlier than the
+    day the row was entered. It defaults to today's local day, so every
+    existing call site keeps working unchanged. `created_at=utcnow_iso()` is
+    NOT touched (DATE-04): the technical timestamp keeps all three of its jobs
+    (audit, sync ordering, tie-breaking).
     """
     if type_ not in OPERATION_TYPES:
         raise ValueError(f"unknown operation type: {type_!r}")
@@ -121,6 +181,16 @@ def record_operation(
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),
+        # DATE-01/DATE-08: the fallback is stamped HERE, in Python, and
+        # deliberately NOT as a column `default=`. merge._ledger_row's bulk
+        # `session.execute(insert(model), rows)` does not go through this
+        # function, so a column default would convert a pre-0027 client's
+        # genuine NULL into a date and destroy DATE-08's sentinel (V1:
+        # SQLAlchemy removes a None-valued key from the INSERT and substitutes
+        # the Python-side value). Result: every LOCALLY written row carries a
+        # business date, and NULL means exactly "written by a client that does
+        # not know this column".
+        business_date=business_date or local_today_iso(settings.display_tz),
         created_by=created_by,
     )
     session.add(op)

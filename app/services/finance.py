@@ -10,7 +10,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, new_id, to_cents, utcnow_iso
+from app.core import (
+    CURRENCIES,
+    DEFAULT_CURRENCY,
+    local_today_iso,
+    new_id,
+    to_cents,
+    utcnow_iso,
+)
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.security import author_fields
@@ -53,6 +60,7 @@ def record_cash_movement(
     currency: str = DEFAULT_CURRENCY,
     sale_id: str | None = None,
     note: str | None = None,
+    business_date: str | None = None,
     commit: bool = True,
 ) -> CashMovement:
     """Append one immutable cash_movements row.
@@ -69,6 +77,12 @@ def record_cash_movement(
     WR-03: commit=False stages the row without committing so a caller can
     combine several writes into one transaction (mirrors record_operation's
     commit flag).
+
+    business_date (DATE-01/D-17) is the operator's LOCAL calendar day for this
+    movement, defaulting to today's local day so every existing call site keeps
+    working unchanged. Identical to record_operation's keyword, including the
+    reason the fallback is stamped in Python rather than as a column default.
+    `created_at=utcnow_iso()` is NOT touched (DATE-04).
     """
     if category not in CASH_CATEGORIES:
         raise ValueError(f"unknown cash category: {category!r}")
@@ -90,6 +104,11 @@ def record_cash_movement(
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
         created_at=utcnow_iso(),
+        # DATE-01/DATE-08: stamped in Python, never as a column `default=` —
+        # see record_operation's identical comment. merge._ledger_row's bulk
+        # insert bypasses this function, and a column default would destroy the
+        # NULL sentinel that marks a row from a pre-0027 client.
+        business_date=business_date or local_today_iso(settings.display_tz),
         created_by=created_by,
     )
     session.add(mv)
