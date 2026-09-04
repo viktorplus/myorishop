@@ -606,3 +606,113 @@ def test_run_sync_tick_offline_is_swallowed(engine, monkeypatch):
 
     with tick_sessions() as check:
         assert check.get(SyncState, 1).last_status == "offline"
+
+
+# --- Phase 33 Plan 02: the D-08 schema-mismatch refusal (SYNC-10 / SYNC-11) ---
+#
+# Plan 33-01 shipped the SERVER half: POST /api/sync/push answers 409 when the
+# pushing client's Alembic revision is AHEAD of the receiver's. These pin the
+# CLIENT half — the 409 must read as its own status (not the generic `error`),
+# render one fixed Russian sentence, skip the pointless pull, and leave every
+# local row re-pushable.
+
+# The operator-facing copy, fixed verbatim by .planning/research/PITFALLS.md:130.
+SCHEMA_MISMATCH_MESSAGE = "Сервер ещё не обновлён — синхронизация отложена"
+
+# A distinctive server-side payload: nothing from it may ever reach the operator.
+_SERVER_409_BYTES = "Сервер ещё не обновлён: клиент 0027, сервер 0026"
+
+
+def test_format_sync_message_schema_mismatch(session):
+    """D-08: a `schema_mismatch` result renders its own fixed RU sentence, not the
+    generic «Ошибка сервера, попробуйте позже»."""
+    tz = settings.display_tz  # Europe/Moscow
+
+    msg, _ = sync_client.format_sync_message(
+        SyncResult(status="schema_mismatch", pushed=0, pushed_total=7), None, tz
+    )
+
+    assert msg == SCHEMA_MISMATCH_MESSAGE
+
+
+def test_push_409_returns_schema_mismatch(session, stocked_product, monkeypatch):
+    """A 409 from the push gate maps to `schema_mismatch`, NOT to `error` — and
+    nothing was pushed."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+    before = sync_client.unsynced_count(session)
+    assert before > 0
+
+    def handler(request):
+        return httpx.Response(409, json={"detail": _SERVER_409_BYTES})
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "schema_mismatch"
+    assert result.pushed == 0
+    assert result.pushed_total == before
+
+
+def test_schema_mismatch_skips_pull(session, stocked_product, monkeypatch):
+    """The refused tick returns EARLY: a receiver too old to accept our push holds
+    reference data older than ours, so pulling it would be pointless."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+    seen_paths = []
+
+    def handler(request):
+        seen_paths.append(request.url.path)
+        if request.url.path == "/api/sync/push":
+            return httpx.Response(409, json={"detail": _SERVER_409_BYTES})
+        return httpx.Response(200, text="")
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "schema_mismatch"
+    assert seen_paths == ["/api/sync/push"]
+    assert "/api/sync/pull" not in seen_paths
+
+
+def test_schema_mismatch_leaves_rows_unsynced(session, stocked_product, monkeypatch):
+    """SYNC-11 restated at the CLIENT boundary: after a refusal every ledger row
+    still has `synced_at IS NULL`, so the whole backlog re-pushes once s1 is
+    migrated. Nothing is lost, only postponed."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+    before = sync_client.unsynced_count(session)
+    assert before > 0
+
+    def handler(request):
+        return httpx.Response(409, json={"detail": _SERVER_409_BYTES})
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+
+    assert result.status == "schema_mismatch"
+    assert sync_client.unsynced_count(session) == before
+    assert session.scalars(
+        select(Operation).where(Operation.synced_at.is_not(None))
+    ).all() == []
+    assert session.scalars(
+        select(CashMovement).where(CashMovement.synced_at.is_not(None))
+    ).all() == []
+
+
+def test_schema_mismatch_message_carries_no_server_bytes(
+    session, stocked_product, monkeypatch
+):
+    """T-29-07 / V7 / T-33-05: the formatted message is the fixed constant. The
+    server's own explanatory text — which names both Alembic revisions — never
+    reaches `#sync-status`, because the client never reads the response body."""
+    monkeypatch.setattr(settings, "sync_server_url", "http://sync")
+    monkeypatch.setattr(settings, "sync_token", "tok")
+
+    def handler(request):
+        return httpx.Response(409, json={"detail": _SERVER_409_BYTES})
+
+    result = sync_client.run_sync_once(session, client=_mock_client(handler))
+    msg, _ = sync_client.format_sync_message(result, None, settings.display_tz)
+
+    assert msg == SCHEMA_MISMATCH_MESSAGE
+    assert _SERVER_409_BYTES not in msg
+    assert "0027" not in msg
+    assert "0026" not in msg

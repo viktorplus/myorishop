@@ -125,6 +125,78 @@ def test_lifespan_starts_and_cancels_loop_cleanly(engine, session, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Phase 33 Plan 02: the D-09 back-off on a schema-mismatch refusal (T-33-03)
+# ---------------------------------------------------------------------------
+
+
+def _tick_recording(engine, status):
+    """Build a fake `run_sync_tick` that records `status` on the sync_state row.
+
+    Mirrors what the real driver does at its D-10 single exit point: a FRESH
+    session of its own (the tick runs offloaded in a worker thread) that commits
+    `last_status` before returning.
+    """
+    tick_sessions = sessionmaker(bind=engine)
+
+    def _tick():
+        from app.services.sync_client import get_or_create_sync_state
+
+        with tick_sessions() as tick_session:
+            get_or_create_sync_state(tick_session).last_status = status
+            tick_session.commit()
+
+    return _tick
+
+
+def test_auto_sync_backs_off_on_schema_mismatch(
+    _loop_session, engine, session, monkeypatch
+):
+    """T-33-03 / D-09: after a tick that ends in `schema_mismatch` the iteration
+    returns MAX_INTERVAL_SECONDS (3600), not the configured 300 — a permanently
+    refused client must not re-upload its whole growing backlog every 5 minutes."""
+    import app.main as main
+    from app.services.sync_client import get_or_create_sync_state
+
+    row = get_or_create_sync_state(session)
+    row.auto_enabled = 1
+    row.auto_interval_seconds = 300
+    session.commit()
+
+    monkeypatch.setattr(
+        sync_client, "run_sync_tick", _tick_recording(engine, "schema_mismatch")
+    )
+
+    interval = asyncio.run(main._auto_sync_iteration())
+
+    assert interval == sync_client.MAX_INTERVAL_SECONDS
+    assert interval == 3600
+
+
+def test_auto_sync_interval_restored_after_recovery(
+    _loop_session, engine, session, monkeypatch
+):
+    """The back-off is self-clearing: the first non-mismatch tick after s1 is
+    migrated restores the configured interval with no manual reset and no stored
+    state to unwind."""
+    import app.main as main
+    from app.services.sync_client import get_or_create_sync_state
+
+    row = get_or_create_sync_state(session)
+    row.auto_enabled = 1
+    row.auto_interval_seconds = 120
+    session.commit()
+
+    monkeypatch.setattr(
+        sync_client, "run_sync_tick", _tick_recording(engine, "schema_mismatch")
+    )
+    assert asyncio.run(main._auto_sync_iteration()) == sync_client.MAX_INTERVAL_SECONDS
+
+    monkeypatch.setattr(sync_client, "run_sync_tick", _tick_recording(engine, "ok"))
+
+    assert asyncio.run(main._auto_sync_iteration()) == 120
+
+
+# ---------------------------------------------------------------------------
 # Task 2: the Settings «Синхронизация» control (D-03/D-15)
 # ---------------------------------------------------------------------------
 
