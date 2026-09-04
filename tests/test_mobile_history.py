@@ -8,7 +8,8 @@ Uses mobile_client_factory (Plan 01 foundation) to test app.routes.mobile_histor
 in isolation, without app.main registration (that happens in Plan 09).
 """
 
-from app.core import new_id
+from app.config import settings
+from app.core import format_ru_date, iso_to_local, new_id
 from app.models import Batch, Product, Warehouse
 from app.routes import mobile_history
 from app.services.batches import open_batches
@@ -192,3 +193,114 @@ def test_pagination_bar_reflects_filtered_total(mobile_client_factory, session, 
     assert response.status_code == 200
     assert 'class="pagination"' in response.text
     assert "Страница 2 из 2" in response.text
+
+
+# --- Phase 33 (DATE-05/DATE-06, D-21): the mirrored marker and the mirrored filter ---
+#
+# VA-16, mobile half. VA-16 is satisfied only when BOTH halves pass — neither
+# tests/test_history.py nor this file closes it alone.
+
+
+def _correction(session, product, *, business_date=None):
+    return record_operation(
+        session,
+        type_="correction",
+        product_id=product.id,
+        qty_delta=1,
+        batch_id=_batch_id(session, product),
+        business_date=business_date,
+    )
+
+
+def test_mobile_dated_card_is_one_line_when_the_two_dates_match(
+    mobile_client_factory, session, stocked_product
+):
+    """D-21: a row entered and attributed to the same day renders EXACTLY the
+    card it rendered before this phase — one muted header line, no sibling <p>."""
+    client = _client(mobile_client_factory)
+    op = _correction(session, stocked_product)
+
+    response = client.get("/m/history", params={"type": "correction"})
+
+    assert response.status_code == 200
+    entered = iso_to_local(op.created_at, settings.display_tz)
+    assert f'<p class="muted">{entered} · Корректировка</p>' in response.text
+    # «Только задним числом» is always in the filter <select>; the marker itself
+    # is the longer phrase, so this negative assertion is safe.
+    assert "задним числом · внесено" not in response.text
+
+
+def test_mobile_dated_card_shows_business_date_and_marker_when_they_differ(
+    mobile_client_factory, session, stocked_product
+):
+    """D-21: mobile MIRRORS desktop — the business date takes over the header
+    line and the entry timestamp becomes a muted sibling <p> inside the same
+    .mobile-card. The marker is the RU words, never colour alone."""
+    client = _client(mobile_client_factory)
+    op = _correction(session, stocked_product, business_date="2026-07-10")
+
+    response = client.get("/m/history", params={"type": "correction"})
+
+    assert response.status_code == 200
+    day = format_ru_date("2026-07-10")
+    entered = iso_to_local(op.created_at, settings.display_tz)
+    assert f'<p class="muted">{day} · Корректировка</p>' in response.text
+    assert f'<p class="muted">задним числом · внесено {entered}</p>' in response.text
+    # `| ru_date`, not `| local_dt`: a String(10) through local_dt would print a
+    # fabricated 00:00 without raising.
+    assert "10.07.2026 00:00" not in response.text
+
+
+def test_mobile_dated_filter_narrows_cards_and_shows_the_filtered_empty_state(
+    mobile_client_factory, session, stocked_product
+):
+    """DATE-06 on the surface the operator actually uses in the warehouse."""
+    client = _client(mobile_client_factory)
+    _correction(session, stocked_product, business_date="2026-07-10")
+    _correction(session, stocked_product)
+
+    backdated = client.get("/m/history", params={"dated": "backdated"})
+    assert backdated.status_code == 200
+    assert backdated.text.count('<div class="mobile-card">') == 1
+    assert "задним числом · внесено" in backdated.text
+
+    same_day = client.get("/m/history", params={"dated": "same_day"})
+    assert same_day.status_code == 200
+    assert "задним числом · внесено" not in same_day.text
+
+    # Nothing back-dated among receipts -> the empty state must name the
+    # filters, not claim the app is empty.
+    empty = client.get("/m/history", params={"type": "receipt", "dated": "backdated"})
+    assert empty.status_code == 200
+    assert "Нет операций по выбранным фильтрам." in empty.text
+    assert "Операций пока нет." not in empty.text
+
+
+def test_mobile_dated_select_renders_and_reselects_the_active_option(
+    mobile_client_factory, session, stocked_product
+):
+    """D-20/D-21: the mirrored 4th filter. Its HTMX attributes must point at
+    /m/history and #history-cards — copied from THIS page's siblings, never from
+    the desktop select.
+
+    The re-selection is asserted on a full-page GET carrying the param, because
+    that is the only path that re-renders the control: mobile's filters live in
+    #history-filters, which htmx never swaps (hx-target is #history-cards), so
+    after a swap the operator's choice survives in the DOM by construction and
+    only a reload of the pushed URL can lose it.
+    """
+    client = _client(mobile_client_factory)
+
+    default = client.get("/m/history")
+    assert default.status_code == 200
+    assert '<select id="dated" name="dated"' in default.text
+    assert '<option value="" selected>Все</option>' in default.text
+    assert 'hx-get="/m/history"' in default.text
+    assert 'hx-target="#history-cards"' in default.text
+    assert 'hx-get="/history"' not in default.text  # never the desktop target
+
+    active = client.get("/m/history", params={"dated": "backdated"})
+    assert '<option value="backdated" selected>Только задним числом</option>' in active.text
+
+    same_day = client.get("/m/history", params={"dated": "same_day"})
+    assert '<option value="same_day" selected>Только в день операции</option>' in same_day.text

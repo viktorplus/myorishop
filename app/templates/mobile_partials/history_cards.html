@@ -19,7 +19,7 @@
 <div id="history-cards"{% if oob %} hx-swap-oob="true"{% endif %}>
 {% if not rows %}
 <p class="empty-state muted">
-  {%- if type_filter or product_id or category or customer or from_date or to_date -%}
+  {%- if type_filter or product_id or category or customer or from_date or to_date or dated -%}
   Нет операций по выбранным фильтрам.
   {%- else -%}
   Операций пока нет.
@@ -28,7 +28,19 @@
 {% else %}
 {% for r in rows %}
 <div class="mobile-card">
-  <p class="muted">{{ r.op.created_at | local_dt }} · {{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</p>
+  {# DATE-05/DATE-06 (D-21 — mobile MIRRORS desktop, it does not diverge): the
+     PRIMARY date is the business date, and the entry timestamp drops to a muted
+     SIBLING <p> immediately under this header line, only when the two differ.
+     A card layout has no colspan to break, so desktop's shape applies
+     unchanged — same primary/subline split, same copy, same .muted treatment,
+     zero new CSS. A row whose dates match, and every `business_date IS NULL`
+     row from a client that has not updated yet, renders BYTE-IDENTICALLY to
+     today. `| ru_date` on business_day is mandatory: it is a String(10), and
+     `| local_dt` would build a naive datetime and print a fabricated time. #}
+  <p class="muted">{% if r.is_backdated %}{{ r.business_day | ru_date }}{% else %}{{ r.op.created_at | local_dt }}{% endif %} · {{ OPERATION_TYPE_LABELS.get(r.op.type, r.op.type) }}</p>
+  {%- if r.is_backdated %}
+  <p class="muted">задним числом · внесено {{ r.op.created_at | local_dt }}</p>
+  {%- endif %}
   <p><strong>{{ r.product.name }} ({{ r.product.code }})</strong></p>
   {%- if columns %}
   {%- if "expiry" in columns %}
