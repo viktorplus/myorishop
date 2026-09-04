@@ -860,26 +860,33 @@ Expected: `total == filled` on both tables, and exactly four trigger names.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four questions below were closed during phase planning. Each carries an inline `RESOLVED:`
+> line naming the plan that closes it and how. Nothing in this section is open.
 
 1. **Should `business_date_bounds` be closed `[start, end]` or half-open `[start, end+1)`?**
    - *Known:* `local_day_bounds_utc` is explicitly half-open and its docstring (`app/core.py:113-119`) explains why (a row landing exactly on UTC midnight would double-count). A date-string comparison has no such hazard.
    - *Unclear:* which shape produces the smaller diff across the 14 call sites, all of which currently unpack `(start_iso, end_iso)` and use `>= start` / `< end`.
    - *Recommendation:* **closed** `[start_day, end_day]` with `>=` / `<=`, because it matches how the operator reads a date range and removes the `+1 day` arithmetic entirely. Whichever is chosen, state it in the docstring and make VA-13 assert the last day of the range is included — this is Pitfall D.
+   - **RESOLVED:** `33-06` — the recommendation was taken. The contract is **closed** `[start_day, end_day]`, fixed in that plan's `<locked_planner_decision>` and stated in `business_date_bounds`'s docstring FIRST; every switched predicate turns `< end_iso` into `<= end_day`, and 33-06 / 33-07 each assert the last day of the range is included.
 
 2. **Does `export.py:214` get the same `ORDER BY` treatment as `export.py:135`?** (CD-9)
    - *Known:* D-23 explicitly names `export.py:135` as a coupled edit that "must not be missed", by the argument that the dump would otherwise read as unsorted by its own first column. `stream_cash_movements_csv` has the identical construct at `:214` and its `«Когда»` column at `:219` is on the same rewrite list.
    - *Unclear:* whether the omission was deliberate.
    - *Recommendation:* make the same edit at `:214` and note it in the plan as "extending D-23's stated rule to the surface D-23 already put on the switch list". If the planner disagrees, record the reason — silently leaving it is the failure mode.
+   - **RESOLVED:** `33-09` — the same `ORDER BY` edit IS made at `export.py:214`, on the reasoning recorded in that plan's `<planner_decision_cd9>` (extending D-23's stated rule to a surface D-23 had already put on the switch list). The omission was not treated as deliberate.
 
 3. **Should the live `0024.downgrade()` trigger-destruction defect (NC-1) be fixed in this phase?**
    - *Known:* it is real and executed. But LOCKED constraint 5 forbids editing `0018`/`0026` retroactively, and by the same principle `0024` is historical fact. A fix would have to be a *new* migration, and downgrades are not part of the s1 rollout path.
    - *Unclear:* whether the operator ever runs `alembic downgrade` in practice.
    - *Recommendation:* **do not fix it here.** Scope-creep against a phase already carrying a fleet-wide migration. Do (a) make `0027.downgrade()` correct by construction (NC-1/NC-2), (b) add VA-6 so the round trip is pinned from now on, and (c) record the `0024` defect as a backlog item. Naming it in `0027`'s docstring is free and prevents the next author from copying `0024`'s shape.
+   - **RESOLVED:** `33-05` — the recommendation was taken in full and the defect is NOT fixed in this phase. `0027.downgrade()` is correct by construction, VA-6 pins the upgrade→downgrade→upgrade round trip, and `0027`'s docstring names the `0024.downgrade()` `batch_alter_table` defect as real, known and deliberately out of scope (`33-05-PLAN.md` Task 3).
 
 4. **Where does the `today` value come from for the 14 templates?** (D-15)
    - *Known:* there is no `today` Jinja global — the full globals/filters registration block is `app/routes/__init__.py:193-231` and contains none. Registering a *value* would be stale-per-process. The local-today precedent is `datetime.now(ZoneInfo(settings.display_tz)).date()` (`receipts.py:208`, `mobile_reports.py:21`, `customers.py:443,465`).
    - *Recommendation:* register a **zero-arg callable** global (`templates.env.globals["today"] = lambda: datetime.now(ZoneInfo(settings.display_tz)).date().isoformat()`) rather than threading a context key through ~20 route handlers. It is one line in the same block as the 12 existing globals, it cannot go stale, and it keeps the D-16 surface edits to "add the input" with no route changes. This is inside Claude's Discretion only insofar as D-15 says "pass it per-context, **or** register a zero-arg callable" — both are sanctioned.
+   - **RESOLVED:** `33-06` Task 2 — the zero-arg callable was chosen. It is registered as the Jinja global `today_iso` in the existing block at `app/routes/__init__.py:193-231`, backed by the new `app/core.local_today_iso`, which is also what `parse_op_date` checks against so the pre-filled value and the server guard can never disagree. No per-context threading through ~20 route handlers.
 
 ---
 
