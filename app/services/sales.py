@@ -31,11 +31,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import new_id, to_cents, utcnow_iso
+from app.core import local_today_iso, new_id, to_cents, utcnow_iso
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 
 PRICE_REQUIRED_ERROR = "Укажите цену продажи."
 EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чтобы оформить продажу."
@@ -106,6 +106,7 @@ def register_sale(
     prices: list[str],
     batch_ids: list[str] | None = None,
     confirm: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one walk-in/customer sale atomically; returns (result, errors).
 
@@ -118,6 +119,13 @@ def register_sale(
     line MUST resolve to a batch owned by that line's product; an empty,
     unknown, or foreign batch id is rejected with «Выберите партию.» here at
     the service level (the record_operation guard is Plan 05's backstop).
+
+    DATE-01/DATE-02: `op_date` is the operator-supplied business date — the day
+    the goods actually changed hands. Empty means «today» (parse_op_date
+    returns None on an empty string and the resolution below supplies it); a
+    malformed or future value sets errors["op_date"] and the whole basket is
+    refused with ZERO writes, exactly like any other invalid line (D-03).
+    DATE-04: `created_at` keeps stamping the real entry moment either way.
     """
     errors: dict[str, str] = {}
 
@@ -185,6 +193,14 @@ def register_sale(
         resolved.append(
             {"product": product, "qty": qty, "price_cents": price_cents, "batch": batch}
         )
+
+    # DATE-02: the business date is validated with the per-line errors, before
+    # ANY write, so a bad date is reported beside whatever else the operator
+    # got wrong instead of after a partially-accepted basket. parse_op_date is
+    # called EXACTLY ONCE per sale: it is the only place the raw string is
+    # interpreted (T-33-16 — what it returns is re-serialised ISO, bound as an
+    # ORM parameter).
+    business_date = parse_op_date(op_date, errors)
 
     # D-03: any invalid line aborts the WHOLE basket — nothing staged yet.
     if errors:
@@ -265,6 +281,15 @@ def register_sale(
                 result["below_minimum"] = below_minimum
             return result, {}
 
+    # DATE-03/T-33-29: resolve the today-fallback ONCE, here, and give that one
+    # value to every row this sale writes. Passing the possibly-None parsed
+    # value down instead would let record_operation and record_cash_movement
+    # each resolve «today» independently — identical on 364 days a year and a
+    # day apart across local midnight, which would put the sale's ledger rows
+    # and its cash movement on DIFFERENT business days and make the sales-profit
+    # report and the cash-flow report disagree about the very same sale.
+    resolved_business_date = business_date or local_today_iso(settings.display_tz)
+
     header = Sale(
         id=new_id(),
         customer_id=customer_id or None,
@@ -300,6 +325,9 @@ def register_sale(
                 unit_price_cents=price_cents,  # D-10 entered price
                 sale_id=header.id,
                 batch_id=line["batch"].id,  # LOT-02/D-11 per-line picked batch
+                # DATE-01/DATE-03: every line of a multi-line basket takes the
+                # SAME business date as the cash movement staged below.
+                business_date=resolved_business_date,
                 commit=False,
             )
             total_cents += qty * price_cents
@@ -312,6 +340,9 @@ def register_sale(
             category="sale",
             amount_cents=total_cents,
             currency=basket_currency,  # CUR-02: the basket's single warehouse currency
+            # DATE-01/DATE-03: the SAME value the N sale rows above carry — the
+            # money and the goods must never be booked on two different days.
+            business_date=resolved_business_date,
             sale_id=header.id,
             commit=False,
         )

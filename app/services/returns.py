@@ -25,11 +25,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import Batch, Operation, Product, Warehouse
 from app.services import finance
 from app.services.batches import legacy_batch
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 
 # D-14 frozen literals (re-declared, NEVER imported from the migration): the
 # lazy-created legacy batch mirrors migration 0008's seed contract exactly.
@@ -115,7 +116,7 @@ def _resolve_or_create_return_batch_id(session: Session, origin: Operation) -> s
 
 
 def register_return(
-    session: Session, *, origin_op_id: str, qty_raw: str
+    session: Session, *, origin_op_id: str, qty_raw: str, op_date: str = ""
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one sale-linked return; returns (result, errors).
 
@@ -123,6 +124,13 @@ def register_return(
     Failure: (None, errors) with RU messages — ZERO writes on any
     validation error (D-08: the returnable cap is enforced before any
     write).
+
+    DATE-01/DATE-02: `op_date` is the operator-supplied business date — the day
+    the goods actually came back. Empty means «today» (parse_op_date returns
+    None on an empty string and the resolution below supplies it); a malformed
+    or future value sets errors["op_date"] and the return writes nothing. The
+    D-08 returnable cap is NOT affected by it: a back-dated return is still
+    capped by what is returnable now.
     """
     # T-05-08: only a real, linked sale op is returnable — reject a
     # missing/forged/non-sale origin before anything else.
@@ -145,6 +153,22 @@ def register_return(
     if qty > remaining:
         return None, {"quantity": _over_cap_error(remaining)}
 
+    # DATE-02: the last validation before the write block, keeping the shipped
+    # origin -> qty -> cap precedence byte-identical. parse_op_date is called
+    # EXACTLY ONCE per return — the only place the raw string is interpreted
+    # (T-33-16: what it returns is re-serialised ISO, bound as an ORM parameter).
+    errors: dict[str, str] = {}
+    business_date = parse_op_date(op_date, errors)
+    if errors:
+        return None, errors
+
+    # DATE-03/T-33-29: resolve the today-fallback ONCE and give that one value
+    # to BOTH rows below. Passing the possibly-None parsed value down instead
+    # would let record_operation and record_cash_movement each resolve «today»
+    # independently — a day apart across local midnight, which would book the
+    # returned goods on one business day and the refunded money on the next.
+    resolved_business_date = business_date or local_today_iso(settings.display_tz)
+
     try:
         # D-08: restore stock to the ORIGIN op's batch (or the product's legacy
         # batch, lazily created when absent) — the return never re-asks.
@@ -163,6 +187,8 @@ def register_return(
             sale_id=origin.sale_id,
             batch_id=batch_id,
             payload={"origin_op_id": origin.id},
+            # DATE-01/DATE-03: the SAME value the cash debit below carries.
+            business_date=resolved_business_date,
             commit=False,
         )
 
@@ -176,6 +202,10 @@ def register_return(
                 category="return",
                 amount_cents=-debit,
                 currency=warehouse.currency,
+                # DATE-01/DATE-03: the SAME value the return row above carries —
+                # the goods and the refund must never be booked on two
+                # different days.
+                business_date=resolved_business_date,
                 sale_id=origin.sale_id,
                 commit=False,
             )

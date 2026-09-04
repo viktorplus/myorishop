@@ -16,17 +16,25 @@ test_web_; everything else is service level.
 """
 
 import re
+from datetime import date, timedelta
 
 from sqlalchemy import select
 
-from app.core import new_id
-from app.models import Batch, CatalogPrice, Operation, Product, Sale, Warehouse
+from app.config import settings
+from app.core import local_today_iso, new_id
+from app.models import Batch, CashMovement, CatalogPrice, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.batches import open_batches
 from app.services.customers import create_customer
-from app.services.ledger import compute_stock, record_operation
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    compute_stock,
+    record_operation,
+)
 from app.services.sales import (  # noqa: F401
     MIXED_CURRENCY_ERROR,
+    QTY_ERROR,
     lookup_prefill,
     recent_sales,
     register_sale,
@@ -1618,3 +1626,155 @@ def test_recent_sales_includes_walkin(session, stocked_product, customer):
     linked_rows = [r for r in rows if r["customer"] is not None]
     assert len(walkin_rows) == 1
     assert len(linked_rows) == 1
+
+
+# --- DATE-01/DATE-02/DATE-03: the business date on продажа (Phase 33 plan 11) ---
+
+
+def _today_plus(days: int) -> str:
+    """An ISO day offset from the operator's LOCAL today — the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def _sale_cash(session):
+    """Every cash movement a sale wrote (the aggregated per-basket credit)."""
+    return session.scalars(select(CashMovement).where(CashMovement.category == "sale")).all()
+
+
+def _all_ops(session):
+    return session.scalars(select(Operation)).all()
+
+
+def _all_cash(session):
+    return session.scalars(select(CashMovement)).all()
+
+
+def test_backdated_sale_dates_every_ledger_row_and_its_cash_movement(
+    session, stocked_product
+):
+    """DATE-01/DATE-03/T-33-29: a back-dated multi-line basket stamps the SAME
+    business date on every sale row AND on the single aggregated cash credit —
+    the sales-profit report and the cash-flow report can never place one sale on
+    two different days. DATE-04: created_at still records the real entry moment."""
+    back_date = _today_plus(-30)
+    bid = _only_batch(session, stocked_product)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code, stocked_product.code],
+        qtys=["2", "3"],
+        prices=["15,00", "14,00"],
+        batch_ids=[bid, bid],
+        op_date=back_date,
+    )
+
+    assert errors == {}
+    assert result
+    ops = _sale_ops(session)
+    assert len(ops) == 2
+    assert {op.business_date for op in ops} == {back_date}
+    movements = _sale_cash(session)
+    assert len(movements) == 1
+    assert movements[0].business_date == back_date
+    # The whole point of resolving once: goods and money agree, by identity.
+    assert {op.business_date for op in ops} == {movements[0].business_date}
+    assert all(op.created_at[:10] != back_date for op in ops)
+    assert movements[0].created_at[:10] != back_date
+
+
+def test_sale_empty_op_date_stamps_local_today_on_both_rows(session, stocked_product):
+    """An empty op_date is NOT an error — it means «today» (LOCAL day), on the
+    ledger row and on the cash movement alike."""
+    bid = _only_batch(session, stocked_product)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[bid],
+        op_date="",
+    )
+
+    assert errors == {}
+    assert result
+    today = local_today_iso(settings.display_tz)
+    assert _sale_ops(session)[0].business_date == today
+    assert _sale_cash(session)[0].business_date == today
+
+
+def test_sale_future_op_date_is_refused_with_zero_operation_and_cash_rows(
+    session, stocked_product
+):
+    """DATE-02: a future date is refused in Russian and NOTHING is written —
+    asserted by counting BOTH tables, not by trusting the early return."""
+    ops_before = len(_all_ops(session))
+    cash_before = len(_all_cash(session))
+    stock_before = compute_stock(session, stocked_product.id)
+    bid = _only_batch(session, stocked_product)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[bid],
+        op_date=_today_plus(1),
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(_all_ops(session)) == ops_before
+    assert len(_all_cash(session)) == cash_before
+    assert _sale_ops(session) == []
+    assert session.scalars(select(Sale)).all() == []
+    assert compute_stock(session, stocked_product.id) == stock_before
+
+
+def test_sale_malformed_op_date_gets_a_different_message(session, stocked_product):
+    """D-12: a typo and a future date never share one message."""
+    bid = _only_batch(session, stocked_product)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["1"],
+        prices=["15,00"],
+        batch_ids=[bid],
+        op_date="2026-13-45",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert OP_DATE_FORMAT_ERROR != OP_DATE_FUTURE_ERROR
+    assert _sale_ops(session) == []
+    assert _all_cash(session) == []
+
+
+def test_sale_op_date_error_rides_alongside_the_per_line_errors(session, stocked_product):
+    """The date is validated WITH the basket, not after it: an operator who got
+    both the date and a line wrong sees both messages in one 422, and the whole
+    basket is still refused (D-03)."""
+    bid = _only_batch(session, stocked_product)
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[stocked_product.code],
+        qtys=["0"],
+        prices=["15,00"],
+        batch_ids=[bid],
+        op_date=_today_plus(1),
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert errors["qty-0"] == QTY_ERROR
+    assert _sale_ops(session) == []

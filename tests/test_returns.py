@@ -13,13 +13,21 @@ everything else is service level. Selectors: link_and_freeze,
 returnable_cap, entry_point.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import new_id, utcnow_iso
-from app.models import Batch, Operation, Product, Sale, Warehouse
+from app.core import local_today_iso, new_id, utcnow_iso
+from app.models import Batch, CashMovement, Operation, Product, Sale, Warehouse
 from app.services.batches import legacy_batch, open_batches
-from app.services.ledger import compute_stock, next_seq, record_operation
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    compute_stock,
+    next_seq,
+    record_operation,
+)
 from app.services.returns import register_return, returnable_qty  # noqa: F401
 
 # 0007 D-03 seeded default warehouse (frozen copy — the lazy-created legacy
@@ -323,3 +331,118 @@ def test_web_return_survives_unexpected_error(client, session, stocked_product, 
     response = client.post("/returns", data={"origin_op_id": sale_op.id, "qty": "1"})
     assert response.status_code == 422
     assert "Не удалось сохранить" in response.text
+
+
+# --- DATE-01/DATE-02/DATE-03: the business date on возврат (Phase 33 plan 11) ---
+
+
+def _today_plus(days: int) -> str:
+    """An ISO day offset from the operator's LOCAL today — the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def _return_cash(session):
+    return session.scalars(select(CashMovement).where(CashMovement.category == "return")).all()
+
+
+def _all_cash(session):
+    return session.scalars(select(CashMovement)).all()
+
+
+def test_backdated_return_dates_its_ledger_row_and_its_cash_movement(
+    session, stocked_product
+):
+    """DATE-01/DATE-03/T-33-29: the returned goods and the refunded money carry
+    the SAME business date. DATE-04: created_at still records the entry moment."""
+    back_date = _today_plus(-15)
+    _header, sale_op = _make_sale(session, stocked_product, qty=3)
+
+    result, errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="2", op_date=back_date
+    )
+
+    assert errors == {}
+    assert result
+    op = _return_ops(session)[0]
+    assert op.business_date == back_date
+    movements = _return_cash(session)
+    assert len(movements) == 1
+    assert movements[0].business_date == back_date
+    assert op.business_date == movements[0].business_date
+    assert op.created_at[:10] != back_date
+    assert movements[0].created_at[:10] != back_date
+
+
+def test_return_empty_op_date_stamps_local_today_on_both_rows(session, stocked_product):
+    """An empty op_date is NOT an error — it means «today» (LOCAL day)."""
+    _header, sale_op = _make_sale(session, stocked_product, qty=3)
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="1", op_date="")
+
+    assert errors == {}
+    assert result
+    today = local_today_iso(settings.display_tz)
+    assert _return_ops(session)[0].business_date == today
+    assert _return_cash(session)[0].business_date == today
+
+
+def test_return_future_op_date_is_refused_with_zero_operation_and_cash_rows(
+    session, stocked_product
+):
+    """DATE-02: a future date is refused in Russian and NOTHING is written —
+    asserted by counting BOTH tables, not by trusting the early return."""
+    _header, sale_op = _make_sale(session, stocked_product, qty=3)
+    ops_before = len(session.scalars(select(Operation)).all())
+    cash_before = len(_all_cash(session))
+    stock_before = compute_stock(session, stocked_product.id)
+
+    result, errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="1", op_date=_today_plus(1)
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(session.scalars(select(Operation)).all()) == ops_before
+    assert len(_all_cash(session)) == cash_before
+    assert _return_ops(session) == []
+    assert compute_stock(session, stocked_product.id) == stock_before
+
+
+def test_return_malformed_op_date_gets_a_different_message(session, stocked_product):
+    """D-12: a typo and a future date never share one message."""
+    _header, sale_op = _make_sale(session, stocked_product, qty=3)
+
+    result, errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="1", op_date="2026-13-45"
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert OP_DATE_FORMAT_ERROR != OP_DATE_FUTURE_ERROR
+    assert _return_ops(session) == []
+
+
+def test_backdated_return_still_respects_the_returnable_cap(session, stocked_product):
+    """D-08 is untouched by this phase: back-dating a return does not widen the
+    cap, and the cap is still checked BEFORE the date (shipped precedence)."""
+    header, sale_op = _make_sale(session, stocked_product, qty=3)
+    back_date = _today_plus(-15)
+
+    over_result, over_errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="4", op_date=back_date
+    )
+    assert over_result is None
+    assert "quantity" in over_errors
+    assert "op_date" not in over_errors
+    assert _return_ops(session) == []
+
+    ok_result, ok_errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="3", op_date=back_date
+    )
+    assert ok_errors == {}
+    assert ok_result
+    assert _return_ops(session)[0].business_date == back_date
+    assert returnable_qty(session, header.id, stocked_product.id) == 0
