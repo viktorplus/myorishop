@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-10-PLAN.md
-last_updated: "2026-09-04T12:33:04.414Z"
+stopped_at: Completed 33-11-PLAN.md
+last_updated: "2026-09-04T13:07:13.886Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 10 of 15
+Plan: 11 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 7/15 done (33-01 … 33-07); waves 1-4 complete |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 10/15 done (33-01 … 33-08, 33-10, 33-11); 33-09, 33-12 … 33-15 outstanding |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -125,6 +125,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P07 | 95min | 3 tasks | 12 files |
 | Phase 33 P08 | 60min | 3 tasks | 13 files |
 | Phase 33 P10 | 55min | 3 tasks | 17 files |
+| Phase 33 P11 | 70min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -251,6 +252,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-10 (D-24): the batch auto-name was NOT switched by 33-08 — receipts.py was untouched by this phase (last commit 5eeb94b). D-24 has two couplings; the batch-name one is this plan's, and it now follows the resolved business date.
 - [Phase 33]: 33-10: register_receipt resolves the today-fallback ONCE into resolved_business_date and shares it between the batch name and all three record_operation calls — resolving twice would split the two across local midnight.
 - [Phase 33]: 33-10 (D-11/CF-UI-1): op_date is absent from both mobile re-render contexts — the never-swapped shell preserves it by construction; the error is emitted as the first element of the swapped step instead.
+- [Phase 33]: 33-11: продажа/возврат resolve the business-date today-fallback ONCE and stamp that one value on both the ledger rows and the cash movement — two independent resolutions split one operation across two business days at local midnight (T-33-29)
+- [Phase 33]: 33-11: D-24's «Возврат из продажи от …» label was still on created_at via local_dt on BOTH возврат surfaces; it now names the origin sale's business date via ru_date, and origin_created_at was renamed to origin_business_day
+- [Phase 33]: 33-11: the mobile sale's date rides the persistent #sale-wizard-form above #wizard-step; pinned by a NEGATIVE test asserting no swapped fragment mentions op_date, which also forbids future hidden-field threading
 
 ### Pending Todos
 
@@ -345,8 +349,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T12:33:04.390Z
-Stopped at: Completed 33-10-PLAN.md
+Last session: 2026-09-04T13:06:14.203Z
+Stopped at: Completed 33-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
