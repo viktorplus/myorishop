@@ -38,6 +38,7 @@ from app.services.sync import (
     DEFAULT_PULL_LIMIT,
     collect_reference_records,
     current_schema_version,
+    push_schema_ok,
 )
 from app.services.sync_client import (
     SyncResult,
@@ -52,6 +53,9 @@ PAYLOAD_TOO_LARGE_ERROR = "Слишком большой объём данных
 RATE_LIMITED_ERROR = "Слишком много запросов. Попробуйте позже."
 MALFORMED_BATCH_ERROR = "Некорректный формат данных."
 INVALID_CURSOR_ERROR = "Некорректная метка синхронизации."
+SCHEMA_AHEAD_ERROR = (
+    "Несовместимая версия данных: клиент {client}, сервер {server}. Обновите сервер."
+)
 
 # NDJSON media type for the pull stream (matches the push Content-Type).
 PULL_MEDIA_TYPE = "application/x-ndjson"
@@ -112,6 +116,31 @@ def sync_push(
         batch = parse_exchange(lines)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=MALFORMED_BATCH_ERROR) from exc
+
+    # (4b) Schema gate (SYNC-10, D-05): refuse a client whose schema is AHEAD of
+    # this receiver BEFORE any DB touch. Without it `merge._ledger_row` projects
+    # the batch through the RECEIVER's columns, silently drops the unknown field,
+    # returns 200 — and the client stamps `synced_at` on rows the server never
+    # stored. `batch.schema_version` is already parsed here, so this is two lines
+    # rather than the eight the bundle-upload path needs (that path must peek the
+    # raw header line before its digest check).
+    #
+    # D-05 trade-off, stated in full: if a FUTURE schema bump adds a new record
+    # KIND rather than a new column, step (4) `parse_exchange` raises first and an
+    # ahead client receives `400 MALFORMED_BATCH_ERROR` instead of this 409 — a
+    # worse message, but NOT a loss: any non-2xx returns before the client's
+    # `synced_at` stamp, so the rows stay unsynced and re-push after the upgrade.
+    #
+    # T-33-02: only the two Alembic revision ids are interpolated into the detail
+    # — never submitted bytes, exception text or the token (V7 / T-28-07).
+    server_schema = current_schema_version(session)
+    if not push_schema_ok(batch.schema_version, server_schema):
+        raise HTTPException(
+            status_code=409,
+            detail=SCHEMA_AHEAD_ERROR.format(
+                client=batch.schema_version, server=server_schema
+            ),
+        )
 
     # (5) The route owns the ONE transaction: apply_merge never commits, so a
     # mid-batch failure rolls the WHOLE batch back (all-or-nothing). Discard the
