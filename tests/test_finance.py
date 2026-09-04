@@ -12,6 +12,7 @@ partial, atomic).
 
 import sqlite3
 from contextlib import closing
+from datetime import date, timedelta
 
 import pytest
 from alembic.config import Config
@@ -20,7 +21,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from alembic import command
 from app.config import settings
-from app.core import new_id, utcnow_iso
+from app.core import local_today_iso, new_id, utcnow_iso
 from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
     CASH_BUCKET_LABELS,
     CASH_BUCKETS,
@@ -31,12 +32,14 @@ from app.models import (  # noqa: F401  (CASH_CATEGORIES: contract symbol)
 )
 from app.services.batches import open_batches
 from app.services.finance import (
+    AMOUNT_ERROR,
     cash_history_view,
     compute_balance,
     next_seq,
     record_cash_movement,
     record_manual_movement,
 )
+from app.services.ledger import OP_DATE_FORMAT_ERROR, OP_DATE_FUTURE_ERROR
 from app.services.returns import register_return
 from app.services.sales import register_sale
 
@@ -534,6 +537,161 @@ def test_negative_gate_covered_withdrawal_no_warn(session):
     assert errors == {}
     assert result and "negative_balance" not in result
     assert compute_balance(session) == 5000
+
+
+# --- Phase 33 (VA-14): «Дата операции» on the manual cash write path ---
+#
+# record_manual_movement is the SECOND independent write path in the app — it
+# reaches cash_movements through record_cash_movement, not through
+# ledger.record_operation — so the business date has to be threaded and proven
+# here separately from the five ledger services.
+
+
+def _days_from_today(offset: int) -> str:
+    """An ISO day `offset` days from today's LOCAL day (the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use)."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz))
+        + timedelta(days=offset)
+    ).isoformat()
+
+
+def test_manual_withdrawal_stores_the_backdated_business_date(session):
+    """DATE-01: a back-dated withdrawal lands its own business_date, while
+    created_at keeps recording when the row was actually entered (DATE-04)."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    back_date = _days_from_today(-20)
+
+    result, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="15,00",
+        note="",
+        op_date=back_date,
+    )
+
+    assert errors == {}
+    mv = result["movement"]
+    assert mv.business_date == back_date
+    # The audit timestamp is NOT overwritten by the operator's date.
+    assert mv.created_at[:10] != back_date
+
+
+def test_manual_deposit_stores_the_backdated_business_date(session):
+    """DATE-01: the deposit direction carries the date too — both cash forms
+    post to the same service entry point."""
+    back_date = _days_from_today(-3)
+
+    result, errors = record_manual_movement(
+        session,
+        category="deposit_opening",
+        amount_raw="100",
+        note="",
+        op_date=back_date,
+    )
+
+    assert errors == {}
+    assert result["movement"].business_date == back_date
+
+
+def test_manual_movement_empty_date_stamps_todays_local_day(session):
+    """DATE-08/D-15: an empty value is not an error — it means «today», and the
+    fallback is resolved exactly ONCE, inside record_cash_movement. Asserted
+    against local_today_iso, never against created_at's UTC prefix (the two
+    differ for every row entered in the 00:00-03:00 local window)."""
+    result, errors = record_manual_movement(
+        session, category="deposit_opening", amount_raw="100", note="", op_date=""
+    )
+
+    assert errors == {}
+    assert result["movement"].business_date == local_today_iso(settings.display_tz)
+
+
+def test_manual_movement_rejects_a_future_date_with_zero_writes(session):
+    """DATE-02/T-33-16: a future date is refused in Russian and NOTHING is
+    written — the CashMovement count is unchanged."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    before = _cash_count(session)
+
+    result, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="15,00",
+        note="",
+        op_date=_days_from_today(1),
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert _cash_count(session) == before
+
+
+def test_manual_movement_rejects_a_malformed_date_with_zero_writes(session):
+    """DATE-02/D-12: a typo gets the OTHER message — a malformed date and a
+    future date are different operator mistakes and never share one string."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    before = _cash_count(session)
+
+    result, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="15,00",
+        note="",
+        op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert errors["op_date"] != OP_DATE_FUTURE_ERROR
+    assert _cash_count(session) == before
+
+
+def test_manual_movement_date_error_rides_alongside_the_amount_error(session):
+    """The date is validated in the SAME block as the amount, so a form with
+    both mistakes surfaces both in one 422 instead of one at a time."""
+    result, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="abc",
+        note="",
+        op_date=_days_from_today(1),
+    )
+
+    assert result is None
+    assert errors["amount"] == AMOUNT_ERROR
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert _cash_count(session) == 0
+
+
+def test_manual_movement_date_survives_the_negative_balance_confirm(session):
+    """D-05 + DATE-01: the warn path writes nothing; the confirm re-POST carries
+    the SAME back-date through to the stored row. This is the path where the
+    date could silently be lost, because confirm re-submits the re-rendered
+    form rather than the operator's original one."""
+    back_date = _days_from_today(-7)
+
+    warn, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="50,00",
+        note="",
+        confirm="",
+        op_date=back_date,
+    )
+    assert errors == {}
+    assert "negative_balance" in warn
+    assert _cash_count(session) == 0
+
+    result, errors = record_manual_movement(
+        session,
+        category="withdrawal_supplier",
+        amount_raw="50,00",
+        note="",
+        confirm="1",
+        op_date=back_date,
+    )
+    assert errors == {}
+    assert result["movement"].business_date == back_date
 
 
 # --- Plan 02: cash_history_view (FIN-07) ---

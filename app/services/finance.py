@@ -19,6 +19,7 @@ from app.core import (
     utcnow_iso,
 )
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
+from app.services.ledger import parse_op_date
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.security import author_fields
 
@@ -125,6 +126,7 @@ def record_manual_movement(
     note: str,
     currency: str = "",
     confirm: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Manual cash entry (D-02): the thin write wrapper around the single path.
 
@@ -143,6 +145,12 @@ def record_manual_movement(
     ``({"negative_balance": {"balance", "amount"}}, {})`` with ZERO writes when
     ``confirm != "1"`` and the withdrawal would drive the balance below zero;
     ``confirm == "1"`` writes and the balance may go negative (D-05).
+
+    DATE-01/DATE-02: `op_date` is the operator's raw «Дата операции» value. It is
+    validated HERE, never in the route (V5), by the SAME `parse_op_date` the five
+    ledger services use, so a malformed or future date yields
+    ``errors["op_date"]`` with ZERO writes and both RU messages stay in one place.
+    An empty value is not an error — it means «today».
     """
     errors: dict[str, str] = {}
 
@@ -172,6 +180,12 @@ def record_manual_movement(
     else:
         if parsed <= 0:
             errors["amount"] = AMOUNT_ERROR
+
+    # (2a) DATE-02: validate the business date alongside the amount/category, so
+    # a bad amount AND a bad date surface together in one 422 instead of one at a
+    # time. Returns None on empty — «не указана» means today, supplied by the
+    # single write path below.
+    business_date = parse_op_date(op_date, errors)
 
     # (3) ZERO writes on any validation failure.
     if errors:
@@ -210,6 +224,15 @@ def record_manual_movement(
             amount_cents=amount_cents,
             currency=currency_code,
             note=note.strip() or None,
+            # DATE-01: passed through, possibly None, on purpose. This function
+            # writes ONE row and derives no artifact from the date, so
+            # record_cash_movement's Python-side stamp stays the SINGLE
+            # resolution point for «today». Resolving it a second time here
+            # would be a second definition of today — identical on 364 days a
+            # year and a day apart across local midnight. Contrast
+            # sales.register_sale / returns.register_return, which write through
+            # TWO paths and therefore MUST resolve once and share the result.
+            business_date=business_date,
             commit=True,
         )
     except (IntegrityError, ValueError):
