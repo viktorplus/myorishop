@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql, sqlite
 
-from app.core import format_ru_date, new_id
+from app.core import format_ru_date, new_id, utcnow_iso
 from app.models import Customer, CustomerContact, Product
 from app.services.batches import open_batches
 from app.services.customers import (
@@ -602,30 +602,108 @@ def test_favorites_excludes_returns(session, customer, product, past_sale):
     assert rows[0]["freq"] == 1
 
 
-def test_last_order_returns_most_recent_created_at(session, customer, product, past_sale):
-    """CUST-06: `last_order_date` returns the LATEST `created_at` string exactly."""
+def test_last_order_returns_most_recent_business_date(session, customer, product, past_sale):
+    """CUST-06 (Phase 33/D-24): `last_order_date` returns the LATEST purchase's
+    business date as a date-only string.
+
+    These three rows carry no `business_date` (past_sale inserts directly, the
+    merge-shaped path), so DATE-08's COALESCE buckets them by
+    `substr(created_at, 1, 10)` — the answer is still the latest ORDER, never
+    NULL.
+    """
     past_sale(customer, product, created_at="2026-01-01T10:00:00+00:00", qty=1)
     past_sale(customer, product, created_at="2026-03-01T10:00:00+00:00", qty=1)
     past_sale(customer, product, created_at="2026-02-01T10:00:00+00:00", qty=1)
 
+    assert last_order_date(session, customer.id) == "2026-03-01"
+
+
+def test_last_order_empty_history_returns_none(session, customer):
+    """CUST-06: a customer who never bought anything returns None, not a crash."""
+    assert last_order_date(session, customer.id) is None
+
+
+def test_last_order_is_the_latest_purchase_not_the_latest_entered_row(
+    session, customer, product, past_sale
+):
+    """D-24/D-22 coupling pin — the reason `last_order_date` is RECOMPUTED.
+
+    `purchase_history` stays ordered `created_at DESC, seq DESC` (D-22), so
+    `history[0]` is the row entered LAST. Here that row is back-dated to 2020,
+    while the genuinely most recent purchase is 2026-03-01. Reading
+    `history[0]`'s business date — the shape this function used to have —
+    would answer «Последний заказ: 01.01.2020», which is the opposite of what
+    the label promises.
+    """
+    past_sale(customer, product, created_at="2026-03-01T10:00:00+00:00", qty=1)
+    _sale, backdated = past_sale(
+        customer,
+        product,
+        created_at=utcnow_iso(),
+        qty=1,
+        business_date="2020-01-01",
+    )
+
     history = purchase_history(session, customer.id)
-    assert last_order_date(history) == "2026-03-01T10:00:00+00:00"
+    assert history[0]["op"].id == backdated.id  # D-22: entry order is untouched
+    assert last_order_date(session, customer.id) == "2026-03-01"
 
 
-def test_last_order_empty_history_returns_none():
-    """CUST-06: `last_order_date([])` returns None and does not raise."""
-    assert last_order_date([]) is None
+def test_spend_totals_bucket_by_business_date_not_entry_date(
+    session, customer, product, past_sale
+):
+    """VA-13/DATE-03: a sale entered TODAY but back-dated into an earlier month
+    lands in THAT month's tile and is absent from the entry month's."""
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-20T10:00:00+00:00",
+        qty=1,
+        unit_price_cents=7000,
+        business_date="2026-03-15",
+    )
+
+    march = spend_totals(session, customer.id, today=date(2026, 3, 31))
+    assert march["month"] == 7000
+
+    may = spend_totals(session, customer.id, today=date(2026, 5, 20))
+    assert may["month"] == 0
+    # Same calendar year, so the year tile still sees it — this is a bucketing
+    # change, not a disappearance.
+    assert may["year"] == 7000
+
+
+def test_spend_totals_include_the_last_day_of_the_window(session, customer, product, past_sale):
+    """Pitfall D (the CLOSED contract): a purchase ON `today` counts.
+
+    A predicate that kept `<` against the upper bound silently drops the
+    current day from every period-to-date tile.
+    """
+    past_sale(
+        customer,
+        product,
+        created_at="2026-05-20T10:00:00+00:00",
+        qty=1,
+        unit_price_cents=4200,
+        business_date="2026-05-20",
+    )
+
+    totals = spend_totals(session, customer.id, today=date(2026, 5, 20))
+    assert totals == {"month": 4200, "quarter": 4200, "year": 4200}
 
 
 # 21-VALIDATION.md's single highest-leverage test in this phase: mechanical
 # enforcement of CLAUDE.md's "PostgreSQL migration is a connection-string
 # change" promise. If it ever goes red, the fix is to move the date math
-# into Python (local_day_bounds_utc), never to relax this test.
+# into Python (`business_date_bounds`), never to relax this test.
+# Phase 33: `_spend_stmt` now takes date-only bounds and compiles a portable
+# coalesce(business_date, substr(created_at, 1, 10)) — `substr` is ANSI and is
+# deliberately NOT on the banned list; `strftime`/`date_trunc` still are.
 def test_spend_and_favorites_queries_are_portable():
     """T-21-03/T-21-15: both new statements compile portably under both dialects."""
     banned = ("strftime", "date_trunc", "extract(", "julianday", "datetime(")
     stmts = [
-        _spend_stmt("cust-id", "2026-07-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00"),
+        _spend_stmt("cust-id", "2026-07-01", "2026-07-31"),
         _favorites_stmt("cust-id", 10),
     ]
     for stmt in stmts:
@@ -1050,6 +1128,45 @@ def test_web_customer_detail_insights_ru_date_captions_render(
     response = client.get(f"/customers/{customer.id}")
     assert response.status_code == 200
     assert re.search(r"с \d{2}\.\d{2}\.\d{4}", response.text)
+
+
+def test_web_customer_detail_last_order_renders_the_latest_purchase_as_ru_date(
+    client, session, customer, product, past_sale
+):
+    """T-33-24 / D-24, through the REAL route and the REAL template.
+
+    Two facts at once, neither of which a service-level test can prove:
+      1. the cell renders `dd.mm.yyyy` with NO time part — `| local_dt` on a
+         date-only string would build a naive datetime and print a fabricated
+         «, 00:00»;
+      2. the date shown is the latest PURCHASE (2026-06-15), not the business
+         date of the latest-ENTERED row (back-dated to 2020 below).
+    """
+    past_sale(
+        customer,
+        product,
+        created_at="2026-06-15T10:00:00+00:00",
+        qty=1,
+        unit_price_cents=6000,
+        business_date="2026-06-15",
+    )
+    past_sale(
+        customer,
+        product,
+        created_at=datetime.now(UTC).isoformat(timespec="seconds"),
+        qty=1,
+        unit_price_cents=100,
+        business_date="2020-01-01",
+    )
+
+    response = client.get(f"/customers/{customer.id}")
+    assert response.status_code == 200
+    cell = re.search(r"Последний заказ:\s*([^<\n]+)", response.text)
+    assert cell is not None
+    rendered = cell.group(1).strip()
+    assert rendered == "15.06.2026"
+    assert ":" not in rendered  # no time separator — the local_dt regression
+    assert "2020" not in rendered
 
 
 def test_web_customer_detail_empty_profile_renders_zeros(client, customer):

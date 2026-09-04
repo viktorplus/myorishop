@@ -8,8 +8,16 @@
 
    spend.<period>.start_iso is already a `str` (spend_view, app/services/
    customers.py) — this is what keeps | ru_date from ever receiving a date
-   object and raising TypeError. #}
-<p>Последний заказ: {% if last_order_iso %}{{ last_order_iso | local_dt }}{% else %}<span class="muted">—</span>{% endif %}</p>
+   object and raising TypeError.
+
+   Phase 33 (D-24/DATE-03): last_order_iso is now the BUSINESS date of the
+   latest purchase — a String(10) 'yyyy-mm-dd' from
+   last_order_date's MAX(business_date_expr(...)), no longer an
+   Operation.created_at timestamp. It therefore renders with | ru_date;
+   | local_dt would run iso_to_local() on a date-only string, build a naive
+   datetime and print a fabricated 00:00 time (T-33-24). One date is enough
+   here: this is an identification label, not a DATE-05 both-dates surface. #}
+<p>Последний заказ: {% if last_order_iso %}{{ last_order_iso | ru_date }}{% else %}<span class="muted">—</span>{% endif %}</p>
 
 <div class="metric-grid">
   <div class="metric-tile">

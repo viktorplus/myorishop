@@ -14,10 +14,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_day_bounds_utc, new_id
+from app.core import business_date_bounds, new_id
 from app.models import CONTACT_KINDS, Customer, CustomerContact, Operation, Product, Sale
 from app.services.catalog import split_match
 from app.services.pagination import paginate
+from app.services.reports import business_date_expr
 
 NAME_REQUIRED_ERROR = "Укажите имя покупателя."
 NAME_TOO_LONG_ERROR = "Слишком длинное имя."
@@ -369,8 +370,8 @@ def _period_starts(today: date) -> dict[str, date]:
     }
 
 
-def _spend_stmt(customer_id: str, start_iso: str, end_iso: str):
-    """Unexecuted net-spend Select for one customer over a half-open UTC window (CUST-07/D-06).
+def _spend_stmt(customer_id: str, start_day: str, end_day: str):
+    """Unexecuted net-spend Select over a CLOSED business-date window (CUST-07/D-06).
 
     Returns the Select itself, NOT executed here, so the portability guard
     (Task 3) can compile it without a session.
@@ -392,14 +393,20 @@ def _spend_stmt(customer_id: str, start_iso: str, end_iso: str):
     saves a zero-order customer from rendering None. Mirrors the shipped
     returns.py `func.coalesce(func.sum(...), 0)` precedent.
 
-    Bounds are half-open [start_iso, end_iso) — >= and <, never <=. No
-    SQLite/PostgreSQL date-manipulation SQL function of any kind appears in
-    this statement (the class CLAUDE.md bans outright): created_at is a
-    String(32) holding utcnow_iso() output, and ISO-8601 UTC strings sort
-    lexicographically == chronologically (core.py). The window is computed
-    in PYTHON (local_day_bounds_utc) and passed as bound params — this is
-    the load-bearing portability rule; reverse it and the PostgreSQL
-    migration breaks (CLAUDE.md, explicit).
+    Phase 33/DATE-03: the window is matched against `business_date_expr(Operation)`
+    — the day the money actually changed hands — not against the entry timestamp,
+    so a sale entered today but back-dated into last month counts in LAST month's
+    tile. `business_date_expr` COALESCEs a NULL column to `substr(created_at, 1, 10)`
+    (DATE-08), so a row pushed by a pre-0027 client is still counted, never dropped.
+
+    Bounds are the CLOSED [start_day, end_day] contract — >= and <=, never <.
+    `business_date_bounds` produces them; handing this predicate the OLD
+    UTC-timestamp bounds instead is not a rounding error, it drops every row at
+    UTC and at any negative offset. No SQLite/PostgreSQL date-manipulation SQL
+    function of any kind appears in this statement (the class CLAUDE.md bans
+    outright): the window is computed in PYTHON and passed as bound params — this
+    is the load-bearing portability rule; reverse it and the PostgreSQL migration
+    breaks (CLAUDE.md, explicit).
     """
     return (
         select(
@@ -412,15 +419,15 @@ def _spend_stmt(customer_id: str, start_iso: str, end_iso: str):
         .where(
             Sale.customer_id == customer_id,
             Operation.type.in_(("sale", "return")),
-            Operation.created_at >= start_iso,
-            Operation.created_at < end_iso,
+            business_date_expr(Operation) >= start_day,
+            business_date_expr(Operation) <= end_day,
         )
     )
 
 
-def _spend_window(session: Session, customer_id: str, start_iso: str, end_iso: str) -> int:
-    """Execute `_spend_stmt` for one [start_iso, end_iso) window; always an int (never None)."""
-    return session.scalar(_spend_stmt(customer_id, start_iso, end_iso))
+def _spend_window(session: Session, customer_id: str, start_day: str, end_day: str) -> int:
+    """Execute `_spend_stmt` for one CLOSED [start_day, end_day] window; always an int."""
+    return session.scalar(_spend_stmt(customer_id, start_day, end_day))
 
 
 def spend_totals(session: Session, customer_id: str, today: date | None = None) -> dict[str, int]:
@@ -443,8 +450,10 @@ def spend_totals(session: Session, customer_id: str, today: date | None = None) 
         today = datetime.now(ZoneInfo(settings.display_tz)).date()
     totals: dict[str, int] = {}
     for name, start in _period_starts(today).items():
-        start_iso, end_iso = local_day_bounds_utc(start, today, settings.display_tz)
-        totals[name] = _spend_window(session, customer_id, start_iso, end_iso)
+        # DATE-03: date-only CLOSED bounds — `today` itself is INCLUDED
+        # (period-to-date means through today, not up to yesterday).
+        start_day, end_day = business_date_bounds(start, today)
+        totals[name] = _spend_window(session, customer_id, start_day, end_day)
     return totals
 
 
@@ -465,8 +474,10 @@ def spend_view(session: Session, customer_id: str, today: date | None = None) ->
         today = datetime.now(ZoneInfo(settings.display_tz)).date()
     view: dict = {}
     for name, start in _period_starts(today).items():
-        start_iso, end_iso = local_day_bounds_utc(start, today, settings.display_tz)
-        cents = _spend_window(session, customer_id, start_iso, end_iso)
+        # DATE-03: same CLOSED date-only bounds as `spend_totals` — the two must
+        # not drift apart, they answer the same question on two surfaces.
+        start_day, end_day = business_date_bounds(start, today)
+        cents = _spend_window(session, customer_id, start_day, end_day)
         view[name] = {"cents": cents, "start_iso": start.isoformat()}
     return view
 
@@ -525,16 +536,34 @@ def favorite_products(session: Session, customer_id: str, limit: int = 10) -> li
     return [{"product": product, "freq": freq, "qty": qty} for product, freq, qty in rows]
 
 
-def last_order_date(history: list[dict]) -> str | None:
-    """Most recent order's created_at (CUST-06), derived from an already-loaded purchase_history.
+def last_order_date(session: Session, customer_id: str) -> str | None:
+    """The latest PURCHASE's business date for one customer (CUST-06, Phase 33 D-24).
 
-    Pure: no session, no query. `purchase_history` is already ordered
-    created_at DESC, seq DESC, so history[0] IS the most recent order —
-    issuing a further query for data already in memory is exactly what
-    RESEARCH Pitfall 6 says not to do. Returns the raw ISO string (not a
-    date object): the detail page renders it with the existing | local_dt
-    filter, exactly as purchase_history.html already does.
+    Returns a `String(10)` ISO day ('yyyy-mm-dd') or None when the customer has
+    never bought anything. The detail page therefore renders it with `| ru_date`,
+    NOT `| local_dt` — `iso_to_local` on a date-only string builds a naive
+    datetime and prints a fabricated time (T-33-24).
+
+    RECOMPUTED, not merely re-rendered, and that is the whole point. This used
+    to be a pure `history[0]["op"].created_at` over an already-loaded
+    `purchase_history`, which is ordered `created_at DESC, seq DESC`. D-22 keeps
+    that ordering (it answers «что я только что ввёл?»), so `history[0]` is the
+    latest-ENTERED row, not the latest PURCHASE. Reading its `business_date`
+    would make a sale entered today but back-dated a year ago display as «the
+    last order» — the exact opposite of what the label promises. The MAX below
+    is over the business date directly, so the two questions stop being coupled
+    and `purchase_history`'s ordering is left completely untouched.
+
+    One extra cheap aggregate is the deliberate cost of that decoupling
+    (RESEARCH Pitfall 6's «do not re-query what is already in memory» does not
+    apply: the answer is NOT in memory — the in-memory row is the wrong row).
+    `business_date_expr` COALESCEs a NULL column to `substr(created_at, 1, 10)`
+    (DATE-08), so a pre-0027 client's row still dates the order instead of
+    hiding it. MAX() over ISO date strings is chronological because ISO dates
+    sort lexicographically.
     """
-    if not history:
-        return None
-    return history[0]["op"].created_at
+    return session.scalar(
+        select(func.max(business_date_expr(Operation)))
+        .join(Sale, Operation.sale_id == Sale.id)
+        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+    )

@@ -475,6 +475,16 @@ def past_sale(session):
     READ-ONLY INSIGHT TESTS (CUST-06/07/08) only. Never combine it with
     rebuild_stock or any stock-invariant assertion, and never use it to
     test stock.
+
+    Phase 33 (33-08): optional `business_date`. It DEFAULTS TO None on purpose
+    and that default is load-bearing — a direct INSERT is exactly the shape a
+    row pushed by a pre-0027 client arrives in, and
+    tests/test_business_date.py::test_null_business_date_still_reported depends
+    on this helper leaving the column NULL. Pass it explicitly only when the
+    test is about a genuinely back-dated row (entered now, attributed to an
+    older day); leaving it out keeps the DATE-08 fallback path under test.
+    Setting it AFTER the fact is impossible — the operations_no_update trigger
+    ABORTs the UPDATE — so it has to be an INSERT-time argument.
     """
 
     def _make(
@@ -487,6 +497,7 @@ def past_sale(session):
         type_: str = "sale",
         sale: Sale | None = None,
         batch_id: str | None = None,
+        business_date: str | None = None,
     ) -> tuple[Sale, Operation]:
         if sale is None:
             sale = Sale(
@@ -514,6 +525,7 @@ def past_sale(session):
             device_id=settings.device_id,
             seq=next_seq(session, settings.device_id),
             created_at=created_at,
+            business_date=business_date,
             created_by=settings.operator_name,
         )
         session.add(op)

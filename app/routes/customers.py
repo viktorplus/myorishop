@@ -195,9 +195,12 @@ def customer_detail(request: Request, customer_id: str, session: Session = Depen
         "customer": customer,
         "history": history,
         "contacts": contacts_by_kind(session, customer_id),
-        # last_order_date(history) reuses the already-loaded history — never
-        # a seventh query (RESEARCH Pitfall 6).
-        "last_order_iso": last_order_date(history),
+        # Phase 33/D-24: `last_order_date` no longer reads `history[0]` — that
+        # is the latest-ENTERED row, not the latest PURCHASE. It runs its own
+        # MAX(business_date) aggregate; `purchase_history`'s created_at ordering
+        # stays as it is (D-22). The value is a date-only string, so the
+        # template renders it with `| ru_date`.
+        "last_order_iso": last_order_date(session, customer_id),
         "spend": spend_view(session, customer_id),
         "favorites": favorite_products(session, customer_id),
     }
