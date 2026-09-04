@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import DEFAULT_CURRENCY, format_cents, iso_to_local
+from app.core import DEFAULT_CURRENCY, format_cents, format_ru_date, iso_to_local
 from app.models import (
     CASH_CATEGORIES,
     Batch,
@@ -138,6 +138,13 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
         # created_at and seq are deterministic tie-breakers within one day.
         .order_by(business_date_expr(Operation), Operation.created_at, Operation.seq)
     )
+    # D-23: «Когда» reads as «когда это случилось», so column 1 carries the
+    # BUSINESS date and the entry timestamp is appended LAST as «Внесено».
+    # ACCEPTED COST, stated so nobody "fixes" it later: column 1's value TYPE
+    # narrows from "dd.mm.yyyy HH:MM" to "dd.mm.yyyy" — the HH:MM reappears
+    # verbatim in «Внесено». Positions 1..N do NOT shift (the new header is
+    # LAST), so an existing spreadsheet formula over Код / Цена / Сумма keeps
+    # working.
     header = [
         "Когда",
         "Код",
@@ -148,6 +155,7 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
         "Валюта",
         "Покупатель",
         "Кто",
+        "Внесено",
     ]
     rows = []
     for op, product, sale, customer, row_currency in session.execute(query).all():
@@ -157,7 +165,13 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
             buyer = _csv_safe(f"{customer.name} {customer.surname or ''}".strip())
         rows.append(
             [
-                iso_to_local(op.created_at, settings.display_tz),
+                # DATE-08: the NULL fallback is the UTC prefix DELIBERATELY —
+                # it matches the func.coalesce(business_date,
+                # substr(created_at, 1, 10)) this row set was selected and
+                # ordered by, so column 1 can never contradict the file's own
+                # period. A backfilled row is unaffected (its business date is
+                # the tz-correct local day).
+                format_ru_date(op.business_date or op.created_at[:10]),
                 _csv_safe(product.code or ""),
                 _csv_safe(product.name),
                 -op.qty_delta,
@@ -168,6 +182,7 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
                 row_currency or DEFAULT_CURRENCY,
                 buyer,
                 op.created_by,
+                iso_to_local(op.created_at, settings.display_tz),
             ]
         )
     return StreamingResponse(
@@ -234,14 +249,20 @@ def stream_cash_movements_csv(
         # unsorted by its own first column.
         .order_by(business_day, CashMovement.created_at, CashMovement.seq)
     ).all()
-    header = ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
+    # D-23, identical rule and identical accepted cost as stream_sales_csv
+    # above: column 1 becomes the BUSINESS date, the entry timestamp is
+    # appended LAST as «Внесено», and positions 1..N do not shift.
+    header = ["Когда", "Категория", "Валюта", "Комментарий", "Сумма", "Внесено"]
     rows = [
         [
-            iso_to_local(movement.created_at, settings.display_tz),
+            # DATE-08: same deliberate UTC-prefix fallback as stream_sales_csv
+            # — it mirrors the COALESCE this row set was selected by.
+            format_ru_date(movement.business_date or movement.created_at[:10]),
             _csv_safe(CASH_CATEGORIES.get(movement.category, movement.category)),
             movement.currency,
             _csv_safe(movement.note or ""),
             format_cents(movement.amount_cents),
+            iso_to_local(movement.created_at, settings.display_tz),
         ]
         for movement in movements
     ]

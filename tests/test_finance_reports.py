@@ -536,7 +536,9 @@ def test_web_finance_report_csv_streams_period_scoped_csv(session, client, monke
     assert response.headers["content-type"].startswith("text/csv")
     assert "cash_movements.csv" in response.headers["content-disposition"]
     text = response.content.decode("utf-8-sig")
-    assert "Когда;Категория;Валюта;Комментарий;Сумма" in text
+    # Phase 33 (D-23): «Внесено» is appended LAST, so this assertion still
+    # pins the FULL header line rather than a now-proper prefix of it.
+    assert "Когда;Категория;Валюта;Комментарий;Сумма;Внесено" in text
     assert "15,00" in text
 
 
@@ -654,7 +656,9 @@ def test_web_mobile_finance_report_csv(session, client, monkeypatch):
     assert response.headers["content-type"].startswith("text/csv")
     assert "cash_movements.csv" in response.headers["content-disposition"]
     text = response.content.decode("utf-8-sig")
-    assert "Когда;Категория;Валюта;Комментарий;Сумма" in text
+    # Phase 33 (D-23): «Внесено» is appended LAST, so this assertion still
+    # pins the FULL header line rather than a now-proper prefix of it.
+    assert "Когда;Категория;Валюта;Комментарий;Сумма;Внесено" in text
     assert "15,00" in text
 
 

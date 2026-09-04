@@ -151,7 +151,7 @@ def test_cash_movements_csv_bom_delimiter_and_header(session):
     text = body.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    assert rows[0] == ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
+    assert rows[0] == ["Когда", "Категория", "Валюта", "Комментарий", "Сумма", "Внесено"]
     assert len(rows) == 3
     # Oldest-first: both rows share the same timestamp, insertion order holds.
     assert rows[1][1] == "Оплата поставщику"
@@ -338,6 +338,7 @@ def test_sales_csv_roundtrip(client, session, product):
         "Валюта",
         "Покупатель",
         "Кто",
+        "Внесено",
     ]
     assert len(rows) == 2
     assert rows[1][1] == product.code
