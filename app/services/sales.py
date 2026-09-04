@@ -217,6 +217,15 @@ def register_sale(
     basket_currencies = {warehouse.currency for warehouse in warehouses}
     if len(basket_currencies) > 1:
         return None, {"basket": MIXED_CURRENCY_ERROR}
+    # WR-07 (33-REVIEW): `> 1` catches the MIXED case but not the EMPTY one, and
+    # `next(iter(set()))` raises StopIteration — outside every `try` in this
+    # function, and the desktop sale route has no blanket `except Exception`, so
+    # that was a raw 500 mid-checkout. The SELECT returns nothing when a picked
+    # batch points at a warehouse row that is absent, which is reachable on a
+    # merged DB: `Batch.warehouse_id`'s FK is ORM-only on the merge path and
+    # `PRAGMA foreign_keys` is set for SQLite connections only.
+    if not basket_currencies:
+        return None, {"basket": SAVE_ROLLBACK}
     basket_currency = next(iter(basket_currencies))
 
     # SAL-04/D-08/D-09: aggregate oversell check — sum requested qty per

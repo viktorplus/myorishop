@@ -35,6 +35,7 @@ from app.services.ledger import (
 from app.services.sales import (  # noqa: F401
     MIXED_CURRENCY_ERROR,
     QTY_ERROR,
+    SAVE_ROLLBACK,
     lookup_prefill,
     recent_sales,
     register_sale,
@@ -641,6 +642,49 @@ def test_mixed_currency_basket_rejected_zero_writes(session, product, warehouse)
     )
     assert result is None
     assert errors.get("basket") == MIXED_CURRENCY_ERROR
+    assert _sale_ops(session) == []
+
+
+def test_basket_whose_warehouse_row_is_absent_is_rejected_not_crashed(
+    session, product, warehouse
+):
+    """WR-07 (33-REVIEW): the EMPTY currency set, not just the MIXED one.
+
+    `len(basket_currencies) > 1` catches a mixed basket; it does not catch an
+    empty one, and `next(iter(set()))` raises StopIteration — outside every
+    `try` in `register_sale`, and the desktop sale route has no blanket
+    `except Exception`. That was a raw 500 mid-checkout.
+
+    The SELECT returns nothing when a picked batch points at a warehouse row
+    that is ABSENT. Reachable on a merged DB: `Batch.warehouse_id`'s FK is
+    ORM-only on the merge path and `PRAGMA foreign_keys` is set for SQLite
+    connections only — so the shape is forced here on a separate connection with
+    the pragma off, because the ORM path cannot produce it.
+    """
+    batch = _batch(session, product, warehouse, qty=5)
+    session.commit()
+
+    engine = session.get_bind()
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.exec_driver_sql(
+            "UPDATE batches SET warehouse_id = 'ghost-warehouse' WHERE id = ?",
+            (batch.id,),
+        )
+        connection.commit()
+    session.expire_all()
+
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=["10,00"],
+        batch_ids=[batch.id],
+    )
+
+    assert result is None
+    assert errors.get("basket") == SAVE_ROLLBACK
     assert _sale_ops(session) == []
 
 
