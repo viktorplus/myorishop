@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-09-PLAN.md
-last_updated: "2026-09-04T14:00:09.466Z"
+stopped_at: Completed 33-13-PLAN.md
+last_updated: "2026-09-04T14:32:46.936Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 13 of 15
+Plan: 14 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 12/15 done (33-01 … 33-12); 33-13 … 33-15 outstanding |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 13/15 done (33-01 … 33-13); 33-14, 33-15 outstanding |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -128,6 +128,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P11 | 70min | 3 tasks | 16 files |
 | Phase 33 P12 | 45min | 3 tasks | 15 files |
 | Phase 33 P09 | ~50min | 3 tasks | 6 files |
+| Phase 33 P13 | 55 | - tasks | - files |
 
 ## Accumulated Context
 
@@ -264,6 +265,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-09 (CD-9): export.py:214's ORDER BY switched alongside :135 and PROVEN load-bearing — reverting only the CD-9 clause reddens test_csv_first_column_non_decreasing, so its coverage is not an accident of the sales twin
 - [Phase 33]: 33-09: four of the five local_day_bounds_utc sites in tests/test_export.py pass the export PERIOD, not a created_at — the plan's 'leave all five' criterion was unsatisfiable and they moved to business_date_bounds
 - [Phase 33]: 33-09: NO requirement marked complete — DATE-03 was already done by 33-07/33-08, and DATE-05 is co-owned by 33-14 which carries its Istoriya half
+- [Phase 33]: 33-13: record_manual_movement passes the parsed op_date THROUGH (possibly None) — one row, one write path, so record_cash_movement's Python stamp stays the single resolution of «today»
+- [Phase 33]: 33-13: the two cash forms use PREFIXED ids (withdraw-op-date / deposit-op-date) because both render on one page twice over; the posted name stays shared
+- [Phase 33]: 33-13: op_date is echoed on the D-05 negative-balance warn path too (HTTP 200, not 422) — its confirm button re-POSTs the RE-RENDERED form, so a missing echo would book a back-date as today
+- [Phase 33]: 33-13: DATE-01/DATE-02 marked complete — all 14 write surfaces carry the field and VA-15 pins the list as a runnable contract
 
 ### Pending Todos
 
@@ -358,8 +363,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T13:57:37.824Z
-Stopped at: Completed 33-12-PLAN.md
+Last session: 2026-09-04T14:32:34.706Z
+Stopped at: Completed 33-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

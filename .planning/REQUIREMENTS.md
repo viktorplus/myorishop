@@ -38,8 +38,8 @@ These land before any schema change reaches a client. They are not polish: witho
 
 ### Back-dated operations
 
-- [ ] **DATE-01**: On every operation-writing form — 6 desktop forms and 5 mobile wizards — the operator can set the date the operation actually happened, defaulting to today.
-- [ ] **DATE-02**: A future date is rejected with a Russian message; any past date is accepted.
+- [x] **DATE-01**: On every operation-writing form — 6 desktop forms and 5 mobile wizards — the operator can set the date the operation actually happened, defaulting to today.
+- [x] **DATE-02**: A future date is rejected with a Russian message; any past date is accepted.
 - [x] **DATE-03**: Every period-scoped figure — dashboard day/week/month totals, sales-profit report, cash-flow report, stock and write-off reports — buckets by the business date, switched in ONE pass so no two surfaces can disagree about the same week.
 - [x] **DATE-04**: The technical timestamp keeps its three existing jobs untouched: audit trail, display order, and sync selection. Changing an operation's business date never moves it in the sync queue or the audit record.
 - [ ] **DATE-05**: История and the CSV exports show both dates whenever they differ, so the operator can always tell when something was entered versus when it happened.
@@ -121,8 +121,8 @@ Filled by the roadmapper 2026-09-04. Every REQ-ID maps to **exactly one** phase 
 | SYNC-11 | Phase 33 | Complete (33-01 VA-2 + 33-02 client-boundary test) |
 | SYNC-12 | Phase 33 | Complete (33-03 VA-3 pinning test; no code change — SQLAlchemy already substitutes the default) |
 | SYNC-13 | Phase 33 | Complete (33-03 alembic_engine + VA-5 trigger diff against an `alembic upgrade head` DB) |
-| DATE-01 | Phase 33 | Not started |
-| DATE-02 | Phase 33 | Not started |
+| DATE-01 | Phase 33 | Complete (33-10/11/12 twelve surfaces; 33-13 the two shared cash forms + VA-15, which pins all 14 as a runnable contract) |
+| DATE-02 | Phase 33 | Complete (33-06 `parse_op_date` + the two RU constants; 33-10..33-13 every surface refuses a future date at 422 with zero writes) |
 | DATE-03 | Phase 33 | Complete (33-07 six period reports; 33-08 История + customer spend + «Последняя приёмка») |
 | DATE-04 | Phase 33 | Complete (33-06 created_at untouched on both write paths; 33-08 VA-17 pins display order and _SORT_MAP/_DEFAULT_ORDER; VA-11 pins sync selection) |
 | DATE-05 | Phase 33 | Not started |
