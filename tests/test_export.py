@@ -21,19 +21,55 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import business_date_bounds, local_day_bounds_utc, new_id, utcnow_iso
-from app.models import Batch, Customer, Sale, Warehouse
+from app.core import (
+    business_date_bounds,
+    iso_to_local,
+    local_day_bounds_utc,
+    new_id,
+    utcnow_iso,
+)
+from app.models import Batch, CashMovement, Customer, Sale, Warehouse
 from app.services.export import (
     _csv_rows,
     _csv_safe,
     _encode_once,
     stream_cash_movements_csv,
+    stream_customers_csv,
+    stream_products_csv,
+    stream_sales_csv,
 )
 from app.services.finance import record_cash_movement
 from app.services.ledger import record_operation
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
+
+# Phase 33 (D-23): the header shape at HEAD, i.e. BEFORE «Внесено» was
+# appended. Recorded as constants so `test_csv_vnesyeno_column_is_last` can
+# assert that positions 1..N did NOT shift — an existing spreadsheet formula
+# over Код / Цена / Сумма must keep working.
+_SALES_HEADER_BEFORE_VNESYENO = [
+    "Когда",
+    "Код",
+    "Товар",
+    "Кол-во",
+    "Цена",
+    "Себестоимость",
+    "Валюта",
+    "Покупатель",
+    "Кто",
+]
+_CASH_HEADER_BEFORE_VNESYENO = ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
+_PRODUCTS_HEADER_AT_HEAD = [
+    "Код",
+    "Название",
+    "Категория",
+    "Закупка",
+    "Продажа",
+    "Остаток",
+    "Удалён",
+]
+_CUSTOMERS_HEADER_AT_HEAD = ["Имя", "Фамилия", "Номер консультанта", "Создан"]
 
 
 def _local_day_of(iso: str) -> str:
@@ -446,3 +482,257 @@ def test_web_export_links_embedded_in_backup_page(client):
     assert response.status_code == 200
     assert 'href="/export/products.csv"' in response.text
     assert "Экспорт" in response.text
+
+
+# --- Phase 33 / D-23: «Когда» is the business date, «Внесено» is last -------
+
+
+def _rows_of(response):
+    """Decode a StreamingResponse into parsed CSV rows (header first)."""
+    text = _stream_body(response).decode("utf-8-sig")
+    return list(csv.reader(io.StringIO(text), delimiter=";"))
+
+
+def _route_rows(response):
+    """Same, for a TestClient response (the real /export/sales.csv entry point)."""
+    return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig")), delimiter=";"))
+
+
+def _record_sale_op(session, product, *, business_date=None, unit_price_cents=1500):
+    """One sale operation through the SINGLE write path, entered NOW.
+
+    `business_date` is passed straight through, so leaving it out means «today»
+    and passing an older day means genuinely back-dated (entered now,
+    attributed to an earlier day) — exactly the DATE-05 row shape.
+    """
+    header = Sale(
+        id=new_id(),
+        customer_id=None,
+        created_at=utcnow_iso(),
+        created_by=settings.operator_name,
+    )
+    session.add(header)
+    session.flush()
+    op = record_operation(
+        session,
+        type_="sale",
+        product_id=product.id,
+        qty_delta=-1,
+        unit_cost_cents=1000,
+        unit_price_cents=unit_price_cents,
+        sale_id=header.id,
+        batch_id=_ensure_batch(session, product),
+        business_date=business_date,
+    )
+    session.commit()
+    return op
+
+
+def _insert_pre_0027_movement(session, *, created_at, amount_cents, device_id):
+    """INSERT a cash movement with business_date NULL — the DATE-08 row shape.
+
+    A pre-0027 client's row arrives through merge's bulk insert with the key
+    absent, so the column lands genuinely NULL. It cannot be produced through
+    `record_cash_movement` (which stamps today's local day in Python) nor
+    patched afterwards (the cash_movements_no_update trigger ABORTs the
+    UPDATE) — it has to be an INSERT-time NULL. A distinct `device_id` keeps
+    the per-device (device_id, seq) unique constraint out of the way.
+    """
+    movement = CashMovement(
+        id=new_id(),
+        category="sale",
+        amount_cents=amount_cents,
+        currency="RUB",
+        device_id=device_id,
+        seq=1,
+        created_at=created_at,
+        business_date=None,
+        created_by=settings.operator_name,
+    )
+    session.add(movement)
+    session.commit()
+    return movement
+
+
+def test_sales_csv_when_column_is_business_date(client, session, product):
+    """D-23: a back-dated sale states WHEN IT HAPPENED first and when it was
+    ENTERED last."""
+    op = _record_sale_op(session, product, business_date="2026-06-15")
+    entered_at = iso_to_local(op.created_at, settings.display_tz)
+
+    # Driven through the REAL route, not the service — this is the wiring test.
+    rows = _route_rows(client.get("/export/sales.csv"))
+    assert len(rows) == 2
+    # Column 1 is the BUSINESS date, day only — no time separator survives.
+    assert rows[1][0] == "15.06.2026"
+    assert ":" not in rows[1][0]
+    # The entry timestamp moved to the LAST column, HH:MM intact.
+    assert rows[1][-1] == entered_at
+    assert ":" in rows[1][-1]
+    # DATE-04: the two really are different days — the row was entered today.
+    assert rows[1][-1][:10] != rows[1][0]
+
+
+def test_cash_csv_when_column_is_business_date(session):
+    """D-23, the cash twin: same rule on CashMovement."""
+    back_dated = date(2026, 6, 15)
+    movement = record_cash_movement(
+        session,
+        category="sale",
+        amount_cents=2500,
+        business_date=back_dated.isoformat(),
+    )
+    entered_at = iso_to_local(movement.created_at, settings.display_tz)
+
+    start_day, end_day = business_date_bounds(back_dated, back_dated)
+    rows = _rows_of(stream_cash_movements_csv(session, start_day, end_day))
+    assert len(rows) == 2
+    assert rows[1][0] == "15.06.2026"
+    assert ":" not in rows[1][0]
+    assert rows[1][-1] == entered_at
+    assert rows[1][-1][:10] != rows[1][0]
+
+
+def test_csv_vnesyeno_column_is_last(session, product):
+    """The new header is LAST in both files and no existing column moved.
+
+    The accepted cost of D-23 is that column 1's value TYPE narrows; the
+    accepted cost it explicitly REFUSES is a shifted column index, because a
+    spreadsheet formula over Код / Цена / Сумма would silently start reading a
+    different column.
+    """
+    _record_sale_op(session, product, business_date="2026-06-15")
+    record_cash_movement(
+        session, category="sale", amount_cents=2500, business_date="2026-06-15"
+    )
+    start_day, end_day = business_date_bounds(date(2026, 6, 15), date(2026, 6, 15))
+
+    sales_header = _rows_of(stream_sales_csv(session))[0]
+    cash_header = _rows_of(stream_cash_movements_csv(session, start_day, end_day))[0]
+
+    for header, before in (
+        (sales_header, _SALES_HEADER_BEFORE_VNESYENO),
+        (cash_header, _CASH_HEADER_BEFORE_VNESYENO),
+    ):
+        assert header[-1] == "Внесено"
+        assert len(header) == len(before) + 1
+        # Every position 1..N is byte-identical to HEAD.
+        assert header[: len(before)] == before
+
+    # The three indexes an operator's spreadsheet formula is most likely to
+    # reference, asserted by name rather than by slice equality alone.
+    assert sales_header.index("Код") == 1
+    assert sales_header.index("Цена") == 4
+    assert cash_header.index("Сумма") == 4
+
+
+def test_csv_first_column_non_decreasing(session, product):
+    """Both ORDER BY edits at once — including the CD-9 one D-23 never named.
+
+    Rows are SEEDED in an order that contradicts their business dates, so a
+    dump still ordered by `created_at` fails this immediately.
+    """
+    for day in ("2026-06-20", "2026-06-10", "2026-06-15"):
+        _record_sale_op(session, product, business_date=day)
+        record_cash_movement(
+            session, category="sale", amount_cents=1000, business_date=day
+        )
+
+    start_day, end_day = business_date_bounds(date(2026, 6, 1), date(2026, 6, 30))
+    sales_rows = _rows_of(stream_sales_csv(session))
+    cash_rows = _rows_of(stream_cash_movements_csv(session, start_day, end_day))
+
+    for rows in (sales_rows, cash_rows):
+        days = [datetime.strptime(row[0], "%d.%m.%Y").date() for row in rows[1:]]
+        assert len(days) == 3
+        assert days == sorted(days), f"column 1 is not non-decreasing: {days}"
+
+
+def test_cash_csv_row_set_uses_business_date(session):
+    """VA-13: the exported ROW SET follows the business date, not the entry date.
+
+    Both movements are entered NOW. One is back-dated INTO the exported period
+    and must appear; the other is back-dated OUT of it and must not. Under the
+    pre-33-09 `created_at` predicate the file would contain both or neither —
+    never exactly this split.
+    """
+    period = date(2026, 6, 15)
+    record_cash_movement(
+        session, category="sale", amount_cents=1100, business_date=period.isoformat()
+    )
+    record_cash_movement(
+        session,
+        category="sale",
+        amount_cents=2200,
+        business_date=date(2026, 5, 15).isoformat(),
+    )
+
+    start_day, end_day = business_date_bounds(period, period)
+    rows = _rows_of(stream_cash_movements_csv(session, start_day, end_day))
+    assert len(rows) == 2
+    assert rows[1][4] == "11,00"
+    assert "22,00" not in [row[4] for row in rows[1:]]
+
+
+def test_csv_null_business_date_falls_back_to_utc_prefix(
+    session, customer, product, past_sale
+):
+    """DATE-08: a pre-0027 client's row still appears, bucketed by its entry date.
+
+    The render fallback is the UTC PREFIX of `created_at`, deliberately — it is
+    the same value `func.coalesce(business_date, substr(created_at, 1, 10))`
+    selected the row by, so column 1 cannot contradict the file's own period.
+    It is knowingly NOT the tz-correct local day: `created_at` here is
+    21:30 UTC, whose Europe/Moscow day is the NEXT one, and the assertion pins
+    the UTC day precisely so nobody "unifies" the read fallback with migration
+    0027's tz-correct backfill.
+    """
+    created_at = "2026-05-20T21:30:00+00:00"
+    assert _local_day_of(created_at) == "2026-05-21"  # the value NOT used
+
+    movement = _insert_pre_0027_movement(
+        session, created_at=created_at, amount_cents=3300, device_id="device-OLD"
+    )
+    assert movement.business_date is None
+
+    utc_day = date(2026, 5, 20)
+    start_day, end_day = business_date_bounds(utc_day, utc_day)
+    rows = _rows_of(stream_cash_movements_csv(session, start_day, end_day))
+    assert len(rows) == 2, "a NULL-business_date row must NOT vanish from the export"
+    assert rows[1][0] == "20.05.2026"
+    assert rows[1][4] == "33,00"
+
+    # The sales half of the same rule: past_sale INSERTs with business_date NULL.
+    _sale, op = past_sale(customer, product, created_at=created_at)
+    assert op.business_date is None
+    sales_rows = _rows_of(stream_sales_csv(session))
+    assert [row[0] for row in sales_rows[1:]] == ["20.05.2026"]
+
+
+def test_products_and_customers_csv_unchanged(session, product):
+    """The two undated exports are byte-unchanged by D-23.
+
+    products.csv has no date column at all, and customers.csv's «Создан» is
+    `Customer.created_at` on a table that gains no `business_date` — so neither
+    gets «Внесено» and neither header may move.
+    """
+    session.add(
+        Customer(
+            id=new_id(),
+            name="Анна",
+            surname="Иванова",
+            consultant_number="12345",
+            search_lc="анна иванова",
+        )
+    )
+    session.commit()
+
+    products_rows = _rows_of(stream_products_csv(session))
+    customers_rows = _rows_of(stream_customers_csv(session))
+
+    assert products_rows[0] == _PRODUCTS_HEADER_AT_HEAD
+    assert customers_rows[0] == _CUSTOMERS_HEADER_AT_HEAD
+    assert "Внесено" not in products_rows[0]
+    assert "Внесено" not in customers_rows[0]
+    # customers.csv's «Создан» keeps its full dd.mm.yyyy HH:MM entry-time render.
+    assert ":" in customers_rows[1][3]
