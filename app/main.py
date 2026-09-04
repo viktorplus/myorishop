@@ -97,6 +97,21 @@ async def _auto_sync_iteration() -> int:
             await anyio.to_thread.run_sync(
                 sync_client.run_sync_tick, abandon_on_cancel=False
             )
+            # D-09 (Phase 33): back off to one attempt per hour while the server
+            # keeps refusing our push with 409. The interval is read at the TOP
+            # of the iteration, so without this a permanent schema mismatch
+            # would retry every 300s forever — each time re-uploading the whole
+            # growing unsynced closure and burning a push rate-limit token
+            # (app/routes/sync.py:84-86). Read AFTER the tick, from the row the
+            # tick just committed; no new column and no new setting, so it
+            # self-clears on the first non-mismatch tick. Accepted cost:
+            # recovery can lag up to an hour after s1 is rebuilt — the manual
+            # «Синхронизировать» link shares the `_run_lock` but not this
+            # sleep, so the operator can always resync instantly.
+            with SessionLocal() as session:
+                row = sync_client.get_or_create_sync_state(session)
+                if row.last_status == "schema_mismatch":
+                    interval = sync_client.MAX_INTERVAL_SECONDS
     except Exception:
         # D-08: offline / transport / transient DB error → silently skip.
         pass
