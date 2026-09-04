@@ -355,7 +355,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5)*
 
-- [ ] 33-15-PLAN.md — CI PostgreSQL parity + browser checks B-1..B-7 + the LOCKED rollout (autonomous: false) (wave 6)
+- [x] 33-15-PLAN.md — CI PostgreSQL parity + browser checks B-1..B-7 + the LOCKED rollout (autonomous: false) (wave 6)
 
 **UI hint**: yes
 
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 14/15 | In Progress|  |
+| 33. Back-Dated Operations | v5.0 | 15/15 | Complete   | 2026-09-04 |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 

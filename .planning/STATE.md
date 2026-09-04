@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
-status: executing
-stopped_at: Completed 33-14-PLAN.md
-last_updated: "2026-09-04T14:57:30.599Z"
+status: verifying
+stopped_at: Completed 33-15-PLAN.md — phase 33 execution complete, ready for verification
+last_updated: "2026-09-04T16:02:07.525Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 15
-  completed_plans: 14
-  percent: 0
+  completed_plans: 15
+  percent: 14
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 Phase: 33 (back-dated-operations) — EXECUTING
 Plan: 15 of 15
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-04
 
 **Phase set for v5.0:**
@@ -130,6 +130,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P09 | ~50min | 3 tasks | 6 files |
 | Phase 33 P13 | 55 | - tasks | - files |
 | Phase 33 P14 | ~30min | 3 tasks | 9 files |
+| Phase 33 P15 | 40 | 4 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -274,6 +275,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-14 (D-21 + 33-UI-SPEC CF-UI-3): the MOBILE «Задним числом» filter shipped rather than being deferred — a marker the operator can see but cannot filter on the surface they use in the warehouse is half a feature
 - [Phase 33]: 33-14 (D-18): the muted SECOND LINE beat a new column specifically because it needs ZERO colspan churn — colspan="10" and `3 + columns|length + 1` are byte-unchanged, the identical markup works in both desktop layouts, and a matching-dates row plus every business_date IS NULL row renders byte-identically to before the phase
 - [Phase 33]: 33-14: DATE-05/DATE-06 marked complete — both dates render on both surfaces and both surfaces can filter on the difference
+- [Phase ?]: 33-15: nyquist_compliant: true asserts the AUTOMATED sampling contract only (45 tasks, 41 automated + 4 legitimately MISSING, longest gap 2, latency 16.4 s). A seventh sign-off box was added and left UNTICKED for the manual-only set — B-1..B-7 never observed, pg-parity never run, live pre-update push unverified.
+- [Phase ?]: 33-15: the VA->plan/task mapping the plan predicted was wrong in four places and the plans won — VA-14 spans five plans not two, VA-13 does NOT reach 33-14, VA-12 has a 33-06 T3 foundation, VA-5/VA-6 have a two-plan life. VA-16's own command was desktop-only and now names both halves.
+- [Phase ?]: 33-15: migration 0027's PostgreSQL branch is proven by alembic upgrade head against a throwaway pg_dump copy of live production on real PG 17 (A1 CONFIRMED); tests/test_pg_parity.py is SEPARATELY recorded as not run — the two are never conflated.
 
 ### Pending Todos
 
@@ -286,7 +290,7 @@ None yet.
 ### Blockers/Concerns
 
 - ℹ️ [Phase 16] Advisory (cosmetic, desktop only): a movement saved with an empty
-  comment renders literal `None` in the `/finance` «Комментарий» column (mobile
+  comment renders literal `` in the `/finance` «Комментарий» column (mobile
   cards handle it correctly). Guard the desktop template cell with
   `{{ movement.note or "" }}` when next touching finance templates. Non-blocking.
 
@@ -314,6 +318,8 @@ None yet.
 - ℹ️ [v5.0 roadmap, 2026-09-04] The 4 known-flaky `tests/test_sync_ui.py` failures are
   pre-existing (project memory, `sync_client._run_lock` held by the lifespan auto-sync
   thread) and must not be attributed to any phase of this milestone.
+
+- Phase 33 close-out: three pending human checks block the client release tag — (1) browser checks B-1..B-7 NOT RUN (Claude-in-Chrome has no localhost site permission), (2) the pre-update-client push against live s1 is unverified (needs a real 0026 client token), (3) tests/test_launcher.py::test_parse_pending_rejects_path_traversal is pre-existing red on Linux CI and aborts the PostgreSQL parity job before it runs. See 33-ROLLOUT.md Backlog.
 
 ### Quick Tasks Completed
 
@@ -368,8 +374,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T14:57:30.566Z
-Stopped at: Completed 33-14-PLAN.md
+Last session: 2026-09-04T16:02:07.475Z
+Stopped at: Completed 33-15-PLAN.md — phase 33 execution complete, ready for verification
 Resume file: None
 
 ## Operator Next Steps

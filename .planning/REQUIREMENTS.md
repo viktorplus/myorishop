@@ -45,7 +45,7 @@ These land before any schema change reaches a client. They are not polish: witho
 - [x] **DATE-05**: История and the CSV exports show both dates whenever they differ, so the operator can always tell when something was entered versus when it happened.
 - [x] **DATE-06**: A row whose business date differs from its entry date is marked «задним числом» and can be filtered on that in История.
 - [x] **DATE-07**: Existing operations keep reporting exactly as they do today. A fixed past period's sales-profit total is byte-identical before and after the migration — the backfill is timezone-correct, not a naive UTC-prefix cut.
-- [ ] **DATE-08**: An operation arriving from a client that has not yet updated still appears in every report, bucketed by its entry date, rather than vanishing from the period.
+- [x] **DATE-08**: An operation arriving from a client that has not yet updated still appears in every report, bucketed by its entry date, rather than vanishing from the period.
 
 ### One-tap reversal (сторно)
 
@@ -125,10 +125,10 @@ Filled by the roadmapper 2026-09-04. Every REQ-ID maps to **exactly one** phase 
 | DATE-02 | Phase 33 | Complete (33-06 `parse_op_date` + the two RU constants; 33-10..33-13 every surface refuses a future date at 422 with zero writes) |
 | DATE-03 | Phase 33 | Complete (33-07 six period reports; 33-08 История + customer spend + «Последняя приёмка») |
 | DATE-04 | Phase 33 | Complete (33-06 created_at untouched on both write paths; 33-08 VA-17 pins display order and _SORT_MAP/_DEFAULT_ORDER; VA-11 pins sync selection) |
-| DATE-05 | Phase 33 | Not started |
-| DATE-06 | Phase 33 | Not started |
+| DATE-05 | Phase 33 | Complete (33-14 the «задним числом · внесено …» second line on desktop and mobile + VA-16 both halves; 33-09 the «Внесено» CSV column on both writers) |
+| DATE-06 | Phase 33 | Complete (33-14 the marker in words on both surfaces + the fourth «Задним числом» filter with its query-string plumbing; browser check B-5 at 1024 px is NOT RUN — 33-ROLLOUT.md Backlog item 8) |
 | DATE-07 | Phase 33 | Complete (33-07 VA-9 byte-identity across the real 0027 migration, with a counterfactual divergence check) |
-| DATE-08 | Phase 33 | Not started |
+| DATE-08 | Phase 33 | Complete (33-05 all four columns nullable with NO default of any kind, so a pre-update client's NULL survives; 33-06/33-07 the read-time COALESCE bucketing pinned by VA-12; 33-09 the CSV NULL fallback matching the row-set predicate) |
 | REV-01 | Phase 34 | Not started |
 | REV-02 | Phase 34 | Not started |
 | REV-03 | Phase 34 | Not started |
