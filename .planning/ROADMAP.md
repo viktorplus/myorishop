@@ -337,7 +337,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 33-06-PLAN.md — Shared primitives: business_date_bounds, local_today_iso, business_date_expr, today_iso global, parse_op_date + both write-path kwargs + the one new CSS rule (wave 3)
+- [x] 33-06-PLAN.md — Shared primitives: business_date_bounds, local_today_iso, business_date_expr, today_iso global, parse_op_date + both write-path kwargs + the one new CSS rule (wave 3)
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 5/15 | In Progress|  |
+| 33. Back-Dated Operations | v5.0 | 6/15 | In Progress|  |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 

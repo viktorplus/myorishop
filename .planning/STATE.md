@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-05-PLAN.md (migration 0027 + the four ledger columns, one lockstep commit 615be81)
-last_updated: "2026-09-04T10:30:06.282Z"
+stopped_at: Completed 33-06-PLAN.md
+last_updated: "2026-09-04T10:47:56.835Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 6 of 15
+Plan: 7 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -121,6 +121,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P03 | 22min | 3 tasks | 4 files |
 | Phase 33 P04 | 18min | 3 tasks | 1 files |
 | Phase 33 P05 | 30min | 3 tasks | 5 files |
+| Phase 33 P06 | 35min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 33-05 (DATE-07): the backfill converts created_at through ZoneInfo(_DISPLAY_TZ='Europe/Moscow'), never a naive 10-character UTC cut. Executed proof: created_at='2026-08-31T21:30:00+00:00' backfills to business_date='2026-09-01' while a 09:00Z control row stays '2026-08-31'. created_at itself is byte-unchanged (DATE-04).
 - [Phase ?]: 33-05: DATE-03/04/07/08 are NOT marked complete by this plan — it delivers only their schema half. The read-time COALESCE bucketing (33-06) and the byte-identity proof VA-9 (33-07) are what finish them; marking them here would have made the traceability table lie.
 - [Phase ?]: 33-05: the PostgreSQL half of both the trigger rewrite and the backfill is UNPROVEN LOCALLY — no PG instance on this machine and starting one is forbidden (CLAUDE.md). Provable in CI via 'uv run pytest tests/test_pg_parity.py -q' against the postgres:17 service; that run is the phase gate carried by plan 33-15.
+- [Phase ?]: 33-06: business_date_bounds is a CLOSED [start, end] sibling of local_day_bounds_utc — the nine switched predicates must turn < into <=
+- [Phase ?]: 33-06: the business_date fallback is stamped in Python inside both write paths, never as a column default — merge's bulk insert must still land NULL (DATE-08 sentinel)
+- [Phase ?]: 33-06: today_iso is a zero-arg callable Jinja global delegating to core.local_today_iso, so the pre-filled value and parse_op_date's future check cannot disagree (D-15)
+- [Phase ?]: 33-06: the .field.op-date CSS rule lands in wave 3 — plans 33-10..33-13 must keep git diff app/static/style.css empty (W-6)
 
 ### Pending Todos
 
@@ -328,8 +333,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T10:28:00.101Z
-Stopped at: Completed 33-05-PLAN.md (migration 0027 + the four ledger columns, one lockstep commit 615be81)
+Last session: 2026-09-04T10:47:46.573Z
+Stopped at: Completed 33-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
