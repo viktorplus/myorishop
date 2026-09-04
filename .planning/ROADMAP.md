@@ -333,7 +333,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 33-05-PLAN.md — The five-artifact lockstep as ONE commit: 4 ledger columns + tz-correct backfill + dual-dialect trigger rewrite + mirrored downgrade (migration 0027) (wave 2)
+- [x] 33-05-PLAN.md — The five-artifact lockstep as ONE commit: 4 ledger columns + tz-correct backfill + dual-dialect trigger rewrite + mirrored downgrade (migration 0027) (wave 2)
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 4/15 | In Progress|  |
+| 33. Back-Dated Operations | v5.0 | 5/15 | In Progress|  |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 

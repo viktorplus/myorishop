@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-04-PLAN.md (V13/V14 measured on s1 + 33-ROLLOUT.md written)
-last_updated: "2026-09-04T10:00:01.355Z"
+stopped_at: Completed 33-05-PLAN.md (migration 0027 + the four ledger columns, one lockstep commit 615be81)
+last_updated: "2026-09-04T10:30:06.282Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 5 of 15
+Plan: 6 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -120,6 +120,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P02 | 24min | 3 tasks | 6 files |
 | Phase 33 P03 | 22min | 3 tasks | 4 files |
 | Phase 33 P04 | 18min | 3 tasks | 1 files |
+| Phase 33 P05 | 30min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -227,6 +228,12 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 33-04 (V14, MEASURED on s1 2026-09-04): migration 0027 bakes _DISPLAY_TZ = "Europe/Moscow" as a file-local literal (WR-06; the _DEFAULT_CURRENCY precedent at 0024:30). DISPLAY_TZ is absent from s1's .env.production AND empty in the container, so the effective value comes from the app/config.py:76 fallback — measured with two read-only commands, never assumed from the default.
 - [Phase ?]: 33-04 (V13, MEASURED on s1 2026-09-04): s1's alembic current = 0026 (head), so the new revision really is 0027 and the rollout applies exactly one revision. s1 repo HEAD 9b727af.
 - [Phase ?]: 33-04: fleet timezone divergence — a client whose display_tz differs from s1's computes a DIFFERENT business date for the same row near local midnight — is ACCEPTED and named, not solved; 0027's module docstring must name it too (33-ROLLOUT.md section 3).
+- [Phase ?]: 33-05 (LOCKED constraint 4): migration 0027, app/db.py::APPEND_ONLY_TRIGGERS, both IMMUTABLE_* frozensets and the four model columns landed in ONE commit (615be81). All four columns are nullable with NO column-level value of any kind — a Python-side default would be substituted for a None-valued key and destroy DATE-08's NULL sentinel; a ClauseElement DDL default would flip Alembic into batch-recreate and strip all four triggers on the way UP.
+- [Phase ?]: 33-05 (LOCKED constraint 3, executed): 0027.upgrade() order is add_column -> tz-correct backfill -> trigger rewrite. Proven on a throwaway DB: the pre-0027 guard is a VALUE-based WHEN over an explicit column enumeration, so the backfill UPDATE of an un-enumerated column succeeds for 100% of rows, and the identical UPDATE is ABORTed the moment step 3 names the column.
+- [Phase ?]: 33-05 (LOCKED constraint 7, executed): 0027.downgrade() restores the pre-0027 triggers FIRST, then uses plain op.drop_column. batch_alter_table appears in NO executable line — it is named only in comments so the 0024 defect is not copied. Round trip verified: 4 triggers before, after downgrade -1 and after upgrade head.
+- [Phase ?]: 33-05 (DATE-07): the backfill converts created_at through ZoneInfo(_DISPLAY_TZ='Europe/Moscow'), never a naive 10-character UTC cut. Executed proof: created_at='2026-08-31T21:30:00+00:00' backfills to business_date='2026-09-01' while a 09:00Z control row stays '2026-08-31'. created_at itself is byte-unchanged (DATE-04).
+- [Phase ?]: 33-05: DATE-03/04/07/08 are NOT marked complete by this plan — it delivers only their schema half. The read-time COALESCE bucketing (33-06) and the byte-identity proof VA-9 (33-07) are what finish them; marking them here would have made the traceability table lie.
+- [Phase ?]: 33-05: the PostgreSQL half of both the trigger rewrite and the backfill is UNPROVEN LOCALLY — no PG instance on this machine and starting one is forbidden (CLAUDE.md). Provable in CI via 'uv run pytest tests/test_pg_parity.py -q' against the postgres:17 service; that run is the phase gate carried by plan 33-15.
 
 ### Pending Todos
 
@@ -321,8 +328,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T10:00:01.082Z
-Stopped at: Completed 33-04-PLAN.md (V13/V14 measured on s1 + 33-ROLLOUT.md written)
+Last session: 2026-09-04T10:28:00.101Z
+Stopped at: Completed 33-05-PLAN.md (migration 0027 + the four ledger columns, one lockstep commit 615be81)
 Resume file: None
 
 ## Operator Next Steps
