@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds, local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
@@ -370,11 +370,8 @@ def mobile_finance_report_csv(
     export_service.stream_cash_movements_csv used by the desktop route (from/to
     only, no filename/path param — plain download route, no Request/template)."""
     period = _resolve_period(from_, to, settings.display_tz)
-    # Phase 33 (DATE-03): same deliberate exception as app/routes/finance.py's CSV
-    # route — stream_cash_movements_csv still filters `CashMovement.created_at`,
-    # so this bounds site stays on the timestamp helper until plan 33-09 switches
-    # that predicate. Both CSV routes must flip in ONE commit with it (T-33-20).
-    start_iso, end_iso = local_day_bounds_utc(
-        period["from_date"], period["to_date"], settings.display_tz
-    )
-    return export_service.stream_cash_movements_csv(session, start_iso, end_iso)
+    # Phase 33 (DATE-03/DATE-05): mirrors app/routes/finance.py's CSV route —
+    # flipped to the date-only CLOSED bounds in the same commit as
+    # export_service.stream_cash_movements_csv's `business_date_expr` predicate.
+    start_day, end_day = business_date_bounds(period["from_date"], period["to_date"])
+    return export_service.stream_cash_movements_csv(session, start_day, end_day)

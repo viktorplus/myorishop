@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds, local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
@@ -369,14 +369,9 @@ def finance_report_csv(
     falls back to today), so bounds are always valid (T-06-09 bounded
     exception, documented in app/services/export.py)."""
     period = _resolve_period(from_, to, settings.display_tz)
-    # Phase 33 (DATE-03) — DELIBERATELY still the created_at bounds. This is the
-    # ONE bounds site in this module that does NOT feed a switched predicate:
-    # export_service.stream_cash_movements_csv still filters
-    # `CashMovement.created_at`. Switching only this half is the exact T-33-20
-    # half-switch (a date-only bound against a timestamp column, which drops rows
-    # at UTC and every negative offset). Plan 33-09 owns export.py's predicate and
-    # MUST flip this line in the same commit that flips `export.py:211-212`.
-    start_iso, end_iso = local_day_bounds_utc(
-        period["from_date"], period["to_date"], settings.display_tz
-    )
-    return export_service.stream_cash_movements_csv(session, start_iso, end_iso)
+    # Phase 33 (DATE-03/DATE-05): flipped to the date-only bounds in the SAME
+    # commit as export_service.stream_cash_movements_csv's predicate, which now
+    # filters `business_date_expr(CashMovement)` over the CLOSED contract. The
+    # pair is one unit — either half alone is the T-33-20 half-switch.
+    start_day, end_day = business_date_bounds(period["from_date"], period["to_date"])
+    return export_service.stream_cash_movements_csv(session, start_day, end_day)

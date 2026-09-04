@@ -512,12 +512,24 @@ def test_web_finance_report_page_full_page(client):
 
 def test_web_finance_report_csv_streams_period_scoped_csv(session, client, monkeypatch):
     """FIN-09: /finance/report.csv delegates to stream_cash_movements_csv and
-    scopes the export to the from/to period params."""
+    scopes the export to the from/to period params.
+
+    Phase 33 (DATE-03/DATE-05, plan 33-09): the export now selects on the
+    BUSINESS date, and this route hands it `business_date_bounds` — so the
+    fixture must stamp the tz-correct local day of its own `created_at`
+    (what migration 0027 backfills), or the write path stamps TODAY and the
+    row silently leaves the 2026-07-10 period.
+    """
     import app.services.finance as finance_module
     from app.services.finance import record_cash_movement
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
-    record_cash_movement(session, category="sale", amount_cents=1500)
+    record_cash_movement(
+        session,
+        category="sale",
+        amount_cents=1500,
+        business_date=_local_day_of("2026-07-10T10:00:00+00:00"),
+    )
 
     response = client.get("/finance/report.csv?from=2026-07-10&to=2026-07-10")
     assert response.status_code == 200
@@ -621,12 +633,21 @@ def test_web_mobile_finance_report_hx(client):
 def test_web_mobile_finance_report_csv(session, client, monkeypatch):
     """Mirrors test_web_finance_report_csv_streams_period_scoped_csv (17-03
     Task 1): /m/finance/report.csv delegates to the SAME
-    stream_cash_movements_csv service used by the desktop route."""
+    stream_cash_movements_csv service used by the desktop route.
+
+    Phase 33 (DATE-03/DATE-05, plan 33-09): same business-date fixture rule as
+    its desktop twin above.
+    """
     import app.services.finance as finance_module
     from app.services.finance import record_cash_movement
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
-    record_cash_movement(session, category="sale", amount_cents=1500)
+    record_cash_movement(
+        session,
+        category="sale",
+        amount_cents=1500,
+        business_date=_local_day_of("2026-07-10T10:00:00+00:00"),
+    )
 
     response = client.get("/m/finance/report.csv?from=2026-07-10&to=2026-07-10")
     assert response.status_code == 200

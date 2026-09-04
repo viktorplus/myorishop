@@ -13,10 +13,10 @@ Security T-06-09: no function here accepts a filename, path, or any other
 externally-supplied parameter — every export is a full, unfiltered table
 dump (matches the V12 pattern already established by app/services/backup.py
 and app/routes/backup.py), WITH ONE BOUNDED EXCEPTION: stream_cash_movements_csv
-(FIN-09/D-03b) accepts a VALIDATED calendar start_iso/end_iso range, clamped
+(FIN-09/D-03b) accepts a VALIDATED calendar start_day/end_day range, clamped
 upstream by _resolve_period before this module ever sees it, and consumes it
-ONLY as an ORM `.where(CashMovement.created_at ...)` bound — never as a
-filename, path, or arbitrary string. This is a documented, bounded
+ONLY as an ORM `.where(business_date_expr(CashMovement) ...)` bound — never as
+a filename, path, or arbitrary string. This is a documented, bounded
 relaxation for period-scoped export, not a general "exports may take
 arbitrary params" policy. T-06-10: _csv_safe prefixes any free-text value
 starting with =, +, -, or @ with a leading apostrophe so Excel never
@@ -43,6 +43,7 @@ from app.models import (
     Sale,
     Warehouse,
 )
+from app.services.reports import business_date_expr
 
 _INJECTION_PREFIXES = ("=", "+", "-", "@")
 
@@ -132,7 +133,10 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
         .where(Operation.type == "sale")
-        .order_by(Operation.created_at)
+        # D-23: column 1 «Когда» carries the BUSINESS date, so the dump must be
+        # ordered by it — otherwise it reads as unsorted by its own first column.
+        # created_at and seq are deterministic tie-breakers within one day.
+        .order_by(business_date_expr(Operation), Operation.created_at, Operation.seq)
     )
     header = [
         "Когда",
@@ -194,24 +198,41 @@ def stream_customers_csv(session: Session) -> StreamingResponse:
 
 
 def stream_cash_movements_csv(
-    session: Session, start_iso: str, end_iso: str
+    session: Session, start_day: str, end_day: str
 ) -> StreamingResponse:
     """Period-scoped cash-movement dump, oldest-first (FIN-09/D-03).
 
-    D-03b: the ONLY export in this module accepting a filter — start_iso/
-    end_iso are a VALIDATED calendar range clamped upstream by
-    _resolve_period, consumed ONLY as an ORM `.where(created_at ...)` bound.
+    D-03b: the ONLY export in this module accepting a filter — start_day/
+    end_day are a VALIDATED calendar range clamped upstream by
+    _resolve_period, consumed ONLY as an ORM
+    `.where(business_date_expr(CashMovement) ...)` bound.
     Every existing export convention stays intact (D-03a): reuses
     _encode_once/_csv_rows/_csv_safe verbatim (one UTF-8 BOM, ";" delimiter,
     formula-injection escape on every free-text cell).
+
+    Phase 33 (DATE-03/DATE-05): the row set is chosen by the BUSINESS date,
+    not the entry timestamp — so the file's headline «Когда» column can never
+    contradict the period the file was selected for. The bounds are therefore
+    DATE-ONLY ISO strings from `core.business_date_bounds` (yyyy-mm-dd) over
+    its CLOSED contract (`>= start_day` AND `<= end_day`, never `<`), NOT the
+    UTC timestamp bounds `local_day_bounds_utc` produces. Both callers
+    (app/routes/finance.py, app/routes/mobile_finance.py) flipped to
+    `business_date_bounds` in the same commit as this predicate — handing this
+    a timestamp bound is the T-33-20 half-switch, which "works" at
+    Europe/Moscow by lexicographic accident and drops every row at UTC and any
+    negative offset.
     """
+    business_day = business_date_expr(CashMovement)
     movements = session.scalars(
         select(CashMovement)
         .where(
-            CashMovement.created_at >= start_iso,
-            CashMovement.created_at < end_iso,
+            business_day >= start_day,
+            business_day <= end_day,
         )
-        .order_by(CashMovement.created_at)
+        # D-23 / CD-9: the twin of stream_sales_csv's ORDER BY — column 1 is
+        # the business date, so the dump must be ordered by it or it reads as
+        # unsorted by its own first column.
+        .order_by(business_day, CashMovement.created_at, CashMovement.seq)
     ).all()
     header = ["Когда", "Категория", "Валюта", "Комментарий", "Сумма"]
     rows = [

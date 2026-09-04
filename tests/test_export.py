@@ -15,12 +15,13 @@ service-level tests (Task 1) must NOT contain those prefixes.
 import asyncio
 import csv
 import io
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import local_day_bounds_utc, new_id, utcnow_iso
+from app.core import business_date_bounds, local_day_bounds_utc, new_id, utcnow_iso
 from app.models import Batch, Customer, Sale, Warehouse
 from app.services.export import (
     _csv_rows,
@@ -33,6 +34,17 @@ from app.services.ledger import record_operation
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
+
+
+def _local_day_of(iso: str) -> str:
+    """tz-correct LOCAL day of a UTC timestamp — mirrors tests/test_reports.py.
+
+    Phase 33 (DATE-03): reproduces exactly what migration 0027 backfills for a
+    pre-existing row, so a fixture with a historical `created_at` keeps the
+    period it always meant instead of landing in TODAY's bucket (the write
+    path stamps today's local day when `business_date` is not given).
+    """
+    return datetime.fromisoformat(iso).astimezone(ZoneInfo(TZ)).date().isoformat()
 
 
 def _ensure_batch(session, product):
@@ -108,7 +120,7 @@ def _stream_body(response):
 
 
 def test_cash_movements_csv_bom_delimiter_and_header(session):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_day, end_day = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
 
     import app.services.finance as finance_module
@@ -121,12 +133,18 @@ def test_cash_movements_csv_bom_delimiter_and_header(session):
             category="withdrawal_supplier",
             amount_cents=-1200,
             note="Оплата",
+            business_date=_local_day_of(mid),
         )
-        record_cash_movement(session, category="sale", amount_cents=3000)
+        record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=3000,
+            business_date=_local_day_of(mid),
+        )
     finally:
         finance_module.utcnow_iso = original_utcnow_iso
 
-    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    response = stream_cash_movements_csv(session, start_day, end_day)
     body = _stream_body(response)
     assert body.count(b"\xef\xbb\xbf") == 1
 
@@ -147,12 +165,14 @@ def test_cash_movements_csv_bom_delimiter_and_header(session):
 
 
 def test_cash_movements_csv_null_note_renders_empty(session, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_day, end_day = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     monkeypatch.setattr("app.services.finance.utcnow_iso", lambda: mid)
-    record_cash_movement(session, category="sale", amount_cents=1000)
+    record_cash_movement(
+        session, category="sale", amount_cents=1000, business_date=_local_day_of(mid)
+    )
 
-    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    response = stream_cash_movements_csv(session, start_day, end_day)
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
@@ -161,7 +181,7 @@ def test_cash_movements_csv_null_note_renders_empty(session, monkeypatch):
 
 
 def test_cash_movements_csv_escapes_formula_injection_note(session, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_day, end_day = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     monkeypatch.setattr("app.services.finance.utcnow_iso", lambda: mid)
     record_cash_movement(
@@ -169,34 +189,66 @@ def test_cash_movements_csv_escapes_formula_injection_note(session, monkeypatch)
         category="withdrawal_other",
         amount_cents=-100,
         note="=CMD()",
+        business_date=_local_day_of(mid),
     )
 
-    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    response = stream_cash_movements_csv(session, start_day, end_day)
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
     assert rows[1][3] == "'=CMD()"
 
 
-def test_cash_movements_csv_half_open_period_and_order(session):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+def test_cash_movements_csv_closed_period_and_order(session):
+    """Phase 33 (DATE-03): the row set is the CLOSED business-date range.
+
+    Renamed from *_half_open_period_and_order and re-pointed at the new
+    contract. The two seeding INSTANTS are unchanged — `local_day_bounds_utc`
+    is still the sanctioned way to build a `created_at` that straddles local
+    midnight — but the export now selects on `business_date_expr`, so the
+    boundary being exercised is «the last day of the range is INCLUDED, the
+    next local day is not», not «the upper timestamp bound is exclusive».
+
+    The two instants are local 2026-07-10 00:00 and local 2026-07-11 00:00, so
+    their tz-correct business dates land one inside and one outside the
+    single-day period — the same two rows, the same outcome, for the correct
+    reason.
+    """
+    created_in, created_out = local_day_bounds_utc(DAY, DAY, TZ)
+    start_day, end_day = business_date_bounds(DAY, DAY)
 
     import app.services.finance as finance_module
 
     original_utcnow_iso = finance_module.utcnow_iso
     try:
-        finance_module.utcnow_iso = lambda: start_iso
-        record_cash_movement(session, category="sale", amount_cents=1000)
-        finance_module.utcnow_iso = lambda: end_iso
-        record_cash_movement(session, category="sale", amount_cents=2000)
+        finance_module.utcnow_iso = lambda: created_in
+        record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=1000,
+            business_date=_local_day_of(created_in),
+        )
+        finance_module.utcnow_iso = lambda: created_out
+        record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=2000,
+            business_date=_local_day_of(created_out),
+        )
     finally:
         finance_module.utcnow_iso = original_utcnow_iso
 
-    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    # Pin the fixture's own premise, so the assertion below cannot pass for the
+    # wrong reason if the tz conversion ever moves.
+    assert _local_day_of(created_in) == end_day
+    assert _local_day_of(created_out) > end_day
+
+    response = stream_cash_movements_csv(session, start_day, end_day)
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
-    # Only the start_iso row is in-period; the end_iso row is excluded.
+    # The row ON the last day of the range is INCLUDED (closed contract); the
+    # next local day's row is excluded.
     assert len(rows) == 2
     assert rows[1][4] == "10,00"
 
@@ -330,18 +382,24 @@ def test_sales_csv_labels_non_default_currency(client, session, product):
 
 def test_cash_movements_csv_labels_non_default_currency(session):
     """CUR-02: a cash movement recorded with currency=EUR is labelled correctly."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_day, end_day = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     import app.services.finance as finance_module
 
     original_utcnow_iso = finance_module.utcnow_iso
     finance_module.utcnow_iso = lambda: mid
     try:
-        record_cash_movement(session, category="sale", amount_cents=1000, currency="EUR")
+        record_cash_movement(
+            session,
+            category="sale",
+            amount_cents=1000,
+            currency="EUR",
+            business_date=_local_day_of(mid),
+        )
     finally:
         finance_module.utcnow_iso = original_utcnow_iso
 
-    response = stream_cash_movements_csv(session, start_iso, end_iso)
+    response = stream_cash_movements_csv(session, start_day, end_day)
     text = _stream_body(response).decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text), delimiter=";")
     rows = list(reader)
