@@ -6,9 +6,10 @@ cash_flow_report (income-vs-expense grouping reconciled with
 cash_expense_total, D-05).
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from app.core import local_day_bounds_utc, new_id
+from app.core import business_date_bounds, new_id
 from app.models import Batch, Product, Warehouse
 from app.services.finance import record_cash_movement
 from app.services.finance_reports import (
@@ -36,25 +37,41 @@ DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
 
 
-def _record_cash_at(session, monkeypatch, iso, *, category, amount_cents):
+def _local_day_of(iso: str) -> str:
+    """tz-correct LOCAL day of a UTC timestamp — mirrors tests/test_reports.py."""
+    return datetime.fromisoformat(iso).astimezone(ZoneInfo(TZ)).date().isoformat()
+
+
+def _record_cash_at(
+    session, monkeypatch, iso, *, category, amount_cents, business_date=None
+):
     """Record one cash movement with a caller-controlled created_at.
 
     Monkeypatches app.services.finance.utcnow_iso (mirrors
     tests/test_reports.py::_record_sale_at's ledger monkeypatch) so the
     stamped created_at is exactly the iso string given here — needed to
     place movements precisely inside or outside a period boundary.
+
+    Phase 33 (DATE-03): `business_date` defaults to the tz-correct local day OF
+    `iso`, reproducing what migration 0027 backfills for a pre-existing row.
+    Pass it explicitly to build a BACK-DATED movement.
     """
     import app.services.finance as finance_module
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: iso)
-    return record_cash_movement(session, category=category, amount_cents=amount_cents)
+    return record_cash_movement(
+        session,
+        category=category,
+        amount_cents=amount_cents,
+        business_date=business_date or _local_day_of(iso),
+    )
 
 
 # --- cash_expense_total (FIN-11 / D-01a) ------------------------------------
 
 
 def test_expense_total_sums_withdrawal_and_return(session, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(
         session, monkeypatch, mid, category="withdrawal_supplier", amount_cents=-1000
@@ -66,7 +83,7 @@ def test_expense_total_sums_withdrawal_and_return(session, monkeypatch):
 
 def test_expense_total_excludes_income_categories(session, monkeypatch):
     """A deposit_opening (+) and a sale (+) in the same period are EXCLUDED."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(
         session, monkeypatch, mid, category="deposit_opening", amount_cents=5000
@@ -80,26 +97,47 @@ def test_expense_total_excludes_income_categories(session, monkeypatch):
 
 
 def test_expense_total_empty_period_is_zero(session):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     assert cash_expense_total(session, start_iso, end_iso) == 0
 
 
-def test_expense_total_half_open_bounds(session, monkeypatch):
-    """A row stamped exactly at end_iso is EXCLUDED; a row at start_iso is INCLUDED."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+def test_expense_total_closed_bounds(session, monkeypatch):
+    """Phase 33: the bounds contract is CLOSED [start_day, end_day].
+
+    Was `test_expense_total_half_open_bounds`, which pinned the OLD UTC-timestamp
+    contract (a row stamped exactly AT end_iso excluded). The seeding instants are
+    unchanged — local midnight of DAY and local midnight of DAY+1 — and so is the
+    outcome, because the second row's business date is the NEXT day. What changes
+    is the reason: it is excluded by falling outside [DAY, DAY], not by landing on
+    an exclusive upper timestamp. The last two assertions are the new half: the
+    last day of a multi-day range is INCLUDED (Pitfall D — a predicate left as
+    `< end_day` would silently drop it).
+    """
+    first_local_midnight = "2026-07-09T21:00:00+00:00"  # 00:00 local on DAY
+    next_local_midnight = "2026-07-10T21:00:00+00:00"  # 00:00 local on DAY+1
     _record_cash_at(
-        session, monkeypatch, start_iso, category="withdrawal_rent", amount_cents=-800
+        session, monkeypatch, first_local_midnight, category="withdrawal_rent",
+        amount_cents=-800,
     )
     _record_cash_at(
-        session, monkeypatch, end_iso, category="withdrawal_rent", amount_cents=-900
+        session, monkeypatch, next_local_midnight, category="withdrawal_rent",
+        amount_cents=-900,
     )
 
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     assert cash_expense_total(session, start_iso, end_iso) == -800
+
+    # DAY is the LAST day of this range and its row must still be counted.
+    start_iso, end_iso = business_date_bounds(DAY - timedelta(days=2), DAY)
+    assert cash_expense_total(session, start_iso, end_iso) == -800
+    # Widen by one day and the next-day row joins in — proving it was never lost.
+    start_iso, end_iso = business_date_bounds(DAY, DAY + timedelta(days=1))
+    assert cash_expense_total(session, start_iso, end_iso) == -1700
 
 
 def test_expense_total_net_reconciliation_is_addition(session, monkeypatch):
     """Net reconciliation: for gross profit G, G + cash_expense_total(...) — plain addition."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(
         session, monkeypatch, mid, category="withdrawal_rent", amount_cents=-800
@@ -222,9 +260,12 @@ def test_expense_total_scopes_by_currency(session, monkeypatch):
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: mid)
     from app.services.finance import record_cash_movement as _rcm
 
-    _rcm(session, category="withdrawal_rent", amount_cents=-500, currency="EUR")
+    _rcm(
+        session, category="withdrawal_rent", amount_cents=-500, currency="EUR",
+        business_date=_local_day_of(mid),
+    )
 
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     assert cash_expense_total(session, start_iso, end_iso, currency="RUB") == -800
     assert cash_expense_total(session, start_iso, end_iso, currency="EUR") == -500
 
@@ -238,9 +279,12 @@ def test_cash_flow_report_scopes_by_currency(session, monkeypatch):
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: mid)
     from app.services.finance import record_cash_movement as _rcm
 
-    _rcm(session, category="sale", amount_cents=1000, currency="EUR")
+    _rcm(
+        session, category="sale", amount_cents=1000, currency="EUR",
+        business_date=_local_day_of(mid),
+    )
 
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     rub_report = cash_flow_report(session, start_iso, end_iso, currency="RUB")
     eur_report = cash_flow_report(session, start_iso, end_iso, currency="EUR")
     assert rub_report["income_total_cents"] == 3000
@@ -268,7 +312,7 @@ def test_stock_valuation_ignores_period(session):
 
 
 def test_cash_flow_report_groups_income_and_expense(session, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=3000)
     _record_cash_at(
@@ -296,7 +340,7 @@ def test_cash_flow_report_groups_income_and_expense(session, monkeypatch):
 
 def test_cash_flow_report_reconciles_with_expense_total(session, monkeypatch):
     """D-05 hard reconciliation: expense_total_cents == cash_expense_total for the same period."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=3000)
     _record_cash_at(
@@ -311,7 +355,7 @@ def test_cash_flow_report_reconciles_with_expense_total(session, monkeypatch):
 
 
 def test_cash_flow_report_empty_period(session):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     report = cash_flow_report(session, start_iso, end_iso)
     assert report == {
         "income": [],
@@ -322,19 +366,31 @@ def test_cash_flow_report_empty_period(session):
     }
 
 
-def test_cash_flow_report_half_open_bounds(session, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
-    _record_cash_at(session, monkeypatch, start_iso, category="sale", amount_cents=1000)
-    _record_cash_at(session, monkeypatch, end_iso, category="sale", amount_cents=2000)
+def test_cash_flow_report_closed_bounds(session, monkeypatch):
+    """Twin of test_expense_total_closed_bounds — see its docstring for the
+    half-open -> closed contract change."""
+    first_local_midnight = "2026-07-09T21:00:00+00:00"  # 00:00 local on DAY
+    next_local_midnight = "2026-07-10T21:00:00+00:00"  # 00:00 local on DAY+1
+    _record_cash_at(
+        session, monkeypatch, first_local_midnight, category="sale", amount_cents=1000
+    )
+    _record_cash_at(
+        session, monkeypatch, next_local_midnight, category="sale", amount_cents=2000
+    )
 
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     report = cash_flow_report(session, start_iso, end_iso)
     assert report["income_total_cents"] == 1000
     assert report["movement_count"] == 1
 
+    # Last day of the range is inclusive (Pitfall D).
+    start_iso, end_iso = business_date_bounds(DAY - timedelta(days=2), DAY)
+    assert cash_flow_report(session, start_iso, end_iso)["income_total_cents"] == 1000
+
 
 def test_cash_flow_report_movement_count_matches_bucketed_rows(session, monkeypatch):
     """movement_count == len(income) + len(expense); every category lands income XOR expense."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(session, monkeypatch, mid, category="sale", amount_cents=100)
     _record_cash_at(
@@ -483,8 +539,10 @@ def test_web_finance_report_full_page(session, client, monkeypatch):
     from app.services.finance import record_cash_movement
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
-    record_cash_movement(session, category="sale", amount_cents=3000)
-    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+    record_cash_movement(session, category="sale", amount_cents=3000, business_date="2026-07-10")
+    record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-800, business_date="2026-07-10"
+    )
 
     response = client.get("/finance/report?from=2026-07-10&to=2026-07-10")
     assert response.status_code == 200
@@ -504,7 +562,7 @@ def test_web_finance_report_hx_partial(session, client, monkeypatch):
     from app.services.finance import record_cash_movement
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
-    record_cash_movement(session, category="sale", amount_cents=3000)
+    record_cash_movement(session, category="sale", amount_cents=3000, business_date="2026-07-10")
 
     response = client.get(
         "/finance/report?from=2026-07-10&to=2026-07-10", headers={"HX-Request": "true"}
@@ -591,8 +649,10 @@ def test_web_mobile_finance_report_matches_desktop_subtotals(session, client, mo
     from app.services.finance import record_cash_movement
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: "2026-07-10T10:00:00+00:00")
-    record_cash_movement(session, category="sale", amount_cents=3000)
-    record_cash_movement(session, category="withdrawal_rent", amount_cents=-800)
+    record_cash_movement(session, category="sale", amount_cents=3000, business_date="2026-07-10")
+    record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-800, business_date="2026-07-10"
+    )
 
     desktop = client.get("/finance/report?from=2026-07-10&to=2026-07-10")
     mobile = client.get("/m/finance/report?from=2026-07-10&to=2026-07-10")
@@ -708,3 +768,92 @@ def test_web_mobile_finance_page_has_no_report_link(client):
     response = client.get("/m/finance")
     assert response.status_code == 200
     assert 'href="/m/finance/report"' not in response.text
+
+
+# --- Phase 33 / DATE-03: the two cash predicates bucket by the BUSINESS date --
+
+ENTRY_DAY = date(2026, 9, 20)
+ENTRY_DAY_ISO = "2026-09-20T10:00:00+00:00"  # 13:00 local, unambiguously Sep 20
+
+
+def test_cash_reports_bucket_back_dated_movement_by_business_date(session, monkeypatch):
+    """DATE-03 (VA-13): a movement entered on Sep 20 for cash that moved on Jul 10
+    belongs to JULY in BOTH cash predicates, and to September in neither."""
+    _record_cash_at(
+        session, monkeypatch, ENTRY_DAY_ISO, category="withdrawal_rent",
+        amount_cents=-800, business_date=DAY.isoformat(),
+    )
+
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
+    assert cash_expense_total(session, start_iso, end_iso) == -800
+    assert cash_flow_report(session, start_iso, end_iso)["expense_total_cents"] == -800
+
+    entry_start, entry_end = business_date_bounds(ENTRY_DAY, ENTRY_DAY)
+    assert cash_expense_total(session, entry_start, entry_end) == 0
+    assert cash_flow_report(session, entry_start, entry_end)["expense_total_cents"] == 0
+
+
+def test_cash_flow_and_expense_total_reconcile_over_mixed_rows(session, monkeypatch):
+    """D-05, the paired invariant — the assertion that catches «switched one,
+    forgot the other».
+
+    cash_flow_report's expense subtotal and cash_expense_total read the SAME
+    rows through the SAME predicate; if only one of the two moved to
+    business_date_expr they diverge here, and NOWHERE else visibly — the
+    cash-flow page would simply disagree with the net-profit tile beside it.
+    The row mix is deliberate: on-time, back-dated, income, and a NULL
+    business_date (DATE-08) row, over a multi-day range whose LAST day carries
+    a row (Pitfall D).
+    """
+    from sqlalchemy import func, select
+
+    from app.config import settings
+    from app.models import CashMovement
+
+    _record_cash_at(
+        session, monkeypatch, "2026-07-08T10:00:00+00:00", category="withdrawal_rent",
+        amount_cents=-100,
+    )
+    _record_cash_at(
+        session, monkeypatch, ENTRY_DAY_ISO, category="withdrawal_supplier",
+        amount_cents=-250, business_date=DAY.isoformat(),  # back-dated onto the LAST day
+    )
+    _record_cash_at(
+        session, monkeypatch, "2026-07-09T10:00:00+00:00", category="sale",
+        amount_cents=5000,  # income — must not leak into the expense subtotal
+    )
+    # DATE-08: a pre-0027 row, business_date IS NULL, falls back to
+    # substr(created_at, 1, 10). It has to be INSERTed that way — the
+    # cash_movements append-only trigger ABORTs any UPDATE, so it cannot be
+    # nulled out after the fact (which is also why record_cash_movement's
+    # Python-side stamp, not a column default, is the load-bearing choice).
+    session.add(
+        CashMovement(
+            id=new_id(),
+            category="return",
+            amount_cents=-70,
+            currency="RUB",
+            device_id=settings.device_id,
+            seq=(
+                session.scalar(
+                    select(func.max(CashMovement.seq)).where(
+                        CashMovement.device_id == settings.device_id
+                    )
+                )
+                or 0
+            )
+            + 1,
+            created_at="2026-07-09T10:00:00+00:00",
+            business_date=None,
+            created_by=settings.operator_name,
+        )
+    )
+    session.commit()
+
+    start_iso, end_iso = business_date_bounds(DAY - timedelta(days=2), DAY)
+    flow = cash_flow_report(session, start_iso, end_iso)
+    total = cash_expense_total(session, start_iso, end_iso)
+
+    assert flow["expense_total_cents"] == total
+    assert total == -420  # -100 + -250 (back-dated, last day) + -70 (NULL business_date)
+    assert flow["income_total_cents"] == 5000

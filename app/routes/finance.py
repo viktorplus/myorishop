@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds, local_day_bounds_utc
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
@@ -86,9 +86,7 @@ def _metrics_context(session: Session, from_: str, to: str, currency: str = DEFA
     period = _resolve_period(from_, to, settings.display_tz)
     metrics = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         gross = sales_profit_report(session, start_iso, end_iso, currency=currency)
         expense = cash_expense_total(session, start_iso, end_iso, currency=currency)
         metrics = {
@@ -341,9 +339,7 @@ def finance_report_page(
     period = _resolve_period(from_, to, settings.display_tz)
     report = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         report = cash_flow_report(session, start_iso, end_iso, currency=currency)
 
     context = {
@@ -373,6 +369,13 @@ def finance_report_csv(
     falls back to today), so bounds are always valid (T-06-09 bounded
     exception, documented in app/services/export.py)."""
     period = _resolve_period(from_, to, settings.display_tz)
+    # Phase 33 (DATE-03) — DELIBERATELY still the created_at bounds. This is the
+    # ONE bounds site in this module that does NOT feed a switched predicate:
+    # export_service.stream_cash_movements_csv still filters
+    # `CashMovement.created_at`. Switching only this half is the exact T-33-20
+    # half-switch (a date-only bound against a timestamp column, which drops rows
+    # at UTC and every negative offset). Plan 33-09 owns export.py's predicate and
+    # MUST flip this line in the same commit that flips `export.py:211-212`.
     start_iso, end_iso = local_day_bounds_utc(
         period["from_date"], period["to_date"], settings.display_tz
     )

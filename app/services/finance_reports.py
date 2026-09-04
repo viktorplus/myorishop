@@ -11,12 +11,19 @@ from sqlalchemy.orm import Session
 
 from app.core import DEFAULT_CURRENCY
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, Batch, CashMovement, Product, Warehouse
+from app.services.reports import business_date_expr
 
 
 def cash_expense_total(
     session: Session, start_iso: str, end_iso: str, currency: str = DEFAULT_CURRENCY
 ) -> int:
-    """Signed SUM of withdrawal+return cash rows in a UTC [start_iso, end_iso) period (FIN-11).
+    """Signed SUM of withdrawal+return cash rows in the CLOSED business-date period (FIN-11).
+
+    DATE-03: date-only bounds from `core.business_date_bounds`, bucketed by
+    `business_date_expr(CashMovement)`, inclusive on both ends. This predicate and
+    `cash_flow_report`'s below are ONE unit — see the RECONCILIATION note in that
+    docstring: switching one without the other breaks the D-05 invariant silently,
+    surfacing as a report that disagrees with its own subtotal.
 
     D-01a: composes its category set from CASH_BUCKETS (never a hardcoded
     six-string list), so a future manual category addition is picked up
@@ -30,8 +37,8 @@ def cash_expense_total(
     return session.scalar(
         select(func.coalesce(func.sum(CashMovement.amount_cents), 0)).where(
             CashMovement.category.in_(cats),
-            CashMovement.created_at >= start_iso,
-            CashMovement.created_at < end_iso,
+            business_date_expr(CashMovement) >= start_iso,
+            business_date_expr(CashMovement) <= end_iso,
             CashMovement.currency == currency,
         )
     )
@@ -100,7 +107,12 @@ def stock_valuation(session: Session, currency: str = DEFAULT_CURRENCY) -> dict:
 def cash_flow_report(
     session: Session, start_iso: str, end_iso: str, currency: str = DEFAULT_CURRENCY
 ) -> dict:
-    """Income-vs-expense grouping of a UTC [start_iso, end_iso) period (FIN-08).
+    """Income-vs-expense grouping of the CLOSED business-date period (FIN-08).
+
+    DATE-03: date-only bounds from `core.business_date_bounds`, bucketed by
+    `business_date_expr(CashMovement)` — the SAME expression and the SAME closed
+    contract as cash_expense_total above, which is not optional (see
+    RECONCILIATION below).
 
     Each CASH_CATEGORIES key present in the period becomes exactly one row,
     placed in income (CASH_BUCKETS["sale"] + CASH_BUCKETS["deposit"]) XOR
@@ -123,8 +135,8 @@ def cash_flow_report(
     rows = session.execute(
         select(CashMovement.category, func.sum(CashMovement.amount_cents))
         .where(
-            CashMovement.created_at >= start_iso,
-            CashMovement.created_at < end_iso,
+            business_date_expr(CashMovement) >= start_iso,
+            business_date_expr(CashMovement) <= end_iso,
             CashMovement.currency == currency,
         )
         .group_by(CashMovement.category)

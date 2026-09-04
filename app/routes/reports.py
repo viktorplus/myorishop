@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds
 from app.db import get_session
 from app.routes import templates
 from app.services.batches import expiring_batches
@@ -108,9 +108,7 @@ def reports_sales_page(
     period = _resolve_period(from_, to, settings.display_tz)
     report = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         report = sales_profit_report(session, start_iso, end_iso, author or None, currency)
 
     context = {
@@ -142,9 +140,7 @@ def reports_writeoffs_page(
     period = _resolve_period(from_, to, settings.display_tz)
     report = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         report = writeoff_report(session, start_iso, end_iso)
 
     context = {
@@ -209,9 +205,7 @@ def reports_products_page(
     period = _resolve_period(from_, to, settings.display_tz)
     top_selling = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         top_selling = top_selling_products(session, start_iso, end_iso)
 
     stale_rows = stale_products(session)

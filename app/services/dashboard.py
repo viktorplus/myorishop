@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core import DEFAULT_CURRENCY, local_day_bounds_utc
+from app.core import DEFAULT_CURRENCY, business_date_bounds
 from app.models import ActiveCatalog, Batch, Customer, Operation, Product, Sale
 from app.services.active_catalog import get_active_catalog
 from app.services.finance_reports import cash_expense_total, stock_valuation
@@ -92,7 +92,13 @@ def period_metrics(
     currency, delegating to sales_profit_report's shared operation_currency_clause
     legacy-row fallback — never re-implemented here.
     """
-    start_iso, end_iso = local_day_bounds_utc(start_day, end_day, tz_name)
+    # DATE-03/DATE-07: both delegates now bucket by the BUSINESS date, so the
+    # today/week/month tiles follow a back-dated entry into the period the goods
+    # actually moved in. `tz_name` stays in the signature (it is what
+    # dashboard_metrics uses to pick the local today/week/month day range in the
+    # first place) even though the bounds no longer need a conversion — dropping
+    # it is a signature change and a caller sweep this plan does not do.
+    start_iso, end_iso = business_date_bounds(start_day, end_day)
     gross = sales_profit_report(session, start_iso, end_iso, currency=currency)
     expense_cents = cash_expense_total(session, start_iso, end_iso, currency=currency)
     return {

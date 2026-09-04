@@ -84,7 +84,15 @@ def sales_profit_report(
     author_id: str | None = None,
     currency: str = DEFAULT_CURRENCY,
 ) -> dict:
-    """Sales/profit totals and per-product breakdown for a UTC [start_iso, end_iso) period.
+    """Sales/profit totals and per-product breakdown for the CLOSED business-date period.
+
+    DATE-03: `start_iso`/`end_iso` are date-only ISO days from
+    `core.business_date_bounds` — the operator's LOCAL calendar days — and the
+    range is CLOSED on both ends (`>= start` AND `<= end`, never `<`). Rows are
+    bucketed by `business_date_expr(Operation)`, so a sale entered today for
+    goods that moved last week lands in LAST WEEK's report. `created_at` is
+    deliberately NOT consulted here (DATE-04: it keeps its audit/sync-ordering
+    jobs and nothing else).
 
     RESEARCH Pitfall 2: unit_cost_cents is nullable — a sale line whose cost
     was never entered contributes its full revenue to totals["revenue_cents"]
@@ -108,8 +116,8 @@ def sales_profit_report(
         .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
         .where(
             Operation.type == "sale",
-            Operation.created_at >= start_iso,
-            Operation.created_at < end_iso,
+            business_date_expr(Operation) >= start_iso,
+            business_date_expr(Operation) <= end_iso,
             operation_currency_clause(currency),
         )
     )
@@ -164,7 +172,12 @@ def sales_profit_report(
 
 
 def writeoff_report(session: Session, start_iso: str, end_iso: str) -> dict:
-    """Write-offs in a UTC [start_iso, end_iso) period, grouped by reason_code.
+    """Write-offs in the CLOSED business-date period, grouped by reason_code.
+
+    DATE-03: same contract as sales_profit_report — date-only bounds from
+    `core.business_date_bounds`, bucketed by `business_date_expr(Operation)`,
+    inclusive on both ends. A bucketing error here nets out in `total_qty` and
+    shows up only on a PER-REASON line, which is why the tests assert per reason.
 
     RESEARCH/UI-SPEC: one row per WRITEOFF_REASONS key PRESENT in the
     period, in WRITEOFF_REASONS' own declared key order — not insertion
@@ -181,8 +194,8 @@ def writeoff_report(session: Session, start_iso: str, end_iso: str) -> dict:
         .join(Product, Operation.product_id == Product.id)
         .where(
             Operation.type == "writeoff",
-            Operation.created_at >= start_iso,
-            Operation.created_at < end_iso,
+            business_date_expr(Operation) >= start_iso,
+            business_date_expr(Operation) <= end_iso,
         )
     ).all()
 
@@ -225,7 +238,12 @@ def _effective_stale_days(product: Product) -> int:
 def top_selling_products(
     session: Session, start_iso: str, end_iso: str, limit: int = 10
 ) -> list[dict]:
-    """Top products by units sold (descending) in a UTC [start_iso, end_iso) period.
+    """Top products by units sold (descending) in the CLOSED business-date period.
+
+    DATE-03: period-scoped by its own signature, so it switches with the rest of
+    the family — date-only bounds from `core.business_date_bounds`, bucketed by
+    `business_date_expr(Operation)`, inclusive on both ends. Getting the period
+    wrong here changes the RANKING, not just a total.
 
     RESEARCH Pattern 4: SQL-side aggregation (func.sum/.group_by()/.order_by()
     /.limit()), not a Python accumulator — sales history can be large,
@@ -237,8 +255,8 @@ def top_selling_products(
         .join(Operation, Operation.product_id == Product.id)
         .where(
             Operation.type == "sale",
-            Operation.created_at >= start_iso,
-            Operation.created_at < end_iso,
+            business_date_expr(Operation) >= start_iso,
+            business_date_expr(Operation) <= end_iso,
         )
         .group_by(Product.id)
         .order_by(units_sold.desc())
@@ -260,6 +278,13 @@ def stale_products(session: Session) -> list[dict]:
     historical and deliberately do NOT filter deleted_at (Pitfall 5 — that
     rule applies to THOSE functions, not this one).
     """
+    # D-25: this stays on `created_at` DELIBERATELY — do NOT "finish the sweep"
+    # by switching it to business_date_expr with the rest of Phase 33. It answers
+    # «how long since this product last MOVED», a question about real elapsed
+    # time, not about the operator's bookkeeping period; a back-dated entry made
+    # today must not make a product look freshly sold a month ago. The pre-existing
+    # type asymmetry with `today_local` below (ISO timestamp vs local date) is
+    # accepted as-is: pre-existing, not introduced by Phase 33.
     last_sale = func.max(Operation.created_at).label("last_sale")
     stmt = (
         select(Product, last_sale)

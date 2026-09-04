@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import local_day_bounds_utc, new_id
+from app.core import business_date_bounds, new_id
 from app.models import WRITEOFF_REASONS, Batch, Product, Warehouse
 from app.services.ledger import record_operation
 from app.services.reports import (
@@ -29,6 +29,22 @@ from app.services.stock import (
 
 DAY = date(2026, 7, 10)
 TZ = "Europe/Moscow"
+
+
+def _local_day_of(iso: str) -> str:
+    """The tz-correct LOCAL calendar day of a UTC timestamp, as ISO 'yyyy-mm-dd'.
+
+    Phase 33 (DATE-03): the seeding helpers below stamp this as the row's
+    `business_date`, reproducing exactly what migration 0027's backfill computes
+    for a pre-existing row. Without it every fixture would carry
+    record_operation's default — TODAY's real local day — and land in today's
+    bucket instead of the fixture's, which is not what any of these tests mean.
+
+    It is a tz-correct conversion, NOT `iso[:10]`: at Europe/Moscow
+    '2026-07-10T21:00:00+00:00' is local July 11, and the local-midnight-straddle
+    tests below depend on that distinction.
+    """
+    return datetime.fromisoformat(iso).astimezone(ZoneInfo(TZ)).date().isoformat()
 
 
 def _ensure_batch(session, product):
@@ -64,6 +80,7 @@ def _record_sale_at(
     qty: int,
     price_cents: int,
     cost_cents: int | None = None,
+    business_date: str | None = None,
 ):
     """Record one sale operation with a caller-controlled created_at.
 
@@ -71,6 +88,12 @@ def _record_sale_at(
     (app.services.ledger.utcnow_iso), so the stamped created_at is exactly
     the iso string given here — needed to place sales precisely inside or
     outside a period boundary for the tests below.
+
+    Phase 33 (DATE-03): `business_date` defaults to the tz-correct local day OF
+    `iso`, so a fixture written "at" a past timestamp also carries that past
+    business date and the switched period reports still see it where the test
+    means it to be. Pass `business_date` explicitly to build a BACK-DATED row
+    (business date and entry date deliberately in different periods).
     """
     import app.services.ledger as ledger_module
 
@@ -84,12 +107,13 @@ def _record_sale_at(
         unit_cost_cents=cost_cents,
         unit_price_cents=price_cents,
         batch_id=batch_id,
+        business_date=business_date or _local_day_of(iso),
     )
 
 
 def test_sales_report_null_cost(session, product, monkeypatch):
     """RESEARCH Pitfall 2: a cost-unknown line's revenue counts, its cost/profit does not."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_sale_at(
@@ -128,7 +152,7 @@ def test_sales_report_by_product_sorted_by_qty_desc(session, product, monkeypatc
     session.add(other)
     session.commit()
 
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_sale_at(
@@ -148,7 +172,7 @@ def test_sales_report_by_product_sorted_by_qty_desc(session, product, monkeypatc
 
 
 def test_sales_report_excludes_outside_period(session, product, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     just_inside = "2026-07-10T20:59:59+00:00"  # 23:59:59 local, still July 10
     just_outside = "2026-07-10T21:00:00+00:00"  # 00:00:00 local July 11 — next local day
 
@@ -165,7 +189,7 @@ def test_sales_report_excludes_outside_period(session, product, monkeypatch):
 
 def test_sales_report_includes_deleted_product_for_past_period(session, product, monkeypatch):
     """RESEARCH Pitfall 5: sales/profit reports are historical — never filter deleted_at."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_sale_at(
@@ -181,7 +205,7 @@ def test_sales_report_includes_deleted_product_for_past_period(session, product,
 
 def test_sales_report_scopes_by_currency(session, product, monkeypatch):
     """CUR-02: RUB and EUR sales in the same period never mix into one total."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     rub_warehouse = Warehouse(id=new_id(), name="Склад RUB")
@@ -204,6 +228,7 @@ def test_sales_report_scopes_by_currency(session, product, monkeypatch):
         unit_cost_cents=500,
         unit_price_cents=1000,
         batch_id=rub_batch.id,
+        business_date=_local_day_of(mid_day_iso),
     )
     record_operation(
         session,
@@ -213,6 +238,7 @@ def test_sales_report_scopes_by_currency(session, product, monkeypatch):
         unit_cost_cents=500,
         unit_price_cents=1000,
         batch_id=eur_batch.id,
+        business_date=_local_day_of(mid_day_iso),
     )
 
     rub_report = sales_profit_report(session, start_iso, end_iso, currency="RUB")
@@ -225,7 +251,7 @@ def test_sales_report_legacy_null_batch_row_buckets_as_rub(session, product, pas
     """LOCKED decision: a batch_id=None (pre-Phase-9) sale counts under RUB,
     via the shared operation_currency_clause outer join — never dropped, and
     MUST NOT appear under any other currency."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
     past_sale(
         customer, product, created_at=mid_day_iso, qty=1, unit_price_cents=1000, batch_id=None
@@ -247,12 +273,14 @@ def _record_writeoff_at(
     product: Product,
     qty: int,
     reason_code: str,
+    business_date: str | None = None,
 ):
     """Record one write-off operation with a caller-controlled created_at.
 
     Mirrors _record_sale_at above — monkeypatches app.services.ledger's
     utcnow_iso so the stamped created_at lands exactly where the test needs
-    it relative to a period boundary.
+    it relative to a period boundary, and defaults business_date to the
+    tz-correct local day of that timestamp (see _record_sale_at's docstring).
     """
     import app.services.ledger as ledger_module
 
@@ -265,12 +293,13 @@ def _record_writeoff_at(
         qty_delta=-qty,
         payload={"reason_code": reason_code, "note": ""},
         batch_id=batch_id,
+        business_date=business_date or _local_day_of(iso),
     )
 
 
 def test_writeoff_report_groups_by_reason(session, product, monkeypatch):
     """Result order follows WRITEOFF_REASONS' own key order (damaged, expired, ...)."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_writeoff_at(
@@ -291,7 +320,7 @@ def test_writeoff_report_groups_by_reason(session, product, monkeypatch):
 
 
 def test_writeoff_report_excludes_reason_with_zero_writeoffs(session, product, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_writeoff_at(
@@ -307,7 +336,7 @@ def test_writeoff_report_excludes_reason_with_zero_writeoffs(session, product, m
 
 def test_writeoff_report_includes_deleted_product_for_past_period(session, product, monkeypatch):
     """RESEARCH Pitfall 5: same rule as sales_profit_report - never filter deleted_at."""
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_writeoff_at(
@@ -322,7 +351,7 @@ def test_writeoff_report_includes_deleted_product_for_past_period(session, produ
 
 
 def test_writeoff_report_excludes_outside_period(session, product, monkeypatch):
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     just_inside = "2026-07-10T20:59:59+00:00"  # 23:59:59 local, still July 10
     just_outside = "2026-07-10T21:00:00+00:00"  # 00:00:00 local July 11
 
@@ -580,7 +609,7 @@ def test_top_selling_orders_by_units(session, product, monkeypatch):
     session.add(other)
     session.commit()
 
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
 
     _record_sale_at(
@@ -605,7 +634,7 @@ def test_top_selling_respects_limit(session, monkeypatch):
         products.append(p)
     session.commit()
 
-    start_iso, end_iso = local_day_bounds_utc(DAY, DAY, TZ)
+    start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid_day_iso = "2026-07-10T10:00:00+00:00"
     for p in products:
         _record_sale_at(
@@ -614,6 +643,138 @@ def test_top_selling_respects_limit(session, monkeypatch):
 
     result = top_selling_products(session, start_iso, end_iso)
     assert len(result) == 10
+
+
+# --- Phase 33 / DATE-03: the three switched reports bucket by the BUSINESS date --
+#
+# The shared fixture shape (VA-13) is one row whose two dates disagree: it was
+# ENTERED on ENTRY_DAY but the goods moved on DAY. Every test below asserts the
+# same pair — the row IS in DAY's report and is NOT in ENTRY_DAY's — which is
+# the only assertion that distinguishes "switched" from "happens to agree".
+
+ENTRY_DAY = date(2026, 9, 20)
+ENTRY_DAY_ISO = "2026-09-20T10:00:00+00:00"  # 13:00 local, unambiguously Sep 20
+
+
+def test_sales_report_buckets_back_dated_row_by_business_date(session, product, monkeypatch):
+    """DATE-03: a sale entered on Sep 20 for goods that moved on Jul 10 belongs to JULY."""
+    _record_sale_at(
+        session,
+        monkeypatch,
+        ENTRY_DAY_ISO,
+        product=product,
+        qty=4,
+        price_cents=1000,
+        cost_cents=600,
+        business_date=DAY.isoformat(),
+    )
+
+    in_business_period = sales_profit_report(session, *business_date_bounds(DAY, DAY))
+    assert in_business_period["totals"]["units_sold"] == 4
+    assert in_business_period["totals"]["revenue_cents"] == 4000
+
+    # ...and it is NOT in the period it was physically entered in.
+    in_entry_period = sales_profit_report(session, *business_date_bounds(ENTRY_DAY, ENTRY_DAY))
+    assert in_entry_period["totals"]["units_sold"] == 0
+    assert in_entry_period["by_product"] == []
+
+
+def test_sales_report_includes_the_last_day_of_the_range(session, product, monkeypatch):
+    """Pitfall D: the bounds contract is CLOSED — a row ON `end_day` must be IN.
+
+    One predicate left as `< end_day` would silently drop the whole last day of
+    every period the operator ever selects, and no other test in this file has a
+    multi-day range that would notice.
+    """
+    _record_sale_at(
+        session, monkeypatch, ENTRY_DAY_ISO, product=product, qty=7, price_cents=1000,
+        cost_cents=500, business_date=DAY.isoformat(),
+    )
+
+    start, end = business_date_bounds(DAY - timedelta(days=2), DAY)
+    assert sales_profit_report(session, start, end)["totals"]["units_sold"] == 7
+
+
+def test_writeoff_report_buckets_back_dated_row_by_business_date(session, product, monkeypatch):
+    """DATE-03 per REASON: a grand-total assertion would net out the bucketing error."""
+    _record_writeoff_at(
+        session, monkeypatch, "2026-07-10T10:00:00+00:00", product=product, qty=2,
+        reason_code="damaged",
+    )
+    _record_writeoff_at(
+        session, monkeypatch, ENTRY_DAY_ISO, product=product, qty=5, reason_code="expired",
+        business_date=DAY.isoformat(),
+    )
+
+    report = writeoff_report(session, *business_date_bounds(DAY, DAY))
+    by_code = {entry["reason_code"]: entry["qty"] for entry in report["by_reason"]}
+    # The PER-REASON line is the assertion that matters: total_qty == 7 would also
+    # hold if «expired» had been dropped and «damaged» double-counted.
+    assert by_code == {"damaged": 2, "expired": 5}
+
+    entry_period = writeoff_report(session, *business_date_bounds(ENTRY_DAY, ENTRY_DAY))
+    assert entry_period["by_reason"] == []
+    assert entry_period["total_qty"] == 0
+
+
+def test_top_selling_ranking_follows_the_business_date(session, product, monkeypatch):
+    """DATE-03: a period error here changes the RANKING, not merely a total."""
+    other = Product(id=new_id(), code="TEST-002", name="Другой товар", quantity=0)
+    session.add(other)
+    session.commit()
+
+    # Entered on time, 5 units.
+    _record_sale_at(
+        session, monkeypatch, "2026-07-10T10:00:00+00:00", product=product, qty=5,
+        price_cents=1000, cost_cents=500,
+    )
+    # Back-dated into the SAME business day, 9 units — this is what flips the order.
+    _record_sale_at(
+        session, monkeypatch, ENTRY_DAY_ISO, product=other, qty=9, price_cents=1000,
+        cost_cents=500, business_date=DAY.isoformat(),
+    )
+
+    ranked = top_selling_products(session, *business_date_bounds(DAY, DAY))
+    assert [(row["product"].id, row["units_sold"]) for row in ranked] == [
+        (other.id, 9),
+        (product.id, 5),
+    ]
+
+    # Bucketed by entry date the back-dated row would rank first ALONE; it does not.
+    assert top_selling_products(session, *business_date_bounds(ENTRY_DAY, ENTRY_DAY)) == []
+
+
+def test_null_business_date_row_still_appears_in_all_three_reports(
+    session, product, past_sale, customer
+):
+    """DATE-08 at the report layer: a pre-0027 row (business_date IS NULL) is
+    bucketed by substr(created_at, 1, 10) through business_date_expr's COALESCE
+    and must NOT vanish from a period report."""
+    past_sale(customer, product, created_at="2026-07-10T10:00:00+00:00", qty=3)
+
+    start, end = business_date_bounds(DAY, DAY)
+    assert sales_profit_report(session, start, end)["totals"]["units_sold"] == 3
+    assert top_selling_products(session, start, end)[0]["units_sold"] == 3
+
+
+def test_stale_products_is_not_switched_to_business_date(session, product, monkeypatch):
+    """D-25, pinned as a TEST so the next sweep cannot silently «finish» it.
+
+    stale_products answers «how long since this product last MOVED» — real
+    elapsed time, not the operator's bookkeeping period. A sale ENTERED today
+    but back-dated a year therefore makes the product fresh (its last movement
+    was today), which is the opposite of what a business-date bucket would say.
+    """
+    product.stale_days = 0
+    session.commit()
+
+    _record_sale_at(
+        session, monkeypatch, _iso_days_ago(0), product=product, qty=1, price_cents=1000,
+        cost_cents=500, business_date="2025-01-01",
+    )
+
+    # Entered today -> NOT stale, even though its business date is a year old.
+    assert [row for row in stale_products(session) if row["product"].id == product.id] == []
 
 
 def test_stale_includes_never_sold(session, product):

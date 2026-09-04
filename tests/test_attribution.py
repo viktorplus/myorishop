@@ -22,7 +22,7 @@ from datetime import date
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import local_day_bounds_utc, new_id
+from app.core import business_date_bounds, new_id
 from app.models import CashMovement, Operation, User, Warehouse
 from app.services import auth
 from app.services.ledger import next_seq
@@ -225,7 +225,12 @@ def test_filter_by_user_reports(client, session, product):
     _seed_sale_op(session, product, author_id=user_b.id, created_by=user_b.display_name, qty=5)
     _seed_sale_op(session, product, author_id=None, created_by="operator", qty=3)
 
-    start_iso, end_iso = local_day_bounds_utc(FILTER_DAY, FILTER_DAY, settings.display_tz)
+    # Phase 33 (DATE-03): sales_profit_report now filters on business_date_expr,
+    # a date-only column — it must be given date-only bounds. Feeding it
+    # local_day_bounds_utc's UTC TIMESTAMP bounds still passes at Europe/Moscow by
+    # the lexicographic accident documented in core.business_date_bounds, and DROPS
+    # every row at UTC and at any negative offset (i.e. on a UTC CI runner).
+    start_iso, end_iso = business_date_bounds(FILTER_DAY, FILTER_DAY)
 
     # Service: author filter narrows totals to that operator; None = all authors.
     rep_a = sales_profit_report(session, start_iso, end_iso, user_a.id)

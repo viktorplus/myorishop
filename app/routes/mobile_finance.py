@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import CURRENCIES, DEFAULT_CURRENCY, local_day_bounds_utc
+from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds, local_day_bounds_utc
 from app.db import get_session
 from app.models import CASH_BUCKETS
 from app.routes import templates
@@ -79,9 +79,7 @@ def _metrics_context(session: Session, from_: str, to: str, currency: str = DEFA
     period = _resolve_period(from_, to, settings.display_tz)
     metrics = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         gross = sales_profit_report(session, start_iso, end_iso, currency=currency)
         expense = cash_expense_total(session, start_iso, end_iso, currency=currency)
         metrics = {
@@ -344,9 +342,7 @@ def mobile_finance_report(
     period = _resolve_period(from_, to, settings.display_tz)
     report = None
     if not period["error"]:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
         report = cash_flow_report(session, start_iso, end_iso, currency=currency)
 
     context = {
@@ -374,6 +370,10 @@ def mobile_finance_report_csv(
     export_service.stream_cash_movements_csv used by the desktop route (from/to
     only, no filename/path param — plain download route, no Request/template)."""
     period = _resolve_period(from_, to, settings.display_tz)
+    # Phase 33 (DATE-03): same deliberate exception as app/routes/finance.py's CSV
+    # route — stream_cash_movements_csv still filters `CashMovement.created_at`,
+    # so this bounds site stays on the timestamp helper until plan 33-09 switches
+    # that predicate. Both CSV routes must flip in ONE commit with it (T-33-20).
     start_iso, end_iso = local_day_bounds_utc(
         period["from_date"], period["to_date"], settings.display_tz
     )

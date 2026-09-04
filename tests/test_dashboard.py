@@ -49,7 +49,20 @@ def _ensure_batch(session, product):
     return batch.id
 
 
-def _record_sale_at(session, monkeypatch, iso, *, product, qty, price_cents, cost_cents=None):
+def _local_day_of(iso: str) -> str:
+    """tz-correct LOCAL day of a UTC timestamp — mirrors tests/test_reports.py.
+
+    Phase 33 (DATE-03): the three seeders below stamp this as `business_date`, so
+    a fixture written "at" a past timestamp keeps landing in that past period now
+    that period_metrics buckets by the business date.
+    """
+    return datetime.fromisoformat(iso).astimezone(ZoneInfo(TZ)).date().isoformat()
+
+
+def _record_sale_at(
+    session, monkeypatch, iso, *, product, qty, price_cents, cost_cents=None,
+    business_date=None,
+):
     """Mirrors tests/test_reports.py::_record_sale_at."""
     import app.services.ledger as ledger_module
 
@@ -63,6 +76,7 @@ def _record_sale_at(session, monkeypatch, iso, *, product, qty, price_cents, cos
         unit_cost_cents=cost_cents,
         unit_price_cents=price_cents,
         batch_id=batch_id,
+        business_date=business_date or _local_day_of(iso),
     )
 
 
@@ -79,15 +93,21 @@ def _record_receipt_at(session, monkeypatch, iso, *, product, qty, cost_cents=10
         unit_cost_cents=cost_cents,
         unit_price_cents=price_cents,
         batch_id=batch_id,
+        business_date=_local_day_of(iso),
     )
 
 
-def _record_cash_at(session, monkeypatch, iso, *, category, amount_cents):
+def _record_cash_at(session, monkeypatch, iso, *, category, amount_cents, business_date=None):
     """Mirrors tests/test_finance_reports.py::_record_cash_at."""
     import app.services.finance as finance_module
 
     monkeypatch.setattr(finance_module, "utcnow_iso", lambda: iso)
-    return record_cash_movement(session, category=category, amount_cents=amount_cents)
+    return record_cash_movement(
+        session,
+        category=category,
+        amount_cents=amount_cents,
+        business_date=business_date or _local_day_of(iso),
+    )
 
 
 class _FrozenDatetime:
@@ -226,6 +246,46 @@ def test_dashboard_metrics_week_and_month_boundaries_match_resolve_period(
     expected_month = period_metrics(session, month_start, month_end, TZ)
     assert metrics["week"] == expected_week
     assert metrics["month"] == expected_month
+
+
+def test_period_metrics_buckets_back_dated_rows_by_business_date(session, product, monkeypatch):
+    """DATE-03: the day/week/month tiles follow the BUSINESS date.
+
+    Both halves of period_metrics are exercised — the sale (sales_profit_report)
+    and the cash movement (cash_expense_total) — because they are two different
+    predicates in two different modules and a half-switch would show up as a
+    revenue figure that moved while the expense figure did not.
+
+    The fixture is one May day's business, all of it ENTERED four months later.
+    """
+    business_day = date(2026, 5, 20)
+    entered_iso = "2026-09-20T10:00:00+00:00"
+
+    _record_sale_at(
+        session, monkeypatch, entered_iso, product=product, qty=1, price_cents=1000,
+        cost_cents=600, business_date=business_day.isoformat(),
+    )
+    _record_cash_at(
+        session, monkeypatch, entered_iso, category="withdrawal_rent", amount_cents=-200,
+        business_date=business_day.isoformat(),
+    )
+
+    on_business_day = period_metrics(session, business_day, business_day, TZ)
+    assert on_business_day["revenue_cents"] == 1000
+    assert on_business_day["expense_cents"] == -200
+    assert on_business_day["profit_cents"] == 200  # 400 gross + (-200)
+
+    # The whole May month picks it up too (the week/month tiles, not just today).
+    may = period_metrics(session, date(2026, 5, 1), date(2026, 5, 31), TZ)
+    assert may == on_business_day
+
+    # ...and NOTHING lands on the day it was physically entered.
+    entry_day = date(2026, 9, 20)
+    assert period_metrics(session, entry_day, entry_day, TZ) == {
+        "revenue_cents": 0,
+        "profit_cents": 0,
+        "expense_cents": 0,
+    }
 
 
 # --- stock_summary (DASH-04) -------------------------------------------------
