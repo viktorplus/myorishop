@@ -48,10 +48,12 @@ IMMUTABLE_OPERATION_COLUMNS: frozenset[str] = frozenset(
         "payload",
         "sale_id",
         "batch_id",
+        "reverses_op_id",
         "author_id",
         "device_id",
         "seq",
         "created_at",
+        "business_date",
         "created_by",
     }
 )
@@ -64,10 +66,12 @@ IMMUTABLE_CASH_COLUMNS: frozenset[str] = frozenset(
         "currency",
         "note",
         "sale_id",
+        "reverses_movement_id",
         "author_id",
         "device_id",
         "seq",
         "created_at",
+        "business_date",
         "created_by",
     }
 )

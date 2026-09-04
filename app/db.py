@@ -18,8 +18,10 @@ from app.config import settings
 # 0018_sync_cursor_trigger_relaxation.py carries the frozen v2 copy of the
 # two *_no_update triggers below, and migration
 # 0026_cash_movements_trigger_guards_currency.py carries the frozen v3 copy
-# of cash_movements_no_update (added the `currency` column guard) (WR-06:
-# migrations must never import mutable app code).
+# of cash_movements_no_update (added the `currency` column guard), and
+# migration 0027_ledger_business_date_and_reversal_links.py carries the frozen
+# v4 copy of BOTH *_no_update triggers (WR-06: migrations must never import
+# mutable app code).
 #
 # LOCKSTEP RULE — this constant and migration 0018 must ALWAYS move together.
 # tests/conftest.py builds every test DB from Base.metadata.create_all plus
@@ -34,6 +36,15 @@ from app.config import settings
 # rather than `UPDATE OF` on purpose: a statement setting synced_at AND an
 # immutable column in one go is still rejected. The *_no_delete triggers are
 # unchanged — DELETE stays unconditionally blocked.
+#
+# v4 (Phase 33, DATE-03/DATE-08/REV-*): migration
+# 0027_ledger_business_date_and_reversal_links.py carries the frozen v4 copy
+# of BOTH *_no_update triggers, adding the four new ledger columns to their
+# WHEN enumerations — `operations.business_date`, `operations.reverses_op_id`,
+# `cash_movements.business_date` and `cash_movements.reverses_movement_id`.
+# The two reversal-link columns ship UNUSED but guarded: Phase 34 is the first
+# phase that writes them, and a column that is not enumerated here is freely
+# mutable on an already-synced row (the ledger fails OPEN, silently).
 APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
     """
     CREATE TRIGGER operations_no_update
@@ -48,10 +59,12 @@ APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
       OR NEW.payload          IS NOT OLD.payload
       OR NEW.sale_id          IS NOT OLD.sale_id
       OR NEW.batch_id         IS NOT OLD.batch_id
+      OR NEW.reverses_op_id   IS NOT OLD.reverses_op_id
       OR NEW.author_id        IS NOT OLD.author_id
       OR NEW.device_id        IS NOT OLD.device_id
       OR NEW.seq              IS NOT OLD.seq
       OR NEW.created_at       IS NOT OLD.created_at
+      OR NEW.business_date    IS NOT OLD.business_date
       OR NEW.created_by       IS NOT OLD.created_by
     BEGIN SELECT RAISE(ABORT, 'operations ledger is append-only'); END
     """,
@@ -64,17 +77,19 @@ APPEND_ONLY_TRIGGERS: tuple[str, ...] = (
     CREATE TRIGGER cash_movements_no_update
     BEFORE UPDATE ON cash_movements
     FOR EACH ROW WHEN
-         NEW.id           IS NOT OLD.id
-      OR NEW.category     IS NOT OLD.category
-      OR NEW.amount_cents IS NOT OLD.amount_cents
-      OR NEW.currency     IS NOT OLD.currency
-      OR NEW.note         IS NOT OLD.note
-      OR NEW.sale_id      IS NOT OLD.sale_id
-      OR NEW.author_id    IS NOT OLD.author_id
-      OR NEW.device_id    IS NOT OLD.device_id
-      OR NEW.seq          IS NOT OLD.seq
-      OR NEW.created_at   IS NOT OLD.created_at
-      OR NEW.created_by   IS NOT OLD.created_by
+         NEW.id                   IS NOT OLD.id
+      OR NEW.category             IS NOT OLD.category
+      OR NEW.amount_cents         IS NOT OLD.amount_cents
+      OR NEW.currency             IS NOT OLD.currency
+      OR NEW.note                 IS NOT OLD.note
+      OR NEW.sale_id              IS NOT OLD.sale_id
+      OR NEW.reverses_movement_id IS NOT OLD.reverses_movement_id
+      OR NEW.author_id            IS NOT OLD.author_id
+      OR NEW.device_id            IS NOT OLD.device_id
+      OR NEW.seq                  IS NOT OLD.seq
+      OR NEW.created_at           IS NOT OLD.created_at
+      OR NEW.business_date        IS NOT OLD.business_date
+      OR NEW.created_by           IS NOT OLD.created_by
     BEGIN SELECT RAISE(ABORT, 'cash ledger is append-only'); END
     """,
     """

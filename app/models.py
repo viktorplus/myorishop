@@ -388,6 +388,17 @@ class Operation(Base):
     batch_id: Mapped[str | None] = mapped_column(
         ForeignKey("batches.id", name="fk_operations_batch_id_batches"), index=True
     )
+    # Phase 33 (REV-*): nullable self-link to the operation this row reverses
+    # (сторно). Ships UNUSED but TRIGGER-GUARDED in Phase 33 — nothing writes it
+    # yet; Phase 34 is the first phase that WRITES it. Bare native column in
+    # migration 0027 (no DB-level FK — the sale_id/batch_id/author_id
+    # precedent); the ORM ForeignKey here gives merge insert-ordering +
+    # PostgreSQL portability, so a reversal whose target has not arrived yet
+    # renders as a dangling link instead of rolling back an entire push.
+    reverses_op_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("operations.id", name="fk_operations_reverses_op_id_operations"),
+    )
     # Phase 25 (USER-05): nullable link to the User who authored this row.
     # Mirrors batch_id — bare native column in migration 0017 (no inline DB-FK,
     # the sale_id/batch_id precedent); the ORM ForeignKey gives insert ordering
@@ -399,6 +410,14 @@ class Operation(Base):
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
+    # Phase 33 (DATE-03/DATE-08): the operator's LOCAL calendar day this row is
+    # booked to, "YYYY-MM-DD". Deliberately carries NO `default=` and NO
+    # `server_default=`: SQLAlchemy drops a None-valued key from the INSERT and
+    # substitutes the Python default, so any default would silently convert a
+    # pre-0027 client's deliberate NULL into a value. NULL therefore means
+    # "written by a client that predates this column" and is resolved at READ
+    # time by the COALESCE bucketing (DATE-08) — never backfilled at write time.
+    business_date: Mapped[str | None] = mapped_column(String(10))
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)  # FND-03
     synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
 
@@ -533,6 +552,20 @@ class CashMovement(Base):
     sale_id: Mapped[str | None] = mapped_column(
         ForeignKey("sales.id", name="fk_cash_movements_sale_id_sales"), index=True
     )
+    # Phase 33 (REV-*): nullable self-link to the cash movement this row
+    # reverses (сторно). Ships UNUSED but TRIGGER-GUARDED in Phase 33 — nothing
+    # writes it yet; Phase 34 is the first phase that WRITES it. Bare native
+    # column in migration 0027 (no DB-level FK — the sale_id/author_id
+    # precedent); the ORM ForeignKey gives merge insert-ordering + PostgreSQL
+    # portability, so a reversal whose target has not arrived yet renders as a
+    # dangling link instead of rolling back an entire push.
+    reverses_movement_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "cash_movements.id",
+            name="fk_cash_movements_reverses_movement_id_cash_movements",
+        ),
+    )
     # Phase 25 (USER-05): nullable link to the authoring User. Mirrors sale_id —
     # bare native column in migration 0017; ORM ForeignKey for insert ordering +
     # PostgreSQL portability. NULL for pre-auth rows (never backfilled). The
@@ -544,6 +577,14 @@ class CashMovement(Base):
     device_id: Mapped[str] = mapped_column(String(36), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)  # per-device counter
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)  # UTC ISO text
+    # Phase 33 (DATE-03/DATE-08): twin of Operation.business_date — the
+    # operator's LOCAL calendar day, "YYYY-MM-DD". NO `default=` and NO
+    # `server_default=` on purpose: SQLAlchemy drops a None-valued key from the
+    # INSERT and substitutes the Python default, so a default would silently
+    # convert a pre-0027 client's deliberate NULL into a value. NULL means
+    # "written by a client that predates this column" and is resolved at READ
+    # time by the COALESCE bucketing (DATE-08), never at write time.
+    business_date: Mapped[str | None] = mapped_column(String(10))
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
     synced_at: Mapped[str | None] = mapped_column(String(32))  # v2 sync cursor
 
