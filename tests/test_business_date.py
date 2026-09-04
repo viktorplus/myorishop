@@ -904,13 +904,19 @@ def test_parse_exchange_accepts_iso_and_null_business_date(kind, good):
     assert batch.records[0].data["business_date"] == good
 
 
-@pytest.mark.parametrize("junk", ("не дата", "2026/09/04", "20260904", 12345))
+@pytest.mark.parametrize("junk", ("не дата", "2026/09/04", "04.09.2026", 12345), ids=repr)
 def test_format_ru_date_renders_junk_instead_of_raising(junk):
     """CR-01 layer 2: the display filter never 500s on stored data.
 
     `date.fromisoformat` raising inside a Jinja filter takes out /history,
     /warehouses, the customer tile and both CSV exports for EVERY row, not just
     the bad one — and the append-only triggers mean the row cannot be repaired.
+
+    NOTE the deliberate asymmetry with the parse gate above: `"20260904"` is
+    REFUSED at the wire (no read-side string comparison expects the basic
+    format) but RENDERED here, because `date.fromisoformat` understands it and
+    display is allowed to be lenient. Strict in, lenient out.
     """
     assert format_ru_date(junk) == str(junk)
     assert format_ru_date("2026-09-04") == "04.09.2026"  # the happy path is intact
+    assert format_ru_date("20260904") == "04.09.2026"
