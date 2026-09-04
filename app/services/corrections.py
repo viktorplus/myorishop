@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Batch, Product
 from app.services.dictionary import lookup as dictionary_lookup
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 
 MODE_ERROR = "Неверный режим."
 CODE_ERROR = "Укажите код товара."
@@ -38,12 +38,20 @@ def register_correction(
     note: str,
     batch_id: str = "",
     confirm: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one stock correction atomically; returns (result, errors).
 
     Success: ({"product": ..., "operation": ..., "new_qty": ...}, {}).
     Failure: (None, errors) with RU messages — NOTHING is staged or written
     on any validation error, including the D-10 zero-net-delta rejection.
+
+    DATE-01/DATE-02: `op_date` is the operator's business date for this
+    correction — the day the stock discrepancy actually applies to, which is
+    not always the day it was typed in. Empty means «today» and is NOT an
+    error (parse_op_date returns None and record_operation's Python-side
+    fallback supplies the local day). A malformed or future value sets
+    errors["op_date"] and writes ZERO rows.
 
     LOT-05: the correction targets a specific batch (batch_id). Count mode is
     diffed against the PICKED batch's quantity, not the product total
@@ -93,6 +101,14 @@ def register_correction(
         else:
             errors["quantity"] = DELTA_QTY_ERROR
 
+    # DATE-02: validated WITH the quantity, so a correction submitted with both
+    # a bad value and a bad date surfaces both messages in one 422 instead of
+    # making the operator fix them one round-trip at a time. Deliberately
+    # placed AFTER the shipped mode/code/product/batch guards so their
+    # precedence is byte-unchanged: a correction naming an unknown product
+    # still fails on the code, exactly as it did before this phase.
+    business_date = parse_op_date(op_date, errors)
+
     if errors:
         return None, errors
 
@@ -124,6 +140,14 @@ def register_correction(
             qty_delta=qty_delta,
             payload={"note": note.strip() or None, "mode": mode},
             batch_id=batch.id,
+            # DATE-01: a correction writes ONE row and derives no artifact from
+            # the date, so the possibly-None parsed value is passed straight
+            # through and record_operation's Python-side fallback is the SINGLE
+            # place «today» is resolved. Resolving it here as well would be a
+            # second definition of today for no gain — the write-off precedent
+            # (app/services/writeoffs.py, plan 33-10). Contrast register_transfer,
+            # which writes TWO rows and therefore MUST resolve once up front.
+            business_date=business_date,
             commit=True,
         )
     except (IntegrityError, ValueError):

@@ -13,13 +13,21 @@ everything else is service level. Selectors: count_vs_delta,
 zero_net_noop, ledger_equals_cache, ops_replaced.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import open_batches
-from app.services.corrections import register_correction  # noqa: F401
-from app.services.ledger import compute_stock, record_operation
+from app.services.corrections import DELTA_QTY_ERROR, register_correction  # noqa: F401
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    compute_stock,
+    record_operation,
+)
 
 
 def _correction_ops(session):
@@ -211,3 +219,111 @@ def test_web_ops_replaced(client, session, stocked_product):
         },
     )
     assert new_response.status_code == 200
+
+
+# --- DATE-01/DATE-02: the business date on корректировка (VA-14) ------------
+
+
+def test_correction_backdated_lands_on_the_ledger_row(session, stocked_product):
+    """A past op_date is stored on the correction's ledger row, while
+    created_at keeps recording when it was actually typed in (T-33-18)."""
+    batch = _only_batch(session, stocked_product)
+
+    result, errors = register_correction(
+        session, code=stocked_product.code, mode="delta", value_raw="2", note="",
+        batch_id=batch.id, op_date="2026-08-15",
+    )
+
+    assert errors == {}
+    ops = _correction_ops(session)
+    assert len(ops) == 1
+    assert ops[0].business_date == "2026-08-15"
+    # The audit timestamp is untouched — the operator dated the operation, not
+    # the moment of entry.
+    assert ops[0].created_at[:10] != "2026-08-15"
+    assert result["operation"].business_date == "2026-08-15"
+
+
+def test_correction_without_op_date_stamps_today(session, stocked_product):
+    """An empty value is not an error: it means «today», resolved by
+    record_operation's Python-side fallback (the single resolution point)."""
+    batch = _only_batch(session, stocked_product)
+
+    _result, errors = register_correction(
+        session, code=stocked_product.code, mode="delta", value_raw="2", note="",
+        batch_id=batch.id, op_date="",
+    )
+
+    assert errors == {}
+    ops = _correction_ops(session)
+    assert len(ops) == 1
+    assert ops[0].business_date == local_today_iso(settings.display_tz)
+
+
+def test_correction_future_op_date_refused_with_zero_writes(session, stocked_product):
+    """DATE-02: a future date is refused in Russian and NOTHING is written —
+    asserted by counting ledger rows, not by trusting the early return."""
+    batch = _only_batch(session, stocked_product)
+    before = len(_correction_ops(session))
+    qty_before = batch.quantity
+
+    tomorrow = (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=1)
+    ).isoformat()
+    result, errors = register_correction(
+        session, code=stocked_product.code, mode="delta", value_raw="2", note="",
+        batch_id=batch.id, op_date=tomorrow,
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(_correction_ops(session)) == before
+    session.expire_all()
+    session.refresh(batch)
+    assert batch.quantity == qty_before
+
+
+def test_correction_malformed_op_date_refused_with_zero_writes(session, stocked_product):
+    """A typo gets the OTHER message (D-12: two distinct mistakes, two
+    distinct messages), also with zero writes."""
+    batch = _only_batch(session, stocked_product)
+    before = len(_correction_ops(session))
+
+    result, errors = register_correction(
+        session, code=stocked_product.code, mode="delta", value_raw="2", note="",
+        batch_id=batch.id, op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert errors["op_date"] != OP_DATE_FUTURE_ERROR
+    assert len(_correction_ops(session)) == before
+
+
+def test_correction_bad_date_and_bad_quantity_reported_together(session, stocked_product):
+    """The date is validated WITH the quantity, so one 422 carries both
+    messages instead of forcing two round-trips."""
+    batch = _only_batch(session, stocked_product)
+
+    result, errors = register_correction(
+        session, code=stocked_product.code, mode="delta", value_raw="abc", note="",
+        batch_id=batch.id, op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert errors["quantity"] == DELTA_QTY_ERROR
+    assert _correction_ops(session) == []
+
+
+def test_correction_unknown_code_still_fails_on_the_code(session, stocked_product):
+    """Shipped precedence is byte-unchanged: the product guard runs BEFORE the
+    date parse, so an unknown code still reports the code, not the date."""
+    result, errors = register_correction(
+        session, code="NOPE-NOPE", mode="delta", value_raw="1", note="",
+        batch_id="whatever", op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert "op_date" not in errors
+    assert "code" in errors

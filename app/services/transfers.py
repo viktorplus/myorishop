@@ -15,11 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import new_id, to_cents
+from app.config import settings
+from app.core import local_today_iso, new_id, to_cents
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses
 from app.services.catalog import PRICE_ERROR
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 BATCH_REQUIRED_ERROR = "Выберите партию."
@@ -50,6 +51,7 @@ def register_transfer(
     new_comment: str = "",
     cost_raw: str = "",
     confirm: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one stock transfer atomically; returns (result, errors).
 
@@ -64,6 +66,12 @@ def register_transfer(
 
     `name` is accepted for form-echo symmetry with the receipt/write-off
     services but is never used to rename a product.
+
+    DATE-01/DATE-02: `op_date` is the operator's business date for the move.
+    Empty means «today» and is NOT an error; a malformed or future value sets
+    errors["op_date"] and writes ZERO rows. Because a transfer is TWO ledger
+    rows, the date is resolved exactly once and BOTH rows are stamped with the
+    same value — see the pairing comment at the two record_operation calls.
     """
     errors: dict[str, str] = {}
     code = code.strip()
@@ -76,6 +84,12 @@ def register_transfer(
     qty = int(qty_text) if qty_text.isascii() and qty_text.isdigit() else 0
     if qty <= 0:
         errors["quantity"] = QTY_ERROR
+
+    # DATE-02: validated WITH the code/qty pair so a transfer submitted with
+    # both a bad quantity and a bad date reports both in one 422. Every guard
+    # below (product, batch, warehouse, currency, split-override, oversell)
+    # keeps its shipped precedence unchanged.
+    business_date = parse_op_date(op_date, errors)
 
     if errors:
         return None, errors
@@ -172,13 +186,29 @@ def register_transfer(
     )
     session.add(dest)
 
+    # DATE-01/T-33-31: the today-fallback is resolved HERE, once, into a single
+    # string that both halves of the transfer are stamped with. Passing the
+    # possibly-None `business_date` down instead would let each
+    # record_operation call resolve «today» independently, microseconds apart —
+    # identical on 364 days a year and a day apart across local midnight. A
+    # transfer whose halves landed on different business dates would read as
+    # stock leaving one warehouse in one period and arriving in another, the
+    # two rows would never net to zero within a single period's report, and
+    # Phase 34's reversal — which reverses a transfer as one unit or not at
+    # all — would inherit the inconsistency. One value, both rows, always.
+    resolved_business_date = business_date or local_today_iso(settings.display_tz)
+
     try:
+        # The outbound and inbound rows are ONE operation split across two
+        # ledger entries: same `resolved_business_date` on both, never
+        # re-parsed and never re-derived per row.
         record_operation(
             session,
             type_="transfer",
             product_id=product.id,
             qty_delta=-qty,
             batch_id=source.id,
+            business_date=resolved_business_date,
             commit=False,
         )
         record_operation(
@@ -187,6 +217,7 @@ def register_transfer(
             product_id=product.id,
             qty_delta=qty,
             batch_id=dest.id,
+            business_date=resolved_business_date,
             commit=False,
         )
         session.commit()

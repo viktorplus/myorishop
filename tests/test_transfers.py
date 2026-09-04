@@ -5,11 +5,22 @@ collections at once (OPERATION_TYPES, OPERATION_TYPE_LABELS,
 STOCK_AFFECTING_TYPES) or record_operation silently mistreats it.
 """
 
-from app.core import new_id
-from app.models import OPERATION_TYPE_LABELS, OPERATION_TYPES, Batch, Warehouse
+from datetime import date, timedelta
+
+from sqlalchemy import select
+
+from app.config import settings
+from app.core import local_today_iso, new_id
+from app.models import OPERATION_TYPE_LABELS, OPERATION_TYPES, Batch, Operation, Warehouse
 from app.services.batches import open_batches
-from app.services.ledger import STOCK_AFFECTING_TYPES, rebuild_stock, record_operation
-from app.services.transfers import recent_transfers, register_transfer
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    STOCK_AFFECTING_TYPES,
+    rebuild_stock,
+    record_operation,
+)
+from app.services.transfers import QTY_ERROR, recent_transfers, register_transfer
 
 
 def test_transfer_type_registered():
@@ -858,3 +869,115 @@ def test_web_transfers_lookup_unmatched_code_still_returns_204(client):
     response = client.get("/transfers/lookup", params={"code": "NOPE-NOPE"})
 
     assert response.status_code == 204
+
+
+# --- DATE-01/DATE-02: the business date on перемещение (VA-14) --------------
+
+
+def _transfer_ops(session):
+    return session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+
+
+def test_backdated_transfer_dates_BOTH_of_its_ledger_rows_identically(
+    session, stocked_product
+):
+    """T-33-31: a transfer is TWO rows and one operation. Both halves carry the
+    SAME business date — asserted as a set of size one, by identity, not by
+    comparing each row to a literal, so a future edit that re-derives the date
+    per row reddens even if both derivations happen to agree on the day."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session, code=stocked_product.code, name="", qty_raw="3",
+        batch_id=source.id, dest_warehouse_id=dest_wh.id, op_date="2026-08-15",
+    )
+
+    assert errors == {}
+    assert result is not None
+    ops = _transfer_ops(session)
+    assert len(ops) == 2
+    assert sorted(op.qty_delta for op in ops) == [-3, 3]
+    # The load-bearing assertion: ONE business date across BOTH halves.
+    assert len({op.business_date for op in ops}) == 1
+    assert ops[0].business_date == "2026-08-15"
+    # created_at still records when it was typed in (T-33-18).
+    assert all(op.created_at[:10] != "2026-08-15" for op in ops)
+
+
+def test_transfer_without_op_date_stamps_today_on_both_rows(session, stocked_product):
+    """An empty value means «today» — and the resolve-once rule still holds, so
+    the two rows cannot straddle local midnight."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    _result, errors = register_transfer(
+        session, code=stocked_product.code, name="", qty_raw="3",
+        batch_id=source.id, dest_warehouse_id=dest_wh.id, op_date="",
+    )
+
+    assert errors == {}
+    ops = _transfer_ops(session)
+    assert len(ops) == 2
+    assert len({op.business_date for op in ops}) == 1
+    assert ops[0].business_date == local_today_iso(settings.display_tz)
+
+
+def test_transfer_future_op_date_refused_with_zero_writes(session, stocked_product):
+    """DATE-02: a future date is refused in Russian; NEITHER row is written and
+    no destination batch is leaked (the dest Batch is session.add()ed inside
+    this function, so a validation gap here would orphan one)."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+    before = len(_transfer_ops(session))
+    batches_before = len(session.scalars(select(Batch)).all())
+    qty_before = source.quantity
+
+    tomorrow = (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=1)
+    ).isoformat()
+    result, errors = register_transfer(
+        session, code=stocked_product.code, name="", qty_raw="3",
+        batch_id=source.id, dest_warehouse_id=dest_wh.id, op_date=tomorrow,
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(_transfer_ops(session)) == before
+    assert len(session.scalars(select(Batch)).all()) == batches_before
+    session.expire_all()
+    session.refresh(source)
+    assert source.quantity == qty_before
+
+
+def test_transfer_malformed_op_date_refused_with_zero_writes(session, stocked_product):
+    """A typo gets the OTHER message (D-12), also with zero writes."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+    before = len(_transfer_ops(session))
+
+    result, errors = register_transfer(
+        session, code=stocked_product.code, name="", qty_raw="3",
+        batch_id=source.id, dest_warehouse_id=dest_wh.id, op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert errors["op_date"] != OP_DATE_FUTURE_ERROR
+    assert len(_transfer_ops(session)) == before
+
+
+def test_transfer_bad_date_and_bad_quantity_reported_together(session, stocked_product):
+    """The date rides alongside the shipped code/qty validation block."""
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session, code=stocked_product.code, name="", qty_raw="0",
+        batch_id=source.id, dest_warehouse_id=dest_wh.id, op_date="15.08.2026",
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert errors["quantity"] == QTY_ERROR
+    assert _transfer_ops(session) == []
