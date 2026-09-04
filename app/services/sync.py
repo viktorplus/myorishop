@@ -233,3 +233,43 @@ def current_schema_version(session: Session) -> str:
     """
     context = MigrationContext.configure(session.connection())
     return context.get_current_revision() or ""
+
+
+def push_schema_ok(client_schema: str, server_schema: str) -> bool:
+    """Whether a pushed batch's schema version is acceptable to merge (SYNC-10).
+
+    Sibling of :func:`current_schema_version` by design (D-02): the push gate is
+    the sync surface's OWN predicate. The Phase-30 bundle-upload gate
+    ``schema_version_ok`` is deliberately NOT reused, NOT imported and NOT
+    modified (D-02 / 33-PATTERNS.md AP-5) — its result page is locked by
+    30-UI-SPEC.
+
+    Two load-bearing differences from that bundle predicate:
+
+    1. **The escape hatch is on BOTH sides** (D-03): True when either argument is
+       falsy. The whole test suite builds its schema with
+       ``Base.metadata.create_all``, so there is no ``alembic_version`` table and
+       :func:`current_schema_version` returns "" on the client half as well as
+       the server half. A server-only hatch would redden the shipped sync suite
+       wholesale.
+
+    2. **The comparison is ASYMMETRIC, not exact-match** (D-01):
+       ``client_schema <= server_schema``. Only a client AHEAD of the receiver is
+       refused — that is the one direction that loses data, because
+       ``merge._ledger_row`` projects an incoming batch through the RECEIVER's
+       columns, silently drops the unknown key, returns 200, and the client then
+       stamps ``synced_at``. A BEHIND client is accepted ON PURPOSE: its rows land
+       with the newer columns NULL and bucket via the read-time COALESCE, and
+       refusing it would cut the fleet off for an unbounded window because clients
+       check for updates ONCE at startup (``app/main.py:118-136``).
+
+    The ``<=`` comparison is LEXICOGRAPHIC, so it is only meaningful while every
+    Alembic revision id is a fixed-width numeric string ("0026", "0027", ...).
+    That invariant is not decorative — it is enforced by the tripwire
+    ``tests/test_migrations.py::test_revision_ids_are_fixed_width`` (D-04, plan
+    33-03). If that test ever has to be relaxed, this predicate must switch to a
+    parsed comparison first.
+    """
+    if not client_schema or not server_schema:
+        return True
+    return client_schema <= server_schema
