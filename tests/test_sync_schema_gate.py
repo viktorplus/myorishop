@@ -200,7 +200,10 @@ def test_refused_push_leaves_rows_unsynced(
 
     result = sync_client.run_sync_once(session, client=pair.client)
 
-    assert result.status == "error"
+    # Plan 33-02 (D-08) gave the 409 its own status: when this test was written
+    # a refusal still collapsed into the generic `error`. The SYNC-11 property
+    # below — not the status label — is what this case exists to pin.
+    assert result.status == "schema_mismatch"
     assert result.pushed == 0
     session.expire_all()
     assert sync_client.unsynced_count(session) == unsynced_before
