@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: "Completed 33-03-PLAN.md (SYNC-12/13: alembic_engine fixture + migration tripwires VA-5/6/7 + merge pins VA-3/4)"
-last_updated: "2026-09-04T09:53:21.881Z"
+stopped_at: Completed 33-04-PLAN.md (V13/V14 measured on s1 + 33-ROLLOUT.md written)
+last_updated: "2026-09-04T10:00:01.355Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 4 of 15
+Plan: 5 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 3/15 done (33-01, 33-02, 33-03) |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 4/15 done (33-01, 33-02, 33-03, 33-04) |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -42,7 +42,10 @@ Last activity: 2026-09-04
 `alembic current` = **`0026 (head)`**; effective **`DISPLAY_TZ` = `Europe/Moscow`**, supplied by the
 `app/config.py:76` fallback — there is no `DISPLAY_TZ` line in `.env.production` and the container
 env value is empty. That timezone is the literal that must be baked into migration `0027`'s
-backfill (plan 33-04). Do not re-measure; do not assume `.env.production` sets it.
+backfill. Do not re-measure; do not assume `.env.production` sets it.
+**Now recorded permanently in `.planning/phases/33-back-dated-operations/33-ROLLOUT.md`** (plan
+33-04, committed) together with the exact `_DISPLAY_TZ` line, the LOCKED rollout order and the
+post-migration smoke SQL — read that file, not this note, before writing or applying `0027`.
 
 ## Performance Metrics
 
@@ -116,6 +119,7 @@ backfill (plan 33-04). Do not re-measure; do not assume `.env.production` sets i
 | Phase 33 P01 | 32min | 3 tasks | 4 files |
 | Phase 33 P02 | 24min | 3 tasks | 6 files |
 | Phase 33 P03 | 22min | 3 tasks | 4 files |
+| Phase 33 P04 | 18min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -220,6 +224,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 33-03 (D-04): test_revision_ids_are_fixed_width now enforces push_schema_ok's unstated precondition — every Alembic revision/down_revision literal is a 4-digit string; if it is ever relaxed, push_schema_ok must switch to a parsed comparison in the same commit.
 - [Phase ?]: 33-03: SYNC-12 is satisfied by two PINNING tests, not code — app/services/merge.py is byte-unchanged. Never add a None-filter to _ledger_row: it would break DATE-08 by suppressing the deliberate NULL a pre-update client must produce (AP-3).
 - [Phase ?]: 33-03: migration 0027 must add its four columns with add_column only — 0024's batch_alter_table drop_column is what silently destroys both cash_movements triggers on downgrade; VA-6 now guards that.
+- [Phase ?]: 33-04 (V14, MEASURED on s1 2026-09-04): migration 0027 bakes _DISPLAY_TZ = "Europe/Moscow" as a file-local literal (WR-06; the _DEFAULT_CURRENCY precedent at 0024:30). DISPLAY_TZ is absent from s1's .env.production AND empty in the container, so the effective value comes from the app/config.py:76 fallback — measured with two read-only commands, never assumed from the default.
+- [Phase ?]: 33-04 (V13, MEASURED on s1 2026-09-04): s1's alembic current = 0026 (head), so the new revision really is 0027 and the rollout applies exactly one revision. s1 repo HEAD 9b727af.
+- [Phase ?]: 33-04: fleet timezone divergence — a client whose display_tz differs from s1's computes a DIFFERENT business date for the same row near local midnight — is ACCEPTED and named, not solved; 0027's module docstring must name it too (33-ROLLOUT.md section 3).
 
 ### Pending Todos
 
@@ -245,12 +252,17 @@ None yet.
   `.planning/v2.0-MILESTONE-AUDIT.md` for the full breakdown. Recommend a short
   manual browser pass before relying heavily on the rebuilt sale form.
 
-- ⚠️ [v5.0 roadmap, 2026-09-04] **Nothing about the s1 server was verified by research** —
-  no shell was run by any research agent. `V13` (is s1's `alembic_version` at `0026`?)
-  and `V14` (what `display_tz` does s1's `.env.production` set? — it parameterises the
-  backfill) must both be answered before Phase 33's rollout runbook is executable.
-  Every count and `path:line` in the research documents is a snapshot at `b4ca98c`;
-  re-measure at plan time rather than quoting them.
+- ✅ [v5.0 roadmap, 2026-09-04 — RESOLVED by plan 33-04, same day] **Nothing about the s1
+  server was verified by research** — no shell was run by any research agent. `V13` (is s1's
+  `alembic_version` at `0026`?) and `V14` (what `display_tz` does s1's `.env.production` set?
+  — it parameterises the backfill) both had to be answered before Phase 33's rollout runbook
+  was executable. **Both are now MEASURED read-only on s1 and written into
+  `33-ROLLOUT.md` §1:** `alembic current` = `0026 (head)`; effective `DISPLAY_TZ` =
+  `Europe/Moscow` from the `app/config.py:76` fallback. The residual warning stands: every
+  other count and `path:line` in the research documents is a snapshot at `b4ca98c` and goes
+  stale — re-measure at plan time rather than quoting them. A live example found by 33-04:
+  `33-RESEARCH.md` cites the `batch.schema_version` read site as `app/routes/sync.py:112`;
+  after plan 33-01 landed the gate it is at `:137`.
 
 - ℹ️ [v5.0 roadmap, 2026-09-04] The 4 known-flaky `tests/test_sync_ui.py` failures are
   pre-existing (project memory, `sync_client._run_lock` held by the lifespan auto-sync
@@ -309,8 +321,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T09:53:21.845Z
-Stopped at: Completed 33-03-PLAN.md (SYNC-12/13: alembic_engine fixture + migration tripwires VA-5/6/7 + merge pins VA-3/4)
+Last session: 2026-09-04T10:00:01.082Z
+Stopped at: Completed 33-04-PLAN.md (V13/V14 measured on s1 + 33-ROLLOUT.md written)
 Resume file: None
 
 ## Operator Next Steps

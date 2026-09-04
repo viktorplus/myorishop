@@ -119,8 +119,8 @@ Filled by the roadmapper 2026-09-04. Every REQ-ID maps to **exactly one** phase 
 |--------|-------|--------|
 | SYNC-10 | Phase 33 | Complete (33-01 server gate + 33-02 client half) |
 | SYNC-11 | Phase 33 | Complete (33-01 VA-2 + 33-02 client-boundary test) |
-| SYNC-12 | Phase 33 | Not started |
-| SYNC-13 | Phase 33 | Not started |
+| SYNC-12 | Phase 33 | Complete (33-03 VA-3 pinning test; no code change — SQLAlchemy already substitutes the default) |
+| SYNC-13 | Phase 33 | Complete (33-03 alembic_engine + VA-5 trigger diff against an `alembic upgrade head` DB) |
 | DATE-01 | Phase 33 | Not started |
 | DATE-02 | Phase 33 | Not started |
 | DATE-03 | Phase 33 | Not started |
