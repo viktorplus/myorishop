@@ -493,3 +493,15 @@ button.mobile-card.selected:hover { background: #e8effd; }
 .contact-row input {
   flex: 1;
 }
+
+/* DATE-01/D-10 (Phase 33): the business-date field must render on its own row
+   on every ledger surface. Four of the 14 forms are bare <form>s and therefore
+   inherit `form { display:flex; flex-wrap:wrap }` (above) — the 3 mobile wizard
+   shells (where the field would otherwise compete for a row with #wizard-step)
+   and #sale-form (where it would sit beside the muted «Если товара с таким
+   кодом ещё нет…» hint, sale_form.html:85). Inside .stacked-form
+   (display:block) this rule is inert. No new colour, no new spacing token —
+   .field's own 16px margin still applies. */
+.field.op-date {
+  flex-basis: 100%;
+}

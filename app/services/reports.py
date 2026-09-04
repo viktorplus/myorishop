@@ -38,6 +38,45 @@ def operation_currency_clause(currency: str):
     return func.coalesce(Warehouse.currency, DEFAULT_CURRENCY) == currency
 
 
+# Home-placement rationale: this module imports only `app.config`, `app.core`
+# and `app.models`, so `export.py`, `operations.py`, `customers.py`,
+# `finance_reports.py` and `warehouses.py` can all import from it without a
+# cycle — and `dashboard.py:25` already does today. `app/core.py` is NOT the
+# home because it imports no SQLAlchemy at all.
+def business_date_expr(model):
+    """The shared READ expression for the business date (DATE-03/DATE-08).
+
+    `model` is the mapped class that carries the column — `Operation` or
+    `CashMovement`; both tables have it and five different service modules
+    need the same expression, so it is parameterised rather than duplicated.
+
+    `business_date` is NULLABLE with no default of any kind, and that NULL is
+    a meaningful sentinel: it means "this row was written by a client that
+    predates the column". The fallback is `substr(created_at, 1, 10)`, so such
+    a row is bucketed by its entry date instead of VANISHING from every
+    period-scoped report — which is what makes DATE-08 a live property rather
+    than a fixture-only branch. It cannot be replaced by a one-off backfill:
+    rows arriving from an un-upgraded client AFTER the migration have
+    `business_date IS NULL` forever.
+
+    The two-format asymmetry is deliberate and must NOT be "unified":
+    this READ fallback is a UTC prefix and is knowingly NOT the tz-correct
+    local day — for a row a pre-update client wrote there is no better
+    information available, and DATE-08 only requires that the row still
+    appears, bucketed by its entry date. Migration 0027's BACKFILL, by
+    contrast, holds the full timestamp and MUST be tz-correct (it converts
+    through ZoneInfo), or an evening row moves into the wrong month.
+
+    Callers MUST obey the CLOSED bounds contract of `core.business_date_bounds`
+    — `>= start` AND `<= end`, never `<` (see that docstring). This must also
+    stay a portable ORM construct: `func.substr` renders as `substr(...)` on
+    both SQLite and PostgreSQL. Never reach for `strftime`, `date_trunc`,
+    `::date` or `SUBSTRING(... FROM ... FOR ...)` (CLAUDE.md PC-2). This is ONE
+    shared helper, never re-implemented inline per report.
+    """
+    return func.coalesce(model.business_date, func.substr(model.created_at, 1, 10))
+
+
 def sales_profit_report(
     session: Session,
     start_iso: str,

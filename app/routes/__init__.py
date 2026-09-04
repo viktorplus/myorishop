@@ -11,6 +11,7 @@ from app.core import (
     format_money,
     format_ru_date,
     iso_to_local,
+    local_today_iso,
 )
 from app.db import SessionLocal
 from app.models import (
@@ -229,3 +230,13 @@ templates.env.filters["money"] = format_money
 # both base.html and mobile_base.html / the six breadcrumb-carrying templates.
 templates.env.globals["nav_section"] = nav_section
 templates.env.globals["batch_identity_label"] = batch_identity_label
+# DATE-01/D-15 (Phase 33): today's LOCAL calendar day for the business-date
+# field's `value=` and `max=`. Registered as a ZERO-ARG CALLABLE, beside the two
+# callable globals above — never `templates.env.globals["today"] = date.today()`,
+# which would freeze «today» at import time for the whole process lifetime.
+# A callable also cannot be forgotten: the 14 write surfaces are rendered from
+# ~20 route sites, and one missed `today=` kwarg would render `value=""` — a
+# blank date input that posts an empty string and books the operation as today
+# with no visible cue. `local_today_iso` is the single shared definition, so the
+# pre-filled value and `parse_op_date`'s future check can never disagree.
+templates.env.globals["today_iso"] = lambda: local_today_iso(_config_settings.display_tz)
