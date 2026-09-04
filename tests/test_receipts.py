@@ -22,18 +22,24 @@ test_web_, everything else is service level. "recent"/"nav" select the
 
 import sqlite3
 from contextlib import closing
+from datetime import date, timedelta
 
 from alembic.config import Config
 from sqlalchemy import select
 
 from alembic import command
 from app.config import settings
-from app.core import new_id
+from app.core import format_ru_date, local_today_iso, new_id
 from app.models import Batch, CatalogPrice, Operation, Product, Warehouse
 from app.services import catalog
 from app.services.catalog import create_product, soft_delete_product
 from app.services.dictionary import add_entry
-from app.services.ledger import compute_stock, record_operation
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    compute_stock,
+    record_operation,
+)
 from app.services.receipts import (
     lookup_prefill,
     parse_optional_expiry,
@@ -1231,3 +1237,166 @@ def test_migration_0025_adds_batch_cost_cents_nullable(tmp_path, monkeypatch):
             "SELECT cost_cents FROM batches WHERE id = ?", (batch_id,)
         ).fetchone()
         assert cost_cents is None
+
+
+# --- DATE-01/DATE-02 + D-24: the business date on приход (Phase 33 plan 10) ---
+
+
+def _today_plus(days: int) -> str:
+    """An ISO day offset from the operator's LOCAL today — the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use, so
+    a test can never disagree with the server about which day «today» is."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def test_receipt_accepts_a_past_op_date(session, warehouse):
+    """DATE-01: a back-dated receipt lands the business date on the ledger row,
+    on BOTH ops it writes (product_created + receipt), while created_at keeps
+    stamping the real entry moment (DATE-04)."""
+    back_date = _today_plus(-30)
+    result, errors = register_receipt(
+        session,
+        code="BD-001",
+        name="Товар задним числом",
+        qty_raw="3",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date=back_date,
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert errors == {}
+    assert result["operation"].business_date == back_date
+    # DATE-04: the audit timestamp is untouched — it is NOT the business date.
+    assert result["operation"].created_at[:10] != back_date
+    created = session.scalars(
+        select(Operation).where(Operation.type == "product_created")
+    ).all()
+    assert [op.business_date for op in created] == [back_date]
+
+
+def test_receipt_empty_op_date_stamps_local_today(session, warehouse):
+    """An empty op_date is NOT an error — it means «today» (the operator's
+    LOCAL day, not the UTC prefix of created_at)."""
+    result, errors = register_receipt(
+        session,
+        code="BD-002",
+        name="Товар сегодняшний",
+        qty_raw="1",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date="",
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert errors == {}
+    assert result["operation"].business_date == local_today_iso(settings.display_tz)
+
+
+def test_receipt_future_op_date_is_refused_and_writes_zero_rows(session, warehouse):
+    """DATE-02: a future date is refused in Russian and NOTHING is written —
+    no operation, no auto-created product card, no batch."""
+    before = len(session.scalars(select(Operation)).all())
+    result, errors = register_receipt(
+        session,
+        code="FUT-001",
+        name="Товар из будущего",
+        qty_raw="5",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date=_today_plus(1),
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(session.scalars(select(Operation)).all()) == before
+    assert session.scalars(select(Product).where(Product.code == "FUT-001")).all() == []
+    assert session.scalars(select(Batch)).all() == []
+
+
+def test_receipt_malformed_op_date_gets_a_different_message(session, warehouse):
+    """D-12: a typo and a future date are different mistakes and never share
+    one message."""
+    result, errors = register_receipt(
+        session,
+        code="BAD-001",
+        name="Товар с опечаткой",
+        qty_raw="5",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date="04.09.2026",
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert OP_DATE_FORMAT_ERROR != OP_DATE_FUTURE_ERROR
+    assert session.scalars(select(Operation)).all() == []
+
+
+def test_backdated_receipt_names_its_batch_with_the_back_date(session, warehouse):
+    """D-24: the batch auto-name follows the BUSINESS date. Without this the
+    batch would read «Крем — 04.09.2026» while its own receipt line in История
+    reads the back-date."""
+    back_date = _today_plus(-45)
+    result, errors = register_receipt(
+        session,
+        code="CRM-001",
+        name="Крем",
+        qty_raw="2",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date=back_date,
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert errors == {}
+    assert result["batch"].name == f"Крем — {format_ru_date(back_date)}"
+    today_ru = format_ru_date(local_today_iso(settings.display_tz))
+    assert today_ru not in result["batch"].name
+
+
+def test_receipt_without_op_date_keeps_the_shipped_batch_name(session, warehouse):
+    """The no-date path is byte-identical to what shipped before Phase 33 —
+    today's LOCAL day, never the UTC prefix."""
+    result, errors = register_receipt(
+        session,
+        code="CRM-002",
+        name="Крем без даты",
+        qty_raw="2",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert errors == {}
+    expected = format_ru_date(local_today_iso(settings.display_tz))
+    assert result["batch"].name == f"Крем без даты — {expected}"
+
+
+def test_existing_batch_name_is_never_rewritten_by_a_backdated_top_up(
+    session, warehouse, product
+):
+    """Existing batch names are SNAPSHOTS: a back-dated top-up writes the
+    business date onto its ledger line and leaves the stored name alone."""
+    original = Batch(
+        id=new_id(),
+        product_id=product.id,
+        warehouse_id=warehouse.id,
+        name="Историческое имя партии",
+        quantity=0,
+    )
+    session.add(original)
+    session.commit()
+
+    back_date = _today_plus(-10)
+    result, errors = register_receipt(
+        session,
+        code=product.code,
+        name=product.name,
+        qty_raw="2",
+        warehouse_id=warehouse.id,
+        batch_choice=original.id,
+        op_date=back_date,
+        **RECEIPT_EMPTY_MONEY,
+    )
+    assert errors == {}
+    assert result["batch"].name == "Историческое имя партии"
+    assert result["operation"].business_date == back_date

@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 REASON_ERROR = "Выберите причину списания."
@@ -39,6 +39,7 @@ def register_writeoff(
     note: str,
     batch_id: str = "",
     confirm: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one write-off atomically; returns (result, errors).
 
@@ -51,6 +52,12 @@ def register_writeoff(
     `name` is accepted for form-echo symmetry with the receipt/sale services
     but is never used to rename or auto-create a product — write-off never
     creates a card (D-04); a typed name change goes through /products/{id}/edit.
+
+    DATE-01/DATE-02: `op_date` is the operator-supplied business date — the day
+    the goods actually left the shelf. Empty means «today» (parse_op_date
+    returns None with no error and record_operation's Python-side fallback
+    supplies it); a malformed or future value sets errors["op_date"] and writes
+    NOTHING.
     """
     errors: dict[str, str] = {}
     code = code.strip()
@@ -68,6 +75,12 @@ def register_writeoff(
     # V5: server-side allow-list — the <select> alone is never trusted.
     if reason_code not in WRITEOFF_REASONS:
         errors["reason"] = REASON_ERROR
+
+    # DATE-02: parsed here, beside the other validations and BEFORE any write —
+    # a malformed/future date must leave the ledger untouched. None means "not
+    # supplied"; record_operation's Python-side fallback stamps today's local
+    # day, so every existing caller keeps its current behaviour.
+    business_date = parse_op_date(op_date, errors)
 
     if errors:
         return None, errors
@@ -109,6 +122,7 @@ def register_writeoff(
             qty_delta=-qty,
             payload={"reason_code": reason_code, "note": note.strip()},
             batch_id=batch.id,
+            business_date=business_date,
             commit=True,
         )
     except (IntegrityError, ValueError):

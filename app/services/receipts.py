@@ -16,20 +16,19 @@ written ONLY through app.services.ledger.record_operation — every call
 here stages with commit=False and ONE commit closes the transaction (WR-03).
 """
 
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import format_ru_date, new_id
+from app.core import format_ru_date, local_today_iso, new_id
 from app.models import Batch, Operation, Product
 from app.services.batches import active_warehouses
 from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.dictionary import lookup as dictionary_lookup
-from app.services.ledger import record_operation
+from app.services.ledger import parse_op_date, record_operation
 from app.services.pricing import latest_price_for_code
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
@@ -78,6 +77,7 @@ def register_receipt(
     expiry_raw: str = "",
     location_raw: str = "",
     comment_raw: str = "",
+    op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
     """Register one goods receipt atomically; returns (result, errors).
 
@@ -94,6 +94,14 @@ def register_receipt(
     price_cents is NEVER rewritten). Pitfall 10 / T-09-04: a client batch id is
     untrusted — its product AND warehouse ownership are re-validated before any
     write.
+
+    DATE-01/DATE-02: `op_date` is the operator-supplied business date — the day
+    the goods actually arrived, which may be earlier than the day this row is
+    entered. Empty means «today» (parse_op_date returns None with no error and
+    the fallback below supplies it), a malformed or future value sets
+    errors["op_date"] and writes NOTHING. D-24: the resolved date is also what
+    the new batch is auto-named with, so a back-dated receipt and its batch
+    never disagree — see the naming block below.
     """
     errors: dict[str, str] = {}
     code = code.strip()  # PD-2: normalize codes at write time
@@ -134,8 +142,20 @@ def register_receipt(
     if batch_choice == "new":
         expiry = parse_optional_expiry(expiry_raw, errors, "expiry")
 
+    # DATE-02: the business date is parsed here, beside the other parse_* calls
+    # and BEFORE any write — a malformed/future value must leave the ledger
+    # untouched. None means "not supplied"; the fallback is resolved once below.
+    business_date = parse_op_date(op_date, errors)
+
     if errors:
         return None, errors
+
+    # DATE-01/D-24: resolve the fallback exactly ONCE, here, and reuse the same
+    # string for the batch auto-name AND every record_operation call below.
+    # Resolving it twice (once for the name, once inside record_operation) would
+    # let a receipt saved at the stroke of midnight name its batch with one day
+    # and stamp its ledger line with the next.
+    resolved_business_date = business_date or local_today_iso(settings.display_tz)
 
     # Pitfall 5: active-only lookup — a soft-deleted product's code
     # auto-creates a NEW card instead of tripping the IN-01 guard.
@@ -163,6 +183,7 @@ def register_receipt(
             product_id=product.id,
             qty_delta=0,
             payload={"code": code, "name": name},
+            business_date=resolved_business_date,
             commit=False,
         )
     else:
@@ -189,6 +210,7 @@ def register_receipt(
                 product_id=product.id,
                 qty_delta=0,
                 payload={"field": field, "old_cents": old, "new_cents": entered[field]},
+                business_date=resolved_business_date,
                 commit=False,
             )
             setattr(product, field, entered[field])
@@ -206,8 +228,16 @@ def register_receipt(
         # everywhere else — a UTC date would show "yesterday" for batches born
         # 00:00–03:00 local while their created_at reads today. A top-up (else
         # branch) leaves the chosen batch's stored name untouched.
-        local_today = datetime.now(ZoneInfo(settings.display_tz)).date()
-        batch_name = f"{product.name} — {format_ru_date(local_today.isoformat())}"
+        #
+        # D-24 (Phase 33): the name follows the BUSINESS date, not the day the
+        # row was entered. Passing the date only to record_operation would not
+        # be enough — a receipt back-dated to 01.09 would create a batch named
+        # «Крем — 04.09.2026» that contradicts its own receipt line in История.
+        # When no date is supplied resolved_business_date IS today's local day,
+        # so every non-back-dated receipt keeps its previous name byte-for-byte.
+        # SNAPSHOT RULE (unchanged): the name is frozen at birth. Already-stored
+        # names are NEVER migrated or recomputed, here or anywhere else.
+        batch_name = f"{product.name} — {format_ru_date(resolved_business_date)}"
         batch = Batch(
             id=new_id(),
             product_id=product.id,
@@ -246,6 +276,7 @@ def register_receipt(
         unit_cost_cents=cost_cents,
         unit_price_cents=sale_cents,
         batch_id=batch.id,
+        business_date=resolved_business_date,
         commit=False,
     )
 

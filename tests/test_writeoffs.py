@@ -14,12 +14,20 @@ everything else is service level. Selectors: stock_and_reason,
 reason_allowlist, form, oversell.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product, Warehouse
 from app.services.batches import open_batches
-from app.services.ledger import compute_stock, record_operation
+from app.services.ledger import (
+    OP_DATE_FORMAT_ERROR,
+    OP_DATE_FUTURE_ERROR,
+    compute_stock,
+    record_operation,
+)
 from app.services.writeoffs import register_writeoff  # noqa: F401
 
 
@@ -298,3 +306,78 @@ def test_web_writeoff_reachable_from_nav(client, product):
     response = client.get("/products")
     assert response.status_code == 200
     assert 'href="/writeoff"' in response.text
+
+
+# --- DATE-01/DATE-02: the business date on списание (Phase 33 plan 10) ---
+
+
+def _today_plus(days: int) -> str:
+    """An ISO day offset from the operator's LOCAL today — the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def _writeoff_args(session, stocked_product, **overrides):
+    args = {
+        "code": stocked_product.code,
+        "name": stocked_product.name,
+        "qty_raw": "2",
+        "reason_code": "expired",
+        "note": "",
+        "batch_id": _only_batch(session, stocked_product).id,
+    }
+    args.update(overrides)
+    return args
+
+
+def test_writeoff_accepts_a_past_op_date(session, stocked_product):
+    """DATE-01: a back-dated write-off lands the business date on its ledger
+    row while created_at keeps stamping the real entry moment (DATE-04)."""
+    back_date = _today_plus(-30)
+    result, errors = register_writeoff(
+        session, **_writeoff_args(session, stocked_product, op_date=back_date)
+    )
+    assert errors == {}
+    assert result["operation"].business_date == back_date
+    assert result["operation"].created_at[:10] != back_date
+
+
+def test_writeoff_empty_op_date_stamps_local_today(session, stocked_product):
+    """An empty op_date is NOT an error — it means «today» (LOCAL day)."""
+    result, errors = register_writeoff(
+        session, **_writeoff_args(session, stocked_product, op_date="")
+    )
+    assert errors == {}
+    assert result["operation"].business_date == local_today_iso(settings.display_tz)
+
+
+def test_writeoff_future_op_date_is_refused_and_writes_zero_rows(
+    session, stocked_product
+):
+    """DATE-02: a future date is refused in Russian, and the ledger row count
+    is unchanged — the refusal happens before any write."""
+    before = len(session.scalars(select(Operation)).all())
+    stock_before = compute_stock(session, stocked_product.id)
+
+    result, errors = register_writeoff(
+        session, **_writeoff_args(session, stocked_product, op_date=_today_plus(1))
+    )
+
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FUTURE_ERROR
+    assert len(session.scalars(select(Operation)).all()) == before
+    assert _writeoff_ops(session) == []
+    assert compute_stock(session, stocked_product.id) == stock_before
+
+
+def test_writeoff_malformed_op_date_gets_a_different_message(session, stocked_product):
+    """D-12: a typo and a future date never share one message."""
+    result, errors = register_writeoff(
+        session, **_writeoff_args(session, stocked_product, op_date="2026-13-45")
+    )
+    assert result is None
+    assert errors["op_date"] == OP_DATE_FORMAT_ERROR
+    assert OP_DATE_FORMAT_ERROR != OP_DATE_FUTURE_ERROR
+    assert _writeoff_ops(session) == []
