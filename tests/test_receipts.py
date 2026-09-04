@@ -93,6 +93,33 @@ def test_register_receipt_increases_stock_for_existing_product(session, product,
     # price sync is Plan 03-02 scope.
 
 
+def test_register_receipt_rejects_a_non_ascii_digit_quantity(session, product, warehouse):
+    """WR-06 (33-REVIEW): `"²".isdigit()` is True and `int("²")` RAISES.
+
+    The four sibling services (writeoffs/transfers/sales/returns) all guard with
+    `isascii() and isdigit()` and say so in a comment; receipts was the odd one
+    out of five. Both receipt routes wrap the call in `except Exception`, so the
+    raise never surfaced as a 500 — it surfaced as the WRONG message («Не удалось
+    сохранить…» instead of the precise quantity error) plus a spurious
+    `logger.exception` stack trace for ordinary bad input.
+    """
+    from app.services.receipts import QTY_ERROR
+
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="что угодно",
+        qty_raw="²",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        **RECEIPT_EMPTY_MONEY,
+    )
+
+    assert result is None
+    assert errors["quantity"] == QTY_ERROR
+    assert product.quantity == 0  # nothing was written
+
+
 def test_register_receipt_autocreates_product_for_unknown_code(session, warehouse):
     """D-05: unknown code -> new product card + product_created op, atomically."""
     result, errors = register_receipt(

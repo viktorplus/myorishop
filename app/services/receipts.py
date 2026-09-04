@@ -115,8 +115,14 @@ def register_receipt(
         errors["name"] = "Укажите название."
 
     # D-01: qty_delta strictly positive integer; corrections are Phase 5.
+    # WR-06 (33-REVIEW) guard, identical to writeoffs/transfers/sales/returns:
+    # isdigit() alone accepts non-ASCII "digit" characters int() cannot parse
+    # ("²".isdigit() is True, int("²") raises); isascii() first routes anything
+    # unparsable to the RU error instead of a raise. Both receipt routes wrap
+    # this call in `except Exception`, so the raise showed up as the WRONG
+    # message plus a spurious logger.exception for ordinary bad input.
     qty_text = qty_raw.strip()
-    qty = int(qty_text) if qty_text.isdigit() else 0
+    qty = int(qty_text) if qty_text.isascii() and qty_text.isdigit() else 0
     if qty <= 0:
         errors["quantity"] = QTY_ERROR
 
