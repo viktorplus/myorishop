@@ -11,11 +11,21 @@
    allow-list regardless of what this template renders (V5/T-11-14).
    Bare fragment: relies on the ambient #writeoff-form (id renamed from the
    old standalone "writeoff-reason-form") in mobile_pages/writeoff.html. #}
+{# DATE-02/D-14 (Phase 33, CF-UI-1): the op_date error is emitted as the VERY
+   FIRST element of this swapped step — before the step indicator — because
+   D-11 puts the date input in the persistent shell (mobile_pages/writeoff.html)
+   that htmx never swaps, so no re-rendered step can place a <p class="error">
+   *under* it. First-element placement makes this <p> the DOM node immediately
+   FOLLOWING the shell's input, which is D-14's intent. It must be a
+   <p class="error">, NOT the .error-block below: the message points at one
+   specific field, not at the write-off as a whole — hence the key is also
+   excluded from the loop-all block. #}
+{% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
 <p class="mobile-step-indicator">Шаг 4 из 4</p>
 {% include "mobile_partials/_wizard_header.html" %}
 
 {% if errors %}
-{% for _key, _msg in errors.items() %}
+{% for _key, _msg in errors.items() if _key != "op_date" %}
 <div class="error-block">{{ _msg }}</div>
 {% endfor %}
 {% endif %}

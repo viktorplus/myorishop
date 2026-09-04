@@ -6,9 +6,13 @@ Phase 11 feature plan. Asserts the wizard produces the SAME register_writeoff
 write as desktop, with the same zero-write-until-confirmed oversell guardrail.
 """
 
-from app.core import new_id
+from datetime import date, timedelta
+
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product
 from app.routes import mobile_writeoff
+from app.services.ledger import OP_DATE_FUTURE_ERROR
 
 
 def _make_batch(session, product, warehouse, quantity, **kwargs):
@@ -239,6 +243,118 @@ def test_qty_and_reason_steps_show_header_and_own_back_target(
     assert f"Склад: {warehouse.name}" in reason_resp.text
     assert 'hx-post="/m/writeoff/step/qty"' in reason_resp.text
     assert "onclick=\"history.back()\"" not in reason_resp.text
+
+
+# --- DATE-01/DATE-02 (Phase 33 plan 10): the wizard-wide business date ---
+
+
+def _today_plus(days: int) -> str:
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def test_writeoff_shell_renders_the_prefilled_date_above_the_wizard_step(
+    mobile_client_factory,
+):
+    """D-11: the date input lives in the persistent shell, BEFORE #wizard-step,
+    so htmx never swaps it — the position is what makes it wizard-wide."""
+    client = mobile_client_factory(mobile_writeoff.router)
+    response = client.get("/m/writeoff")
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert response.text.index('name="op_date"') < response.text.index('id="wizard-step"')
+    assert response.text.index('name="op_date"') < response.text.index("Шаг 1 из 4")
+
+
+def test_writeoff_wizard_steps_never_re_emit_the_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-11: zero hidden-field threading — the shell is the ONLY place the date
+    exists, so no swapped step may carry a second copy of it."""
+    batch = _make_batch(session, product, warehouse, quantity=10)
+    client = mobile_client_factory(mobile_writeoff.router)
+    today = local_today_iso(settings.display_tz)
+
+    qty_step = client.post(
+        "/m/writeoff/step/qty",
+        data={"code": product.code, "batch_id": batch.id, "op_date": today},
+    )
+    assert qty_step.status_code == 200
+    assert "op_date" not in qty_step.text
+
+    reason_step = client.post(
+        "/m/writeoff/step/reason",
+        data={
+            "code": product.code,
+            "batch_id": batch.id,
+            "qty": "2",
+            "op_date": today,
+        },
+    )
+    assert reason_step.status_code == 200
+    assert "Шаг 4 из 4" in reason_step.text
+    assert "op_date" not in reason_step.text
+
+
+def test_mobile_writeoff_writes_the_shell_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """The value typed on step 1 reaches the final write untouched."""
+    batch = _make_batch(session, product, warehouse, quantity=10)
+    back_date = _today_plus(-14)
+    client = mobile_client_factory(mobile_writeoff.router)
+
+    resp = client.post(
+        "/m/writeoff",
+        data={
+            "code": product.code,
+            "batch_id": batch.id,
+            "qty": "3",
+            "reason_code": "damaged",
+            "note": "",
+            "op_date": back_date,
+        },
+    )
+
+    assert resp.status_code == 200
+    ops = session.query(Operation).filter(Operation.type == "writeoff").all()
+    assert len(ops) == 1
+    assert ops[0].business_date == back_date
+
+
+def test_mobile_writeoff_future_date_error_is_the_first_element_of_the_step(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-14 intent / CF-UI-1: the refusal renders as the FIRST element of the
+    swapped step (the DOM node right after the shell's still-filled input),
+    exactly once, and as a per-field <p class="error"> — never swept into the
+    .error-block that loops every other message on this screen."""
+    batch = _make_batch(session, product, warehouse, quantity=10)
+    client = mobile_client_factory(mobile_writeoff.router)
+
+    resp = client.post(
+        "/m/writeoff",
+        data={
+            "code": product.code,
+            "batch_id": batch.id,
+            "qty": "3",
+            "reason_code": "damaged",
+            "note": "",
+            "op_date": _today_plus(1),
+        },
+    )
+
+    assert resp.status_code == 422
+    text = resp.text
+    assert f'<p class="error">{OP_DATE_FUTURE_ERROR}</p>' in text
+    assert text.count(OP_DATE_FUTURE_ERROR) == 1
+    assert text.index(OP_DATE_FUTURE_ERROR) < text.index("Шаг 4 из 4")
+    assert f'<div class="error-block">{OP_DATE_FUTURE_ERROR}</div>' not in text
+    assert session.query(Operation).filter(Operation.type == "writeoff").count() == 0
 
 
 def test_writeoff_start_hx_request_returns_bare_fragment(mobile_client_factory):

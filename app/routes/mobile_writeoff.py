@@ -208,8 +208,14 @@ def mobile_writeoff_submit(
     note: str = Form(""),
     name: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # DATE-01/D-11: op_date arrives from the PERSISTENT shell form in
+    # mobile_pages/writeoff.html, which htmx auto-serialises on every non-GET —
+    # no wizard step re-emits it, and it is deliberately NOT echoed back into
+    # any re-render context: the shell node is never swapped, so the operator's
+    # value is still in the DOM on a 422 or an oversell warning.
     code_clean = code.strip()
     batch_id_clean = batch_id.strip()
     warehouse_name = _carried_warehouse_name(session, code_clean, batch_id_clean)
@@ -226,6 +232,7 @@ def mobile_writeoff_submit(
             note=note,
             batch_id=batch_id,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         session.rollback()

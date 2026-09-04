@@ -12,12 +12,21 @@
   <a class="button secondary" href="/m/">На главную</a>
 </div>
 {% else %}
+{# DATE-02/D-14 (Phase 33, CF-UI-1): the op_date error is emitted as the VERY
+   FIRST element of this swapped step — before the step indicator — because
+   D-11 puts the date input in the persistent shell (mobile_pages/receipts.html)
+   that htmx never swaps, so no re-rendered step can place a <p class="error">
+   *under* it. First-element placement makes this <p> the DOM node immediately
+   FOLLOWING the shell's input, which is D-14's intent: the date error must not
+   surface as a detached top-of-screen block. The key is excluded from the
+   per-key loop below so it renders exactly once. #}
+{% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
 <p class="mobile-step-indicator">Шаг 4 из 4</p>
 <h2>Подтверждение</h2>
 {% if errors %}
 {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
 {% for key, message in errors.items() %}
-{% if key != "form" %}<p class="error">{{ message }}</p>{% endif %}
+{% if key not in ("form", "op_date") %}<p class="error">{{ message }}</p>{% endif %}
 {% endfor %}
 {% endif %}
 <input type="hidden" name="code" value="{{ code }}">

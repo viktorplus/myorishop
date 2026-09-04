@@ -17,6 +17,28 @@
 </div>
 {% else %}
 <form id="writeoff-form" hx-target="#wizard-step" hx-swap="innerHTML">
+  {# DATE-01/D-11 (Phase 33): wizard-wide chrome, NOT a step question. It sits
+     directly under the page <h1> and directly ABOVE the «Шаг N из M» indicator
+     that every step partial renders first — everything below the step indicator
+     belongs to the current step, everything above it belongs to the whole
+     entry. Position IS the separation: no divider, no box, no heading, no new
+     colour. Note this field is inside the not-saved branch only, i.e. NOT on
+     the post-success screen — there is nothing left to date there.
+     htmx only ever swaps #wizard-step below, so this node is never re-rendered
+     — the typed date survives every step swap AND a 422/oversell re-render with
+     ZERO hidden-field threading, and no step partial may re-emit it.
+     No <p class="error"> here for the same reason: the shell is never
+     re-rendered, so `errors` cannot reach it. The op_date error is emitted as
+     the FIRST element of the swapped step instead (D-14 intent / CF-UI-1).
+     max= is INERT on this surface and that is expected (D-13, resolved):
+     hx-post sits on the <button type="submit">, htmx preventDefault()s the
+     click, so neither native nor htmx validation runs and the server's
+     OP_DATE_FUTURE_ERROR is the sole guard — the intended fallback. #}
+  <div class="field op-date">
+    <label for="op_date">Дата операции</label>
+    <input type="date" id="op_date" name="op_date"
+           value="{{ today_iso() }}" max="{{ today_iso() }}">
+  </div>
 <div id="wizard-step">
 {% include "mobile_partials/writeoff_step_product.html" %}
 </div>

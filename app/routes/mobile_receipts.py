@@ -237,8 +237,14 @@ def mobile_receipt_create(
     expiry: str = Form(""),
     location: str = Form(""),
     comment: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # DATE-01/D-11: op_date arrives from the PERSISTENT shell form in
+    # mobile_pages/receipts.html, which htmx auto-serialises on every non-GET —
+    # no wizard step re-emits it, and it is deliberately absent from form_echo
+    # below: the shell node is never swapped, so the operator's value is still
+    # in the DOM on a 422 and re-echoing it would be a second source of truth.
     form_echo = {
         "code": code,
         "name": name,
@@ -265,6 +271,7 @@ def mobile_receipt_create(
             expiry_raw=expiry,
             location_raw=location,
             comment_raw=comment,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # CR-01: defensive rollback before re-rendering, mirroring

@@ -8,12 +8,16 @@ Naming: "step_batch" selects the Task 1 slice (steps 1-2 — route skeleton +
 Подтверждение) and the final write, added in Task 2.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import Batch, CatalogPrice, Operation
 from app.routes import mobile_receipts
 from app.services.dictionary import add_entry
+from app.services.ledger import OP_DATE_FUTURE_ERROR
 
 # --- Task 1: steps 1-2 (Товар, Партия chooser) ---
 
@@ -428,4 +432,101 @@ def test_web_receipt_create_validation_error_writes_zero_rows(
     assert response.status_code == 422
     assert "Подтверждение" in response.text
     assert "Укажите количество — целое число больше нуля." in response.text
+    assert session.scalars(select(Operation)).all() == []
+
+
+# --- DATE-01/DATE-02 (Phase 33 plan 10): the wizard-wide business date ---
+
+
+def _today_plus(days: int) -> str:
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def _wizard_payload(product, warehouse, **overrides):
+    data = {
+        "code": product.code,
+        "name": product.name,
+        "qty": "3",
+        "cost": "",
+        "sale": "",
+        "warehouse_id": warehouse.id,
+        "batch_choice": "new",
+    }
+    data.update(overrides)
+    return data
+
+
+def test_receipt_shell_renders_the_prefilled_date_above_the_wizard_step(
+    mobile_client_factory, session, warehouse
+):
+    """D-11: the date input lives in the persistent shell, BEFORE #wizard-step,
+    so htmx never swaps it — the position is what makes it wizard-wide."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.get("/m/receipts")
+    assert response.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in response.text
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert response.text.index('name="op_date"') < response.text.index('id="wizard-step"')
+    # ...and above the «Шаг N из M» indicator the step partial renders first.
+    assert response.text.index('name="op_date"') < response.text.index("Шаг 1 из 4")
+
+
+def test_receipt_wizard_steps_never_re_emit_the_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-11: zero hidden-field threading — the shell is the ONLY place the date
+    exists, so no swapped step may carry a second copy of it."""
+    client = mobile_client_factory(mobile_receipts.router)
+    today = local_today_iso(settings.display_tz)
+
+    step2 = client.post(
+        "/m/receipts/step/batch",
+        data={"code": product.code, "warehouse_id": warehouse.id, "op_date": today},
+    )
+    assert step2.status_code == 200
+    assert "op_date" not in step2.text
+
+    step4 = client.post(
+        "/m/receipts/step/confirm",
+        data=_wizard_payload(product, warehouse, op_date=today),
+    )
+    assert step4.status_code == 200
+    assert "Шаг 4 из 4" in step4.text
+    assert "op_date" not in step4.text
+
+
+def test_mobile_receipt_writes_the_shell_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """The value typed on step 1 reaches the final write untouched."""
+    back_date = _today_plus(-21)
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts", data=_wizard_payload(product, warehouse, op_date=back_date)
+    )
+    assert response.status_code == 200
+    op = session.scalars(select(Operation).where(Operation.type == "receipt")).one()
+    assert op.business_date == back_date
+
+
+def test_mobile_receipt_future_date_error_is_the_first_element_of_the_step(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-14 intent / CF-UI-1: the refusal renders as the FIRST element of the
+    swapped step (the DOM node right after the shell's still-filled input),
+    exactly once, never as a detached .error-block."""
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts", data=_wizard_payload(product, warehouse, op_date=_today_plus(1))
+    )
+    assert response.status_code == 422
+    text = response.text
+    assert f'<p class="error">{OP_DATE_FUTURE_ERROR}</p>' in text
+    assert text.count(OP_DATE_FUTURE_ERROR) == 1
+    assert text.index(OP_DATE_FUTURE_ERROR) < text.index("Шаг 4 из 4")
+    assert f'<div class="error-block">{OP_DATE_FUTURE_ERROR}</div>' not in text
     assert session.scalars(select(Operation)).all() == []
