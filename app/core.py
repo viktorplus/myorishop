@@ -171,23 +171,36 @@ def business_date_bounds(start_day: date, end_day: date) -> tuple[str, str]:
 def local_today_iso(tz_name: str) -> str:
     """Today's LOCAL calendar day as ISO 'yyyy-mm-dd' — the ONE definition of «today».
 
-    Shared by exactly two consumers, and that sharing is the point (D-15):
+    Two of its consumers must agree, and that agreement is the point (D-15):
     the `today_iso()` Jinja global (which supplies both `value=` and `max=` on
     every date input) and `ledger.parse_op_date`'s future check. If those two
     ever computed «today» differently, a date typed at 23:30 local would be
     pre-filled by the form and then REFUSED by the server — an operator-visible
-    contradiction with no way to work around it.
+    contradiction with no way to work around it. Every business-date write path
+    (`ledger`, `receipts`, `sales`, `returns`, `transfers`, `finance`) then
+    falls back to the same helper for an unspecified date.
 
-    Known, deliberate, unconverged debt: four sites still inline
+    Known, deliberate, unconverged debt — MEASURED at app version 1.101, not
+    carried forward from a plan: FIVE sites still inline
     `datetime.now(ZoneInfo(settings.display_tz)).date()` instead of calling
     this —
-        app/services/receipts.py:209
-        app/routes/mobile_reports.py:21
-        app/services/customers.py:443
-        app/services/customers.py:465
+        app/routes/reports.py:185        (+ .isoformat() — identical value)
+        app/routes/mobile_reports.py:21  (+ .isoformat() — identical value)
+        app/services/reports.py:300      (wants a `date` object, not the string)
+        app/services/customers.py:450    (wants a `date` object)
+        app/services/customers.py:474    (wants a `date` object)
+    `app/services/dashboard.py:119,178` compute the same local today from a
+    `tz_name` PARAMETER rather than from `settings.display_tz`, so they are a
+    related but distinct shape. `app/services/receipts.py` is NOT on this list
+    any more: Phase 33 converted it, and `receipts.py:158` now calls this
+    helper (the docstring previously claimed four sites and named the
+    already-converted receipts one — do not re-copy stale counts, re-grep).
+
     They are NOT converted here (additive-change rule: they are outside this
-    phase's task). Whoever converges them must not shift this function's
-    result in the process: `parse_op_date` compares against it, so any shift
-    at the day boundary silently turns valid dates into refusals.
+    phase's task), and converging them is not a pure substitution — three of
+    the five want a `date`, so they need `date.fromisoformat(...)` or a sibling
+    helper. Whoever converges them must not shift this function's result in the
+    process: `parse_op_date` compares against it, so any shift at the day
+    boundary silently turns valid dates into refusals.
     """
     return datetime.now(ZoneInfo(tz_name)).date().isoformat()
