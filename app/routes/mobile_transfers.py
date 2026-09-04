@@ -97,6 +97,7 @@ def _render_dest_step(
     new_expiry: str = "",
     new_comment: str = "",
     cost: str = "",
+    op_date: str = "",
     errors: dict | None = None,
     oversell: dict | None = None,
     saved: dict | None = None,
@@ -113,6 +114,11 @@ def _render_dest_step(
         "new_expiry": new_expiry,
         "new_comment": new_comment,
         "cost": cost,
+        # DATE-01: flat context key, matching this template's `new_expiry` /
+        # `cost` idiom. Empty on a fresh entry into the step, so the template's
+        # `| default(today_iso(), true)` pre-fills today; echoed back on a
+        # 422/oversell re-render so the typed date is not lost.
+        "op_date": op_date,
         "errors": errors or {},
         "oversell": oversell,
         "saved": saved,
@@ -215,6 +221,7 @@ def transfers_create(
     new_comment: str = Form(""),
     cost: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -232,6 +239,7 @@ def transfers_create(
             new_comment=new_comment,
             cost_raw=cost,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500
         # T-10-09/Pitfall 7 precedent: defensive rollback before re-rendering.
@@ -248,6 +256,7 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            op_date=op_date,
             errors={"form": SAVE_FAILED_ERROR},
             status_code=422,
         )
@@ -266,6 +275,7 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            op_date=op_date,
             oversell=result["oversell"],
         )
 
@@ -281,6 +291,7 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            op_date=op_date,
             errors=errors,
             status_code=422,
         )

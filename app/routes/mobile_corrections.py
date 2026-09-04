@@ -206,11 +206,15 @@ def mobile_correction_create(
     batch_id: str = Form(""),
     batch_qty: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Mode/qty fields arrive as strings on purpose: parsing/validation
     # happens in the service, which returns RU errors.
-    form_echo = {"value": value, "note": note}
+    # DATE-01: unlike the three shell wizards, this step IS re-rendered on a
+    # 422/oversell, so the typed date has to be echoed back — the input is part
+    # of the swapped fragment and would otherwise snap back to today.
+    form_echo = {"value": value, "note": note, "op_date": op_date}
     code_clean = code.strip()
     batch_id_clean = batch_id.strip()
     name_clean = name.strip()
@@ -224,6 +228,7 @@ def mobile_correction_create(
             note=note,
             batch_id=batch_id,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 -- UI-SPEC: block error, never a raw 500
         # WR-03: defensive rollback, mirroring correction_create.

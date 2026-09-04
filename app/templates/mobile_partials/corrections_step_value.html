@@ -10,9 +10,23 @@
   <p class="mobile-step-indicator">Шаг 4 из 4</p>
   {% include "mobile_partials/_wizard_header.html" %}
   <h1>Значение</h1>
-  {% if errors %}
+  {# DATE-02/D-14 (Phase 33): op_date is EXCLUDED from this loop-all block and
+     rendered as a per-key <p class="error"> under the date input instead. This
+     wizard has no persistent shell, so unlike приход/продажа/списание the input
+     really is on this step and the error can sit directly beneath it — the
+     literal reading of D-14 applies here. Without the exclusion the message
+     would render twice: once beside its field and once as a detached
+     top-of-screen block naming no field.
+     The filtering is on the KEYS, not inside the loop, because this file's
+     <div class="error-block"> wraps the loop rather than sitting inside it (the
+     writeoff_step_reason.html shape differs): filtering only the loop body
+     would emit an EMPTY red block whenever op_date is the sole error. The
+     `if errors else []` guard is required — `errors` is genuinely undefined on
+     the fresh-render and oversell paths (app/routes/mobile_corrections.py). #}
+  {% set block_keys = (errors.keys() | reject("eq", "op_date") | list) if errors else [] %}
+  {% if block_keys %}
   <div class="error-block">
-    {% for message in errors.values() %}<p>{{ message }}</p>{% endfor %}
+    {% for key in block_keys %}<p>{{ errors[key] }}</p>{% endfor %}
   </div>
   {% endif %}
   {% if oversell %}
@@ -37,6 +51,26 @@
       <label for="note">Примечание <span class="muted">(необязательно)</span></label>
       <input type="text" id="note" name="note" value="{{ form.note if form is defined and form.note else '' }}">
     </div>
+    {# DATE-01/D-11: the date lives on the FINAL step, not on a wizard shell —
+       корректировка has no persistent shell to put it on (every step renders
+       its own <form>, see corrections_step_product.html:14), and this screen is
+       terminal: nothing swaps in after it except its own 422/oversell
+       re-render, which echoes the typed value back through `form`. D-11
+       forbids manufacturing a shell for this wizard, and no dedicated date STEP
+       is added — that would rewrite all 17 hardcoded step-indicator strings and
+       add a mandatory tap forever to a field already correct by default.
+       max= IS effective here (unlike on the three shell wizards): hx-post sits
+       on this <form> and the submit is a native button, so the browser's own
+       interactive validation fires first and shows its own bubble. #}
+    <div class="field op-date">
+      <label for="op_date">Дата операции</label>
+      <input type="date" id="op_date" name="op_date"
+             value="{{ form.op_date if form is defined and form.op_date else today_iso() }}"
+             max="{{ today_iso() }}"
+             aria-describedby="op_date-error">
+      {% if errors is defined and errors.op_date %}<p class="error" id="op_date-error">{{ errors.op_date }}</p>{% endif %}
+    </div>
+
     <div class="mobile-actions">
       <button type="button" class="secondary" hx-post="/m/corrections/step/mode"
               hx-include="closest form" hx-target="#corrections-step-wrap"

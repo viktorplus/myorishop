@@ -6,11 +6,15 @@ desktop, with the same destination-exclusion and zero-write-until-confirmed
 guardrail semantics.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
-from app.core import new_id
+from app.config import settings
+from app.core import local_today_iso, new_id
 from app.models import Batch, Operation, Warehouse
 from app.routes import mobile_transfers
+from app.services.ledger import OP_DATE_FUTURE_ERROR
 
 
 def _second_warehouse(session, name="Склад Б"):
@@ -604,3 +608,153 @@ def test_transfers_step_batch_header_survives_back_button_refactor(
         f"<strong>{stocked_product.code}</strong> — {stocked_product.name}"
         in response.text
     )
+
+
+# --- DATE-01/DATE-02: «Дата операции» on the mobile перемещение final step --
+
+
+def _transfer_ops(session):
+    return session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+
+
+def test_transfers_dest_step_renders_prefilled_date_field(
+    mobile_client_factory, session, stocked_product
+):
+    """The date rides the FINAL step (D-11): перемещение has no persistent
+    shell, so the field belongs to the terminal screen, as the LAST field
+    before the actions row."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+    today = local_today_iso(settings.display_tz)
+
+    response = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"code": stocked_product.code, "batch_id": source.id},
+    )
+
+    assert response.status_code == 200
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}"' in response.text
+    assert f'max="{today}"' in response.text
+    assert "Дата операции" in response.text
+    assert 'aria-describedby="op_date-error"' in response.text
+    # LAST field before the actions row, after the cost field.
+    assert response.text.index('name="op_date"') > response.text.index('id="cost"')
+    assert response.text.index('name="op_date"') < response.text.index('class="mobile-actions"')
+
+
+def test_transfers_earlier_steps_never_emit_the_date(
+    mobile_client_factory, session, stocked_product
+):
+    """Proof by negation (the D-11 shell-less half): the date exists on the
+    FINAL step and nowhere else. No earlier fragment mentions op_date, so
+    nothing htmx swaps before the terminal screen can carry a stale value, and
+    a future edit that threads it as a hidden field reddens this test."""
+    client = mobile_client_factory(mobile_transfers.router)
+
+    product_step = client.get("/m/transfers", headers={"HX-Request": "true"})
+    batch_step = client.post(
+        "/m/transfers/step/batch", data={"code": stocked_product.code}
+    )
+
+    for fragment in (product_step, batch_step):
+        assert fragment.status_code == 200
+        assert "op_date" not in fragment.text
+
+
+def test_transfers_backdated_post_dates_both_rows_identically(
+    mobile_client_factory, session, stocked_product
+):
+    """T-33-31 through the mobile route: one submit, two rows, ONE date."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code, "name": stocked_product.name, "qty": "3",
+            "batch_id": source.id, "dest_warehouse_id": dest_wh.id,
+            "op_date": "2026-08-15",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+    ops = _transfer_ops(session)
+    assert len(ops) == 2
+    assert {op.business_date for op in ops} == {"2026-08-15"}
+
+
+def test_transfers_future_date_error_renders_once_beside_the_field(
+    mobile_client_factory, session, stocked_product
+):
+    """The message renders as a per-key <p class="error"> under the input,
+    exactly once, never as a whole-screen .error-block, and the typed value
+    survives the 422 re-render."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+    tomorrow = (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=1)
+    ).isoformat()
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code, "name": stocked_product.name, "qty": "3",
+            "batch_id": source.id, "dest_warehouse_id": dest_wh.id,
+            "op_date": tomorrow,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.text.count(OP_DATE_FUTURE_ERROR) == 1
+    assert f'<p class="error" id="op_date-error">{OP_DATE_FUTURE_ERROR}</p>' in response.text
+    assert "error-block" not in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _transfer_ops(session) == []
+
+
+def test_transfers_date_survives_the_oversell_confirm_round_trip(
+    mobile_client_factory, session, stocked_product
+):
+    """The over-transfer warn re-renders this very step with zero writes. The
+    typed date must come back with it — otherwise confirming the warning would
+    silently book the transfer under today instead of the chosen day."""
+    source = _source_batch(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+    payload = {
+        "code": stocked_product.code, "name": stocked_product.name, "qty": "99",
+        "batch_id": source.id, "dest_warehouse_id": dest_wh.id,
+        "op_date": "2026-08-15",
+    }
+
+    warn = client.post("/m/transfers", data=payload)
+    assert warn.status_code == 200
+    assert _transfer_ops(session) == []
+    assert 'value="2026-08-15"' in warn.text
+
+    confirmed = client.post("/m/transfers", data={**payload, "confirm": "1"})
+    assert confirmed.status_code == 200
+    ops = _transfer_ops(session)
+    assert len(ops) == 2
+    assert {op.business_date for op in ops} == {"2026-08-15"}
+
+
+def test_transfers_step_labels_unchanged(mobile_client_factory, session, stocked_product):
+    """No wizard gained a step: the three step_label literals are untouched."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    dest = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"code": stocked_product.code, "batch_id": source.id},
+    )
+    batch = client.post("/m/transfers/step/batch", data={"code": stocked_product.code})
+    first = client.get("/m/transfers", headers={"HX-Request": "true"})
+
+    assert '<p class="mobile-step-indicator">Шаг 3 из 3</p>' in dest.text
+    assert "Шаг 2 из 3" in batch.text
+    assert "Шаг 1 из 3" in first.text

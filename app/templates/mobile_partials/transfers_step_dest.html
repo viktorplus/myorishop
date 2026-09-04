@@ -78,6 +78,29 @@
       {% if errors is defined and errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
     </div>
 
+    {# DATE-01/D-11: the date lives on the FINAL step, not on a wizard shell —
+       перемещение has no persistent shell to put it on (every step renders its
+       own <form>, see transfers_step_product.html:12), and this screen is
+       terminal: nothing swaps in after it except its own 422/oversell/success
+       re-render, which echoes the typed value back through the flat `op_date`
+       context key. D-11 forbids manufacturing a shell for this wizard, and no
+       dedicated date STEP is added — that would rewrite the hardcoded
+       step-indicator strings and the three step_label literals in
+       app/routes/mobile_transfers.py.
+       Both ledger rows this one submit writes carry the SAME date, resolved
+       once inside register_transfer.
+       max= IS effective here (unlike on the three shell wizards): hx-post sits
+       on this <form> and the submit is a native button, so the browser's own
+       interactive validation fires first and shows its own bubble. #}
+    <div class="field op-date">
+      <label for="op_date">Дата операции</label>
+      <input type="date" id="op_date" name="op_date"
+             value="{{ op_date | default(today_iso(), true) }}"
+             max="{{ today_iso() }}"
+             aria-describedby="op_date-error">
+      {% if errors is defined and errors.op_date %}<p class="error" id="op_date-error">{{ errors.op_date }}</p>{% endif %}
+    </div>
+
     <div class="mobile-actions">
       {# WR-02: tojson always emits JSON's mandatory double-quoted keys and
          values, so this attribute MUST be single-quoted or the browser's
