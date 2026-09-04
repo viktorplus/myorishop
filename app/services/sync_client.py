@@ -63,7 +63,8 @@ class SyncResult:
     by `format_sync_message`.
 
     `status` is one of: ``ok`` | ``partial`` | ``offline`` | ``error`` |
-    ``locked`` | ``not_configured``.
+    ``locked`` | ``not_configured``, plus the Phase-33 push-refusal status
+    handled in `format_sync_message` below.
     """
 
     status: str
@@ -204,6 +205,14 @@ def format_sync_message(
     elif status == "not_configured":
         # SRV-03: blank server URL / token — a fresh install is a no-op.
         message = "Синхронизация не настроена"
+    elif status == "schema_mismatch":
+        # D-08: the server refused this client's push because the client's
+        # schema is AHEAD of the server's. ONE fixed sentence — the refusal is
+        # temporary and self-healing, so it must not read as «Ошибка сервера».
+        # The unsynced badge is deliberately NOT suppressed: its growing count
+        # is the visible pressure signal, and SYNC-11 guarantees every one of
+        # those rows is still re-pushable.
+        message = "Сервер ещё не обновлён — синхронизация отложена"
     else:
         # `error` and any unexpected status collapse to the generic D-12 error.
         message = "Ошибка сервера, попробуйте позже"
@@ -374,7 +383,18 @@ def run_sync_once(session: Session, *, client: httpx.Client) -> SyncResult:
             headers={"Content-Type": "application/x-ndjson", **auth},
         )
         response.raise_for_status()
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 409:
+            # D-08: the 33-01 push gate refused us because OUR Alembic revision
+            # is AHEAD of the receiver's. Return EARLY without pulling: a server
+            # too old to accept our push necessarily holds reference data OLDER
+            # than ours, so the pull would only cost a round trip. Rows stay
+            # unsynced and re-push by themselves once s1 is migrated (SYNC-11).
+            # Only the status code is inspected — the response body is never
+            # read, so no server bytes can reach the operator (T-29-07).
+            return SyncResult(
+                status="schema_mismatch", pushed=0, pushed_total=pushed_total
+            )
         # A non-2xx: rows stay unsynced (Pitfall 3), retried next sync.
         return SyncResult(status="error", pushed=0, pushed_total=pushed_total)
     except httpx.HTTPError:
