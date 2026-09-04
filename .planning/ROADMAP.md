@@ -326,7 +326,7 @@ Full phase details archived in `.planning/milestones/v4.0-ROADMAP.md`.
 Plans:
 **Wave 1** *(SYNC-10..13 + the deployment facts — LOCKED ordering constraint 1: these land BEFORE the migration)*
 
-- [ ] 33-01-PLAN.md — POST /api/sync/push asymmetric schema gate: push_schema_ok + 409 + SCHEMA_AHEAD_ERROR (SYNC-10/11) (wave 1)
+- [x] 33-01-PLAN.md — POST /api/sync/push asymmetric schema gate: push_schema_ok + 409 + SCHEMA_AHEAD_ERROR (SYNC-10/11) (wave 1)
 - [ ] 33-02-PLAN.md — Client refusal surface: schema_mismatch SyncResult + RU formatter branch + auto-sync back-off (SYNC-10/11) (wave 1)
 - [ ] 33-03-PLAN.md — Migration-proving harness: alembic_engine + VA-5/6/7 + merge pinning tests (SYNC-12/13) (wave 1)
 - [ ] 33-04-PLAN.md — V13/V14 on s1 + the rollout runbook 33-ROLLOUT.md (autonomous: false; V14 gates the migration) (wave 1)
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 0/15 | Planned | - |
+| 33. Back-Dated Operations | v5.0 | 1/15 | In Progress|  |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 

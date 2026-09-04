@@ -31,8 +31,8 @@ Decisions **not** put to the operator (unanimous research recommendation, taken 
 
 These land before any schema change reaches a client. They are not polish: without them the milestone's own migration opens a permanent, silent data-loss window.
 
-- [ ] **SYNC-10**: A push carrying a schema version the receiver does not understand is rejected with a clear Russian message, not accepted with fields silently dropped. `POST /api/sync/push` gains the same `schema_version` gate the offline upload path already has (`app/routes/offline.py:233-243`), reusing `offline.schema_version_ok` + `current_schema_version`.
-- [ ] **SYNC-11**: A rejected push leaves the client's rows unsynced, so nothing is lost and the next successful push re-sends them. `synced_at` stays NULL on a gate rejection.
+- [x] **SYNC-10**: A push carrying a schema version the receiver does not understand is rejected with a clear Russian message, not accepted with fields silently dropped. `POST /api/sync/push` gains the same `schema_version` gate the offline upload path already has (`app/routes/offline.py:233-243`), reusing `offline.schema_version_ok` + `current_schema_version`.
+- [x] **SYNC-11**: A rejected push leaves the client's rows unsynced, so nothing is lost and the next successful push re-sends them. `synced_at` stays NULL on a gate rejection.
 - [ ] **SYNC-12**: A cash movement pushed by a client that predates a column's introduction lands correctly instead of bricking that client's sync. Settles whether an explicit `None` in the insert dict defeats `server_default` — the same defect class that may already affect `CashMovement.currency` (`app/models.py:526`).
 - [ ] **SYNC-13**: The append-only triggers are proven live against a database built by `alembic upgrade head`, not only one built by `create_all`, so a future batch-recreate that drops them cannot pass the suite.
 

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
-status: planning
-stopped_at: Phase 33 planned — 15 plans in 6 waves, ready to execute
-last_updated: "2026-09-04T09:00:00.000Z"
-last_activity: 2026-09-04 — Phase 33 planned (research → UI-SPEC → 15 plans, plan-checker PASSED on re-check)
+status: executing
+stopped_at: Completed 33-01-PLAN.md (SYNC-10/SYNC-11 push schema gate)
+last_updated: "2026-09-04T09:04:29.726Z"
+last_activity: 2026-09-04 -- Phase 33 plan 01 complete (sync schema gate)
 progress:
-  total_phases: 3
+  total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 7
 ---
 
 # Project State
@@ -21,26 +21,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** v5.0 Corrections, Dates & Currency — Phase 33 planned (15 plans, 6 waves). Next: execute Phase 33 (Back-Dated Operations).
+**Current focus:** Phase 33 — back-dated-operations
 
 ## Current Position
 
-Phase: 33 — Back-Dated Operations (planned)
-Plan: — (0/15 executed)
-Status: Ready to execute — `/gsd-execute-phase 33`
-Last activity: 2026-09-04 — Phase 33 planned (research → UI-SPEC → 15 plans, plan-checker PASSED on re-check)
+Phase: 33 (back-dated-operations) — EXECUTING
+Plan: 2 of 15
+Status: Ready to execute
+Last activity: 2026-09-04 -- Phase 33 plan 01 complete (SYNC-10/SYNC-11 push schema gate)
 
 **Phase set for v5.0:**
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Planned |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 1/15 done (33-01) |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
-**Phase 33 blocked on human input before wave 2:** plan 33-04 must obtain, on s1, `DISPLAY_TZ`
-from `.env.production` (V14 — it is baked into migration `0027` as a literal, so the migration
-cannot be written without it) and `alembic current` (V13 — expected `0026`).
+**Phase 33 wave-2 inputs — MEASURED on s1, read-only, 2026-09-04 (V13/V14 answered):**
+`alembic current` = **`0026 (head)`**; effective **`DISPLAY_TZ` = `Europe/Moscow`**, supplied by the
+`app/config.py:76` fallback — there is no `DISPLAY_TZ` line in `.env.production` and the container
+env value is empty. That timezone is the literal that must be baked into migration `0027`'s
+backfill (plan 33-04). Do not re-measure; do not assume `.env.production` sets it.
 
 ## Performance Metrics
 
@@ -111,6 +113,7 @@ cannot be written without it) and `alembic current` (V13 — expected `0026`).
 | Phase 31 P06 | 34min | 2 tasks | 4 files |
 | Phase 31 P07 | 38min | 2 tasks | 4 files |
 | Phase 31 P08 | 33min | 3 tasks | 5 files |
+| Phase 33 P01 | 32min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -204,6 +207,12 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 31]: The pending marker is always consumed - quarantined to data/pending.failed.json on failure — A stuck marker made main()'s 2-second watch loop replay an unsatisfiable cycle and destroy the install (31-UAT GAP-3, T-31-04)
 - [Phase 31]: 31-08: the launcher gets its OWN embeddable runtime in launcher\ (second extraction of the same SHA-256-verified zip, no second download); the .iss shortcut targets {app}\launcher\python.exe -m launcher, a file the installer actually ships. Its ._pth is exactly python313.zip / . / .. — a ._pth forces isolated mode (cwd and PYTHONPATH ignored) so only .. resolves the sibling package; Lib\site-packages and app are omitted to keep the launcher stdlib-only
 - [Phase 31]: 31-08: no launcher.exe stub is built or promised anywhere (PyInstaller is rejected by CLAUDE.md); every path the generated .iss references is existence-asserted by test_iss_referenced_paths_exist_in_dist before the installer is compiled — a dead target in a user-writable per-user install root is a plant-and-hijack surface (T-31-08)
+- [Phase ?]: 33-01 (D-01): the push schema comparison is ASYMMETRIC (client <= server), not exact-match — only a client AHEAD of the receiver is refused with 409, because that is the single direction in which merge._ledger_row loses a field behind a 200; a BEHIND client merges on purpose so the self-updating fleet is never cut off (clients check for updates once at startup).
+- [Phase 33]: 33-01 (D-02/AP-5): push_schema_ok is a NEW sibling of current_schema_version in app/services/sync.py — app/services/offline.py::schema_version_ok is neither reused, imported nor modified (byte-unchanged; its result page is locked by 30-UI-SPEC).
+- [Phase 33]: 33-01 (D-03): push_schema_ok's empty-string escape hatch is on BOTH sides, unlike offline.schema_version_ok's server-only hatch — every fixture builds its schema with Base.metadata.create_all, so current_schema_version returns "" on the client half too; a one-sided hatch would redden the shipped sync suite wholesale. Consequence: the gate's own tests MUST pin both revisions explicitly or every assertion is vacuous.
+- [Phase 33]: 33-01 (D-04): push_schema_ok compares LEXICOGRAPHICALLY, sound only while every Alembic revision id stays fixed-width numeric; the docstring names tests/test_migrations.py::test_revision_ids_are_fixed_width (plan 33-03) as the tripwire — relax that test and this predicate must switch to a parsed comparison in the same commit.
+- [Phase 33]: 33-01 (D-05): the 409 gate sits between parse_exchange and the owned transaction, reading the already-parsed batch.schema_version (two lines, vs the eight the bundle-upload path needs). Stated trade-off: a future NEW-KIND schema bump makes parse_exchange raise 400 MALFORMED_BATCH_ERROR first — a worse message but not a loss, since any non-2xx returns before the client's synced_at stamp.
+- [Phase 33]: 33-01 (D-07): SYNC-11 needs a TEST, not code — synced_at is stamped only after raise_for_status() and last_sync_at advances only for ok/partial, so a 409 already leaves every client row re-pushable; test_refused_push_leaves_rows_unsynced drives a real client->server push over the ASGI bridge and pins it. Refused-client retry back-off (T-33-03) is deliberately deferred to plan 33-02.
 
 ### Pending Todos
 
@@ -293,9 +302,9 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T07:23:15.956Z
-Stopped at: Phase 33 UI-SPEC approved
-Resume file: .planning/phases/33-back-dated-operations/33-UI-SPEC.md
+Last session: 2026-09-04T09:04:29.692Z
+Stopped at: Completed 33-01-PLAN.md (SYNC-10/SYNC-11 push schema gate)
+Resume file: None
 
 ## Operator Next Steps
 
