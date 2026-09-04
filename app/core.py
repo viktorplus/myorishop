@@ -108,6 +108,11 @@ def iso_to_local(iso_str: str, tz_name: str) -> str:
 def local_day_bounds_utc(start_day: date, end_day: date, tz_name: str) -> tuple[str, str]:
     """UTC ISO bounds for the LOCAL half-open range [start_day, end_day] inclusive.
 
+    This is the `created_at`-only helper: it produces UTC *timestamp* bounds
+    for the technical entry timestamp. Its business-date sibling is
+    `business_date_bounds` below, which produces date-only bounds for the
+    `business_date` column and must never be replaced by this one (Phase 33).
+
     end_day is the LAST included local calendar day; the returned upper
     bound is local midnight of the day AFTER end_day, converted to UTC —
     so callers filter created_at >= start AND created_at < end (never a
@@ -124,3 +129,65 @@ def local_day_bounds_utc(start_day: date, end_day: date, tz_name: str) -> tuple[
         start_local.astimezone(UTC).isoformat(timespec="seconds"),
         end_local.astimezone(UTC).isoformat(timespec="seconds"),
     )
+
+
+def business_date_bounds(start_day: date, end_day: date) -> tuple[str, str]:
+    """Date-only ISO bounds for the CLOSED local range [start_day, end_day].
+
+    CONTRACT (state it before using it): the range is **closed / inclusive on
+    both ends**. Callers filter `business_date_expr(M) >= start` AND
+    `business_date_expr(M) <= end` — never `<`. `local_day_bounds_utc` above is
+    half-open on purpose (a row landing exactly on UTC midnight would otherwise
+    double-count); a date-string comparison has no such hazard, so closed is
+    both correct and free of the `+1 day` arithmetic. Turning one switched
+    predicate's `<=` back into `<` is a silent one-day off-by-one.
+
+    No timezone argument and no conversion happen here: `business_date` IS
+    already the operator's local calendar day (Phase 33, DATE-01), so there is
+    nothing left to convert.
+
+    WHY THIS IS A SEPARATE HELPER and not a flag on `local_day_bounds_utc`:
+    comparing the date-only string '2026-09-01' against that helper's UTC
+    timestamp bounds is a lexicographic accident, not a comparison —
+
+        Europe/Moscow     ('2026-08-31T21:00:00+00:00', '2026-09-01T21:00:00+00:00')
+                          '2026-09-01' passes  -> True, by accident: it sorts
+                          after the lower bound and is a literal prefix of the
+                          upper one
+        America/New_York  ('2026-09-01T04:00:00+00:00', '2026-09-02T04:00:00+00:00')
+                          '2026-09-01' passes  -> False: the row VANISHES
+        UTC               ('2026-09-01T00:00:00+00:00', '2026-09-02T00:00:00+00:00')
+                          '2026-09-01' passes  -> False: the row VANISHES
+
+    Sharpening of Pitfall 14 (`.planning/research/PITFALLS.md` calls it "off by
+    a day at any UTC− offset"): the executed result is worse — it is broken at
+    **every offset <= 0, including plain UTC itself**. It only appears to work
+    east of Greenwich. A CI runner on UTC would therefore be the thing that
+    caught this, in production, instead of a test.
+    """
+    return (start_day.isoformat(), end_day.isoformat())
+
+
+def local_today_iso(tz_name: str) -> str:
+    """Today's LOCAL calendar day as ISO 'yyyy-mm-dd' — the ONE definition of «today».
+
+    Shared by exactly two consumers, and that sharing is the point (D-15):
+    the `today_iso()` Jinja global (which supplies both `value=` and `max=` on
+    every date input) and `ledger.parse_op_date`'s future check. If those two
+    ever computed «today» differently, a date typed at 23:30 local would be
+    pre-filled by the form and then REFUSED by the server — an operator-visible
+    contradiction with no way to work around it.
+
+    Known, deliberate, unconverged debt: four sites still inline
+    `datetime.now(ZoneInfo(settings.display_tz)).date()` instead of calling
+    this —
+        app/services/receipts.py:209
+        app/routes/mobile_reports.py:21
+        app/services/customers.py:443
+        app/services/customers.py:465
+    They are NOT converted here (additive-change rule: they are outside this
+    phase's task). Whoever converges them must not shift this function's
+    result in the process: `parse_op_date` compares against it, so any shift
+    at the day boundary silently turns valid dates into refusals.
+    """
+    return datetime.now(ZoneInfo(tz_name)).date().isoformat()
