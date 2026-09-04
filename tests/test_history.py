@@ -12,15 +12,24 @@ Requirements -> Test Map): route/e2e tests are prefixed test_web_;
 everything else is service level. Selectors: rows, filters, pagination.
 """
 
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import new_id, utcnow_iso
+from app.core import business_date_bounds, local_today_iso, new_id, utcnow_iso
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services.batches import open_batches
-from app.services.ledger import next_seq, record_operation
-from app.services.operations import HISTORY_TYPE_COLUMNS, history_view  # noqa: F401
+from app.services.dashboard import recent_operations
+from app.services.ledger import ledger_view, next_seq, record_operation
+from app.services.operations import (  # noqa: F401
+    _DEFAULT_ORDER,
+    _SORT_MAP,
+    HISTORY_TYPE_COLUMNS,
+    history_view,
+)
 from app.services.transfers import register_transfer
+from app.services.writeoffs import recent_writeoffs
 
 
 def _batch_id(session, product):
@@ -391,9 +400,18 @@ def test_history_customer_filter_narrows_sale_type(session, stocked_product, cus
         assert sale_customer_id == customer.id
 
 
-def test_history_date_range_excludes_outside_half_open_window(session, stocked_product):
-    """Mirrors test_expense_total_half_open_bounds: a row at start_iso is
-    INCLUDED, a row at end_iso is EXCLUDED."""
+def test_history_date_range_uses_closed_business_date_bounds(session, stocked_product):
+    """Phase 33/DATE-03: the period filter is a CLOSED business-date range.
+
+    Renamed from `test_history_date_range_excludes_outside_half_open_window`
+    and re-pointed at the new contract (the same shape 33-07 applied to
+    `test_expense_total_half_open_bounds`): the seeding instants and the
+    outcome are unchanged — the 07-10 row is IN, the 07-11 row is OUT — but
+    now for the correct reason. Both rows are inserted directly, so their
+    `business_date` is NULL and `business_date_expr`'s COALESCE buckets them
+    by `substr(created_at, 1, 10)` (DATE-08); the bounds are date-only days
+    from `business_date_bounds`, not UTC timestamps.
+    """
     batch_id = _batch_id(session, stocked_product)
     start_iso = "2026-07-10T00:00:00+00:00"
     end_iso = "2026-07-11T00:00:00+00:00"
@@ -424,10 +442,20 @@ def test_history_date_range_excludes_outside_half_open_window(session, stocked_p
     session.add(op_at_end)
     session.commit()
 
-    result = history_view(session, start_iso=start_iso, end_iso=end_iso)
+    day_start, day_end = business_date_bounds(date(2026, 7, 10), date(2026, 7, 10))
+    result = history_view(session, start_iso=day_start, end_iso=day_end)
     ids = {r["op"].id for r in result["rows"]}
     assert op_at_start.id in ids
     assert op_at_end.id not in ids
+
+    # Pitfall D (the closed contract): widening the range to 07-11 must PULL IN
+    # the last day, not stop one short of it. A predicate that kept `<` passes
+    # the assertions above and fails here.
+    wide_start, wide_end = business_date_bounds(date(2026, 7, 10), date(2026, 7, 11))
+    wide = history_view(session, start_iso=wide_start, end_iso=wide_end)
+    wide_ids = {r["op"].id for r in wide["rows"]}
+    assert op_at_start.id in wide_ids
+    assert op_at_end.id in wide_ids
 
 
 # --- HIST-01: HISTORY_TYPE_COLUMNS + Warehouse join + columns key (Plan 02 Task 2) ---
@@ -484,3 +512,124 @@ def test_history_view_transfer_rows_carry_own_warehouse(session, product, batch,
         assert row["batch"] is not None
         assert row["warehouse"] is not None
         assert row["warehouse"].id == row["batch"].warehouse_id
+
+
+# --- Phase 33 (DATE-03/DATE-04, D-22/D-24): the business-date period filter ---
+
+
+def _backdated_correction(session, product, *, business_date: str, qty_delta: int = 1):
+    """One correction op entered NOW but attributed to `business_date`.
+
+    Goes through the single write path (`record_operation`), so `created_at`
+    is genuinely today's timestamp while `business_date` is the operator's
+    chosen day — exactly the shape DATE-03 is about.
+    """
+    return record_operation(
+        session,
+        type_="correction",
+        product_id=product.id,
+        qty_delta=qty_delta,
+        batch_id=_batch_id(session, product),
+        business_date=business_date,
+    )
+
+
+def test_history_period_filter_uses_business_date_not_entry_date(session, stocked_product):
+    """VA-13/DATE-03: a row entered TODAY but back-dated is filtered by the day
+    the goods moved, and is absent from its own entry day's period."""
+    op = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+
+    in_start, in_end = business_date_bounds(date(2026, 7, 10), date(2026, 7, 10))
+    in_ids = {r["op"].id for r in history_view(session, start_iso=in_start, end_iso=in_end)["rows"]}
+    assert op.id in in_ids
+
+    today = date.fromisoformat(local_today_iso(settings.display_tz))
+    out_start, out_end = business_date_bounds(today, today)
+    out_ids = {
+        r["op"].id for r in history_view(session, start_iso=out_start, end_iso=out_end)["rows"]
+    }
+    assert op.id not in out_ids
+
+
+def test_history_period_count_agrees_with_its_own_rows(session, stocked_product):
+    """T-33-22: `history_view` carries the period predicate TWICE — once on
+    `stmt` and once on `count_stmt`. Switching only one makes the pager's total
+    disagree with the rows it paginates, and nothing but this assertion catches
+    it (every other history test reads `rows` or `total`, never both)."""
+    for _ in range(3):
+        _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    # Noise strictly outside the period, on both sides.
+    _backdated_correction(session, stocked_product, business_date="2026-07-09")
+    _backdated_correction(session, stocked_product, business_date="2026-07-11")
+
+    start, end = business_date_bounds(date(2026, 7, 10), date(2026, 7, 10))
+    result = history_view(session, start_iso=start, end_iso=end)
+
+    assert result["total"] == 3
+    assert len(result["rows"]) == result["total"]
+    assert result["total_pages"] == 1
+
+
+def test_recent_feeds_still_order_by_created_at(session, stocked_product):
+    """VA-17 (D-22/DATE-04): display ORDER did NOT move to the business date.
+
+    The «recent N» feeds answer «что я только что ввёл?» — they are how the
+    operator confirms an entry landed. A row entered now but back-dated a year
+    must therefore still be FIRST in them; bucketing them by the business date
+    would make a just-entered back-dated row silently vanish from the very list
+    used to verify it was saved (T-33-23).
+
+    Covers app/services/ledger.py::ledger_view (the actual recent-N feed —
+    33-CONTEXT cites `ledger.py:234`, which is a `.limit(1)`; the feed is the
+    `.order_by(created_at desc, seq desc).limit(50)` below it), plus
+    app/services/dashboard.py::recent_operations and
+    app/services/writeoffs.py::recent_writeoffs.
+    """
+    batch_id = _batch_id(session, stocked_product)
+    on_time = record_operation(
+        session,
+        type_="writeoff",
+        product_id=stocked_product.id,
+        qty_delta=-1,
+        batch_id=batch_id,
+    )
+    # Entered LAST, back-dated furthest into the past.
+    backdated = record_operation(
+        session,
+        type_="writeoff",
+        product_id=stocked_product.id,
+        qty_delta=-1,
+        batch_id=batch_id,
+        business_date="2020-01-01",
+    )
+    assert backdated.business_date < on_time.business_date
+
+    assert ledger_view(session)["operations"][0].id == backdated.id
+    assert recent_operations(session)[0]["op"].id == backdated.id
+    assert recent_writeoffs(session)[0]["op"].id == backdated.id
+
+    # The sort allow-list itself is unchanged at its HEAD values (D-22): no
+    # business-date sort option was added, and neither tuple was re-keyed.
+    assert set(_SORT_MAP) == {"oldest"}
+    assert [str(c) for c in _SORT_MAP["oldest"]] == [
+        "operations.created_at ASC",
+        "operations.seq ASC",
+    ]
+    assert [str(c) for c in _DEFAULT_ORDER] == [
+        "operations.created_at DESC",
+        "operations.seq DESC",
+    ]
+
+
+def test_history_default_order_is_unchanged_by_a_backdated_row(session, stocked_product):
+    """D-22, at the /history read itself: the newest-ENTERED row leads the
+    default view even when it is back-dated behind every other row."""
+    _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    today = date.fromisoformat(local_today_iso(settings.display_tz))
+    newest = _backdated_correction(
+        session,
+        stocked_product,
+        business_date=(today - timedelta(days=900)).isoformat(),
+    )
+
+    assert history_view(session)["rows"][0]["op"].id == newest.id

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_day_bounds_utc
+from app.core import business_date_bounds
 from app.db import get_session
 from app.routes import templates
 from app.services.operations import filter_products, history_view
@@ -100,7 +100,13 @@ def history_page(
     to_date = period["to_date"]
     start_iso = end_iso = None
     if from_date is not None and to_date is not None:
-        start_iso, end_iso = local_day_bounds_utc(from_date, to_date, settings.display_tz)
+        # DATE-03: date-only bounds over the CLOSED [from_date, to_date] range —
+        # `history_view` matches them against `business_date_expr(Operation)`, so
+        # no timezone conversion happens here any more (`business_date` IS the
+        # operator's local day). Predicate and bounds are ONE unit: handing the
+        # switched predicate the OLD UTC-timestamp bounds instead drops every row
+        # at UTC and at any negative offset (see business_date_bounds' docstring).
+        start_iso, end_iso = business_date_bounds(from_date, to_date)
 
     result = history_view(
         session,

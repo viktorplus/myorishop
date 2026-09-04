@@ -22,10 +22,20 @@ from app.services.catalog import category_options
 from app.services.customers import search_customers
 from app.services.ledger import STOCK_AFFECTING_TYPES
 from app.services.pagination import LIST_PAGE_SIZE
+from app.services.reports import business_date_expr
 
 # D-06/D-07/T-14-03: fixed sort allow-list — an unknown/tampered `sort` value
 # falls back to the default order via `.get(sort, default)`, never string-
 # interpolated into `order_by()`.
+#
+# Phase 33 D-22/DATE-04 — DO NOT "finish the job" here. This phase switches
+# /history's period FILTER to the business date (below) and deliberately leaves
+# the display ORDER on `created_at`, and adds no business-date sort option.
+# `created_at` keeps all three of its jobs, display order included: «что я
+# только что ввёл?» is answered by entry order, so a row entered now but
+# back-dated a year must still appear at the top. Anyone switching _SORT_MAP or
+# _DEFAULT_ORDER to `business_date` reddens
+# tests/test_history.py::test_recent_feeds_still_order_by_created_at (VA-17).
 _SORT_MAP = {
     "oldest": (Operation.created_at.asc(), Operation.seq.asc()),
 }
@@ -82,6 +92,12 @@ def history_view(
 
     HIST-02 (Plan 02 Task 1): `customer`/`category`/`start_iso`/`end_iso` are
     additive kwargs, all combining with AND and with the existing filters.
+    Phase 33/DATE-03: `start_iso`/`end_iso` are now DATE-ONLY ISO days
+    ('yyyy-mm-dd') produced by `app.core.business_date_bounds`, NOT the UTC
+    timestamp bounds the routes used to build — the period is
+    matched against `business_date_expr(Operation)` over a CLOSED range. Passing
+    a full timestamp here silently drops rows (a date string sorts before its own
+    'T...' suffix), so the caller must use `business_date_bounds`.
     `category` and `customer` are resolved to a bounded candidate set in
     PYTHON (T-23-04/T-23-05: never string-interpolated/lower()'d in SQL —
     SQLite lower()/LIKE cannot fold Cyrillic, D-27), then applied via a
@@ -147,11 +163,22 @@ def history_view(
             Sale.customer_id.in_(candidate_ids)
         )
 
+    # DATE-03: the period filter buckets by the BUSINESS date (the day the goods
+    # actually moved), not by the entry timestamp — `business_date_expr` falls
+    # back to substr(created_at, 1, 10) for a NULL column (DATE-08), so a row
+    # pushed by a pre-0027 client is still bucketed, never dropped.
+    # Bounds are the CLOSED [start_day, end_day] contract (`business_date_bounds`):
+    # `>=` AND `<=`, never `<`.
+    # T-33-22: these two predicates MUST move together — switching `stmt` alone
+    # (or `count_stmt` alone) makes the pager's total disagree with its own rows,
+    # and nothing but an explicit `len(rows) == total` assertion catches it.
     if start_iso is not None and end_iso is not None:
-        stmt = stmt.where(Operation.created_at >= start_iso, Operation.created_at < end_iso)
-        count_stmt = count_stmt.where(
-            Operation.created_at >= start_iso, Operation.created_at < end_iso
+        period = (
+            business_date_expr(Operation) >= start_iso,
+            business_date_expr(Operation) <= end_iso,
         )
+        stmt = stmt.where(*period)
+        count_stmt = count_stmt.where(*period)
 
     # USER-06: optional author filter — additive, combines with AND, applied to
     # BOTH stmt and count_stmt (mirrors the customer/category kwarg blocks).

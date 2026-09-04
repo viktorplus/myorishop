@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_day_bounds_utc
+from app.core import business_date_bounds
 from app.db import get_session
 from app.routes import templates
 from app.services.operations import history_view
@@ -85,9 +85,10 @@ def mobile_history_page(
     period = _resolve_history_period(from_, to, settings.display_tz)
     start_iso = end_iso = None
     if period["from_date"] is not None:
-        start_iso, end_iso = local_day_bounds_utc(
-            period["from_date"], period["to_date"], settings.display_tz
-        )
+        # DATE-03: mirrors app/routes/history.py exactly — date-only CLOSED
+        # bounds, matched against business_date_expr(Operation) inside
+        # history_view. Predicate and bounds move together or rows vanish.
+        start_iso, end_iso = business_date_bounds(period["from_date"], period["to_date"])
 
     result = history_view(
         session,
