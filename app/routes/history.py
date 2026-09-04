@@ -91,6 +91,7 @@ def history_page(
     category: str = "",
     customer: str = "",
     author: str = "",
+    dated: str = "",
     from_: str = Query("", alias="from"),
     to: str = Query("", alias="to"),
     session: Session = Depends(get_session),
@@ -117,6 +118,7 @@ def history_page(
         customer=customer or None,
         category=category or None,
         author_id=author or None,
+        dated=dated,
         start_iso=start_iso,
         end_iso=end_iso,
     )
@@ -140,6 +142,10 @@ def history_page(
             "category": category,
             "customer": customer,
             "author": result["author_id"],
+            # DATE-06 (HIST-02): re-serialised from the NORMALISED result value,
+            # never the raw query input — without this key a pagination click
+            # silently drops «Только задним числом» and shows the unfiltered page.
+            "dated": result["dated"],
             "from": from_date.isoformat() if from_date else "",
             "to": to_date.isoformat() if to_date else "",
         }.items()
@@ -164,6 +170,10 @@ def history_page(
         "customer": customer,
         "users": list_users(session),
         "author_id": result["author_id"],
+        # DATE-06: the fourth filter's own state, so the <select> re-selects
+        # itself after an outerHTML swap and the empty-state copy knows a
+        # filter is active.
+        "dated": result["dated"],
         "from_date": from_date.isoformat() if from_date else "",
         "to_date": to_date.isoformat() if to_date else "",
         "active_preset": period["active_preset"],

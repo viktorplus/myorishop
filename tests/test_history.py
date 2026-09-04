@@ -52,10 +52,30 @@ def _seed_mixed_ops(session, product):
     )
 
 
-def _insert_legacy_op(session, product, *, type_, qty_delta):
+def _insert_legacy_op(
+    session,
+    product,
+    *,
+    type_,
+    qty_delta,
+    created_at: str | None = None,
+    business_date: str | None = None,
+):
     """Insert a pre-Phase-9 (NULL batch_id) stock op directly, bypassing
     record_operation (which after the D-12 flip rejects a batch-less stock op).
-    This is the legacy ledger shape /history must attribute at read time (D-15)."""
+    This is the legacy ledger shape /history must attribute at read time (D-15).
+
+    Phase 33: two optional kwargs, both defaulting to today's exact behaviour
+    (`created_at=utcnow_iso()`, `business_date` left NULL) — extended in place
+    rather than duplicated, the same call 33-08 made for `conftest.past_sale`.
+    `record_operation` can supply NEITHER: it always stamps
+    `created_at=utcnow_iso()` and always substitutes today's local day for a
+    missing business date, and the `operations_no_update` trigger ABORTs any
+    later UPDATE. So a genuine DATE-08 NULL row and a row whose entry timestamp
+    straddles the UTC/local day boundary can only be built by INSERT.
+    The NULL batch_id is orthogonal noise for the date assertions — /history
+    outerjoins Batch, so such a row is never dropped.
+    """
     op = Operation(
         id=new_id(),
         type=type_,
@@ -64,7 +84,8 @@ def _insert_legacy_op(session, product, *, type_, qty_delta):
         batch_id=None,
         device_id=settings.device_id,
         seq=next_seq(session, settings.device_id),
-        created_at=utcnow_iso(),
+        created_at=created_at or utcnow_iso(),
+        business_date=business_date,
         created_by=settings.operator_name,
     )
     session.add(op)
@@ -659,3 +680,191 @@ def test_web_history_period_filter_selects_by_the_business_date(client, session,
     miss = client.get("/history?from=2026-08-01&to=2026-08-31")
     assert miss.status_code == 200
     assert miss.text.count(cell) == 0
+
+
+# --- Phase 33 (DATE-05/DATE-06, D-18..D-21): the «задним числом» marker + filter ---
+
+
+def _same_day_correction(session, product, qty_delta: int = 1):
+    """One correction entered NOW and attributed to today — the unmarked shape."""
+    return record_operation(
+        session,
+        type_="correction",
+        product_id=product.id,
+        qty_delta=qty_delta,
+        batch_id=_batch_id(session, product),
+    )
+
+
+def test_history_rows_carry_business_day_and_is_backdated(session, stocked_product):
+    """DATE-05/DATE-06: the two row-dict keys BOTH surfaces consume."""
+    marked = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    plain = _same_day_correction(session, stocked_product)
+    by_id = {r["op"].id: r for r in history_view(session)["rows"]}
+
+    assert by_id[marked.id]["business_day"] == "2026-07-10"
+    assert by_id[marked.id]["is_backdated"] is True
+
+    assert by_id[plain.id]["business_day"] == local_today_iso(settings.display_tz)
+    assert by_id[plain.id]["is_backdated"] is False
+
+
+def test_history_null_business_date_row_is_never_marked(session, stocked_product):
+    """DATE-08: a row pushed by a pre-0027 client has business_date NULL. It was
+    not back-dated — it simply predates the column — so it must carry NO marker
+    and render byte-identically to today."""
+    legacy = _insert_legacy_op(session, stocked_product, type_="correction", qty_delta=1)
+
+    row = next(r for r in history_view(session)["rows"] if r["op"].id == legacy.id)
+    assert row["op"].business_date is None
+    assert row["business_day"] is None
+    assert row["is_backdated"] is False
+
+
+def test_history_dated_backdated_returns_only_backdated_rows(session, stocked_product):
+    """DATE-06: «Только задним числом». T-33-22 — the predicate lands on BOTH
+    `stmt` and `count_stmt`, and only `len(rows) == total` can catch a half-switch."""
+    marked = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    _same_day_correction(session, stocked_product)
+    _insert_legacy_op(session, stocked_product, type_="correction", qty_delta=1)
+
+    result = history_view(session, dated="backdated")
+
+    assert {r["op"].id for r in result["rows"]} == {marked.id}
+    assert result["total"] == 1
+    assert len(result["rows"]) == result["total"]
+
+
+def test_history_dated_same_day_returns_only_same_day_rows(session, stocked_product):
+    """DATE-06: «Только в день операции» — the exact negation, back-dated rows out."""
+    marked = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    plain = _same_day_correction(session, stocked_product)
+
+    result = history_view(session, dated="same_day")
+    ids = {r["op"].id for r in result["rows"]}
+
+    assert plain.id in ids
+    assert marked.id not in ids
+    assert len(result["rows"]) == result["total"]
+    assert all(r["is_backdated"] is False for r in result["rows"])
+
+
+def test_history_dated_null_business_date_counts_as_same_day(session, stocked_product):
+    """DATE-08 inside the filter: `NULL != x` is NULL in SQL, so a naive negation
+    would VANISH every pre-0027 row from both halves of the filter. It belongs to
+    «Только в день операции» — it was not back-dated."""
+    legacy = _insert_legacy_op(session, stocked_product, type_="correction", qty_delta=1)
+
+    same_day = history_view(session, dated="same_day")
+    assert legacy.id in {r["op"].id for r in same_day["rows"]}
+    assert len(same_day["rows"]) == same_day["total"]
+
+    backdated = history_view(session, dated="backdated")
+    assert legacy.id not in {r["op"].id for r in backdated["rows"]}
+    assert len(backdated["rows"]) == backdated["total"]
+
+
+def test_history_dated_unknown_value_behaves_as_all(session, stocked_product):
+    """T-33-35: the allow-list discipline of `_SORT_MAP.get(sort, default)`. An
+    unknown or tampered value selects NO predicate — it is never interpolated
+    into a query — and is echoed back normalised so the <select> shows «Все»."""
+    _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    _same_day_correction(session, stocked_product)
+
+    unfiltered = history_view(session)
+    tampered = history_view(session, dated="'; DROP TABLE operations; --")
+
+    assert {r["op"].id for r in tampered["rows"]} == {r["op"].id for r in unfiltered["rows"]}
+    assert tampered["total"] == unfiltered["total"]
+    assert tampered["dated"] == ""
+    # The table is still there — the string never reached SQL.
+    assert session.scalar(select(Operation.id).limit(1)) is not None
+
+
+def test_history_view_echoes_the_dated_filter(session, stocked_product):
+    """D-20: without `"dated"` in the result dict the fourth <select> cannot
+    re-select itself after an htmx outerHTML swap."""
+    assert history_view(session, dated="backdated")["dated"] == "backdated"
+    assert history_view(session, dated="same_day")["dated"] == "same_day"
+    assert history_view(session)["dated"] == ""
+
+
+def test_web_history_dated_filter_survives_pagination(client, session, stocked_product):
+    """HIST-02 through the REAL route: `qs_parts` must carry `dated` onto every
+    pagination link, or clicking page 2 silently drops the filter and shows the
+    unfiltered page — a 200 with quietly wrong rows and no error anywhere."""
+    # LIST_PAGE_SIZE is 20. 21 back-dated + 20 same-day + the fixture's own
+    # receipt = 42 rows unfiltered (3 pages) vs 21 filtered (2 pages), so BOTH
+    # the page count and the last page's row count catch a dropped filter.
+    for _ in range(21):
+        _backdated_correction(session, stocked_product, business_date="2026-07-10")
+    for _ in range(20):
+        _same_day_correction(session, stocked_product)
+    cell = f"<td>{stocked_product.code}</td>"
+
+    page_one = client.get("/history?dated=backdated")
+    assert page_one.status_code == 200
+    assert "dated=backdated" in page_one.text  # re-serialised onto the pagination links
+    assert page_one.text.count(cell) == 20
+    assert "Страница 1 из 2" in page_one.text
+
+    page_two = client.get("/history?dated=backdated&page=1", headers={"HX-Request": "true"})
+    assert page_two.status_code == 200
+    # Page 2 holds exactly the 21st back-dated row. With the filter dropped it
+    # would hold 20 rows and read «Страница 2 из 3».
+    assert page_two.text.count(cell) == 1
+    assert "Страница 2 из 2" in page_two.text
+
+
+def test_backdated_filter_and_marker_diverge_only_on_utc_straddle(
+    session, stocked_product, monkeypatch
+):
+    """The ONE accepted disagreement between the marker and the filter — CHOSEN,
+    not overlooked (33-14 locked decision §2, `33-UI-SPEC.md` § Interaction
+    Contract §6).
+
+    The marker compares `business_date` against the LOCAL calendar day of
+    `created_at`; the SQL filter compares it against `substr(created_at, 1, 10)`,
+    the UTC day, because a local day is not expressible in portable ORM
+    (`datetime(created_at, '+3 hours')` on SQLite, `created_at::date` on
+    PostgreSQL — both banned by CLAUDE.md PC-2), and a stored marker column is
+    out (append-only ledger, only four columns land this phase).
+
+    Consequence, in ONE direction only: a row entered in the window where the
+    local day and the UTC day differ IS returned by «Только задним числом» and
+    is NOT marked. The marker is the correct one there. The converse never
+    happens — no marked row is ever lost by the filter — and THAT is why this is
+    the smaller of the two errors: a filter showing a few extra rows is subtler
+    than a marker contradicting the date printed beside it. Computing the marker
+    in Python after the page was fetched would make `total` disagree with the
+    rows and break pagination.
+    """
+    monkeypatch.setattr(settings, "display_tz", "Europe/Moscow")
+    # 22:00 UTC on 2026-07-10 is 01:00 LOCAL on 2026-07-11 at Europe/Moscow
+    # (UTC+3): the operator entered this on their own 11th, and attributed it to
+    # the 11th. UTC day 2026-07-10, local day 2026-07-11.
+    straddler = _insert_legacy_op(
+        session,
+        stocked_product,
+        type_="correction",
+        qty_delta=1,
+        created_at="2026-07-10T22:00:00+00:00",
+        business_date="2026-07-11",
+    )
+    marked = _backdated_correction(session, stocked_product, business_date="2026-07-10")
+
+    unfiltered = {r["op"].id: r for r in history_view(session)["rows"]}
+    # The marker is right: entered on its own local day, so NOT back-dated.
+    assert unfiltered[straddler.id]["is_backdated"] is False
+    assert unfiltered[marked.id]["is_backdated"] is True
+
+    result = history_view(session, dated="backdated")
+    returned = {r["op"].id: r for r in result["rows"]}
+    assert len(result["rows"]) == result["total"]
+
+    # The filter over-includes the straddler — the documented, accepted edge.
+    assert straddler.id in returned
+    assert returned[straddler.id]["is_backdated"] is False
+
+    # The converse never happens: EVERY marked row is inside «Только задним числом».
+    assert {op_id for op_id, r in unfiltered.items() if r["is_backdated"]} <= set(returned)

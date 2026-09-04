@@ -72,6 +72,7 @@ def mobile_history_page(
     product: str = "",
     category: str = "",
     customer: str = "",
+    dated: str = "",
     from_: str = Query("", alias="from"),
     to: str = Query("", alias="to"),
     page: int = 0,
@@ -97,6 +98,7 @@ def mobile_history_page(
         page=page,
         customer=customer or None,
         category=category or None,
+        dated=dated,
         start_iso=start_iso,
         end_iso=end_iso,
     )
@@ -115,6 +117,10 @@ def mobile_history_page(
             "product": result["product_id"],
             "category": category,
             "customer": customer,
+            # DATE-06 (D-21, mobile mirrors desktop): same HIST-02 reason as
+            # app/routes/history.py — without this key a pagination click
+            # silently drops the «Задним числом» filter.
+            "dated": result["dated"],
             "from": from_out,
             "to": to_out,
         }.items()
@@ -133,6 +139,9 @@ def mobile_history_page(
         "product_id": result["product_id"],
         "category": category,
         "customer": customer,
+        # DATE-06: the fourth filter's own state — re-selects the mobile
+        # <select> after a swap and tells the card empty state a filter is on.
+        "dated": result["dated"],
         "from_date": from_out,
         "to_date": to_out,
         "error": period["error"],
