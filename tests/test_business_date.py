@@ -22,6 +22,7 @@ import pytest
 from app.config import settings
 from app.core import (
     business_date_bounds,
+    format_ru_date,
     local_day_bounds_utc,
     local_today_iso,
     new_id,
@@ -809,3 +810,107 @@ def test_every_write_surface_renders_op_date(client, session, stocked_product, s
     assert _wrapper_class(response.text, surface.input_id) == surface.field_class, (
         f"{surface.name}: ожидался class=\"{surface.field_class}\""
     )
+
+
+# --- CR-01 (33-REVIEW): the sync wire is the FIFTEENTH write path -------------
+#
+# The 14 surfaces above are the write paths an OPERATOR uses, and every one of
+# them routes through `parse_op_date`. `merge._ledger_row` is the one that does
+# not: it copies every declared column straight from the pushed NDJSON into a
+# bulk INSERT. VA-11 only proved the STRING "business_date" does not appear in
+# the three sync modules — not that the sync path cannot carry the VALUE.
+#
+# Two layers are asserted here, because either one alone still loses:
+#   * `parse_exchange` refuses a non-ISO value  -> nothing bad is ever stored;
+#   * `format_ru_date` renders instead of raising -> a value that reached the DB
+#     by any other route degrades one cell, not every page. The ledger is
+#     append-only, so an application-level repair of a stored row is impossible.
+
+
+def _ndjson_with_business_date(kind: str, value) -> list[str]:
+    """A minimal one-record NDJSON push whose ledger row carries ``value``.
+
+    Built here rather than imported from `tests/test_merge.py` on purpose: this
+    pins a property of the PARSE BOUNDARY and must keep pinning it even if the
+    merge suite reshapes its own fixtures.
+    """
+    header = {
+        "kind": "header",
+        "format_version": merge.FORMAT_VERSION,
+        "schema_version": "0027",
+        "source_device_id": "device-A",
+    }
+    common = {
+        "id": f"{kind}-1",
+        "device_id": "dev-1",
+        "seq": 1,
+        "created_at": "2026-09-04T10:00:00+00:00",
+        "created_by": "operator",
+        "business_date": value,
+    }
+    if kind == "operation":
+        record = {
+            "kind": kind,
+            "type": "receipt",
+            "product_id": "p-1",
+            "qty_delta": 10,
+            "batch_id": "b-1",
+            **common,
+        }
+    else:
+        record = {"kind": kind, "category": "sale", "amount_cents": 79900, **common}
+    return [
+        json.dumps(header, ensure_ascii=False),
+        json.dumps(record, ensure_ascii=False),
+    ]
+
+
+@pytest.mark.parametrize("kind", ("operation", "cash_movement"))
+@pytest.mark.parametrize(
+    "bad",
+    (
+        "не дата",
+        "2026/09/04",
+        "04.09.2026",
+        "20260904",  # a real date, but NOT the canonical shape the reads compare
+        "2026-13-45",
+        "2026-09-04T10:00:00+00:00",  # a timestamp is not a business DAY
+        12345,
+        True,
+        "x" * 4096,
+    ),
+    ids=repr,
+)
+def test_parse_exchange_refuses_a_non_iso_business_date(kind, bad):
+    """CR-01: a poisoned date is refused at the wire, before any DB touch.
+
+    Mirrors the money-field check one line above it in `parse_exchange`, and for
+    the same reason: SQLite's dynamic typing stores whatever it is handed, and
+    `String(10)` enforces nothing.
+    """
+    with pytest.raises(ValueError, match="business_date"):
+        merge.parse_exchange(_ndjson_with_business_date(kind, bad))
+
+
+@pytest.mark.parametrize("kind", ("operation", "cash_movement"))
+@pytest.mark.parametrize("good", ("2026-09-04", None))
+def test_parse_exchange_accepts_iso_and_null_business_date(kind, good):
+    """The gate must not break the two legitimate values.
+
+    NULL is DATE-08's sentinel («written by a pre-0027 client») and MUST stay
+    legal — rejecting it would cut every un-upgraded client off the sync.
+    """
+    batch = merge.parse_exchange(_ndjson_with_business_date(kind, good))
+    assert batch.records[0].data["business_date"] == good
+
+
+@pytest.mark.parametrize("junk", ("не дата", "2026/09/04", "20260904", 12345))
+def test_format_ru_date_renders_junk_instead_of_raising(junk):
+    """CR-01 layer 2: the display filter never 500s on stored data.
+
+    `date.fromisoformat` raising inside a Jinja filter takes out /history,
+    /warehouses, the customer tile and both CSV exports for EVERY row, not just
+    the bad one — and the append-only triggers mean the row cannot be repaired.
+    """
+    assert format_ru_date(junk) == str(junk)
+    assert format_ru_date("2026-09-04") == "04.09.2026"  # the happy path is intact

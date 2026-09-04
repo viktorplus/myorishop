@@ -92,11 +92,22 @@ def format_ru_date(iso: str | None) -> str:
     LOT-03 batch expiry is stored as ISO yyyy-mm-dd text; this is the display
     filter for every batch surface. Empty/None -> "" (expiry is optional).
     Locale-independent: `date.fromisoformat` validates, then reformats.
+
+    NEVER RAISES (CR-01, 33-REVIEW) — same rule as `currency_symbol` above.
+    This filter renders STORED data (`batch.expiry`, `operations.business_date`)
+    on /history, /warehouses, the customer tile and both CSV exports, and the
+    ledger is append-only: a single unparseable value written by some other
+    write path would otherwise turn every one of those pages into a permanent
+    500 that the application cannot repair. An unrecognised value is shown
+    as-is instead. `merge.parse_exchange` is the gate that stops such a value
+    reaching the DB in the first place; this is the second layer, not the first.
     """
     if not iso:
         return ""
-    d = date.fromisoformat(iso)
-    return d.strftime("%d.%m.%Y")
+    try:
+        return date.fromisoformat(iso).strftime("%d.%m.%Y")
+    except (TypeError, ValueError):
+        return str(iso)
 
 
 def iso_to_local(iso_str: str, tz_name: str) -> str:

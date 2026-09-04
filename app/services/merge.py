@@ -26,6 +26,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
@@ -88,6 +89,13 @@ _LEDGER_KINDS: frozenset[str] = frozenset({"operation", "cash_movement"})
 # Origin fields every ledger record MUST carry (validated before any DB touch).
 _LEDGER_REQUIRED: tuple[str, ...] = ("device_id", "seq", "created_at", "created_by")
 
+# CR-01 (33-REVIEW): date-typed wire columns. Named EXPLICITLY rather than
+# derived from a `_date` suffix — `created_at` is a full timestamp and
+# `deleted_at`/`synced_at` are server-owned, so a suffix rule would either miss
+# this column or wrongly capture the timestamps. Add the next date-only column
+# here when one appears.
+_DATE_FIELDS: frozenset[str] = frozenset({"business_date"})
+
 
 @dataclass(frozen=True)
 class ExchangeRecord:
@@ -136,6 +144,27 @@ def _money_fields(kind: str) -> frozenset[str]:
     return frozenset(f for f in KIND_TO_FIELDS.get(kind, frozenset()) if f.endswith("_cents"))
 
 
+def _date_fields(kind: str) -> frozenset[str]:
+    """The date-only columns this kind actually declares (`_DATE_FIELDS` ∩ schema)."""
+    return _DATE_FIELDS & KIND_TO_FIELDS.get(kind, frozenset())
+
+
+def _is_iso_date(value: object) -> bool:
+    """True only for a CANONICAL ISO ``yyyy-mm-dd`` string.
+
+    The round-trip through :meth:`date.isoformat` is load-bearing: Python 3.11+
+    ``date.fromisoformat`` also accepts the basic format ``"20260904"``, which
+    would then be stored in a shape no read-side comparison expects (the period
+    predicates compare `business_date` as a STRING).
+    """
+    if not isinstance(value, str):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
 def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     """Parse NDJSON lines into an ExchangeBatch (PURE — no DB/file/network).
 
@@ -143,8 +172,9 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     carrying ``format_version``; every later line is one record typed by its
     ``kind``. Rejects (ValueError, before any DB touch) a malformed/non-object
     line, an unsupported ``format_version``, an unknown/duplicate ``kind``, a
-    missing header, a duplicate origin id within one batch (same kind + id), and
-    a non-int money value (float/string/bool). ``synced_at`` is forced to None
+    missing header, a duplicate origin id within one batch (same kind + id), a
+    non-int money value (float/string/bool), and a date-only column that is not
+    a canonical ISO ``yyyy-mm-dd`` string. ``synced_at`` is forced to None
     (server-owned, never trusted from the wire).
     """
     non_header_kinds = RECORD_KINDS - {"header"}
@@ -216,6 +246,20 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
             value = data.get(money_key)
             if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
                 raise ValueError(f"money field {money_key!r} must be int cents")
+
+        # CR-01 (33-REVIEW): the same discipline as the money check above, for
+        # the date-only columns. `business_date` lands in a `String(10)` that
+        # SQLite does not type-check, `_ledger_row` copies every declared column
+        # STRAIGHT from the wire into the bulk INSERT, and the append-only
+        # triggers then make a poisoned row unrepairable by the application —
+        # while `format_ru_date` renders it on /history, /warehouses, the
+        # customer tile and both CSV exports. Reject anything that is not a
+        # canonical ISO yyyy-mm-dd string here, before any DB touch. NULL stays
+        # legal: it is DATE-08's "written by a pre-0027 client" sentinel.
+        for date_key in _date_fields(kind):
+            value = data.get(date_key)
+            if value is not None and not _is_iso_date(value):
+                raise ValueError(f"date field {date_key!r} must be an ISO yyyy-mm-dd string")
 
         # synced_at is server-owned — never trusted from the wire (DD-6).
         if "synced_at" in data:
