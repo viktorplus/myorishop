@@ -429,9 +429,19 @@ All 17 modified files exist on disk with the described content:
 `tests/test_receipts.py`, `tests/test_writeoffs.py`,
 `tests/test_mobile_receipts.py`, `tests/test_mobile_writeoff.py`,
 `app/__init__.py`. Commits `8a38dc8`, `c53b993` and `972cf2a` are all present in
-`git log` and together touch exactly those 17 files and no others. Artifacts
-`reports/33-10.xml`, `reports/33-10.sha` (`972cf2a…`) and `reports/33-10.dirty`
-were written from real command output.
+`git log` and together touch exactly those 17 files and no others.
+
+**Artifact provenance, stated exactly.** `reports/33-10.xml` is the junit output
+of the full-suite run described above, executed against `972cf2a` — the last
+CODE commit of this plan and the tree every result in the Verification table
+refers to. `reports/33-10.sha` and `reports/33-10.dirty` are written LAST, after
+this plan's final docs commit, so they match `HEAD` exactly; this follows the
+convention `reports/33-07.sha` and `reports/33-08.sha` already established (both
+point at their plan's docs commit, not its last code commit). The delta between
+the two is docs-only — `.planning/` files and this SUMMARY — so no test result
+in this document is stale. `reports/33-10.dirty` is empty for tracked files; the
+untracked entries it lists (`AGENTS.md`, `input/`, `plan1.txt`, the other plans'
+`reports/*` artifacts) all pre-date this plan and were deliberately left alone.
 
 ---
 *Phase: 33-back-dated-operations*
