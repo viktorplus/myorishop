@@ -47,6 +47,14 @@ def _live_triggers(engine) -> dict[str, str]:
     return {name: _normalise(sql) for name, sql in rows}
 
 
+def _declared_triggers() -> dict[str, str]:
+    """`{trigger name: normalised DDL}` as `app/db.py` declares it."""
+    return {
+        re.search(r"CREATE TRIGGER (\w+)", trigger).group(1): _normalise(trigger)
+        for trigger in APPEND_ONLY_TRIGGERS
+    }
+
+
 def test_alembic_head_triggers_match_app_db(alembic_engine):
     """VA-5 (SYNC-13): `alembic upgrade head` produces exactly `APPEND_ONLY_TRIGGERS`.
 
@@ -61,10 +69,7 @@ def test_alembic_head_triggers_match_app_db(alembic_engine):
     Compared as a whole map, not a name set: a trigger present under the right
     name but guarding the wrong column list is the failure mode that matters.
     """
-    declared = {
-        re.search(r"CREATE TRIGGER (\w+)", trigger).group(1): _normalise(trigger)
-        for trigger in APPEND_ONLY_TRIGGERS
-    }
+    declared = _declared_triggers()
     assert set(declared) == set(_TRIGGER_NAMES)  # the constant itself is intact
     assert _live_triggers(alembic_engine) == declared
 
@@ -87,12 +92,40 @@ def test_downgrade_upgrade_roundtrip_preserves_triggers(alembic_engine, run_alem
     historical fact and is never edited retroactively (the same rule 0018 and
     0026 state in their own docstrings). This test is the guard from now on — a
     future migration whose downgrade silently strips a trigger reddens here.
+
+    WR-08 (33-REVIEW): the DOWNGRADED state is now inspected BEFORE the
+    re-upgrade. It previously was not, and the single assertion compared NAMES
+    ONLY — after re-upgrading — so the state it looked at was produced by
+    `_SQLITE_DDL`, never by `_SQLITE_DOWNGRADE_DDL`. That left 0027's ~80 lines
+    of hand-copied downgrade DDL, the half that has to reproduce 0018's and
+    0026's exact `WHEN` enumerations, covered by NO assertion at all: a dropped
+    `OR NEW.currency` would leave a downgraded DB with a silently weaker cash
+    guard and every test would stay green. That is the same class of drift
+    migration 0026 exists to fix, which is exactly what this file is about.
     """
     url = str(alembic_engine.url)
     run_alembic(url, "downgrade", "-1")
-    run_alembic(url, "upgrade", "head")
 
-    assert set(_live_triggers(alembic_engine)) == set(_TRIGGER_NAMES)
+    # (1) The downgraded state — the half nothing used to look at.
+    downgraded = _live_triggers(alembic_engine)
+    assert set(downgraded) == set(_TRIGGER_NAMES)
+    # The 0027 columns must be GONE from the guards (they are dropped next).
+    assert "business_date" not in downgraded["operations_no_update"]
+    assert "reverses_op_id" not in downgraded["operations_no_update"]
+    assert "business_date" not in downgraded["cash_movements_no_update"]
+    assert "reverses_movement_id" not in downgraded["cash_movements_no_update"]
+    # ...and every PRE-0027 column must still be named. `NEW.currency` is the
+    # load-bearing one: it is the exact column 0026 had to add after 0024 left
+    # it silently mutable, so it is the drift this file was written for.
+    assert "NEW.currency" in downgraded["cash_movements_no_update"]
+    assert "NEW.sale_id" in downgraded["cash_movements_no_update"]
+    assert "NEW.batch_id" in downgraded["operations_no_update"]
+    assert "NEW.qty_delta" in downgraded["operations_no_update"]
+
+    # (2) Back to head: the whole map, not just the names (same discipline as
+    # `test_alembic_head_triggers_match_app_db`).
+    run_alembic(url, "upgrade", "head")
+    assert _live_triggers(alembic_engine) == _declared_triggers()
 
 
 def test_revision_ids_are_fixed_width():
