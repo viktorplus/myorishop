@@ -76,7 +76,7 @@ def _op_record(op_id: str, *, product_id: str, batch_id: str | None, seq: int = 
     }
 
 
-def _body(header_schema: str, records: list[dict]) -> bytes:
+def _body(header_schema: object, records: list[dict]) -> bytes:
     """NDJSON push body whose header carries an EXPLICIT `schema_version` (D-03)."""
     lines = build_ndjson(
         header_overrides={"schema_version": header_schema}, records=records
@@ -128,6 +128,60 @@ def test_push_schema_ok_escape_hatch_both_sides():
     assert push_schema_ok("", SERVER_SCHEMA) is True
     assert push_schema_ok(AHEAD_SCHEMA, "") is True
     assert push_schema_ok("", "") is True
+
+
+# --- WR-02 (33-REVIEW): the header field is JSON, not necessarily a string -----
+
+
+@pytest.mark.parametrize(
+    "untyped", (5, 1.0, True, None, ["0027"], {"v": "0027"}), ids=repr
+)
+def test_push_schema_ok_is_total_on_a_non_string_version(untyped):
+    """WR-02: the predicate never raises, whatever it is handed.
+
+    `5 <= "0027"` is a TypeError and the push route's `try` covers only
+    `parse_exchange` — so an `{"schema_version": 5}` header used to produce a raw
+    500 from the one route whose design note is «never echo, never crash».
+    Refusal (fail CLOSED) is the safe answer: an untyped version is not a version.
+    """
+    from app.services.sync import push_schema_ok
+
+    assert push_schema_ok(untyped, SERVER_SCHEMA) is False
+    assert push_schema_ok(SERVER_SCHEMA, untyped) is False
+
+
+@pytest.mark.parametrize("untyped", (5, 1.0, True, ["0027"], {"v": "0027"}), ids=repr)
+def test_parse_exchange_coerces_a_non_string_schema_version(untyped):
+    """WR-02, layer 1: `ExchangeBatch.schema_version` is declared `str` — keep it one.
+
+    Coerced at the same boundary that already type-checks money and `seq`. An
+    untyped version degrades to "" — the D-03 escape hatch, i.e. treated exactly
+    like a header that omits the field.
+    """
+    from app.services.merge import parse_exchange
+
+    batch = parse_exchange(_body(untyped, []).decode("utf-8").splitlines())
+    assert batch.schema_version == ""
+
+
+def test_non_string_schema_version_header_does_not_500(
+    device_client, session, product, batch, monkeypatch
+):
+    """WR-02, end to end: the route answers, it does not crash.
+
+    200 rather than 409 is the DELIBERATE outcome: the parse boundary degrades an
+    untyped version to "", which is the both-sides escape hatch. The property
+    under test is that a hand-built header cannot take the endpoint down.
+    """
+    _pin_server_schema(monkeypatch)
+    body = _body(5, [_op_record("op-untyped", product_id=product.id, batch_id=batch.id)])
+
+    resp = device_client.client.post(
+        "/api/sync/push", content=body, headers=_bearer(device_client.plaintext)
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["operations_inserted"] == 1
 
 
 # --- VA-1: the route gate -----------------------------------------------------

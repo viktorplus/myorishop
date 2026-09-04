@@ -270,9 +270,17 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     if header is None:
         raise ValueError("missing header: empty or headerless batch")
 
+    # WR-02 (33-REVIEW): the header is attacker-controlled JSON, so
+    # `schema_version` can arrive as a number/list/dict. `ExchangeBatch` declares
+    # it `str` and `push_schema_ok` compares it lexicographically; a non-string
+    # became a TypeError 500 in the push route. Coerce to the documented type
+    # here, at the same boundary that already type-checks money and `seq`. An
+    # untyped version degrades to "" -> the D-03 escape hatch, i.e. accepted, the
+    # same as a header that omits the field entirely.
+    raw_schema = header.get("schema_version")
     return ExchangeBatch(
         format_version=header["format_version"],
-        schema_version=header.get("schema_version") or "",
+        schema_version=raw_schema if isinstance(raw_schema, str) else "",
         source_device_id=header.get("source_device_id"),
         records=records,
     )

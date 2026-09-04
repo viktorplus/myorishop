@@ -235,7 +235,7 @@ def current_schema_version(session: Session) -> str:
     return context.get_current_revision() or ""
 
 
-def push_schema_ok(client_schema: str, server_schema: str) -> bool:
+def push_schema_ok(client_schema: object, server_schema: object) -> bool:
     """Whether a pushed batch's schema version is acceptable to merge (SYNC-10).
 
     Sibling of :func:`current_schema_version` by design (D-02): the push gate is
@@ -269,7 +269,18 @@ def push_schema_ok(client_schema: str, server_schema: str) -> bool:
     ``tests/test_migrations.py::test_revision_ids_are_fixed_width`` (D-04, plan
     33-03). If that test ever has to be relaxed, this predicate must switch to a
     parsed comparison first.
+
+    WR-02 (33-REVIEW): the predicate is TOTAL — it accepts ``object`` and never
+    raises. ``client_schema`` originates in a pushed NDJSON header, so a JSON
+    number/list/dict reaches it; ``5 <= "0027"`` is a ``TypeError``, and the
+    route's ``try`` covers only ``parse_exchange``, so that surfaced as a raw
+    500 from the one route whose design note is «never echo, never crash». A
+    non-string version is not «acceptable» — it is refused (False), which is the
+    fail-closed direction: the client re-pushes after fixing its header instead
+    of having rows silently dropped by the receiver's column projection.
     """
+    if not isinstance(client_schema, str) or not isinstance(server_schema, str):
+        return False
     if not client_schema or not server_schema:
         return True
     return client_schema <= server_schema
