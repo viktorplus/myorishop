@@ -6,6 +6,9 @@ Pitfall 7: use a file-based tmp_path SQLite database, never an in-memory
 one (per-connection memory DBs break with pooled sessions).
 """
 
+import os
+from pathlib import Path
+
 import pytest
 from fastapi import Request
 from sqlalchemy.orm import sessionmaker
@@ -30,6 +33,95 @@ def engine(tmp_path):
             connection.exec_driver_sql(statement)
         connection.commit()
     return engine
+
+
+# --- SYNC-13: a SECOND build path, BESIDE `engine` — never instead of it ------
+# The `engine` fixture above (and the `sync_driver_pair` server DB below) build
+# schema with `create_all` + `APPEND_ONLY_TRIGGERS`, so NOTHING in the whole
+# suite exercises what `alembic upgrade head` actually produces. That is the
+# exact gap migration 0026 exists to patch after the fact. The two names below
+# add an Alembic-built database WITHOUT re-pointing `engine` — 14 fixtures
+# depend on it transitively and changing its build path would silently move the
+# whole suite onto a different schema source.
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _run_alembic(db_url: str, *args: str) -> None:
+    """Run one Alembic command in-process against `db_url` (SYNC-13).
+
+    `_run_alembic(url, "upgrade", "head")` -> `alembic.command.upgrade(cfg, "head")`.
+
+    Two things make this less obvious than it looks:
+
+    * `alembic/env.py:22` UNCONDITIONALLY overwrites `sqlalchemy.url` from
+      `app.config.settings.database_url`, so setting it on the Config object is
+      necessary-but-not-sufficient — the settings singleton is what actually
+      steers the connection, and it is retargeted here for the duration of the
+      call only.
+    * pytest runs the whole suite in ONE process, so every global this touches
+      (the settings field and the `DATABASE_URL` env var) is restored in a
+      `finally` — otherwise a migration test would redirect the app's real
+      engine for every test that ran after it.
+    """
+    from alembic.config import Config
+
+    from alembic import command
+
+    config = Config(str(_REPO_ROOT / "alembic.ini"))
+    # Escape '%' for Alembic's ConfigParser interpolation, mirroring env.py:22.
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+
+    previous_url = settings.database_url
+    previous_env = os.environ.get("DATABASE_URL")
+    settings.database_url = db_url
+    os.environ["DATABASE_URL"] = db_url
+    try:
+        getattr(command, args[0])(config, *args[1:])
+    finally:
+        settings.database_url = previous_url
+        if previous_env is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_env
+
+
+@pytest.fixture()
+def run_alembic():
+    """Expose `_run_alembic` by INJECTION rather than by cross-module import.
+
+    Same factory-fixture shape as `login` / `past_sale` / `mobile_client_factory`
+    below. Injection keeps `tests/test_migrations.py` free of any import of this
+    module, so the migration tripwires stay a plain pytest client of the shared
+    fixtures — `alembic_engine` yields the database, this yields the callable
+    that can migrate it again (the downgrade/upgrade round trip needs both).
+    """
+    return _run_alembic
+
+
+@pytest.fixture()
+def alembic_engine(tmp_path):
+    """Engine over a database built by `alembic upgrade head` (SYNC-13).
+
+    Why an Alembic-built DB is needed AT ALL: `tests/test_append_only_cursor.py`
+    compares models <-> constants and constants <-> `app/db.py` DDL, and every
+    other fixture builds its schema from `create_all`. So the migration chain —
+    the thing production actually runs — is compared against NOTHING. This
+    fixture is the only place in the suite where the real `alembic/versions/`
+    history is executed, which is what lets `tests/test_migrations.py` diff the
+    resulting triggers against `app.db.APPEND_ONLY_TRIGGERS`.
+
+    The engine is returned unconnected, and its `url` is reachable via
+    `engine.url`, so a test can hand it back to `run_alembic` to drive a further
+    downgrade/upgrade over the SAME file.
+    """
+    db_file = tmp_path / "alembic.db"
+    _run_alembic(f"sqlite:///{db_file}", "upgrade", "head")
+    engine = build_engine(str(db_file))
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture()
