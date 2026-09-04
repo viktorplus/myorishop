@@ -321,7 +321,42 @@ Full phase details archived in `.planning/milestones/v4.0-ROADMAP.md`.
 
 **Research flag**: **not needed.** Skip `--research-phase`. The migration ritual is written verbatim in `0017`/`0018`/`0024`/`0026`, the helper shape is `local_day_bounds_utc` / `operation_currency_clause`, the type choice (`String(10)` ISO text) was verified by execution, and the call-site list is enumerated (9 must-switch, ~14 must-not).
 
-**Plans**: TBD
+**Plans**: 15 plans (6 waves)
+
+Plans:
+**Wave 1** *(SYNC-10..13 + the deployment facts — LOCKED ordering constraint 1: these land BEFORE the migration)*
+
+- [ ] 33-01-PLAN.md — POST /api/sync/push asymmetric schema gate: push_schema_ok + 409 + SCHEMA_AHEAD_ERROR (SYNC-10/11) (wave 1)
+- [ ] 33-02-PLAN.md — Client refusal surface: schema_mismatch SyncResult + RU formatter branch + auto-sync back-off (SYNC-10/11) (wave 1)
+- [ ] 33-03-PLAN.md — Migration-proving harness: alembic_engine + VA-5/6/7 + merge pinning tests (SYNC-12/13) (wave 1)
+- [ ] 33-04-PLAN.md — V13/V14 on s1 + the rollout runbook 33-ROLLOUT.md (autonomous: false; V14 gates the migration) (wave 1)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 33-05-PLAN.md — The five-artifact lockstep as ONE commit: 4 ledger columns + tz-correct backfill + dual-dialect trigger rewrite + mirrored downgrade (migration 0027) (wave 2)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 33-06-PLAN.md — Shared primitives: business_date_bounds, local_today_iso, business_date_expr, today_iso global, parse_op_date + both write-path kwargs (wave 3)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 33-07-PLAN.md — Reports/finance/dashboard: 5 predicates + 10 bounds sites switched; VA-9 byte-identity across the migration (DATE-03/07) (wave 4)
+- [ ] 33-08-PLAN.md — История/customers/warehouses readers + D-24 borderline set + VA-17 ordering tripwire (DATE-03/04) (wave 4)
+- [ ] 33-10-PLAN.md — Приход + списание write surfaces (desktop + mobile) + the one new CSS rule + D-24 batch auto-name (DATE-01/02) (wave 4)
+- [ ] 33-11-PLAN.md — Продажа + возврат write surfaces (desktop + mobile) + D-24 return label (DATE-01/02) (wave 4)
+- [ ] 33-12-PLAN.md — Корректировка + перемещение write surfaces (desktop + mobile final steps) (DATE-01/02) (wave 4)
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 33-09-PLAN.md — CSV: «Когда» becomes the business date, «Внесено» appended last, both ORDER BYs incl. the CD-9 gap (DATE-03/05) (wave 5)
+- [ ] 33-13-PLAN.md — Cash forms (shared desktop↔mobile) + VA-15 all-14-surfaces proof (DATE-01/02) (wave 5)
+- [ ] 33-14-PLAN.md — История both-dates rendering + «задним числом» filter, desktop AND mobile (DATE-05/06) (wave 5)
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 33-15-PLAN.md — CI PostgreSQL parity + browser checks B-1..B-7 + the LOCKED rollout (autonomous: false) (wave 6)
+
 **UI hint**: yes
 
 #### Phase 34: One-Tap Reversal (сторно) & Currency Render Coverage
@@ -424,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 0/0 | Not started | - |
+| 33. Back-Dated Operations | v5.0 | 0/15 | Planned | - |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 
