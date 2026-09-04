@@ -1357,3 +1357,326 @@ def test_migration_0024_adds_currency_and_backfills_rub(tmp_path, monkeypatch):
             row[0] for row in conn.execute("SELECT currency FROM cash_movements")
         ]
         assert currencies == ["RUB"]
+
+
+# --- Phase 33 (DATE-01/DATE-02): the two cash forms, desktop AND mobile ------
+#
+# These are WIRING tests: they drive the real routes, not the service. 33-11
+# recorded a defect where op_date reached the form and the echo but never the
+# service, with every service-level test green — so every assertion below that
+# claims a date was stored reads the persisted CashMovement row.
+
+
+def _last_movement(session):
+    return session.scalars(
+        select(CashMovement).order_by(CashMovement.seq.desc())
+    ).first()
+
+
+def test_web_finance_page_renders_both_prefixed_date_inputs(client):
+    """T-33-33: both cash forms render on ONE page, so their date inputs carry
+    PREFIXED ids — an unprefixed shared one would appear twice in the document
+    and break the second form's <label for> association."""
+    today = local_today_iso(settings.display_tz)
+    response = client.get("/finance")
+
+    assert response.status_code == 200
+    assert 'id="withdraw-op-date"' in response.text
+    assert 'id="deposit-op-date"' in response.text
+    # No duplicate id anywhere on the page.
+    assert 'id="op_date"' not in response.text
+    # Each label points at its OWN input.
+    assert '<label for="withdraw-op-date">Дата операции</label>' in response.text
+    assert '<label for="deposit-op-date">Дата операции</label>' in response.text
+    # The posted NAME is shared and appears exactly twice — once per form.
+    assert response.text.count('name="op_date"') == 2
+    assert response.text.count(f'value="{today}" max="{today}"') == 2
+
+
+def test_mobile_finance_page_renders_both_prefixed_date_inputs(mobile_client_factory):
+    """One template edit covers both surfaces (the forms are SHARED and
+    parameterised by finance_base), so /m/finance renders the identical ids."""
+    mc = _mobile_finance_client(mobile_client_factory)
+    today = local_today_iso(settings.display_tz)
+    response = mc.get("/m/finance")
+
+    assert response.status_code == 200
+    assert 'id="withdraw-op-date"' in response.text
+    assert 'id="deposit-op-date"' in response.text
+    assert 'id="op_date"' not in response.text
+    assert '<label for="withdraw-op-date">Дата операции</label>' in response.text
+    assert '<label for="deposit-op-date">Дата операции</label>' in response.text
+    assert response.text.count('name="op_date"') == 2
+    assert response.text.count(f'value="{today}" max="{today}"') == 2
+
+
+def test_web_withdraw_backdated_post_stores_the_business_date(client, session):
+    """The wiring proof for снятие: the date the browser posts reaches the
+    PERSISTED row, not just the form and the echo."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    back_date = _days_from_today(-12)
+
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": back_date,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    mv = _last_movement(session)
+    assert mv.category == "withdrawal_supplier"
+    assert mv.business_date == back_date
+    assert mv.created_at[:10] != back_date
+
+
+def test_web_deposit_backdated_post_stores_the_business_date(client, session):
+    """The wiring proof for внесение."""
+    back_date = _days_from_today(-5)
+
+    response = client.post(
+        "/finance/deposit",
+        data={
+            "amount": "100",
+            "category": "deposit_opening",
+            "note": "",
+            "op_date": back_date,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    assert _last_movement(session).business_date == back_date
+
+
+def test_mobile_withdraw_backdated_post_stores_the_business_date(
+    mobile_client_factory, session
+):
+    """The mobile twin — same shared form, same service, same stored date."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    mc = _mobile_finance_client(mobile_client_factory)
+    back_date = _days_from_today(-9)
+
+    response = mc.post(
+        "/m/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": back_date,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    assert _last_movement(session).business_date == back_date
+
+
+def test_mobile_deposit_backdated_post_stores_the_business_date(
+    mobile_client_factory, session
+):
+    mc = _mobile_finance_client(mobile_client_factory)
+    back_date = _days_from_today(-2)
+
+    response = mc.post(
+        "/m/finance/deposit",
+        data={
+            "amount": "100",
+            "category": "deposit_opening",
+            "note": "",
+            "op_date": back_date,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    assert _last_movement(session).business_date == back_date
+
+
+def test_web_withdraw_future_date_returns_422_and_echoes_the_typed_value(
+    client, session
+):
+    """DATE-02 through the real route: 422, the Russian refusal, ZERO writes,
+    and the submitted date still in the input's value= so the operator can fix
+    it instead of retyping it."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    before = _cash_count(session)
+    tomorrow = _days_from_today(1)
+
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": tomorrow,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FUTURE_ERROR in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert 'id="withdraw-op-date"' in response.text
+    assert _cash_count(session) == before
+
+
+def test_web_deposit_future_date_returns_422_and_echoes_the_typed_value(
+    client, session
+):
+    tomorrow = _days_from_today(1)
+
+    response = client.post(
+        "/finance/deposit",
+        data={
+            "amount": "100",
+            "category": "deposit_opening",
+            "note": "",
+            "op_date": tomorrow,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FUTURE_ERROR in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert 'id="deposit-op-date"' in response.text
+    assert _cash_count(session) == 0
+
+
+def test_mobile_withdraw_future_date_returns_422_and_echoes_the_typed_value(
+    mobile_client_factory, session
+):
+    mc = _mobile_finance_client(mobile_client_factory)
+    tomorrow = _days_from_today(1)
+
+    response = mc.post(
+        "/m/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": tomorrow,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FUTURE_ERROR in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _cash_count(session) == 0
+
+
+def test_mobile_deposit_future_date_returns_422_and_echoes_the_typed_value(
+    mobile_client_factory, session
+):
+    mc = _mobile_finance_client(mobile_client_factory)
+    tomorrow = _days_from_today(1)
+
+    response = mc.post(
+        "/m/finance/deposit",
+        data={
+            "amount": "100",
+            "category": "deposit_opening",
+            "note": "",
+            "op_date": tomorrow,
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FUTURE_ERROR in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_withdraw_malformed_date_gets_the_other_message(client, session):
+    """D-12: a typo and a future date are different mistakes with different
+    messages, and the 422 never shows the wrong one."""
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": "15.08.2026",
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FORMAT_ERROR in response.text
+    assert OP_DATE_FUTURE_ERROR not in response.text
+    assert _cash_count(session) == 0
+
+
+def test_web_withdraw_date_survives_the_negative_balance_confirm(client, session):
+    """D-05 + DATE-01 through the route: «Снять всё равно» re-POSTs the
+    RE-RENDERED form, so the back-date has to come back in that form's value=
+    or the confirmed withdrawal would silently land on today."""
+    back_date = _days_from_today(-6)
+    payload = {
+        "amount": "50,00",
+        "category": "withdrawal_supplier",
+        "note": "",
+        "op_date": back_date,
+    }
+
+    warn = client.post("/finance/withdraw", data=payload, headers=_HX)
+    assert warn.status_code == 200
+    assert "Баланс уйдёт в минус" in warn.text
+    assert _cash_count(session) == 0
+    # The value the confirm button will re-submit is the one that was typed.
+    assert f'value="{back_date}"' in warn.text
+
+    confirmed = client.post(
+        "/finance/withdraw", data={**payload, "confirm": "1"}, headers=_HX
+    )
+    assert confirmed.status_code == 200
+    assert _last_movement(session).business_date == back_date
+
+
+def test_web_withdraw_success_resets_the_date_to_today(client, session):
+    """_movement_success renders a FRESH empty form, so the next entry starts
+    from today rather than inheriting the previous back-date."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+    today = local_today_iso(settings.display_tz)
+
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": _days_from_today(-12),
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    assert f'value="{today}" max="{today}"' in response.text
+
+
+def test_web_withdraw_empty_date_stamps_today(client, session):
+    """An omitted date is not an error — the write path supplies today's local
+    day, never a column default (DATE-08's NULL sentinel stays intact for the
+    sync path only)."""
+    record_cash_movement(session, category="sale", amount_cents=10000)
+
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": "",
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 200
+    assert _last_movement(session).business_date == local_today_iso(settings.display_tz)

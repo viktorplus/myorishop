@@ -60,6 +60,34 @@
       {% if errors.note %}<p class="error">{{ errors.note }}</p>{% endif %}
     </div>
 
+    {# DATE-01/D-10/D-16: the business date — visible, pre-filled with today,
+       LAST field before .form-actions, like every other ledger-writing surface.
+       max= is effective here: hx-post sits on the <form> (:17) and the submit is
+       a native button, so the browser's own interactive validation fires first.
+       An empty value is not an error — it means «today», and the service falls
+       back to the local day.
+
+       T-33-33 — WHY THE PREFIXED id: pages/finance.html:30,33 renders this form
+       AND deposit_form.html on the SAME page, and mobile_pages/finance.html:33,36
+       does the same. An unprefixed, shared identifier would appear twice in one
+       document, break the <label for> association on the second form and land the
+       focus ring on the wrong control. Every other field on this page already
+       solves it the same way (withdraw-amount, withdraw-currency, withdraw-note);
+       the date field copies that convention verbatim. The posted NAME stays
+       shared — only the id/for pair is prefixed.
+
+       The value IS echoed back, unlike the three mobile shell surfaces: this
+       whole fragment is swapped on every response (hx-target #withdraw-form-wrap,
+       :18-19), including the D-05 negative-balance warn whose «Снять всё равно»
+       button re-POSTs THIS re-rendered form — so a date dropped here would be
+       silently replaced by today on the confirm. #}
+    <div class="field op-date">
+      <label for="withdraw-op-date">Дата операции</label>
+      <input type="date" id="withdraw-op-date" name="op_date"
+             value="{{ form.op_date or today_iso() }}" max="{{ today_iso() }}">
+      {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
+    </div>
+
     <div class="form-actions">
       <button type="submit">Снять</button>
     </div>

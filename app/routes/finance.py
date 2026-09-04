@@ -204,11 +204,22 @@ def finance_withdraw(
     note: str = Form(""),
     currency: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # String fields on purpose: parsing/validation happens in the service, which
     # returns RU errors. The route never writes cash (D-00c).
-    form_echo = {"amount": amount, "category": category, "note": note, "currency": currency}
+    # DATE-01: op_date rides form_echo like every other field — this fragment is
+    # swapped whole on the 422 AND on the D-05 warn, whose confirm button
+    # re-POSTs the re-rendered form. Dropping it here would replace a back-date
+    # with today on «Снять всё равно».
+    form_echo = {
+        "amount": amount,
+        "category": category,
+        "note": note,
+        "currency": currency,
+        "op_date": op_date,
+    }
     # WR-01 defence-in-depth: this endpoint accepts ONLY withdrawal categories.
     # The service derives direction from the category (not the endpoint), so a
     # crafted deposit_* POST here would otherwise be recorded as a deposit via
@@ -230,6 +241,7 @@ def finance_withdraw(
             note=note,
             currency=currency,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         session.rollback()
@@ -275,11 +287,19 @@ def finance_deposit(
     category: str = Form(""),
     note: str = Form(""),
     currency: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # D-05: deposits never warn (they only increase the balance) — confirm is
     # irrelevant, so this route has only the errors/success branches.
-    form_echo = {"amount": amount, "category": category, "note": note, "currency": currency}
+    # DATE-01: op_date rides form_echo so the 422 redisplays what was typed.
+    form_echo = {
+        "amount": amount,
+        "category": category,
+        "note": note,
+        "currency": currency,
+        "op_date": op_date,
+    }
     # WR-01 defence-in-depth: this endpoint accepts ONLY deposit categories. A
     # crafted withdrawal_* POST here would otherwise reach the withdrawal
     # direction (and the negative-balance gate) via the deposit route — a
@@ -295,7 +315,12 @@ def finance_deposit(
         )
     try:
         result, errors = record_manual_movement(
-            session, category=category, amount_raw=amount, note=note, currency=currency
+            session,
+            category=category,
+            amount_raw=amount,
+            note=note,
+            currency=currency,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         session.rollback()
