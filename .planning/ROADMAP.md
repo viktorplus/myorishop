@@ -337,13 +337,13 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 33-06-PLAN.md — Shared primitives: business_date_bounds, local_today_iso, business_date_expr, today_iso global, parse_op_date + both write-path kwargs (wave 3)
+- [ ] 33-06-PLAN.md — Shared primitives: business_date_bounds, local_today_iso, business_date_expr, today_iso global, parse_op_date + both write-path kwargs + the one new CSS rule (wave 3)
 
 **Wave 4** *(blocked on Wave 3)*
 
 - [ ] 33-07-PLAN.md — Reports/finance/dashboard: 5 predicates + 10 bounds sites switched; VA-9 byte-identity across the migration (DATE-03/07) (wave 4)
 - [ ] 33-08-PLAN.md — История/customers/warehouses readers + D-24 borderline set + VA-17 ordering tripwire (DATE-03/04) (wave 4)
-- [ ] 33-10-PLAN.md — Приход + списание write surfaces (desktop + mobile) + the one new CSS rule + D-24 batch auto-name (DATE-01/02) (wave 4)
+- [ ] 33-10-PLAN.md — Приход + списание write surfaces (desktop + mobile) + D-24 batch auto-name (DATE-01/02) (wave 4)
 - [ ] 33-11-PLAN.md — Продажа + возврат write surfaces (desktop + mobile) + D-24 return label (DATE-01/02) (wave 4)
 - [ ] 33-12-PLAN.md — Корректировка + перемещение write surfaces (desktop + mobile final steps) (DATE-01/02) (wave 4)
 

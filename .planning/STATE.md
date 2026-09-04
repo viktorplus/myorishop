@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: planning
-stopped_at: Phase 33 UI-SPEC approved
-last_updated: "2026-09-04T07:23:15.992Z"
-last_activity: 2026-09-04 — ROADMAP.md written for v5.0 (Phases 33, 34, 35); REQUIREMENTS.md traceability filled
+stopped_at: Phase 33 planned — 15 plans in 6 waves, ready to execute
+last_updated: "2026-09-04T09:00:00.000Z"
+last_activity: 2026-09-04 — Phase 33 planned (research → UI-SPEC → 15 plans, plan-checker PASSED on re-check)
 progress:
-  total_phases: 7
+  total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 15
   completed_plans: 0
   percent: 0
 ---
@@ -21,22 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** v5.0 Corrections, Dates & Currency — roadmap complete (Phases 33-35, 36/36 requirements mapped). Next: plan Phase 33 (Back-Dated Operations).
+**Current focus:** v5.0 Corrections, Dates & Currency — Phase 33 planned (15 plans, 6 waves). Next: execute Phase 33 (Back-Dated Operations).
 
 ## Current Position
 
-Phase: 33 — Back-Dated Operations (not started)
-Plan: —
-Status: Roadmap complete — ready to plan Phase 33
-Last activity: 2026-09-04 — ROADMAP.md written for v5.0 (Phases 33, 34, 35); REQUIREMENTS.md traceability filled
+Phase: 33 — Back-Dated Operations (planned)
+Plan: — (0/15 executed)
+Status: Ready to execute — `/gsd-execute-phase 33`
+Last activity: 2026-09-04 — Phase 33 planned (research → UI-SPEC → 15 plans, plan-checker PASSED on re-check)
 
 **Phase set for v5.0:**
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | TBD | Not started |
+| 33 | Back-Dated Operations | 15 (6 waves) | Planned |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
+
+**Phase 33 blocked on human input before wave 2:** plan 33-04 must obtain, on s1, `DISPLAY_TZ`
+from `.env.production` (V14 — it is baked into migration `0027` as a literal, so the migration
+cannot be written without it) and `alembic current` (V13 — expected `0026`).
 
 ## Performance Metrics
 
@@ -56,7 +60,8 @@ Last activity: 2026-09-04 — ROADMAP.md written for v5.0 (Phases 33, 34, 35); R
 | 29 | 5 | - | - |
 | 31 | 8 | - | - |
 | 32 | 5 | - | - |
-| 33-35 (v5.0) | TBD | - | - |
+| 33 (v5.0) | 15 planned | - | - |
+| 34-35 (v5.0) | TBD | - | - |
 
 **Recent Trend:**
 
