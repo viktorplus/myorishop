@@ -42,8 +42,8 @@ These land before any schema change reaches a client. They are not polish: witho
 - [x] **DATE-02**: A future date is rejected with a Russian message; any past date is accepted.
 - [x] **DATE-03**: Every period-scoped figure — dashboard day/week/month totals, sales-profit report, cash-flow report, stock and write-off reports — buckets by the business date, switched in ONE pass so no two surfaces can disagree about the same week.
 - [x] **DATE-04**: The technical timestamp keeps its three existing jobs untouched: audit trail, display order, and sync selection. Changing an operation's business date never moves it in the sync queue or the audit record.
-- [ ] **DATE-05**: История and the CSV exports show both dates whenever they differ, so the operator can always tell when something was entered versus when it happened.
-- [ ] **DATE-06**: A row whose business date differs from its entry date is marked «задним числом» and can be filtered on that in История.
+- [x] **DATE-05**: История and the CSV exports show both dates whenever they differ, so the operator can always tell when something was entered versus when it happened.
+- [x] **DATE-06**: A row whose business date differs from its entry date is marked «задним числом» and can be filtered on that in История.
 - [x] **DATE-07**: Existing operations keep reporting exactly as they do today. A fixed past period's sales-profit total is byte-identical before and after the migration — the backfill is timezone-correct, not a naive UTC-prefix cut.
 - [ ] **DATE-08**: An operation arriving from a client that has not yet updated still appears in every report, bucketed by its entry date, rather than vanishing from the period.
 

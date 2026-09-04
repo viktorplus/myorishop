@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-13-PLAN.md
-last_updated: "2026-09-04T14:32:46.936Z"
+stopped_at: Completed 33-14-PLAN.md
+last_updated: "2026-09-04T14:57:30.599Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 14 of 15
+Plan: 15 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 13/15 done (33-01 … 33-13); 33-14, 33-15 outstanding |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 14/15 done (33-01 … 33-14); 33-15 outstanding |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -129,6 +129,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P12 | 45min | 3 tasks | 15 files |
 | Phase 33 P09 | ~50min | 3 tasks | 6 files |
 | Phase 33 P13 | 55 | - tasks | - files |
+| Phase 33 P14 | ~30min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -269,6 +270,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-13: the two cash forms use PREFIXED ids (withdraw-op-date / deposit-op-date) because both render on one page twice over; the posted name stays shared
 - [Phase 33]: 33-13: op_date is echoed on the D-05 negative-balance warn path too (HTTP 200, not 422) — its confirm button re-POSTs the RE-RENDERED form, so a missing echo would book a back-date as today
 - [Phase 33]: 33-13: DATE-01/DATE-02 marked complete — all 14 write surfaces carry the field and VA-15 pins the list as a runnable contract
+- [Phase 33]: 33-14: the «задним числом» MARKER compares business_date against the LOCAL day of created_at while the SQL dated FILTER compares it against substr(created_at,1,10) (the UTC day) — a local day is not expressible in portable ORM. «Только задним числом» can return an UNMARKED row in the UTC-straddle window; the converse never happens. Pinned by test_backdated_filter_and_marker_diverge_only_on_utc_straddle
+- [Phase 33]: 33-14 (D-21 + 33-UI-SPEC CF-UI-3): the MOBILE «Задним числом» filter shipped rather than being deferred — a marker the operator can see but cannot filter on the surface they use in the warehouse is half a feature
+- [Phase 33]: 33-14 (D-18): the muted SECOND LINE beat a new column specifically because it needs ZERO colspan churn — colspan="10" and `3 + columns|length + 1` are byte-unchanged, the identical markup works in both desktop layouts, and a matching-dates row plus every business_date IS NULL row renders byte-identically to before the phase
+- [Phase 33]: 33-14: DATE-05/DATE-06 marked complete — both dates render on both surfaces and both surfaces can filter on the difference
 
 ### Pending Todos
 
@@ -363,8 +368,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T14:32:34.706Z
-Stopped at: Completed 33-13-PLAN.md
+Last session: 2026-09-04T14:57:30.566Z
+Stopped at: Completed 33-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
