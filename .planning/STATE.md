@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-06-PLAN.md
-last_updated: "2026-09-04T10:47:56.835Z"
+stopped_at: Completed 33-07-PLAN.md
+last_updated: "2026-09-04T11:29:46.945Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 7 of 15
+Plan: 8 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -34,7 +34,7 @@ Last activity: 2026-09-04
 
 | Phase | Name | Plans | Status |
 |-------|------|-------|--------|
-| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 4/15 done (33-01, 33-02, 33-03, 33-04) |
+| 33 | Back-Dated Operations | 15 (6 waves) | Executing — 7/15 done (33-01 … 33-07); waves 1-4 complete |
 | 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
 | 35 | Mobile Card Editing | TBD | Not started |
 
@@ -122,6 +122,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P04 | 18min | 3 tasks | 1 files |
 | Phase 33 P05 | 30min | 3 tasks | 5 files |
 | Phase 33 P06 | 35min | 3 tasks | 8 files |
+| Phase 33 P07 | 95min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase ?]: 33-06: the business_date fallback is stamped in Python inside both write paths, never as a column default — merge's bulk insert must still land NULL (DATE-08 sentinel)
 - [Phase ?]: 33-06: today_iso is a zero-arg callable Jinja global delegating to core.local_today_iso, so the pre-filled value and parse_op_date's future check cannot disagree (D-15)
 - [Phase ?]: 33-06: the .field.op-date CSS rule lands in wave 3 — plans 33-10..33-13 must keep git diff app/static/style.css empty (W-6)
+- [Phase 33]: 33-07 (D-25): D-25 narrows ROADMAP success criterion 2 - of the two reports it names, only writeoff_report switches; stale_products stays on created_at by decision, now pinned by a test
+- [Phase 33]: 33-07 (T-33-20): plan Tasks 1+2 shipped in ONE commit - finance.py::_metrics_context builds one bounds pair feeding both report families, so no split leaves a coherent tree
+- [Phase 33]: 33-07: finance.py:379 and mobile_finance.py:377 were NOT switched (they feed the created_at-based cash CSV export); plan 33-09 MUST flip them in the same commit as export.py:211-212
 
 ### Pending Todos
 
@@ -333,8 +337,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T10:47:46.573Z
-Stopped at: Completed 33-06-PLAN.md
+Last session: 2026-09-04T11:29:46.905Z
+Stopped at: Completed 33-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
