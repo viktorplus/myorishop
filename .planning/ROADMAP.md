@@ -9,6 +9,7 @@
 - ✅ **v2.0 UX Overhaul & Navigation Restructure** — Phases 18-24 (shipped 2026-07-17)
 - 🚧 **v3.0 Multi-Operator Sync, Central Server & Roles** — Phases 25-30 (in progress)
 - ✅ **v4.0 Distribution & Delivery** — Phases 31-32 (shipped 2026-09-03)
+- 🚧 **v5.0 Corrections, Dates & Currency** — Phases 33-35 (in progress)
 
 ## Phases
 
@@ -282,10 +283,112 @@ Full phase details archived in `.planning/milestones/v4.0-ROADMAP.md`.
 
 </details>
 
+### 🚧 v5.0 Corrections, Dates & Currency (In Progress)
+
+**Milestone Goal:** Let the operator repair and correctly date their own data — reverse a wrong operation from История, record an operation with the date it actually happened, and fix product and customer cards from the phone. The per-warehouse currency feature shipped 2026-08-10; its render-coverage tail rides along as a plan, not a phase.
+
+**Build order (dependency-driven, not preference-driven):** sync-skew hardening before any schema change reaches a self-updating client → ONE migration carrying all four ledger columns, plus every reader switched to the business date in one pass → reversal, which can only be correct once the business date exists **and** the readers bucket by it → mobile editing last, against the finished feature set and the final money render.
+
+- [ ] **Phase 33: Back-Dated Operations** — sync-skew hardening first, then one migration adding all four ledger columns with a timezone-correct backfill, and every period-scoped surface switched to the business date in a single pass
+- [ ] **Phase 34: One-Tap Reversal (сторно) & Currency Render Coverage** — a confirmed «сторно» control in История writing a same-type, opposite-sign compensating row that inherits the origin's business date, plus the counted `| cents` → `| money(...)` sweep and its tripwire
+- [ ] **Phase 35: Mobile Card Editing** — mobile edit route pairs for the product card and the full customer profile (all four contact kinds, multi-value), reusing the desktop services unchanged
+
+#### Phase 33: Back-Dated Operations
+
+**Goal**: The operator can record an operation with the date it actually happened, and every period-scoped figure in the app buckets by that date — while the technical timestamp keeps all three of its existing jobs (audit trail, display order, sync selection), and while the milestone's own schema change cannot open a silent data-loss window across the self-updating client fleet.
+**Depends on**: Phase 32 (previous milestone; first phase of v5.0)
+**Requirements**: SYNC-10, SYNC-11, SYNC-12, SYNC-13, DATE-01, DATE-02, DATE-03, DATE-04, DATE-05, DATE-06, DATE-07, DATE-08
+**Success Criteria** (what must be TRUE):
+
+  1. On every operation-writing form — 6 desktop forms and 5 mobile wizards — the operator can set the date the operation actually happened, pre-filled with today; a future date is refused with a Russian message and any past date is accepted. (DATE-01, DATE-02)
+  2. Every period-scoped figure — dashboard day/week/month totals, the sales-profit report, the cash-flow report, the stock and write-off reports, customer spend, История's date filter and the period CSV exports — buckets by the business date, switched in ONE pass, so no two surfaces disagree about the same week; and changing an operation's business date never moves it in the sync queue or alters its audit record. (DATE-03, DATE-04)
+  3. **A fixed past period's `sales_profit_report` returns byte-identical totals before and after the migration** — the backfill is timezone-correct, not a naive UTC-prefix cut — and an operation arriving from a client that has not yet updated still appears in every report, bucketed by its entry date, rather than vanishing from the period. (DATE-07, DATE-08)
+  4. История and the CSV exports show both dates whenever they differ, and a row whose business date differs from its entry date is marked «задним числом» and can be filtered on that in История. (DATE-05, DATE-06)
+  5. A push carrying a schema version the receiver does not understand is refused with a clear Russian message instead of being accepted with fields silently dropped; the refused client's rows stay unsynced (`synced_at` NULL) so the next successful push re-sends them; a cash movement pushed by a client that predates a column's introduction lands correctly instead of bricking that client's sync; and the append-only triggers are proven live against a database built by `alembic upgrade head`, not only one built by `create_all`. (SYNC-10, SYNC-11, SYNC-12, SYNC-13)
+
+**Ordering constraints — LOCKED. A later planner may not silently reorder these:**
+
+  1. **SYNC-10..13 land BEFORE the migration, as the first plans of this phase.** They are not polish: `merge._ledger_row` projects an incoming batch through the *receiver's* columns, so a client that self-updates ahead of the s1 rebuild pushes `business_date`, the server drops it, returns 200, and the client stamps `synced_at` — permanent, unrecoverable loss behind a success response. SYNC-12's answer also *determines the new columns' definitions* (an explicit `None` in the insert dict versus `server_default` decides whether any of the four can ever be NOT NULL — the research answer is that all four must be **nullable**).
+  2. **All four new ledger columns land in ONE migration** — `operations.business_date`, `cash_movements.business_date`, `operations.reverses_op_id`, `cash_movements.reverses_movement_id`. One dual-dialect trigger rewrite, one lockstep pass, one fleet skew window instead of two. The two `reverses_*_id` columns ship **unused but trigger-guarded**; Phase 34 only starts *writing* them.
+  3. **The migration's internal order is `add_column` → timezone-correct backfill → THEN extend the append-only trigger's column enumeration.** Reversed, the backfill UPDATE trips the guard it just installed and `alembic upgrade head` aborts mid-upgrade on the live server. Write the ordering as a comment inside the migration file — it is the single most reorderable line in it.
+  4. **The five-artifact lockstep is ONE commit**: the migration (both `_SQLITE_DDL` `IS NOT` and `_PG_DDL` `IS DISTINCT FROM` branches, plus both `downgrade()` halves) + `app/db.py::APPEND_ONLY_TRIGGERS` + both `IMMUTABLE_*_COLUMNS` frozensets + the two test constants in `tests/test_append_only_cursor.py`, alongside the model columns. Migration `0026` exists solely because this was missed once for `cash_movements.currency`. `test_trigger_column_list_matches_schema` is the tripwire — do not "fix" it by editing one constant.
+  5. **Rollout order, written into the plan:** migrate + redeploy s1 → verify `/api/sync/pull` and a push from a current client → *only then* cut the client release tag. Never edit migrations `0018`/`0026` retroactively — an applied migration is historical fact.
+  6. **`business_date` gets its own period-bounds helper.** Do not reuse `local_day_bounds_utc` (14 call sites): a date-only column compared against UTC-timestamp bounds is a lexicographic comparison between two formats that happens to land right at UTC+3 and is off by a full day at any UTC− offset.
+
+**Pitfalls owned** (`.planning/research/PITFALLS.md`): 1 (new ledger column escapes the trigger), 2 (backfill deadlocks against its own new trigger), 3 (`batch_alter_table` silently drops all four triggers — `add_column` only), 4 (a new column silently dropped by an older-code server), 14 (date-only column vs UTC-timestamp bounds — needs a `display_tz="America/New_York"` test), 15 (ordering ties on `business_date` — any sort entry must end in `created_at desc, seq desc`), 16 (the sync cursor accidentally follows the business date — `business_date` must appear nowhere in `sync.py`/`sync_client.py`/`routes/sync.py`), 20 (back-dating into an already-reported period — settled as unbounded + the «задним числом» marker, operator decision 2), 21 (migration count and rollout order).
+
+**`needs verification` carried from research** (`.planning/research/SUMMARY.md` → Consolidated list): **V1** does an explicit `None` beat `server_default` in `session.execute(insert(model), rows)`? (6-line inverted merge test; also exposes the pre-existing `CashMovement.currency` NOT NULL bug) — *blocking*. **V2** what an older-*code* receiver does with an unknown wire field (monkeypatch `merge.KIND_TO_FIELDS` to the pre-change set; assert reject-not-drop) — *blocking*. **V3** does `tests/conftest.py`'s `engine` fixture build via `create_all`, making the trigger-liveness test non-migration-proving? (read the fixture) — *blocking*. **V4** does the backfill UPDATE trip the pre-rewrite trigger, and does it cover every row? (run against a copy of the s1 dump; assert rows-updated == rows-total). **V13** is s1's `alembic_version` at `0026` today? (`alembic current` on s1) — pre-rollout. **V14** what `display_tz` does s1's `.env.production` actually set? (it parameterises the backfill) — pre-rollout. **V15** is alembic 1.19.1 still the newest at planning time? (`uv pip index versions alembic` — **do not bump regardless**) — advisory.
+
+**Research flag**: **not needed.** Skip `--research-phase`. The migration ritual is written verbatim in `0017`/`0018`/`0024`/`0026`, the helper shape is `local_day_bounds_utc` / `operation_currency_clause`, the type choice (`String(10)` ISO text) was verified by execution, and the call-site list is enumerated (9 must-switch, ~14 must-not).
+
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 34: One-Tap Reversal (сторно) & Currency Render Coverage
+
+**Goal**: From История, on desktop and mobile, the operator can undo a wrong receipt, write-off, correction, transfer or manual cash movement in one confirmed action that repairs the period it actually broke — and every amount the operator reads anywhere in the app states which currency it is in.
+**Depends on**: Phase 33 — **hard, not soft**. A reversal must inherit the origin's business date AND the readers must already bucket by it; shipping storno first would write every reversal with no business date, and there is no retrofit because the ledger is append-only.
+**Requirements**: REV-01, REV-02, REV-03, REV-04, REV-05, REV-06, REV-07, REV-08, REV-09, REV-10, REV-11, CUR-03, CUR-04, CUR-05, CUR-06, CUR-07, CUR-08
+**Success Criteria** (what must be TRUE):
+
+  1. From История, on both desktop and mobile, the operator reverses a wrong receipt, write-off, correction, transfer or manual cash movement in one confirmed action; the confirmation states what will be written — including the business date the compensating row will carry — before anything is written; the result is a NEW compensating row of the same type with the opposite sign, written through the existing sanctioned write path, with nothing edited or deleted. A mistyped cash deposit or withdrawal, which has no undo at all today, is covered. (REV-01, REV-02, REV-03, REV-10)
+  2. The reversal repairs the period it broke instead of creating a phantom one: it carries the **original** operation's business date, every existing report nets it out automatically — including the per-line breakdowns, the write-off report's per-reason lines and not just its grand total — and a multi-row operation reverses as one unit or not at all, so a transfer's two rows never half-reverse. (REV-04, REV-05, REV-06)
+  3. История shows both sides of the relationship — the original marked «сторнирована», the compensating row reading «сторно операции X» — and the control is unavailable on an already-reversed row, on a reversal itself, and on a sale, where the operator is pointed at «Возврат» instead. Reversing an operation whose stock has already moved on is refused before any write, with a Russian message saying why; stock is never driven negative (a hard guard, not the warn-but-allow oversell shape). (REV-07, REV-08, REV-09, REV-11)
+  4. Wherever an amount stands alone the operator can see which currency it is in — measured against the full render surface, not eyeballed, with История the priority (three currencies interleave there today with no marker); a customer's spend totals and purchase history state their currency or are scoped to one; and a regression tripwire prevents the swept surfaces from drifting back to an unlabelled render. (CUR-03, CUR-04, CUR-07)
+  5. No report can produce a total that mixes currencies — `writeoff_report`, `top_selling_products` and `stale_products` each carry an explicit, recorded decision; a warehouse's currency cannot be changed once it holds stock, cash or history; and the per-warehouse currency feature finally gets the human browser check it never received. (CUR-05, CUR-06, CUR-08)
+
+**Currency render coverage is a PLAN inside this phase, not a phase of its own.** The feature shipped 2026-08-10 (quick task `260810-2g3`, migrations 0023–0026); what remains is a counted sweep with no schema work and no ordering claim over anything. It is carried here, and **must be sequenced adjacent to the reversal work**, because the reversal control, the currency marker and the business-date column all edit `app/services/operations.py::history_view`, `app/templates/partials/history_rows.html` and `app/templates/mobile_partials/history_cards.html` — placing it elsewhere means editing those files three times instead of once. It must also complete **before Phase 35 starts**, so the mobile product form ships with the final money render rather than being redone. Do **not** run the currency plan in parallel with a reversal plan that touches the История templates.
+
+**Ordering constraints — LOCKED:**
+
+  1. **This phase does not add a migration.** Both `reverses_*_id` columns already exist and are trigger-guarded from Phase 33; this phase only starts writing them. If a plan proposes a second ledger migration, that is a signal something was dropped in Phase 33 — resolve it there, not here.
+  2. **The compensating row is the SAME type with a verbatim copy of the target's `payload`, `batch_id`, `currency` and frozen prices**, differing only in the sign of `qty_delta`/`amount_cents` and its own identity/audit fields. Never a dedicated `storno` type: every existing `WHERE type == ...` filter would miss it and *nothing* would net.
+  3. **The double-reversal cap is ledger-derived, never a flag column** (`SELECT ... WHERE reverses_op_id = :id`, mirroring `returns.returnable_qty`). A `reversed` boolean is blocked by the append-only trigger, invisible across sync, and lets two devices double-reverse the same receipt.
+  4. **No DB-level FK on `reverses_*_id`** — bare native column in the migration, ORM `ForeignKey` only for insert ordering and PostgreSQL portability (the `sale_id`/`batch_id`/`author_id` precedent), so a reversal whose target has not yet arrived renders as a dangling link instead of rolling back an entire push.
+  5. **The non-SUM aggregate audit is a written artifact, not a feeling.** Walk `reports.py`, `dashboard.py`, `finance_reports.py` and `customers.py` for every aggregate that is not a plain SUM (`MAX`, `func.count`, `GROUP BY payload[...]`, `.limit()` over an ordered aggregate) and record an explicit decision for each.
+
+**Pitfalls owned** (`.planning/research/PITFALLS.md`): reversal — 9 (double-reversal guarded by a flag instead of a ledger-derived cap), 10 (reversal link in `payload` JSON instead of an indexed column — impossible for cash, which has no `payload` column at all), 11 (a reversal FK rolling back a whole push), 12 (a reversal driving stock negative), 13 (reversal of a return / of a reversal — explicit allow-list and exclusion list as constants), 19 (the reversal's business date — the silent failure mode is `reversals.py` simply not passing the kwarg, which makes **every** reversal wrong by default with no error), 23 (a reversal losing its currency or a legacy NULL-batch row bucketing as RUB), 26 (storno breaking every aggregate that is not a plain SUM). Currency plan — 5 (money rendered without a currency almost everywhere: `money(` in 1 template against `| cents` in 42), 6 (`Product.cost_cents` has no currency and is the sale-cost fallback for every warehouse), 7 (a warehouse's currency editable after it holds stock, retroactively relabelling history), 25 (write-offs / top-selling / stale never currency-scoped).
+
+**`needs verification` carried from research**: **V5** does any report `COUNT` operations rather than SUM signed quantities, so a storno counts as a second event instead of netting? (three instances already identified at `reports.py:108,153,224`). **V6** are historical transfer pairs really `seq`-adjacent in production data? (`SELECT device_id, seq, qty_delta FROM operations WHERE type='transfer' ORDER BY device_id, seq` on the s1 dump; assert every row pairs with `seq±1`). **V7** does `writeoff_report` sum money or only quantities? (read `reports.py:127-171`). **V8** the exact per-surface list of templates still rendering bare `format_cents` / `| cents` — re-run `rg -c '\| cents' app/templates` at plan time against ARCHITECTURE §5.1's classification rather than trusting the snapshot counts (103 renders / 42 templates measured at `b4ca98c`, of which ~50 renders / 29 templates are genuine gaps). **V9** does a rejected mixed-currency basket preserve the typed basket on re-render? (route-level test — the service-level test at `tests/test_sales.py:617` does not cover the render). **V10** does the *mobile* sale wizard render `errors.basket`? **V11** mobile currency-switcher coverage beyond `/m/finance` and the mobile home. **V12** which batch-picker services already load `Warehouse`, so a per-row currency is available? **V16** how a storno of a *sale* would interact with the sale's cash movement and customer spend statistics — **CLOSED at requirements time** by operator decision 1 (sales are excluded from storno; the operator uses «Возврат»), recorded here so it is not silently re-opened.
+
+**Research flag**: **`--research-phase` at plan time.** Two items are discovery work, not implementation work: (a) the transfer sibling-resolution problem has no existing handle in the data — no group id, no shared payload key — and the `seq±1` probe needs a hard "exactly one match, all three assertions pass" rule plus a decision on stamping `transfer_group_id` on new transfers; (b) the non-SUM aggregate audit spans four service modules. This is the one part of the feature that can quietly produce a wrong result, so it gets its own explicit success criterion.
+
+**Plans**: TBD
+**UI hint**: yes
+
+#### Phase 35: Mobile Card Editing
+
+**Goal**: The operator can fix a product card and an existing customer's complete profile from the phone, at parity with the desktop forms and through the same services — without a mobile save ever silently destroying data the small screen did not show.
+**Depends on**: Phase 34 (the currency plan must have landed so the mobile product form ships with the final money render) and Phase 33 (the product edit path writes `price_change`/`product_edited` ledger rows through `record_operation`, so it inherits the business-date contract). Shares no files with the ledger work otherwise.
+**Requirements**: MOB-02, MOB-03, MOB-04, MOB-05, MOB-06, MOB-07, MOB-08
+**Success Criteria** (what must be TRUE):
+
+  1. From the phone, the operator edits a product card — minimum sale price, cost, sale price, category and low-stock threshold — and corrects an existing customer's complete profile: name, surname, consultant number, address, and every contact kind (phones, emails, telegram, social), at full parity with the desktop customer form. (MOB-02, MOB-03)
+  2. Saving from the phone never blanks a field the small screen did not show and never deletes a contact the operator did not touch; multi-value survives — a customer with three phones still has three phones after a save, and the form can add and remove values within each kind. (MOB-05)
+  3. A mobile edit that touches no contact field leaves the customer's contacts byte-identical, pinned by a GET → POST-unchanged round-trip test — the single check that catches this whole family of defects, and the same round trip proves no product column was NULLed either. (MOB-06)
+  4. The mobile forms reuse the same services as the desktop ones, so a validation rule can never differ between the two, and a rejected mobile edit redisplays what the operator typed with the error next to the offending field. (MOB-04, MOB-07)
+  5. The operator is not misled about where a contact lives: `CustomerContact` is not part of the sync exchange in either direction and the mobile UI is server-only, so a phone edited on the phone updates the server and will not appear in the desktop client. v5.0 states this pre-existing divergence honestly rather than pretending it does not exist. (MOB-08)
+
+**Scope note — sized correctly.** This is *not* a flat-field edit form. The operator amended the customer scope twice on 2026-09-04 and settled on full parity including all four `CONTACT_KINDS`, which means a repeatable multi-value field group on a phone screen. That amendment also **closes** the delete-by-omission trap by construction rather than guarding against it: `update_customer`'s contract is that a `contacts` dict fully replaces the set and an omitted kind is cleared, so rendering all four kinds makes a full-replacement submission correct — exactly what Pitfall 17 prescribes. **Do not plan a partial-update path or a second service variant**; that would create the second validation path MOB-04 forbids. The same completeness rule applies to the product form: render every field `update_product` reads, because `parse_optional_cents("")` returns `None` and an omitted field is written as NULL with a `price_change` audit row recording the wipe. No wire-format change and no `FORMAT_VERSION` bump is in scope.
+
+**Ordering constraints — LOCKED:**
+
+  1. **Zero service changes.** New routes and templates only, following `app/routes/mobile_batches.py`'s module shape (the exact shipped `GET /m/batches/{id}/edit` + `POST /m/batches/{id}` precedent), not POST handlers bolted onto `mobile_products.py`/`mobile_customers.py`, whose docstrings declare a "one plain full-page GET, no HX-partial branch" contract.
+  2. **Every new `hx-vals` is single-quoted.** `rg 'hx-vals="' app/templates` must return nothing — double quotes truncated five attributes and silently killed batch selection in every mobile wizard once already (quick task `260813-ezt`).
+
+**Pitfalls owned** (`.planning/research/PITFALLS.md`): 8 (reference edits made on a *client* never reach the server and are overwritten on the next pull — mobile editing makes this pre-existing topology acutely visible; state it, do not fix it here), 17 (a mobile edit form silently NULLing every field it does not render — closed by completeness, see the scope note), 18 (the three HTMX partial-swap traps this codebase has already been bitten by: `| tojson` in a double-quoted attribute, un-`<template>`-wrapped OOB `<td>`/`<tr>`, filter/sort/page state dropped on the write response), 22 (editing a record while the background auto-sync tick overwrites it), 24 (`CustomerContact` is not a sync kind at all — the operator chose neither of the research's two options: mobile is server-only so no wire change is needed, and MOB-08 states the divergence).
+
+**`needs verification` carried from research**: none outstanding for this phase. Pitfall 24's fact (zero occurrences of `CustomerContact` in `app/services/merge.py`) was verified in HEAD during requirements.
+
+**Research flag**: **not needed.** Skip `--research-phase`. `mobile_batches.py` is an exact, shipped route-pair precedent and the pitfalls are enumerated. The one genuinely new UI element — the repeatable multi-value contact group — has a desktop counterpart in the Phase 21 customer form to copy.
+
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → 32
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → 32 → 33 → 34 → 35
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|-----------------|--------|-----------|
@@ -321,6 +424,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
+| 33. Back-Dated Operations | v5.0 | 0/0 | Not started | - |
+| 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
+| 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 
 ## Backlog
 
@@ -333,6 +439,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 > ⚠ **The scope survey below is dated 2026-08-09 and was overtaken the NEXT DAY.** Do not plan from it. Verified in HEAD 2026-09-04: `Warehouse.currency`, `CashMovement.currency`, `Batch.cost_cents`, `CURRENCIES`/`currency_symbol()`/`format_money()` (`app/core.py:56-86`), the `money` Jinja filter (`app/routes/__init__.py:227`), currency-scoped `/reports/sales` via a shared `operation_currency_clause` (OUTER-joined so legacy `batch_id IS NULL` rows bucket as RUB rather than vanishing), currency-scoped finance reports plus a `/finance` switcher, a Главная dashboard switcher, currency labels on CSV exports, required destination-currency cost on cross-currency transfers, and rejection of mixed-currency sale baskets before any write (`faff73d`).
 >
 > **What actually remains** is a coverage tail, carried into v5.0 as a plan rather than a phase: 42 templates still use the bare `|cents` filter against 1 using `|money` — triage which are legitimate (a column already labelled with a currency) versus a real gap (an amount standing alone with no currency visible). Plus `needs verification`: does `writeoff_report` sum money across currencies, and does a rejected mixed-currency basket preserve the operator's typed work on re-render?
+>
+> ➡ **The remaining tail is now scheduled: CUR-03..CUR-08, carried as a plan inside Phase 34 (v5.0).** This entry stays SHIPPED and is not re-promoted.
 
 <details>
 <summary>Superseded scope survey (2026-08-09) — kept for the record</summary>
@@ -357,13 +465,15 @@ Plans:
 
 </details>
 
-### Phase 999.2: One-Tap Reversal of a Wrong Operation (BACKLOG)
+### Phase 999.2: One-Tap Reversal of a Wrong Operation — ⬆ PROMOTED to Phase 34 (v5.0, 2026-09-04)
 
 **Goal:** [Captured for future planning] An operator who recorded the wrong receipt, write-off, transfer or cash movement can reverse it from История with one confirmed tap, instead of hand-composing a compensating operation.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Requirements:** REV-01..REV-11 (defined 2026-09-04)
+**Plans:** planned under Phase 34 — see the v5.0 section above
 
-Captured 2026-08-13 from a live-usage audit prompted by the operator ("найди подобные неудобства"), alongside the batch-editing gap that shipped as quick task 260813-i28. NOT scheduled — the operator explicitly deferred it.
+> ⬆ **PROMOTED.** This backlog entry was promoted into milestone v5.0 as **Phase 34: One-Tap Reversal (сторно) & Currency Render Coverage** on 2026-09-04. The capture below is retained for provenance; plan against `.planning/REQUIREMENTS.md` and the Phase 34 detail section, not against this entry.
+
+Captured 2026-08-13 from a live-usage audit prompted by the operator ("найди подобные неудобства"), alongside the batch-editing gap that shipped as quick task 260813-i28. NOT scheduled at capture time — the operator explicitly deferred it.
 
 The problem, verified in code:
 
@@ -374,17 +484,17 @@ The problem, verified in code:
 
 Scope sketch (not a plan): a reversal service per operation type that writes the compensating row(s) through the existing sanctioned write paths; a payload link back to the reversed operation id so История can show «сторно операции X»; guards against double-reversal and against reversing a row whose stock has already moved on; the same control on desktop and mobile История. Returns (`app/services/returns.py:117`) are the existing precedent for a linked, capped compensating write.
 
-Plans:
+> ⚠ Superseded by research: the link must be a real indexed column (`reverses_op_id` / `reverses_movement_id`), **not** a payload field — `CashMovement` has no `payload` column at all, and the double-reversal cap must be queryable without dialect JSON SQL. See `.planning/research/PITFALLS.md` #10 and `ARCHITECTURE.md` §4.1.
 
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
-### Phase 999.3: Back-Dated Operations (BACKLOG)
+### Phase 999.3: Back-Dated Operations — ⬆ PROMOTED to Phase 33 (v5.0, 2026-09-04)
 
 **Goal:** [Captured for future planning] The operator can record a sale, receipt or cash movement with the date it actually happened, so period reports stop drifting.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Requirements:** DATE-01..DATE-08 (defined 2026-09-04), plus the SYNC-10..13 pre-work the research added
+**Plans:** planned under Phase 33 — see the v5.0 section above
 
-Captured 2026-08-13 in the same audit. NOT scheduled — deferred by the operator.
+> ⬆ **PROMOTED.** This backlog entry was promoted into milestone v5.0 as **Phase 33: Back-Dated Operations** on 2026-09-04. The capture below is retained for provenance; plan against `.planning/REQUIREMENTS.md` and the Phase 33 detail section, not against this entry.
+
+Captured 2026-08-13 in the same audit. NOT scheduled at capture time — deferred by the operator.
 
 The problem, verified in code:
 
@@ -393,17 +503,17 @@ The problem, verified in code:
 
 Known risks to settle before planning: the operation date is currently the same value used for ordering, for the sync cursor and for the append-only audit trail — an operator-supplied date must NOT overwrite the audit timestamp. The likely shape is a separate "business date" column defaulting to the technical timestamp, with reports switching to it; that touches the ledger, the sync payload and every report query, so this is a real phase, not a field.
 
-Plans:
+> ⚠ Corrected by research: `Operation.created_at` is **not** a sync cursor — the ledger push cursor is `synced_at IS NULL` and the pull cursor covers reference kinds only. The audit-trail and display-order concerns stand; the sync-cursor one does not, and `business_date` must appear nowhere in `sync.py`/`sync_client.py`/`routes/sync.py`. See `.planning/research/ARCHITECTURE.md` §0 and PITFALLS #16.
 
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
-### Phase 999.4: Mobile Editing of Product and Customer Cards (BACKLOG)
+### Phase 999.4: Mobile Editing of Product and Customer Cards — ⬆ PROMOTED to Phase 35 (v5.0, 2026-09-04)
 
 **Goal:** [Captured for future planning] The operator can fix a product card or a customer's details from the phone, instead of having to reach a desktop.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Requirements:** MOB-02..MOB-08 (defined 2026-09-04)
+**Plans:** planned under Phase 35 — see the v5.0 section above
 
-Captured 2026-08-13 in the same audit. NOT scheduled — deferred by the operator.
+> ⬆ **PROMOTED.** This backlog entry was promoted into milestone v5.0 as **Phase 35: Mobile Card Editing** on 2026-09-04. The capture below is retained for provenance; plan against `.planning/REQUIREMENTS.md` and the Phase 35 detail section, not against this entry.
+
+Captured 2026-08-13 in the same audit. NOT scheduled at capture time — deferred by the operator.
 
 The problem, verified in code:
 
@@ -413,6 +523,4 @@ The problem, verified in code:
 
 Scope sketch (not a plan): mobile route pairs mirroring the desktop edit/update pair and reusing the same services (no second validation path), following the `/m/batches/{id}/edit` precedent shipped in quick task 260813-i28, plus entry points from the mobile product card and the customer list.
 
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
+> ⚠ Extended at requirements: the operator amended the customer scope twice on 2026-09-04 and settled on **full parity with the desktop form, including all four `CONTACT_KINDS` with multi-value add/remove**. That makes the phase larger than this capture implies and closes the delete-by-omission trap by construction. See MOB-03/MOB-05/MOB-06 and the Phase 35 scope note.

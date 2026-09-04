@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 1 | How to reverse a mis-entered **sale** | **Sales are excluded from storno.** The operator corrects a wrong sale through the existing «Возврат» flow. | Cheapest and safest — no second undo path double-handling cash, no two caps that can disagree. Accepted cost: the returns report, the customer's spend statistics and the «Возврат» cash category will contain an event that never happened. Revisit if it proves to be the operator's most common mistake. |
 | 2 | How far back may an operation be dated | **No limit, plus a marker.** Any past date is accepted; rows where the business date differs from the entry date are marked «задним числом» and filterable in История. Future dates rejected. | Serves the milestone's actual purpose — the operator can always repair their own data. No clamp to fight when a genuinely old document surfaces. |
-| 3 | Mobile customer editing scope | **Amended by the operator, 2026-09-04.** Originally "synced columns only". Now: `name`, `surname`, `consultant_number`, `address` **plus phone and email**. Telegram and social profiles stay desktop-only. | The original objection was weaker than presented. It rested on `CustomerContact` not being a sync kind — true (zero occurrences in `merge.py`) — but the **mobile UI is server-only** (locked in v3.0: "mobile is server-only; there is no offline mobile install"), so a mobile edit writes straight to the server and involves no client→server sync at all. The desktop/server contact divergence is pre-existing and unaffected by this milestone. No wire-format change and no `FORMAT_VERSION` bump is required. What the amendment *does* require is closing the delete-by-omission trap in `update_customer` — see MOB-05. |
+| 3 | Mobile customer editing scope | **Amended twice by the operator, 2026-09-04.** Originally "synced columns only"; then "+ phone and email"; finally **the full profile including every contact kind** — phones, emails, telegram, social. Mobile reaches parity with the desktop customer form. | The original objection was weaker than presented. It rested on `CustomerContact` not being a sync kind — true (zero occurrences in `merge.py`) — but the **mobile UI is server-only** (locked in v3.0: "mobile is server-only; there is no offline mobile install"), so a mobile edit writes straight to the server and involves no client→server sync at all. The desktop/server contact divergence is pre-existing and unaffected by this milestone. No wire-format change and no `FORMAT_VERSION` bump is required. The second amendment also **removes** the delete-by-omission hazard rather than guarding against it: rendering all four `CONTACT_KINDS` makes the full-replacement contract correct by construction, which is exactly what PITFALLS.md #17 prescribes ("pass `contacts=None` unless all four `CONTACT_KINDS` render"). Cost: a larger mobile form with repeatable multi-value fields. |
 
 Decisions **not** put to the operator (unanimous research recommendation, taken as default, each reversible):
 
@@ -64,10 +64,10 @@ These land before any schema change reaches a client. They are not polish: witho
 ### Mobile card editing
 
 - [ ] **MOB-02**: From the phone, the operator can edit a product card — minimum sale price, cost, sale price, category and low-stock threshold — instead of having to reach a desktop.
-- [ ] **MOB-03**: From the phone, the operator can correct an existing customer's name, surname, consultant number, address, **phone and email** (operator amendment, 2026-09-04).
+- [ ] **MOB-03**: From the phone, the operator can correct an existing customer's **complete** profile — name, surname, consultant number, address, and every contact kind: phones, emails, telegram and social profiles (operator amendment, 2026-09-04). Mobile customer editing reaches full parity with the desktop form.
 - [ ] **MOB-04**: The mobile forms reuse the same services as the desktop ones, so a validation rule can never differ between the two.
-- [ ] **MOB-05**: Saving from the phone never blanks a field the small screen did not show. Specifically: editing phone/email must not delete the customer's telegram or social entries, and must not drop a second or third phone/email the form did not render. `update_customer`'s documented contract is that a `contacts` dict **fully replaces** them and "a dict that omits a kind clears that kind" (`app/services/customers.py:192-194`) — the mobile path must therefore submit a complete contacts picture, never a partial one.
-- [ ] **MOB-06**: The mobile UI states plainly which contact kinds it edits (phone, email) and that telegram and social profiles are edited on the desktop — rather than silently omitting them.
+- [ ] **MOB-05**: Saving from the phone never blanks a field the small screen did not show, and never deletes a contact the operator did not touch. `update_customer`'s documented contract is that a `contacts` dict **fully replaces** the set and "a dict that omits a kind clears that kind" (`app/services/customers.py:192-194`). Rendering **all four** `CONTACT_KINDS` satisfies that contract by construction — the trap is closed by completeness, not by a special partial-update path. Multi-value is preserved: a customer with three phones keeps all three, and the form can add and remove values within each kind.
+- [ ] **MOB-06**: A mobile edit that touches no contact field leaves the customer's contacts byte-identical — pinned by a GET → POST-unchanged round-trip test, the single check that catches this whole family of defects.
 - [ ] **MOB-07**: A rejected mobile edit redisplays what the operator typed with the error next to the offending field.
 - [ ] **MOB-08**: The operator is not misled about where a contact lives. `CustomerContact` is not part of the sync exchange in either direction (zero occurrences in `app/services/merge.py`), and the mobile UI is server-only — so a phone edited on the phone updates the server and will not appear in the desktop client, and vice versa. This divergence is pre-existing, not introduced here; v5.0 states it honestly rather than fixing it (the fix is a wire-format change, deferred).
 
@@ -93,7 +93,6 @@ The feature shipped 2026-08-10; this closes its adoption tail.
 - [ ] Mobile edit-in-wizard — highest mobile value, highest risk (wizard state; the CR-01 scar).
 - [ ] Mobile CRUD parity beyond product/customer: warehouses, dictionary, full reports.
 - [ ] `CustomerContact` in the sync wire format — required before a contact edited on one side (desktop client / server) appears on the other. Bumps `FORMAT_VERSION`. v5.0 states the divergence (MOB-08) rather than closing it.
-- [ ] Mobile editing of telegram and social contacts — deferred with the multi-value contact UI, not with the sync question.
 - [ ] Field-level reference-data merge so a client's edit wins over the server's copy.
 - [ ] Third role "report viewer" (AUTH-V2-01).
 - [ ] Customer purchase-frequency analysis and "running low" reminders (CST-V2-01); likely-interested-customer suggestions on receipt (CST-V2-02).
@@ -114,14 +113,53 @@ The feature shipped 2026-08-10; this closes its adoption tail.
 
 ## Traceability
 
-Filled by the roadmapper.
+Filled by the roadmapper 2026-09-04. Every REQ-ID maps to **exactly one** phase — no orphans, no duplicates.
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| SYNC-10..13 | TBD | Not started |
-| DATE-01..08 | TBD | Not started |
-| REV-01..11 | TBD | Not started |
-| MOB-02..08 | TBD | Not started |
-| CUR-03..08 | TBD | Not started |
+| SYNC-10 | Phase 33 | Not started |
+| SYNC-11 | Phase 33 | Not started |
+| SYNC-12 | Phase 33 | Not started |
+| SYNC-13 | Phase 33 | Not started |
+| DATE-01 | Phase 33 | Not started |
+| DATE-02 | Phase 33 | Not started |
+| DATE-03 | Phase 33 | Not started |
+| DATE-04 | Phase 33 | Not started |
+| DATE-05 | Phase 33 | Not started |
+| DATE-06 | Phase 33 | Not started |
+| DATE-07 | Phase 33 | Not started |
+| DATE-08 | Phase 33 | Not started |
+| REV-01 | Phase 34 | Not started |
+| REV-02 | Phase 34 | Not started |
+| REV-03 | Phase 34 | Not started |
+| REV-04 | Phase 34 | Not started |
+| REV-05 | Phase 34 | Not started |
+| REV-06 | Phase 34 | Not started |
+| REV-07 | Phase 34 | Not started |
+| REV-08 | Phase 34 | Not started |
+| REV-09 | Phase 34 | Not started |
+| REV-10 | Phase 34 | Not started |
+| REV-11 | Phase 34 | Not started |
+| CUR-03 | Phase 34 (currency plan) | Not started |
+| CUR-04 | Phase 34 (currency plan) | Not started |
+| CUR-05 | Phase 34 (currency plan) | Not started |
+| CUR-06 | Phase 34 (currency plan) | Not started |
+| CUR-07 | Phase 34 (currency plan) | Not started |
+| CUR-08 | Phase 34 (currency plan) | Not started |
+| MOB-02 | Phase 35 | Not started |
+| MOB-03 | Phase 35 | Not started |
+| MOB-04 | Phase 35 | Not started |
+| MOB-05 | Phase 35 | Not started |
+| MOB-06 | Phase 35 | Not started |
+| MOB-07 | Phase 35 | Not started |
+| MOB-08 | Phase 35 | Not started |
 
-**Total: 34 requirements** — 4 sync hardening, 8 back-dating, 11 reversal, 7 mobile editing, 6 currency coverage.
+**Total: 36 requirements** — 4 sync hardening (SYNC-10..13), 8 back-dating (DATE-01..08), 11 reversal (REV-01..11), 7 mobile editing (MOB-02..08), 6 currency coverage (CUR-03..08).
+
+> **Count correction, 2026-09-04 (roadmapper).** This section previously read "Total: 34 requirements" above the same five-group breakdown. The breakdown was and is correct; the sum was not — 4 + 8 + 11 + 7 + 6 = **36**. No REQ-ID was added, removed or renamed; only the arithmetic changed. Coverage is 36/36 mapped, each to exactly one phase.
+
+**Phase mapping rationale:**
+
+- **Phase 33** carries the sync hardening as its *first plans*, not a separate phase: SYNC-12's answer determines whether the four new ledger columns can ever be NOT NULL, and SYNC-10/11 must exist before any schema change reaches a self-updating client. Collapsing "Phase 0" into Phase 33 is explicitly authorised by `.planning/research/SUMMARY.md`, and PROJECT.md commits to 3 phases + 1 plan.
+- **Phase 34** carries CUR-03..08 as a plan, not as a phase. The currency feature shipped 2026-08-10; the tail has no schema work and blocks nothing, but the reversal control, the currency marker and the business-date column all edit the same three История artifacts (`operations.py::history_view`, `history_rows.html`, `history_cards.html`), so it is sequenced adjacent to the reversal work to edit those files once — and before Phase 35, so the mobile product form ships with the final money render.
+- **Phase 35** is last by the v1.1 UI-01 precedent: it renders money and writes ledger rows, so it inherits both upstream decisions. Building it earlier would mean redoing it.

@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
-status: planning
-last_updated: "2026-09-03T23:16:00.607Z"
-last_activity: 2026-09-03
+status: in_progress
+last_updated: "2026-09-04T00:00:00.000Z"
+last_activity: 2026-09-04
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The operator can quickly and reliably record receipts and sales so stock counts and profit figures are always correct — without losing any data.
-**Current focus:** v5.0 Corrections, Dates & Currency — defining requirements for back-dated operations, per-warehouse currency, one-tap reversal, and mobile card editing
+**Current focus:** v5.0 Corrections, Dates & Currency — roadmap complete (Phases 33-35, 36/36 requirements mapped). Next: plan Phase 33 (Back-Dated Operations).
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 33 — Back-Dated Operations (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-03 — Milestone v5.0 started
+Status: Roadmap complete — ready to plan Phase 33
+Last activity: 2026-09-04 — ROADMAP.md written for v5.0 (Phases 33, 34, 35); REQUIREMENTS.md traceability filled
+
+**Phase set for v5.0:**
+
+| Phase | Name | Plans | Status |
+|-------|------|-------|--------|
+| 33 | Back-Dated Operations | TBD | Not started |
+| 34 | One-Tap Reversal (сторно) & Currency Render Coverage | TBD | Not started |
+| 35 | Mobile Card Editing | TBD | Not started |
 
 ## Performance Metrics
 
@@ -47,6 +55,7 @@ Last activity: 2026-09-03 — Milestone v5.0 started
 | 29 | 5 | - | - |
 | 31 | 8 | - | - |
 | 32 | 5 | - | - |
+| 33-35 (v5.0) | TBD | - | - |
 
 **Recent Trend:**
 
@@ -102,6 +111,20 @@ Last activity: 2026-09-03 — Milestone v5.0 started
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone decisions archived there and in `.planning/RETROSPECTIVE.md`).
+
+**v5.0 roadmap-level decisions (2026-09-04):**
+
+- **Three phases, forced ordering: 33 → 34 → 35.** Phase 33 (back-dated operations) → Phase 34 (one-tap reversal + the currency render tail) → Phase 35 (mobile card editing). 33 → 34 is a **hard** dependency, not a preference: a reversal must inherit the origin's business date AND the readers must already bucket by it, or the feature ships visibly broken — and there is no retrofit, because the ledger is append-only.
+- **Coverage:** all 36 v5.0 requirements mapped exactly once — SYNC-10..13 + DATE-01..08 → Phase 33; REV-01..11 + CUR-03..08 → Phase 34; MOB-02..08 → Phase 35. No orphans, no duplicates (REQUIREMENTS.md Traceability filled 2026-09-04). REQUIREMENTS.md's stated total of "34" was an arithmetic error against its own five-group breakdown; corrected to 36 with a note, no REQ-ID touched.
+- **Sync hardening is Phase 33's first plans, not a separate phase.** `merge._ledger_row` projects an incoming batch through the *receiver's* columns and `POST /api/sync/push` has no `schema_version` gate, so a client that self-updates ahead of the s1 rebuild pushes `business_date`, the server drops it, returns 200, and the client stamps `synced_at` — permanent, unrecoverable loss behind a success response. SYNC-12 also *determines the new columns' definitions* (all four must be nullable).
+- **All four ledger columns land in ONE migration** (`operations.business_date`, `cash_movements.business_date`, `operations.reverses_op_id`, `cash_movements.reverses_movement_id`): one dual-dialect trigger rewrite, one five-artifact lockstep, one fleet skew window instead of two. The two `reverses_*_id` columns ship unused but trigger-guarded; Phase 34 only starts writing them.
+- **Migration internal order is LOCKED:** `add_column` → timezone-correct backfill → THEN extend the append-only trigger's column enumeration. Reversed, the backfill trips the guard it just installed and `alembic upgrade head` aborts mid-upgrade on the live server. The **five-artifact lockstep is one commit**: migration (both dialect branches + both `downgrade()` halves) + `app/db.py::APPEND_ONLY_TRIGGERS` + both `IMMUTABLE_*_COLUMNS` frozensets + the two test constants. Migration `0026` exists solely because this was missed once.
+- **Rollout order:** migrate + redeploy s1 → verify `/api/sync/pull` and a push from a current client → only then cut the client release tag.
+- **Currency render coverage (CUR-03..08) is a PLAN inside Phase 34, not a phase.** The feature shipped 2026-08-10 (quick task `260810-2g3`, migrations 0023–0026); the tail has no schema work and blocks nothing, but the reversal control, the currency marker and the business-date column all edit `operations.py::history_view` + `history_rows.html` + `history_cards.html` — so it sits adjacent to the reversal work (those files edited once, not three times) and completes before Phase 35 so the mobile product form ships with the final money render. Do not parallelize it with a reversal plan touching the История templates.
+- **Research flags:** Phase 34 needs `--research-phase` at plan time (transfer sibling-resolution has no handle in existing data; the non-SUM aggregate audit spans four service modules — both discovery work). Phases 33 and 35 do **not** — the migration ritual is written verbatim in `0017`/`0018`/`0024`/`0026`, and `mobile_batches.py` is an exact shipped route-pair precedent.
+- **Locked product decisions (operator, 2026-09-04):** sales are excluded from storno (use «Возврат»); back-dating is unbounded with a «задним числом» marker, future dates rejected; mobile customer editing reaches **full desktop parity including all four `CONTACT_KINDS` with multi-value add/remove** — which closes the delete-by-omission trap by construction rather than by a guard, and makes Phase 35 meaningfully larger than a flat-field form.
+- **All 16 `needs verification` items from research are assigned:** V1/V2/V3 (blocking) + V4 + V13/V14 (pre-rollout) + V15 (advisory) → Phase 33; V5/V6 (reversal) + V7..V12 (currency plan) → Phase 34; V16 closed at requirements time by operator decision 1. None dropped — each is written into its owning phase's detail section in ROADMAP.md.
+- **All 26 numbered pitfalls are owned:** 1, 2, 3, 4, 14, 15, 16, 20, 21 → Phase 33; 5, 6, 7, 9, 10, 11, 12, 13, 19, 23, 25, 26 → Phase 34; 8, 17, 18, 22, 24 → Phase 35.
 
 **v4.0 roadmap-level decisions (2026-07-22):**
 
@@ -200,6 +223,17 @@ None yet.
   `.planning/v2.0-MILESTONE-AUDIT.md` for the full breakdown. Recommend a short
   manual browser pass before relying heavily on the rebuilt sale form.
 
+- ⚠️ [v5.0 roadmap, 2026-09-04] **Nothing about the s1 server was verified by research** —
+  no shell was run by any research agent. `V13` (is s1's `alembic_version` at `0026`?)
+  and `V14` (what `display_tz` does s1's `.env.production` set? — it parameterises the
+  backfill) must both be answered before Phase 33's rollout runbook is executable.
+  Every count and `path:line` in the research documents is a snapshot at `b4ca98c`;
+  re-measure at plan time rather than quoting them.
+
+- ℹ️ [v5.0 roadmap, 2026-09-04] The 4 known-flaky `tests/test_sync_ui.py` failures are
+  pre-existing (project memory, `sync_client._run_lock` held by the lifespan auto-sync
+  thread) and must not be attributed to any phase of this milestone.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
@@ -253,13 +287,14 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-03T07:42:24.760Z
-Stopped at: Milestone v4.0 archived (phases 31, 32 closed; 27 open artifacts deferred)
+Last session: 2026-09-04
+Stopped at: v5.0 roadmap created — Phases 33/34/35 written to ROADMAP.md, REQUIREMENTS.md traceability filled (36/36 mapped), backlog entries 999.2/999.3/999.4 marked PROMOTED
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with `/gsd-new-milestone`.
-- **Before v4.0 can honestly be called shipped to an operator:** run `dist\Output\MyOriShop-Setup-1.60.exe` on a bare Windows machine, then cut the first real signed release by pushing a `v1.<N>` tag and following the offline-signing runbook. Both are the two acknowledged Phase-31 gaps; nothing in code blocks them.
+- **Next: `/gsd-plan-phase 33`** (Back-Dated Operations). Phase 33 does **not** need `--research-phase`; Phase 34 does; Phase 35 does not.
+- **Before Phase 33's rollout runbook is executable**, answer the two server questions no research agent could (`V13`: is s1's `alembic_version` at `0026`? `V14`: what `display_tz` does s1's `.env.production` set — it parameterises the backfill). Re-measure the research documents' counts at plan time; every one is a snapshot at `b4ca98c`.
+- **Before v4.0 can honestly be called shipped to an operator:** run `dist\Output\MyOriShop-Setup-1.60.exe` on a bare Windows machine, then cut the first real signed release by pushing a `v1.<N>` tag and following the offline-signing runbook. Both are the two acknowledged Phase-31 gaps; nothing in code blocks them. Unaffected by v5.0.
 - **v3.0 was never archived** — there is no `.planning/milestones/v3.0-ROADMAP.md` and no v3.0 entry in MILESTONES.md, even though phases 25-30 are all complete. Run `/gsd-complete-milestone` for v3.0 retroactively if that history matters.
 - Still-open hygiene, non-blocking: no SECURITY.md for phases 29 and 30; `25-VERIFICATION.md` and `26-VERIFICATION.md` are `human_needed`; 4 debug sessions sit at `diagnosed` without a resolution stamp. Full list in `## Deferred Items`.
