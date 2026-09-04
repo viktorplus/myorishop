@@ -295,7 +295,7 @@ completed: 2026-09-04
 | `git diff --diff-filter=D --name-only b5d2f57..HEAD` | **empty** — nothing deleted |
 | `uv run ruff check` on all 9 changed `app/` + `tests/` Python files | **All checks passed** |
 | `git status --porcelain` (tracked files) | **clean** |
-| `reports/33-08.xml` / `.sha` / `.dirty` | written; sha `de0688ec33c78251fa96816c5399b77248b1b564` |
+| `reports/33-08.xml` / `.sha` / `.dirty` | written. `.xml` is the run at code-HEAD `de0688e`; `.sha` holds the final HEAD `6611c9d1024d2e0c536e5fb344ad0f024532d657`, and `git diff --name-only de0688e..6611c9d` is `.planning/` only — no source file changed after the suite ran. `.dirty` contains only the pre-existing untracked files (`grep -c -v '^??'` = 0) |
 
 **Full-suite result read carefully.** The 4 failures are **exactly** the four
 documented known-red `tests/test_sync_ui.py` cases
@@ -397,8 +397,11 @@ All thirteen modified files exist on disk with the described content. Commits
 `a7d0885`, `a2b92e1`, `0d667f2` and `de0688e` are all present in `git log`,
 together touch exactly those thirteen files and no others, and none deletes a
 tracked file (`git diff --diff-filter=D --name-only b5d2f57..HEAD` is empty).
-`reports/33-08.xml`, `reports/33-08.sha` and `reports/33-08.dirty` were written
-from the final run at `de0688e`, and the tracked working tree is clean.
+`reports/33-08.xml` is the full-suite run at code-HEAD `de0688e`;
+`reports/33-08.sha` holds the final HEAD and `reports/33-08.dirty` lists only
+pre-existing untracked files. Nothing under `app/` or `tests/` changed after
+the suite ran — the only later commit is documentation. The tracked working
+tree is clean.
 
 ---
 *Phase: 33-back-dated-operations*
