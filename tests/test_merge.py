@@ -694,6 +694,105 @@ def test_push_batch_cost_cents_to_pre_0025_db_fails_loudly(tmp_path, monkeypatch
     under_migrated.close()
 
 
+# --- SYNC-12: the two schema-skew behaviours, PINNED (never "fixed") ---------
+
+
+def test_missing_column_lands_default(session):
+    """VA-3 (SYNC-12): a record missing a column lands the column's DEFAULT, not NULL.
+
+    The mirror of the two `_under_migrated_session` cases above: there the DB is
+    BEHIND the code, here the wire payload is. A client that predates migration
+    0024 cannot send `cash_movements.currency`, which is `nullable=False` — the
+    obvious fear is an IntegrityError, or a NULL smuggled into a NOT NULL column
+    by SQLite's laxity.
+
+    Neither happens, and the mechanism is worth stating because it is the whole
+    reason SYNC-12 needs no code change: `_ledger_row` projects the payload
+    through the RECEIVER's columns, so the absent key becomes an explicit
+    `currency: None`; SQLAlchemy 2.0.51 then DROPS the None-valued key from the
+    emitted INSERT and substitutes the column's Python `default=` (falling back
+    to the DDL `server_default`). The row lands on 'RUB'.
+
+    NEGATIVE RULE, deliberate: do NOT "harden" this by adding a
+    `{k: v for k, v in row.items() if v is not None}` filter to
+    `merge._ledger_row`. It would be a second mechanism for a job the ORM
+    already does (CLAUDE.md PC-6), and it would BREAK DATE-08 (AP-3) by
+    suppressing the deliberate NULL a pre-update client must produce for
+    `business_date` — that NULL is what the read-time COALESCE buckets on.
+    """
+    source = CashMovement(
+        id="cm-pre-0024",
+        category="sale",
+        amount_cents=5000,
+        currency="RUB",
+        note=None,
+        sale_id=None,
+        author_id=None,
+        device_id="dev-old",
+        seq=1,
+        created_at=_NOW,
+        created_by="operator",
+        synced_at=None,
+    )
+    record = record_from_orm("cash_movement", source)
+    # The pre-0024 client's build simply has no such column to serialize.
+    assert record.pop("currency") == "RUB"
+    assert "currency" not in record
+
+    report = _apply(session, [record])
+    session.commit()
+
+    assert report.cash_inserted == 1
+    row = session.get(CashMovement, "cm-pre-0024")
+    assert row is not None
+    assert row.currency == "RUB"  # the default, NOT None and NOT an IntegrityError
+
+
+def test_unknown_field_is_dropped(session, monkeypatch):
+    """VA-4 (SYNC-12): an unknown wire field is DROPPED behind a reported success.
+
+    ASSERT DROP, NOT REJECT. `.planning/ROADMAP.md:320` and
+    `33-CONTEXT.md:555-556` both phrase this check as "assert reject-not-drop";
+    that phrasing is BACKWARDS and was disproven by execution. `parse_exchange`
+    keeps every non-`kind` key verbatim (`merge.py:189`) and `_ledger_row` then
+    projects the dict through the receiver's own `KIND_TO_FIELDS`
+    (`merge.py:460`), so the surplus key is silently projected away and the
+    merge reports a plain success. A test written to the ROADMAP's wording would
+    fail for the wrong reason and invite someone to "fix" `merge.py` — which is
+    not the plan (see the negative rule in `test_missing_column_lands_default`:
+    no None-filter in `_ledger_row`, AP-3).
+
+    That drop is exactly the silent loss SYNC-10's HTTP 409 push gate (plan
+    33-01) makes unreachable in production: an AHEAD client is refused before
+    any DB touch, so a field the receiver cannot store never gets acknowledged.
+
+    `business_date` is used as the literal unknown field on purpose, and the
+    receiver's field set is monkeypatched back to its pre-change shape, so this
+    test keeps testing the same thing after migration 0027 makes the column
+    real.
+    """
+    monkeypatch.setitem(
+        merge.KIND_TO_FIELDS,
+        "cash_movement",
+        merge.KIND_TO_FIELDS["cash_movement"] - {"business_date"},
+    )
+    record = {**_cash("cm-unknown", amount_cents=700, seq=1), "business_date": "2026-08-01"}
+
+    parsed = merge.parse_exchange(build_ndjson(records=[record]))
+    # Parsing preserves the surplus key — the loss happens later, at the insert.
+    assert parsed.records[0].data["business_date"] == "2026-08-01"
+
+    report = merge.apply_merge(session, parsed, server_now=_NOW)
+    session.commit()
+
+    assert report.cash_inserted == 1  # success is reported, not a rejection
+    row = session.get(CashMovement, "cm-unknown")
+    assert row is not None
+    assert getattr(row, "business_date", None) is None
+    stored = {column.key: getattr(row, column.key) for column in row.__mapper__.columns}
+    assert "2026-08-01" not in stored.values()  # no trace of the dropped field
+
+
 def test_tombstone_inline(session, product):
     """SYNC-05/DD-1b: a new soft-deleted row inserts; a server row is never flipped."""
     dead = _product_rec("p-dead", code="DEAD-1", name="Удалённый", deleted_at=_REF_TS)
