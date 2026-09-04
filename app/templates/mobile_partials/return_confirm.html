@@ -14,7 +14,12 @@
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
 
   {% if product %}
-  <p>Возврат из продажи от {{ origin_created_at | local_dt }} — {{ product.name }} ({{ product.code }}), цена {{ unit_price_cents | cents }}</p>
+  {# D-24 (D-21: mobile mirrors desktop): the origin sale is identified by its
+     BUSINESS date — the day the goods actually changed hands — resolved
+     server-side in app/routes/mobile_returns.py::_origin_business_day.
+     `ru_date`, never `local_dt`: the value is a 10-char ISO date, and
+     iso_to_local would build a naive datetime from it and print a bogus time. #}
+  <p>Возврат из продажи от {{ origin_business_day | ru_date }} — {{ product.name }} ({{ product.code }}), цена {{ unit_price_cents | cents }}</p>
   {# D-08: the target batch is server-resolved and READ-ONLY — no picker, no
      input. A batched origin shows срок/комментарий; a legacy/NULL origin (or
      a to-be-lazily-created legacy batch) shows the frozen legacy label. #}
@@ -39,6 +44,26 @@
       <label for="qty">Количество к возврату</label>
       <input type="text" id="qty" name="qty" inputmode="numeric" value="{{ remaining }}" max="{{ remaining }}">
       {% if errors.quantity %}<p class="error">{{ errors.quantity }}</p>{% endif %}
+    </div>
+    {# DATE-01/D-16: without this field возврат would ship dateless on mobile
+       while its desktop twin (partials/return_form.html) carries it. LAST field
+       before .mobile-actions, with the per-key <p class="error"> idiom this file
+       already uses above and at :14. An empty value is not an error — it means
+       «today» — so the input is deliberately NOT marked mandatory (Interaction
+       Contract §4) and the label carries no optional-hint span.
+       Unlike the продажа wizard, this screen IS re-rendered on a 422 (whole
+       #return-confirm-wrap outerHTML swap), so the typed value is echoed back
+       through the flat `op_date` context key, mirroring {{ remaining }} above.
+       Same DELIBERATE layout divergence as the desktop twin: a PLAIN `.field`,
+       without the full-row modifier the other surfaces add, so it stays on the
+       compact confirmation row beside «Количество к возврату» (33-UI-SPEC.md,
+       surface 14 of 14). max= is safe here: hx-post sits on the <form> and the
+       submit is a native button. #}
+    <div class="field">
+      <label for="op_date">Дата операции</label>
+      <input type="date" id="op_date" name="op_date"
+             value="{{ op_date | default(today_iso(), true) }}" max="{{ today_iso() }}">
+      {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
     </div>
     <div class="mobile-actions">
       <button type="submit">Оформить возврат</button>

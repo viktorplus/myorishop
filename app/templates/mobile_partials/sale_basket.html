@@ -2,11 +2,25 @@
    own 4 hidden accumulated-array inputs, so tapping «Удалить» (client-side
    only, mirrors sale_row.html's Pitfall 2 precedent) removes that line's
    values from the form with no server round trip and no index bookkeeping. #}
+{# The default has to be resolved before the op_date branch below, which is the
+   very first thing #wizard-basket renders; sale_warning.html includes this
+   partial with no `errors` key at all. A {% set %} emits no markup, so the
+   error <p> is still the first ELEMENT inside the div. #}
+{% set errors = errors | default({}) %}
 <div id="wizard-basket">
+  {# DATE-01/D-14 + CF-UI-1: the op_date input lives in the persistent shell
+     (mobile_pages/sales.html), which htmx never swaps, so no re-rendered step
+     can put a message underneath it. This screen IS the swapped node, so the
+     message is emitted as its FIRST element — the DOM node immediately
+     following the shell's date input — and carries the id the shell's
+     aria-describedby points at. A <p class="error">, deliberately NOT an
+     .error-block: it points at one specific field, not at the basket as a
+     whole. The operator's typed value is still in the shell untouched, so
+     nothing is echoed back here. #}
+  {% if errors.op_date %}<p class="error" id="op_date-error">{{ errors.op_date }}</p>{% endif %}
   <p class="mobile-step-indicator">Корзина</p>
   <h2>Корзина</h2>
   {% include "mobile_partials/sale_customer.html" %}
-  {% set errors = errors | default({}) %}
   {% if errors.form %}<div class="error-block">{{ errors.form }}</div>{% endif %}
   {% if errors.basket %}<div class="error-block">{{ errors.basket }}</div>{% endif %}
   {% if lines %}

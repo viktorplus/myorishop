@@ -57,32 +57,51 @@ def _resolve_origin(
     return None
 
 
-def _empty_context(origin_op_id: str, errors: dict[str, str]) -> dict:
+def _origin_business_day(origin: Operation) -> str:
+    """D-24: the day the «Возврат из продажи от …» label must name.
+
+    Mirrors app.routes.returns._origin_business_day verbatim (D-21: mobile
+    mirrors desktop, it does not diverge) — the origin sale's BUSINESS date,
+    falling back to the created_at day for a pre-0027 row whose business_date is
+    still NULL (DATE-08). The result is a 10-char ISO date and MUST be rendered
+    with `| ru_date`, never `| local_dt`.
+    """
+    return origin.business_date or origin.created_at[:10]
+
+
+def _empty_context(origin_op_id: str, errors: dict[str, str], op_date: str = "") -> dict:
     return {
         "origin_op_id": origin_op_id,
         "product": None,
         "sold": 0,
         "remaining": 0,
-        "origin_created_at": None,
+        "origin_business_day": None,
         "unit_price_cents": None,
         "origin_batch": None,
         "errors": errors,
+        "op_date": op_date,
         "saved": None,
     }
 
 
-def _origin_context(session: Session, origin: Operation, errors: dict[str, str]) -> dict:
+def _origin_context(
+    session: Session, origin: Operation, errors: dict[str, str], op_date: str = ""
+) -> dict:
     return {
         "origin_op_id": origin.id,
         "product": session.get(Product, origin.product_id),
         "sold": sold_qty(session, origin.sale_id, origin.product_id),
         "remaining": returnable_qty(session, origin.sale_id, origin.product_id),
-        "origin_created_at": origin.created_at,
+        "origin_business_day": _origin_business_day(origin),
         # D-07: the frozen origin price, display-only — never an editable input.
         "unit_price_cents": origin.unit_price_cents,
         # D-08: the batch this return restores to, read-only (None -> legacy label).
         "origin_batch": resolve_return_batch(session, origin),
         "errors": errors,
+        # DATE-01: the flat echo key return_confirm.html reads. Unlike the sale
+        # wizard, this screen IS re-rendered on a 422 (whole-block outerHTML
+        # swap), so the typed date has to be echoed or it would be lost.
+        "op_date": op_date,
         "saved": None,
     }
 
@@ -112,13 +131,16 @@ def mobile_return_create(
     request: Request,
     origin_op_id: str = Form(""),
     qty: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     origin = session.get(Operation, origin_op_id) if origin_op_id else None
     origin_valid = origin is not None and origin.type == "sale" and origin.sale_id is not None
 
     try:
-        result, errors = register_return(session, origin_op_id=origin_op_id, qty_raw=qty)
+        result, errors = register_return(
+            session, origin_op_id=origin_op_id, qty_raw=qty, op_date=op_date
+        )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # CR-03: rollback FIRST — an unexpected failure may have left the
         # session needing rollback (e.g. a failed flush/commit); any further
@@ -127,9 +149,9 @@ def mobile_return_create(
         session.rollback()
         logger.exception("register_return failed")
         context = (
-            _origin_context(session, origin, {"form": SAVE_FAILED_ERROR})
+            _origin_context(session, origin, {"form": SAVE_FAILED_ERROR}, op_date)
             if origin_valid
-            else _empty_context(origin_op_id, {"form": SAVE_FAILED_ERROR})
+            else _empty_context(origin_op_id, {"form": SAVE_FAILED_ERROR}, op_date)
         )
         return templates.TemplateResponse(
             request, "mobile_partials/return_confirm.html", context, status_code=422
@@ -137,9 +159,9 @@ def mobile_return_create(
 
     if errors:
         context = (
-            _origin_context(session, origin, errors)
+            _origin_context(session, origin, errors, op_date)
             if origin_valid
-            else _empty_context(origin_op_id, errors)
+            else _empty_context(origin_op_id, errors, op_date)
         )
         return templates.TemplateResponse(
             request, "mobile_partials/return_confirm.html", context, status_code=422
@@ -153,10 +175,12 @@ def mobile_return_create(
         "product": result["product"],
         "sold": sold_qty(session, origin.sale_id, origin.product_id),
         "remaining": result["remaining"],
-        "origin_created_at": origin.created_at,
+        "origin_business_day": _origin_business_day(origin),
         "unit_price_cents": origin.unit_price_cents,
         "origin_batch": resolve_return_batch(session, origin),
         "errors": {},
+        # The success screen has no form to redisplay; the echo is 422-only.
+        "op_date": "",
         "saved": {"name": result["product"].name, "qty": result["operation"].qty_delta},
     }
     return templates.TemplateResponse(request, "mobile_partials/return_confirm.html", context)

@@ -9,6 +9,35 @@
 {% block content %}
 <h1>Продажа</h1>
 <form id="sale-wizard-form">
+  {# DATE-01/D-11 (Phase 33): wizard-wide chrome, NOT a step question. It sits
+     directly under the page <h1> and ABOVE #wizard-step, whose partials each
+     render their own step indicator first — so the rule for the operator is:
+     everything below the step indicator belongs to the current step, everything
+     above it belongs to the whole sale. Position IS the separation: no divider,
+     no box, no heading, no new colour.
+     THIS PLACEMENT IS THE WHOLE POINT, do not move it onto the basket screen.
+     The Корзина screen is RE-RENDERED from _acc_context (app/routes/
+     mobile_sales.py:39) on every «Добавить товар», so a date typed there would
+     silently snap back to today the moment a second item was added — the
+     operator would never see it happen. htmx only ever swaps #wizard-step, so
+     this node survives the entire basket<->product round-trip and every 422
+     with ZERO hidden-field threading, and no step partial may re-emit it.
+     No <p class="error"> here for the same reason: the shell is never
+     re-rendered, so `errors` cannot reach it. The op_date error is emitted as
+     the FIRST element of #wizard-basket instead (D-14 intent / CF-UI-1), and
+     aria-describedby ties this input to it in the accessibility tree rather
+     than merely near it in the DOM.
+     max= is INERT on this surface and that is expected (D-13, resolved):
+     hx-post sits on the buttons, htmx preventDefault()s the click, so neither
+     native nor htmx validation runs and the server's OP_DATE_FUTURE_ERROR is
+     the sole guard — the intended fallback. Do not "fix" it by moving hx-post
+     onto the form; that would change the wizard. #}
+  <div class="field op-date">
+    <label for="op_date">Дата операции</label>
+    <input type="date" id="op_date" name="op_date"
+           value="{{ today_iso() }}" max="{{ today_iso() }}"
+           aria-describedby="op_date-error">
+  </div>
   <div id="wizard-step">
     {% include "mobile_partials/sale_step_product.html" %}
   </div>

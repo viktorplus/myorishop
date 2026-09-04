@@ -12,11 +12,13 @@ the D-11 hx-include fix also in 22-07).
 """
 
 import re
+from datetime import date, timedelta
 
 from sqlalchemy import select
 
-from app.core import new_id
-from app.models import Batch, CatalogPrice, Operation, Sale
+from app.config import settings
+from app.core import local_today_iso, new_id
+from app.models import Batch, CashMovement, CatalogPrice, Operation, Sale
 from app.routes import mobile_sales
 from app.services.ledger import record_operation
 
@@ -943,3 +945,203 @@ def test_batch_step_echoes_acc_when_supplied(mobile_client_factory, session, pro
     assert '<input type="hidden" name="qty_acc[]" value="1">' in resp.text
     assert '<input type="hidden" name="price_acc[]" value="5,00">' in resp.text
     assert '<input type="hidden" name="batch_acc[]" value="some-batch-id">' in resp.text
+
+
+# ---------------------------------------------------------------------------
+# DATE-01/DATE-02/D-11: the business date on the mobile продажа wizard
+# ---------------------------------------------------------------------------
+
+
+def _today_plus(days: int) -> str:
+    """An ISO day offset from the operator's LOCAL today — the same definition
+    parse_op_date's future check and the today_iso() Jinja global both use."""
+    return (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=days)
+    ).isoformat()
+
+
+def _sale_cash(session):
+    return session.scalars(select(CashMovement).where(CashMovement.category == "sale")).all()
+
+
+def _stocked_batch(session, product, warehouse, qty=5):
+    batch = _seed_batch(session, product, warehouse, quantity=0)
+    record_operation(
+        session,
+        type_="receipt",
+        product_id=product.id,
+        qty_delta=qty,
+        unit_cost_cents=500,
+        unit_price_cents=900,
+        batch_id=batch.id,
+    )
+    return batch
+
+
+def test_sale_wizard_shell_renders_the_date_field_above_the_step_content(
+    mobile_client_factory, session
+):
+    """D-11: the date is wizard chrome, so it must render INSIDE the persistent
+    <form> and ABOVE #wizard-step — the placement rule as an assertion, not
+    prose. It also carries the aria-describedby that ties it to the error the
+    swapped basket emits."""
+    client = _client(mobile_client_factory)
+    resp = client.get("/m/sales")
+
+    assert resp.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert "Дата операции" in resp.text
+    assert 'name="op_date"' in resp.text
+    assert f'value="{today}" max="{today}"' in resp.text
+    assert 'class="field op-date"' in resp.text
+    assert 'aria-describedby="op_date-error"' in resp.text
+    assert resp.text.index('name="op_date"') < resp.text.index('id="wizard-step"')
+    assert resp.text.index('name="op_date"') < resp.text.index("Шаг 1 из 3")
+
+
+def test_sale_wizard_steps_never_re_emit_the_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """The negative that makes «survives the round-trip» structural rather than
+    hopeful: no swapped fragment mentions op_date at all, so nothing that htmx
+    puts into #wizard-step can overwrite or reset the shell's input. A future
+    edit that "helpfully" threads it as a hidden field reddens here."""
+    batch = _stocked_batch(session, product, warehouse)
+    client = _client(mobile_client_factory)
+
+    step_product = client.post("/m/sales/step/product", data={"code": product.code})
+    assert step_product.status_code == 200
+    step_qty = client.post(
+        "/m/sales/step/qty-price", data={"code": product.code, "batch_id": batch.id}
+    )
+    assert step_qty.status_code == 200
+    basket = client.post(
+        "/m/sales/step/basket-add",
+        data={"code": product.code, "qty": "1", "price": "9,00", "batch_id": batch.id},
+    )
+    assert basket.status_code == 200
+
+    for fragment in (step_product.text, step_qty.text, basket.text):
+        assert "op_date" not in fragment
+
+
+def test_sale_date_survives_the_basket_product_round_trip(
+    mobile_client_factory, session, product, warehouse
+):
+    """B-3 as far as a test can carry it: set the date, add a product, go back to
+    the basket, add a SECOND product, then finalize — the date that lands on the
+    ledger is the one that was set, never today. The shell input is never in a
+    swapped fragment (asserted above), so the browser keeps sending it; here we
+    prove the value that finally arrives is honoured on every row."""
+    back_date = _today_plus(-21)
+    batch = _stocked_batch(session, product, warehouse, qty=10)
+    client = _client(mobile_client_factory)
+
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(
+        client, product.code, "1", "9,00", batch.id
+    )
+    # «Добавить товар» — the exact round-trip that would reset a date typed on
+    # the basket screen: the basket is re-rendered from _acc_context afterwards.
+    back_to_product = client.post(
+        "/m/sales/step/product",
+        data={
+            "code": "",
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+        },
+    )
+    assert back_to_product.status_code == 200
+    assert "op_date" not in back_to_product.text
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(
+        client,
+        product.code,
+        "2",
+        "9,00",
+        batch.id,
+        code_acc,
+        qty_acc,
+        price_acc,
+        batch_acc,
+    )
+
+    resp = client.post(
+        "/m/sales",
+        data={
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+            "op_date": back_date,
+        },
+    )
+
+    assert resp.status_code == 200
+    assert "Продажа оформлена" in resp.text
+    ops = _sale_ops(session)
+    assert len(ops) == 2
+    assert {op.business_date for op in ops} == {back_date}
+    assert _sale_cash(session)[0].business_date == back_date
+    assert all(op.created_at[:10] != back_date for op in ops)
+
+
+def test_mobile_sale_empty_op_date_stamps_local_today(
+    mobile_client_factory, session, product, warehouse
+):
+    """The wizard posts the shell's pre-filled value; an absent one still means
+    «today» rather than NULL."""
+    batch = _stocked_batch(session, product, warehouse)
+    client = _client(mobile_client_factory)
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(
+        client, product.code, "1", "9,00", batch.id
+    )
+
+    resp = client.post(
+        "/m/sales",
+        data={
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+            "op_date": "",
+        },
+    )
+
+    assert resp.status_code == 200
+    today = local_today_iso(settings.display_tz)
+    assert _sale_ops(session)[0].business_date == today
+    assert _sale_cash(session)[0].business_date == today
+
+
+def test_mobile_sale_future_date_error_is_the_first_element_of_the_basket(
+    mobile_client_factory, session, product, warehouse
+):
+    """D-14 + CF-UI-1: the refusal renders as a per-key <p class="error"> that is
+    the FIRST element of the swapped basket — the DOM node immediately after the
+    shell's still-filled date input — never as a whole-screen .error-block."""
+    batch = _stocked_batch(session, product, warehouse)
+    client = _client(mobile_client_factory)
+    code_acc, qty_acc, price_acc, batch_acc = _add_line(
+        client, product.code, "1", "9,00", batch.id
+    )
+
+    resp = client.post(
+        "/m/sales",
+        data={
+            "code_acc[]": list(code_acc),
+            "qty_acc[]": list(qty_acc),
+            "price_acc[]": list(price_acc),
+            "batch_acc[]": list(batch_acc),
+            "op_date": _today_plus(1),
+        },
+    )
+
+    message = "Дата операции не может быть в будущем."
+    assert resp.status_code == 422
+    assert f'<p class="error" id="op_date-error">{message}</p>' in resp.text
+    assert f'<div class="error-block">{message}</div>' not in resp.text
+    assert resp.text.count(message) == 1
+    assert resp.text.index(message) < resp.text.index("Корзина")
+    assert _sale_ops(session) == []
+    assert _sale_cash(session) == []

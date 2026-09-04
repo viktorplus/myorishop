@@ -510,8 +510,14 @@ def mobile_sale_create(
     consultant_number: str = Form(""),
     customer_q: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # DATE-01/D-11: op_date arrives here for free — «Оформить продажу» is an
+    # hx-post inside #sale-wizard-form, so the shell's date input serialises
+    # with every step. It is NOT echoed into any re-render context below: the
+    # shell is never swapped, so the operator's value is still in the DOM, and
+    # echoing it would create a second source of truth for it.
     # D-04/D-12 analog: «Оформить продажу» is an hx-post that auto-includes
     # the whole #sale-wizard-form, so the customer selector's fields ride
     # along here for free — they must be echoed back into every re-render of
@@ -532,6 +538,7 @@ def mobile_sale_create(
             prices=price_acc,
             batch_ids=batch_acc,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # WR-01: rollback FIRST — an unexpected failure may have left the
