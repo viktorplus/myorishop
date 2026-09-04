@@ -342,7 +342,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3)*
 
 - [x] 33-07-PLAN.md — Reports/finance/dashboard: 5 predicates + 10 bounds sites switched; VA-9 byte-identity across the migration (DATE-03/07) (wave 4)
-- [ ] 33-08-PLAN.md — История/customers/warehouses readers + D-24 borderline set + VA-17 ordering tripwire (DATE-03/04) (wave 4)
+- [x] 33-08-PLAN.md — История/customers/warehouses readers + D-24 borderline set + VA-17 ordering tripwire (DATE-03/04) (wave 4)
 - [ ] 33-10-PLAN.md — Приход + списание write surfaces (desktop + mobile) + D-24 batch auto-name (DATE-01/02) (wave 4)
 - [ ] 33-11-PLAN.md — Продажа + возврат write surfaces (desktop + mobile) + D-24 return label (DATE-01/02) (wave 4)
 - [ ] 33-12-PLAN.md — Корректировка + перемещение write surfaces (desktop + mobile final steps) (DATE-01/02) (wave 4)
@@ -459,7 +459,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 30. Offline Self-Uploading File | v3.0 | 4/4 | Complete   | 2026-07-20 |
 | 31. Packaging, Launcher & Signed-Release Pipeline | v4.0 | 8/8 | Complete    | 2026-09-03 |
 | 32. In-App Secure Self-Update | v4.0 | 5/5 | Complete    | 2026-09-03 |
-| 33. Back-Dated Operations | v5.0 | 7/15 | In Progress|  |
+| 33. Back-Dated Operations | v5.0 | 8/15 | In Progress|  |
 | 34. One-Tap Reversal (сторно) & Currency Render Coverage | v5.0 | 0/0 | Not started | - |
 | 35. Mobile Card Editing | v5.0 | 0/0 | Not started | - |
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Corrections, Dates & Currency
 status: executing
-stopped_at: Completed 33-07-PLAN.md
-last_updated: "2026-09-04T11:29:46.945Z"
+stopped_at: Completed 33-08-PLAN.md
+last_updated: "2026-09-04T12:04:39.845Z"
 last_activity: 2026-09-04
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 15
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 33 (back-dated-operations) — EXECUTING
-Plan: 8 of 15
+Plan: 9 of 15
 Status: Ready to execute
 Last activity: 2026-09-04
 
@@ -123,6 +123,7 @@ post-migration smoke SQL — read that file, not this note, before writing or ap
 | Phase 33 P05 | 30min | 3 tasks | 5 files |
 | Phase 33 P06 | 35min | 3 tasks | 8 files |
 | Phase 33 P07 | 95min | 3 tasks | 12 files |
+| Phase 33 P08 | 60min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -243,6 +244,9 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 - [Phase 33]: 33-07 (D-25): D-25 narrows ROADMAP success criterion 2 - of the two reports it names, only writeoff_report switches; stale_products stays on created_at by decision, now pinned by a test
 - [Phase 33]: 33-07 (T-33-20): plan Tasks 1+2 shipped in ONE commit - finance.py::_metrics_context builds one bounds pair feeding both report families, so no split leaves a coherent tree
 - [Phase 33]: 33-07: finance.py:379 and mobile_finance.py:377 were NOT switched (they feed the created_at-based cash CSV export); plan 33-09 MUST flip them in the same commit as export.py:211-212
+- [Phase 33]: 33-08: «Последняя приёмка» switched to the business date, deliberately overriding research/ARCHITECTURE.md:195 (open decision #5) per D-24
+- [Phase 33]: 33-08: last_order_date signature changed to (session, customer_id) and recomputed as MAX(business_date_expr) — D-22 keeps purchase_history on created_at, so re-rendering history[0] would have shown the latest-ENTERED row
+- [Phase 33]: 33-08: _SORT_MAP/_DEFAULT_ORDER and every «recent N» feed stay on created_at (D-22/DATE-04), pinned by VA-17 asserting both behaviour and the literal order-clause text
 
 ### Pending Todos
 
@@ -337,8 +341,8 @@ Re-generate this list any time with `node ~/.claude/gsd-core/bin/gsd-tools.cjs q
 
 ## Session Continuity
 
-Last session: 2026-09-04T11:29:46.905Z
-Stopped at: Completed 33-07-PLAN.md
+Last session: 2026-09-04T12:04:39.822Z
+Stopped at: Completed 33-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
