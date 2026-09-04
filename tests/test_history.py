@@ -728,6 +728,59 @@ def test_history_null_business_date_row_is_never_marked(session, stocked_product
     assert row["is_backdated"] is False
 
 
+def _fake_op(created_at: str, business_date: str):
+    """The two attributes `_is_backdated` reads, with no DB row behind them.
+
+    Deliberately not a real `Operation`: `record_operation` cannot produce a
+    NAIVE `created_at` (it stamps `utcnow_iso()`), but `merge` can — it inserts
+    the wire value verbatim and `_LEDGER_REQUIRED` only checks it is not None.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(created_at=created_at, business_date=business_date)
+
+
+def test_is_backdated_reads_a_naive_created_at_as_utc():
+    """WR-04 (33-REVIEW): the marker and migration 0027's backfill must AGREE.
+
+    `astimezone()` on a NAIVE datetime interprets it in the MACHINE's zone, so on
+    a server whose OS zone is not `display_tz` a merged row with an offset-less
+    `created_at` got the wrong local day — and therefore a spurious (or missing)
+    «задним числом» marker, contradicting the tz-correct value the backfill
+    wrote. 0027's `_local_business_date` already states the rule: naive is UTC.
+
+    21:30 UTC on 31 Aug is 00:30 local on 1 Sep at Europe/Moscow — the straddle
+    window where reading the timestamp in the wrong zone flips the answer.
+    """
+    from zoneinfo import ZoneInfo
+
+    from app.services.operations import _is_backdated
+
+    tz = ZoneInfo("Europe/Moscow")
+
+    assert _is_backdated(_fake_op("2026-08-31T21:30:00", "2026-09-01"), tz) is False
+    assert _is_backdated(_fake_op("2026-08-31T21:30:00+00:00", "2026-09-01"), tz) is False
+    assert _is_backdated(_fake_op("2026-08-31T21:30:00", "2026-08-31"), tz) is True
+
+
+def test_is_backdated_does_not_raise_on_an_unparseable_created_at():
+    """An unparseable timestamp degrades to a marker decision, never to a 500.
+
+    /history renders EVERY row through this function, and the ledger is
+    append-only — one bad merged row would otherwise take the whole page down
+    with no application-level repair possible. Same 10-character fallback
+    migration 0027 uses.
+    """
+    from zoneinfo import ZoneInfo
+
+    from app.services.operations import _is_backdated
+
+    tz = ZoneInfo("Europe/Moscow")
+
+    assert _is_backdated(_fake_op("не дата", "2026-09-01"), tz) is True
+    assert _is_backdated(_fake_op("2026-09-01 not-a-time", "2026-09-01"), tz) is False
+
+
 def test_history_dated_backdated_returns_only_backdated_rows(session, stocked_product):
     """DATE-06: «Только задним числом». T-33-22 — the predicate lands on BOTH
     `stmt` and `count_stmt`, and only `len(rows) == total` can catch a half-switch."""

@@ -5,7 +5,7 @@ single write path (app.services.ledger.record_operation). Portable ORM
 only, no SQLite-specific SQL (D-05 sync-readiness).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select
@@ -111,7 +111,27 @@ def _is_backdated(op: Operation, tz: ZoneInfo) -> bool:
     # the local calendar DAY of an arbitrary stored timestamp. This is the only
     # caller, so it stays private here — move it beside `local_today_iso` if a
     # second one ever appears.
-    local_day = datetime.fromisoformat(op.created_at).astimezone(tz).date().isoformat()
+    #
+    # WR-04 (33-REVIEW): the naive and malformed branches below are migration
+    # 0027's `_local_business_date` rule, character for character, and they have
+    # to be. The backfill's whole correctness argument is that
+    # `business_date == local_day(created_at)` for every historical row — if the
+    # two functions disagree on an input, this marker contradicts the data the
+    # migration wrote. Locally written rows always carry an offset
+    # (`utcnow_iso`), but a row MERGED from another client is not guaranteed to:
+    # `merge._LEDGER_REQUIRED` only checks `created_at is not None`. On a naive
+    # value `astimezone()` would read the machine's OS zone, so on any server
+    # whose OS zone is not `display_tz` the marker came out wrong.
+    try:
+        moment = datetime.fromisoformat(op.created_at)
+    except (TypeError, ValueError):
+        # A timestamp this function cannot parse must not 500 /history — the
+        # ledger is append-only, so such a row cannot be repaired. Same 10-char
+        # fallback the migration uses.
+        return op.business_date != str(op.created_at)[:10]
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    local_day = moment.astimezone(tz).date().isoformat()
     return op.business_date != local_day
 
 
