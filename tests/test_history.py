@@ -633,3 +633,29 @@ def test_history_default_order_is_unchanged_by_a_backdated_row(session, stocked_
     )
 
     assert history_view(session)["rows"][0]["op"].id == newest.id
+
+
+def test_web_history_period_filter_selects_by_the_business_date(client, session, stocked_product):
+    """DATE-03 through the REAL route: `?from=&to=` reaches the switched
+    predicate with date-only bounds.
+
+    The service-level tests call `history_view` with bounds a test built. Only
+    this one proves the ROUTE hands it `business_date_bounds` output and not the
+    old UTC-timestamp pair — a mismatch there silently returns an empty page at
+    UTC and at any negative offset, with a 200 and no error anywhere.
+
+    CR-01 (same trap `test_web_history_filters` documents): the «Товар» filter
+    <select> lists EVERY active product's code as option text regardless of the
+    active filter, so assertions must be scoped to the row markup
+    (`<td>{code}</td>`), never a bare substring.
+    """
+    _backdated_correction(session, stocked_product, business_date="2026-07-10", qty_delta=7)
+    cell = f"<td>{stocked_product.code}</td>"
+
+    hit = client.get("/history?from=2026-07-10&to=2026-07-10")
+    assert hit.status_code == 200
+    assert hit.text.count(cell) == 1
+
+    miss = client.get("/history?from=2026-08-01&to=2026-08-31")
+    assert miss.status_code == 200
+    assert miss.text.count(cell) == 0
