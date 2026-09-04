@@ -115,11 +115,16 @@ def correction_create(
     note: str = Form(""),
     batch_id: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Mode/qty fields arrive as strings on purpose: parsing/validation
     # happens in the service, which returns RU errors.
-    form_echo = {"code": code, "name": name, "value": value, "note": note}
+    # DATE-01: op_date joins the echo dict so a 422 or an oversell warn
+    # redisplays the date the operator actually typed instead of snapping the
+    # input back to today. On success the form resets to {} and the field
+    # re-renders from today_iso(), so the next correction starts from today.
+    form_echo = {"code": code, "name": name, "value": value, "note": note, "op_date": op_date}
     # LOT-05: resolve the picked batch (if any) so a 422/warn re-render re-echoes
     # the operator's selection and the batch-scoped current-qty hint survives.
     selected_batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
@@ -133,6 +138,7 @@ def correction_create(
             note=note,
             batch_id=batch_id,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — UI-SPEC: block error, never a raw 500
         # WR-03: defensive rollback, mirroring the fix applied to

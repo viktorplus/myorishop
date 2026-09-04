@@ -327,3 +327,66 @@ def test_correction_unknown_code_still_fails_on_the_code(session, stocked_produc
     assert result is None
     assert "op_date" not in errors
     assert "code" in errors
+
+
+# --- DATE-01: the desktop корректировка surface (wiring, via the real route) -
+
+
+def test_web_correction_form_renders_prefilled_date_field(client):
+    """GET /corrections renders the field pre-filled AND capped at today."""
+    today = local_today_iso(settings.display_tz)
+    response = client.get("/corrections")
+
+    assert response.status_code == 200
+    assert 'name="op_date"' in response.text
+    assert f'value="{today}" max="{today}"' in response.text
+    assert 'class="field op-date"' in response.text
+    assert "Дата операции" in response.text
+    # The field is the LAST one before the actions block.
+    assert response.text.index('name="op_date"') < response.text.index('class="form-actions"')
+
+
+def test_web_correction_backdated_post_stores_the_business_date(
+    client, session, stocked_product
+):
+    """The route must actually PASS the date to the service — a field that
+    renders but is dropped on the way to the write path is worse than no field
+    at all, because the UI would claim a capability the ledger does not have."""
+    batch = _only_batch(session, stocked_product)
+
+    response = client.post(
+        "/corrections",
+        data={
+            "code": stocked_product.code, "mode": "delta", "value": "1",
+            "note": "", "batch_id": batch.id, "op_date": "2026-08-15",
+        },
+    )
+
+    assert response.status_code == 200
+    ops = _correction_ops(session)
+    assert len(ops) == 1
+    assert ops[0].business_date == "2026-08-15"
+
+
+def test_web_correction_future_date_returns_422_and_echoes_the_typed_value(
+    client, session, stocked_product
+):
+    """422, the RU future message beside the field, and the submitted date
+    still in value= so the operator can correct rather than retype."""
+    batch = _only_batch(session, stocked_product)
+    tomorrow = (
+        date.fromisoformat(local_today_iso(settings.display_tz)) + timedelta(days=1)
+    ).isoformat()
+
+    response = client.post(
+        "/corrections",
+        data={
+            "code": stocked_product.code, "mode": "delta", "value": "1",
+            "note": "", "batch_id": batch.id, "op_date": tomorrow,
+        },
+    )
+
+    assert response.status_code == 422
+    assert OP_DATE_FUTURE_ERROR in response.text
+    assert f'value="{tomorrow}"' in response.text
+    assert _correction_ops(session) == []

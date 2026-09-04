@@ -68,6 +68,22 @@
     {% include "partials/transfer_batch_wrap.html" %}
     {% endwith %}
 
+    {# DATE-01/D-10: the business date — visible, pre-filled with today, LAST
+       field before .form-actions, identical on every ledger-writing surface.
+       max= is effective here: hx-post sits on the <form> (:21) and the submit
+       is a native button, so the browser's own interactive validation fires
+       first and shows its own bubble before htmx ever sees the event. An empty
+       value is not an error — it means «today». Both ledger rows this one form
+       writes are stamped with the SAME date (see register_transfer). The
+       op-date modifier is inert inside .stacked-form (display:block); it is
+       included so all six desktop surfaces carry byte-identical markup. #}
+    <div class="field op-date">
+      <label for="op_date">Дата операции</label>
+      <input type="date" id="op_date" name="op_date"
+             value="{{ form.op_date or today_iso() }}" max="{{ today_iso() }}">
+      {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
+    </div>
+
     <div class="form-actions">
       <button type="submit">Переместить</button>
     </div>

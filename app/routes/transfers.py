@@ -145,10 +145,14 @@ def transfers_create(
     new_comment: str = Form(""),
     cost: str = Form(""),
     confirm: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Qty arrives as a string on purpose: parsing/validation happens in the
     # service, which returns RU errors.
+    # DATE-01: op_date joins the echo dict so a 422 or an over-transfer warn
+    # redisplays the date the operator actually typed. On success the form
+    # resets to {} and the field re-renders from today_iso().
     form_echo = {
         "code": code,
         "name": name,
@@ -157,6 +161,7 @@ def transfers_create(
         "new_expiry": new_expiry,
         "new_comment": new_comment,
         "cost": cost,
+        "op_date": op_date,
     }
     # WH-03/D-10: resolve the picked batch (if any) for the re-echoed picker +
     # dest select on a 422/warn re-render — re-validate ownership the same
@@ -184,6 +189,7 @@ def transfers_create(
             new_comment=new_comment,
             cost_raw=cost,
             confirm=confirm,
+            op_date=op_date,
         )
     except Exception:  # noqa: BLE001 — block error, never a raw 500
         # T-10-09/Pitfall 7: defensive rollback before re-querying anything.
