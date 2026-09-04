@@ -19,6 +19,7 @@ submitted bytes back to the client (T-28-07 / V7).
 """
 
 import dataclasses
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -56,6 +57,13 @@ INVALID_CURSOR_ERROR = "Некорректная метка синхрониза
 SCHEMA_AHEAD_ERROR = (
     "Несовместимая версия данных: клиент {client}, сервер {server}. Обновите сервер."
 )
+
+# WR-03 (33-REVIEW): the shape an Alembic revision id is REQUIRED to have
+# (tests/test_migrations.py::test_revision_ids_are_fixed_width). Only a value
+# matching it may be echoed back into the 409 detail; anything else is
+# client-controlled bytes and is replaced by the label below.
+_REVISION_ID_RE = re.compile(r"\d{4}")
+UNKNOWN_SCHEMA_LABEL = "?"
 
 # NDJSON media type for the pull stream (matches the push Content-Type).
 PULL_MEDIA_TYPE = "application/x-ndjson"
@@ -131,15 +139,24 @@ def sync_push(
     # worse message, but NOT a loss: any non-2xx returns before the client's
     # `synced_at` stamp, so the rows stay unsynced and re-push after the upgrade.
     #
-    # T-33-02: only the two Alembic revision ids are interpolated into the detail
-    # — never submitted bytes, exception text or the token (V7 / T-28-07).
+    # T-33-02 / WR-03 (33-REVIEW): `server_schema` is the receiver's OWN revision
+    # and is interpolated as-is. `batch.schema_version` is NOT — it comes straight
+    # from the pushed NDJSON header, so it is submitted bytes, unbounded in length
+    # within the 32 MB body cap. It is shown only when it has the exact shape of
+    # an Alembic revision id (`_REVISION_ID_RE`, the same fixed-width invariant
+    # push_schema_ok's lexicographic comparison rests on) and replaced by "?"
+    # otherwise. So: no untrusted echo, no response amplification, and the
+    # message still names both sides in the case an operator actually hits.
     server_schema = current_schema_version(session)
     if not push_schema_ok(batch.schema_version, server_schema):
+        client_shown = (
+            batch.schema_version
+            if _REVISION_ID_RE.fullmatch(batch.schema_version or "")
+            else UNKNOWN_SCHEMA_LABEL
+        )
         raise HTTPException(
             status_code=409,
-            detail=SCHEMA_AHEAD_ERROR.format(
-                client=batch.schema_version, server=server_schema
-            ),
+            detail=SCHEMA_AHEAD_ERROR.format(client=client_shown, server=server_schema),
         )
 
     # (5) The route owns the ONE transaction: apply_merge never commits, so a

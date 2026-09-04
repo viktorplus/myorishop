@@ -209,6 +209,37 @@ def test_ahead_client_push_returns_409(device_client, session, product, batch, m
     assert session.scalar(select(func.count()).select_from(Operation)) == 0
 
 
+def test_409_detail_never_echoes_a_junk_schema_version(
+    device_client, session, product, batch, monkeypatch
+):
+    """WR-03 (33-REVIEW): the client half of the detail is client-controlled bytes.
+
+    `batch.schema_version` comes straight from the pushed header and is unbounded
+    within the 32 MB body cap, so echoing it verbatim was an untrusted-echo policy
+    violation and a response-amplification vector. Only a value shaped like a real
+    Alembic revision id is shown; everything else becomes "?".
+    """
+    from app.routes.sync import SCHEMA_AHEAD_ERROR, UNKNOWN_SCHEMA_LABEL
+
+    _pin_server_schema(monkeypatch)
+    junk = "x" * 4096
+    body = _body(junk, [_op_record("op-junk", product_id=product.id, batch_id=batch.id)])
+
+    resp = device_client.client.post(
+        "/api/sync/push", content=body, headers=_bearer(device_client.plaintext)
+    )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert junk not in detail
+    assert detail == SCHEMA_AHEAD_ERROR.format(
+        client=UNKNOWN_SCHEMA_LABEL, server=SERVER_SCHEMA
+    )
+    # A well-formed revision id is still named in full (the case above pins it),
+    # so the operator-facing message did not get worse for the real scenario.
+    assert session.scalar(select(func.count()).select_from(Operation)) == 0
+
+
 def test_behind_client_push_merges(device_client, session, product, batch, monkeypatch):
     """VA-1: a BEHIND client still merges (D-01) — its rows land with the new
     column NULL and bucket via the read-time COALESCE (DATE-08)."""
