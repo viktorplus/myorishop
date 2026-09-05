@@ -28,7 +28,11 @@ from app.services.ledger import (
     next_seq,
     record_operation,
 )
-from app.services.returns import register_return, returnable_qty  # noqa: F401
+from app.services.returns import (  # noqa: F401
+    SAVE_FAILED_ERROR,
+    register_return,
+    returnable_qty,
+)
 
 # 0007 D-03 seeded default warehouse (frozen copy — the lazy-created legacy
 # batch's warehouse target; mirrors app.services.returns.DEFAULT_WAREHOUSE_ID).
@@ -198,6 +202,71 @@ def test_return_inherits_origin_batch(session, stocked_product):
     session.expire_all()
     # batch quantity: 8 (receipt) - 2 (sale) + 1 (return) = 7
     assert session.get(Batch, batch.id).quantity == 7
+
+
+def _orphan_batch_warehouse(session, batch_id):
+    """Point a batch at a warehouse row that does not exist.
+
+    Forced on a separate connection with `PRAGMA foreign_keys=OFF` because the
+    ORM path cannot produce it — the same idiom
+    `tests/test_sales.py::test_basket_whose_warehouse_row_is_absent_is_rejected_not_crashed`
+    uses, and for the same reason: `Batch.warehouse_id`'s FK is ORM-only on the
+    merge path and the pragma is set for SQLite connections only, so a merged DB
+    really can carry this shape.
+    """
+    engine = session.get_bind()
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.exec_driver_sql(
+            "UPDATE batches SET warehouse_id = 'ghost-warehouse' WHERE id = ?",
+            (batch_id,),
+        )
+        connection.commit()
+    session.expire_all()
+
+
+def test_return_whose_warehouse_row_is_absent_is_rejected_not_crashed(
+    session, stocked_product
+):
+    """WR-05 (33-REVIEW): `session.get(Warehouse, batch.warehouse_id)` can be None.
+
+    Before the guard this was `AttributeError` on `warehouse.currency` — in
+    NEITHER of `register_return`'s except clauses, so it escaped to the routes'
+    blanket `except Exception`. The operator saw «Не удалось сохранить» anyway,
+    but only because of that catch-all, and the log got a stack trace for a data
+    shape the code knows about. Now it is a clean refusal with ZERO writes.
+    """
+    batch = open_batches(session, stocked_product.id)[0]
+    _header, sale_op = _make_sale(session, stocked_product, qty=2, batch_id=batch.id)
+    _orphan_batch_warehouse(session, batch.id)
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="1")
+
+    assert result is None
+    assert errors == {"form": SAVE_FAILED_ERROR}
+    assert _return_ops(session) == []
+    assert _all_cash(session) == []
+
+
+def test_zero_price_return_does_not_need_a_warehouse_currency(session, stocked_product):
+    """WR-05, the other half: the currency is read ONLY by the cash debit.
+
+    `warehouse` used to be resolved unconditionally, above the `if debit:`
+    guard, so a return of a ZERO-price sale would have failed over a currency it
+    never uses. Resolving it inside the guard is what makes this pass.
+    """
+    batch = open_batches(session, stocked_product.id)[0]
+    _header, sale_op = _make_sale(
+        session, stocked_product, qty=2, unit_price_cents=0, batch_id=batch.id
+    )
+    _orphan_batch_warehouse(session, batch.id)
+
+    result, errors = register_return(session, origin_op_id=sale_op.id, qty_raw="1")
+
+    assert errors == {}
+    assert result
+    assert len(_return_ops(session)) == 1
+    assert _all_cash(session) == []  # no debit, so no cash row and no currency
 
 
 def test_return_targets_seeded_legacy_batch(session, product, warehouse):

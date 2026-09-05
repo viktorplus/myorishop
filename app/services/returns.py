@@ -173,10 +173,6 @@ def register_return(
         # D-08: restore stock to the ORIGIN op's batch (or the product's legacy
         # batch, lazily created when absent) — the return never re-asks.
         batch_id = _resolve_or_create_return_batch_id(session, origin)
-        # CUR-02: the return debit carries the same warehouse currency the
-        # stock is being restored to.
-        batch = session.get(Batch, batch_id)
-        warehouse = session.get(Warehouse, batch.warehouse_id)
         op = record_operation(
             session,
             type_="return",
@@ -197,6 +193,28 @@ def register_return(
         # never reconciled against or read from the prior sale credit row.
         debit = qty * (origin.unit_price_cents or 0)
         if debit:
+            # CUR-02: the return debit carries the same warehouse currency the
+            # stock is being restored to.
+            #
+            # WR-05 (33-REVIEW): both lookups can return None, under exactly the
+            # precondition `sales.py`'s WR-07 fix documents — `Batch.warehouse_id`'s
+            # FK is ORM-only on the merge path and `PRAGMA foreign_keys` is set for
+            # SQLite connections only, so a merged DB can carry a batch pointing at
+            # an absent warehouse. Dereferencing blindly raised `AttributeError`,
+            # which is in NEITHER except clause below, so it escaped to the routes'
+            # blanket `except Exception`: the operator got the wrong RU message and
+            # the log got a `logger.exception` stack trace for a known data shape.
+            #
+            # Resolved HERE rather than above the `if debit:` guard — the currency
+            # is only ever used by this call, so a return of a ZERO-price sale must
+            # not fail over a currency it never reads.
+            batch = session.get(Batch, batch_id)
+            warehouse = (
+                session.get(Warehouse, batch.warehouse_id) if batch is not None else None
+            )
+            if warehouse is None:
+                session.rollback()
+                return None, {"form": SAVE_FAILED_ERROR}
             finance.record_cash_movement(
                 session,
                 category="return",
