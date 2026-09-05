@@ -20,10 +20,7 @@ from app.core import (
 )
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
 from app.services.ledger import parse_op_date
-# WR-01: the «задним числом» marker is defined ONCE, beside /history's own use
-# of it. operations.py imports catalog/customers/ledger/pagination/reports and
-# none of those imports finance, so this is not a cycle.
-from app.services.operations import is_backdated
+from app.services.operations import is_backdated  # WR-01 — see cash_history_view
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.security import author_fields
 
@@ -290,6 +287,12 @@ def cash_history_view(
     bucket by `business_date`, but left these two LIST surfaces on `created_at`:
     a withdrawal booked today for 15.08 showed 05.09 in the list while the tiles
     on the SAME page counted it in August — no marker, no filter, no cue.
+
+    The marker itself is imported from `operations`, not re-derived here, so
+    the two ledgers can never disagree about what «задним числом» means. That
+    import is not a cycle: `operations` imports only
+    catalog/customers/ledger/pagination/reports, and none of those imports
+    `finance`.
     """
     stmt = select(CashMovement).where(CashMovement.currency == currency).order_by(
         *_CASH_DEFAULT_ORDER
