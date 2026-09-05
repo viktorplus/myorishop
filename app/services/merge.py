@@ -26,7 +26,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
@@ -95,6 +95,15 @@ _LEDGER_REQUIRED: tuple[str, ...] = ("device_id", "seq", "created_at", "created_
 # this column or wrongly capture the timestamps. Add the next date-only column
 # here when one appears.
 _DATE_FIELDS: frozenset[str] = frozenset({"business_date"})
+
+# CR-01 (33-REVIEW iteration 2): timestamp-typed wire columns on a LEDGER record.
+# `created_at` is already in `_LEDGER_REQUIRED`, but presence is not shape:
+# `_ledger_row` copies it verbatim into the bulk INSERT, `iso_to_local` renders
+# it on /history, /m/history and both CSV exports, `_is_backdated` parses it,
+# and `created_at[:10]` is the read-side fallback for a NULL `business_date`.
+# The ledger is append-only, so a poisoned value can never be repaired — hence
+# the shape check belongs at the same boundary as the money and date checks.
+_TIMESTAMP_FIELDS: frozenset[str] = frozenset({"created_at"})
 
 
 @dataclass(frozen=True)
@@ -165,6 +174,42 @@ def _is_iso_date(value: object) -> bool:
         return False
 
 
+def _is_iso_timestamp(value: object) -> bool:
+    """True only for an ISO-8601 *timestamp* whose first 10 chars are a real date.
+
+    Three separate properties, all load-bearing for `created_at`:
+
+    * it PARSES — `_is_backdated` and `iso_to_local` both call
+      `datetime.fromisoformat` on it;
+    * it carries a time part — a bare ``"2026-09-04"`` in a timestamp column
+      would render as a fabricated 00:00 and sort before every real timestamp
+      of that day, and the sync cursor orders by this column;
+    * ``value[:10]`` is a CANONICAL ISO date — every read-side fallback for a
+      NULL `business_date` is the literal slice ``created_at[:10]``, so the
+      basic format ``"20260904T100000+0000"`` (which `fromisoformat` accepts on
+      Python 3.11+) would slice to ``"20260904"`` and poison every period
+      comparison, exactly like the value `_is_iso_date` refuses.
+
+    A NAIVE timestamp is deliberately ACCEPTED: `_is_backdated`, `iso_to_local`
+    and `0027::_local_business_date` all read one as UTC, and refusing it here
+    would turn a whole push into a 400 over a value the readers handle.
+    """
+    if not isinstance(value, str) or len(value) < 11 or value[10] not in ("T", " "):
+        return False
+    if not _is_iso_date(value[:10]):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _timestamp_fields(kind: str) -> frozenset[str]:
+    """The timestamp columns this kind declares (`_TIMESTAMP_FIELDS` ∩ schema)."""
+    return _TIMESTAMP_FIELDS & KIND_TO_FIELDS.get(kind, frozenset())
+
+
 def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     """Parse NDJSON lines into an ExchangeBatch (PURE — no DB/file/network).
 
@@ -173,8 +218,9 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
     ``kind``. Rejects (ValueError, before any DB touch) a malformed/non-object
     line, an unsupported ``format_version``, an unknown/duplicate ``kind``, a
     missing header, a duplicate origin id within one batch (same kind + id), a
-    non-int money value (float/string/bool), and a date-only column that is not
-    a canonical ISO ``yyyy-mm-dd`` string. ``synced_at`` is forced to None
+    non-int money value (float/string/bool), a date-only column that is not a
+    canonical ISO ``yyyy-mm-dd`` string, and a ledger ``created_at`` that is not
+    a parseable ISO-8601 timestamp. ``synced_at`` is forced to None
     (server-owned, never trusted from the wire).
     """
     non_header_kinds = RECORD_KINDS - {"header"}
@@ -236,6 +282,14 @@ def parse_exchange(lines: Iterable[str]) -> ExchangeBatch:
                     raise ValueError(f"{kind} record missing required field {required!r}")
             if not isinstance(data["seq"], int) or isinstance(data["seq"], bool):
                 raise ValueError(f"{kind} record seq must be an integer")
+            # CR-01 (iteration 2): presence is not shape. `_LEDGER_REQUIRED`
+            # above only proved `created_at` is not None; this proves it is a
+            # timestamp the readers can parse and slice.
+            for ts_key in _timestamp_fields(kind):
+                if not _is_iso_timestamp(data.get(ts_key)):
+                    raise ValueError(
+                        f"timestamp field {ts_key!r} must be an ISO-8601 timestamp"
+                    )
 
         # Money is integer cents only — any non-int (float, JSON string, bool) is a
         # type-confusion attack (V5). SQLite's dynamic typing would store a string

@@ -110,9 +110,35 @@ def format_ru_date(iso: str | None) -> str:
         return str(iso)
 
 
-def iso_to_local(iso_str: str, tz_name: str) -> str:
-    """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'."""
-    moment = datetime.fromisoformat(iso_str)
+def iso_to_local(iso_str: str | None, tz_name: str) -> str:
+    """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'.
+
+    NEVER RAISES (CR-01, 33-REVIEW iteration 2) — the same rule
+    `format_ru_date` above states, applied to the sibling column. This filter
+    renders `operations.created_at` / `cash_movements.created_at` on /history,
+    /m/history, the home page, the customer purchase tab and BOTH CSV exports,
+    and `merge._LEDGER_REQUIRED` only checks that `created_at` is not None, so
+    a merged row can carry an unparseable value. The ledger is append-only, so
+    such a row cannot be repaired: raising here would turn every one of those
+    surfaces into a permanent 500. An unrecognised value is shown as-is.
+    `merge.parse_exchange` is the gate that stops it reaching the DB; this is
+    the second layer, not the first.
+
+    A NAIVE value is read as UTC, never as the machine's OS zone. That is the
+    rule `alembic/versions/0027…::_local_business_date` and
+    `operations._is_backdated` already apply to this same column, and this
+    filter renders two lines away from that marker — `astimezone()` on a naive
+    datetime assumes the SERVER's zone, so on a non-UTC host the «внесено»
+    timestamp could contradict the business date printed directly above it.
+    """
+    if not iso_str:
+        return ""
+    try:
+        moment = datetime.fromisoformat(iso_str)
+    except (TypeError, ValueError):
+        return str(iso_str)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
     return moment.astimezone(ZoneInfo(tz_name)).strftime("%d.%m.%Y %H:%M")
 
 

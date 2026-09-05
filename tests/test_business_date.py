@@ -23,6 +23,7 @@ from app.config import settings
 from app.core import (
     business_date_bounds,
     format_ru_date,
+    iso_to_local,
     local_day_bounds_utc,
     local_today_iso,
     new_id,
@@ -920,3 +921,126 @@ def test_format_ru_date_renders_junk_instead_of_raising(junk):
     assert format_ru_date(junk) == str(junk)
     assert format_ru_date("2026-09-04") == "04.09.2026"  # the happy path is intact
     assert format_ru_date("20260904") == "04.09.2026"
+
+
+# --- CR-01 iteration 2: the SIBLING column, `created_at` ----------------------
+#
+# The block above hardened `business_date` on both layers and left `created_at`
+# on neither, even though it travels the same wire, lands in the same
+# append-only table and is rendered by `iso_to_local` on the very next line of
+# the same «Когда» cell.
+
+
+def _ndjson_with_created_at(kind: str, value) -> list[str]:
+    """A minimal one-record NDJSON push whose ledger row carries ``value``.
+
+    Deliberately a sibling of `_ndjson_with_business_date` rather than a
+    parameter on it: the two columns are checked by two different predicates in
+    `parse_exchange`, and folding them together would let one gate's regression
+    hide behind the other's fixture.
+    """
+    header = {
+        "kind": "header",
+        "format_version": merge.FORMAT_VERSION,
+        "schema_version": "0027",
+        "source_device_id": "device-A",
+    }
+    common = {
+        "id": f"{kind}-ts-1",
+        "device_id": "dev-1",
+        "seq": 1,
+        "created_at": value,
+        "created_by": "operator",
+        "business_date": "2026-09-04",
+    }
+    if kind == "operation":
+        record = {
+            "kind": kind,
+            "type": "receipt",
+            "product_id": "p-1",
+            "qty_delta": 10,
+            "batch_id": "b-1",
+            **common,
+        }
+    else:
+        record = {"kind": kind, "category": "sale", "amount_cents": 79900, **common}
+    return [
+        json.dumps(header, ensure_ascii=False),
+        json.dumps(record, ensure_ascii=False),
+    ]
+
+
+@pytest.mark.parametrize("kind", ("operation", "cash_movement"))
+@pytest.mark.parametrize(
+    "bad",
+    (
+        "не дата",
+        "2026-09-04",  # a bare DATE is not a timestamp
+        "04.09.2026T10:00:00+00:00",
+        "20260904T100000+0000",  # basic format: created_at[:10] would be "20260904"
+        "2026-13-45T10:00:00+00:00",
+        12345,
+        True,
+        "x" * 4096,
+    ),
+    ids=repr,
+)
+def test_parse_exchange_refuses_a_non_iso_created_at(kind, bad):
+    """CR-01 (iteration 2): `_LEDGER_REQUIRED` proves presence, not shape.
+
+    Before this gate a pushed `created_at` of «не дата» was stored verbatim and
+    then raised inside `iso_to_local` for EVERY row on /history, /m/history and
+    both CSV exports — and the append-only triggers make the row unrepairable.
+    """
+    with pytest.raises(ValueError, match="created_at"):
+        merge.parse_exchange(_ndjson_with_created_at(kind, bad))
+
+
+@pytest.mark.parametrize("kind", ("operation", "cash_movement"))
+@pytest.mark.parametrize(
+    "good",
+    (
+        "2026-09-04T10:00:00+00:00",  # what every shipped client actually sends
+        "2026-09-04T10:00:00",  # naive: accepted, and read as UTC downstream
+        "2026-09-04 10:00:00+00:00",  # space separator is legal ISO-8601
+        "2026-09-04T10:00:00.123456+00:00",
+    ),
+    ids=repr,
+)
+def test_parse_exchange_accepts_a_real_created_at(kind, good):
+    """The gate must not turn a legitimate push into a 400.
+
+    Naive is on the ACCEPT list on purpose: `_is_backdated`, `iso_to_local` and
+    `0027::_local_business_date` all read a naive value as UTC, so refusing it
+    here would reject a whole batch over a value the readers handle correctly.
+    """
+    batch = merge.parse_exchange(_ndjson_with_created_at(kind, good))
+    assert batch.records[0].data["created_at"] == good
+
+
+@pytest.mark.parametrize("junk", ("не дата", "2026/09/04", "04.09.2026"), ids=repr)
+def test_iso_to_local_renders_junk_instead_of_raising(junk):
+    """CR-01 layer 2 for `created_at`, mirroring `format_ru_date` above.
+
+    `datetime.fromisoformat` raising inside a Jinja filter takes out /history,
+    /m/history, the home page, the customer purchase tab and both CSV exports
+    for EVERY row, not just the bad one.
+    """
+    assert iso_to_local(junk, "Europe/Moscow") == junk
+    assert iso_to_local(None, "Europe/Moscow") == ""
+    assert iso_to_local("", "Europe/Moscow") == ""
+    # The happy path is intact.
+    assert iso_to_local("2026-09-04T10:00:00+00:00", "Europe/Moscow") == "04.09.2026 13:00"
+
+
+def test_iso_to_local_reads_a_naive_created_at_as_utc():
+    """A naive value is UTC — the rule `0027::_local_business_date` and
+    `operations._is_backdated` already apply to this exact column.
+
+    `astimezone()` on a naive datetime assumes the SERVER's OS zone, so before
+    this fix the «внесено» subline could contradict the business date rendered
+    directly above it on the same row. This assertion is only DISCRIMINATING on
+    a host whose OS zone is not UTC; it states the correct answer either way.
+    """
+    assert iso_to_local("2026-08-31T21:30:00", "Europe/Moscow") == "01.09.2026 00:30"
+    assert iso_to_local("2026-08-31T21:30:00+00:00", "Europe/Moscow") == "01.09.2026 00:30"
