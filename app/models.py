@@ -395,6 +395,21 @@ class Operation(Base):
     # precedent); the ORM ForeignKey here gives merge insert-ordering +
     # PostgreSQL portability, so a reversal whose target has not arrived yet
     # renders as a dangling link instead of rolling back an entire push.
+    #
+    # IN-08 (33-REVIEW) — READ THIS BEFORE WRITING THE FIRST PHASE-34 TEST.
+    # The sentence above is true on an ALEMBIC-BUILT database (production, s1).
+    # It is FALSE on every test fixture: `tests/conftest.py` builds schema with
+    # `Base.metadata.create_all`, which emits the `REFERENCES operations(id)`
+    # clause from this ORM ForeignKey, and `app/db.py` sets
+    # `PRAGMA foreign_keys=ON`. So a Phase-34 test that pushes a reversal whose
+    # TARGET has not arrived yet raises IntegrityError in the suite while
+    # succeeding in production — the opposite of the documented contract. The
+    # divergence is in the false-RED direction (a test fails that production
+    # would not), which is the better of the two, and it follows the
+    # pre-existing `sale_id`/`batch_id`/`author_id` precedent, so nothing is
+    # changed here. Phase 34 must pick ONE before building a test around the
+    # dangling-link behaviour: drop this ORM ForeignKey (losing merge
+    # insert-ordering) or add the real FK in a follow-up revision.
     reverses_op_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("operations.id", name="fk_operations_reverses_op_id_operations"),
@@ -559,6 +574,10 @@ class CashMovement(Base):
     # precedent); the ORM ForeignKey gives merge insert-ordering + PostgreSQL
     # portability, so a reversal whose target has not arrived yet renders as a
     # dangling link instead of rolling back an entire push.
+    # IN-08 (33-REVIEW): the SAME create_all-vs-Alembic divergence documented in
+    # full on `Operation.reverses_op_id` applies here — `create_all` emits this
+    # ForeignKey, Alembic 0027 does not, so the suite enforces a constraint
+    # production does not have. Decide both columns together in Phase 34.
     reverses_movement_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey(
