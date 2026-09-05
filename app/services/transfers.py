@@ -120,7 +120,19 @@ def register_transfer(
     # warehouse's own currency); a same-currency transfer accepts an optional
     # cost and otherwise inherits the source batch's cost_cents unchanged.
     dest_warehouse = session.get(Warehouse, dest_warehouse_id)
+    # WR-06 (33-REVIEW): `dest_warehouse` is safe — its id was just checked
+    # against `active_ids` above. `source.warehouse_id` never was: `source` is
+    # resolved by id and only its `product_id` is validated, so on a merged DB it
+    # can point at a warehouse row that is absent (`Batch.warehouse_id`'s FK is
+    # ORM-only on the merge path and `PRAGMA foreign_keys` is set for SQLite
+    # connections only — the precondition `sales.py`'s WR-07 fix documents).
+    # `source_warehouse.currency` then raised `AttributeError`, which the routes'
+    # blanket `except Exception` turned into the wrong RU message plus a spurious
+    # stack trace. An unresolvable source batch is a bad batch: same error as the
+    # ownership check above, same field.
     source_warehouse = session.get(Warehouse, source.warehouse_id)
+    if source_warehouse is None:
+        return None, {"batch": BATCH_REQUIRED_ERROR}
     cost_text = cost_raw.strip()
     if dest_warehouse.currency != source_warehouse.currency:
         if not cost_text:

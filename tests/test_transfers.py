@@ -20,7 +20,12 @@ from app.services.ledger import (
     rebuild_stock,
     record_operation,
 )
-from app.services.transfers import QTY_ERROR, recent_transfers, register_transfer
+from app.services.transfers import (
+    BATCH_REQUIRED_ERROR,
+    QTY_ERROR,
+    recent_transfers,
+    register_transfer,
+)
 
 
 def test_transfer_type_registered():
@@ -115,6 +120,49 @@ def test_transfer_writes_two_rows(session, stocked_product):
     assert deltas == [-3, 3]
     batch_ids = {op.batch_id for op in ops}
     assert batch_ids == {source.id, result["dest"].id}
+
+
+def test_transfer_source_warehouse_row_absent_is_rejected_not_crashed(
+    session, stocked_product
+):
+    """WR-06 (33-REVIEW): `source.warehouse_id` is never checked against anything.
+
+    `dest_warehouse` is safe — its id is verified against `active_ids` first.
+    `source` is resolved by id and only its `product_id` is validated, so
+    `source_warehouse.currency` was an unguarded dereference and raised
+    `AttributeError` — caught only by the routes' blanket `except Exception`,
+    which produces the wrong RU message and a spurious stack trace.
+
+    The orphan shape is forced on a separate connection with
+    `PRAGMA foreign_keys=OFF`, the same idiom `tests/test_sales.py`'s WR-07 test
+    uses, because the ORM path cannot produce it — but a merged DB can.
+    """
+    source = _source_batch(session, stocked_product, qty=8)
+    dest_wh = _second_warehouse(session)
+
+    engine = session.get_bind()
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.exec_driver_sql(
+            "UPDATE batches SET warehouse_id = 'ghost-warehouse' WHERE id = ?",
+            (source.id,),
+        )
+        connection.commit()
+    session.expire_all()
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+    )
+
+    assert result is None
+    assert errors == {"batch": BATCH_REQUIRED_ERROR}
+    ops = session.scalars(select(Operation).where(Operation.type == "transfer")).all()
+    assert ops == []
 
 
 def test_transfer_qty_echo_is_int_not_raw_string(session, stocked_product):
