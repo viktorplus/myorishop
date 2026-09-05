@@ -281,7 +281,10 @@ Decisions are logged in PROJECT.md Key Decisions table (v1.0-v2.0 milestone deci
 
 ### Pending Todos
 
-None yet.
+2 pending (`.planning/todos/pending/`):
+
+- **2026-08-31-price-lists-backfill** (tooling) — докачать недостающие прайс-листы Oriflame и пополнить `dictionary`; на 2026-08-31 без названия оставались 34 кода по описи склада «Офис».
+- **2026-09-05-phase-33-live-browser-verification** (ui) — WR-01/WR-03/WR-05 фазы 33 подтверждены тестами и статикой развёрнутых шаблонов, но круг «Назад» в мобильных мастерах, история движений денег и AUDIT-даты прихода задним числом ни разу не наблюдались на живом HTTP-пути. На проде не проверить: касса пуста, вся История от 03.09.2026, реестр append-only и сторно нет до фазы 34. Нужен локальный экземпляр на свободном порту (НЕ 8000).
 
 ### Coverage Gate Overrides
 
