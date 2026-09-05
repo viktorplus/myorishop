@@ -62,7 +62,14 @@ SCHEMA_AHEAD_ERROR = (
 # (tests/test_migrations.py::test_revision_ids_are_fixed_width). Only a value
 # matching it may be echoed back into the 409 detail; anything else is
 # client-controlled bytes and is replaced by the label below.
-_REVISION_ID_RE = re.compile(r"\d{4}")
+#
+# IN-07 (33-REVIEW): `[0-9]`, NOT `\d`. Python's `\d` is Unicode-aware by
+# default, so "١٢٣٤" (Arabic-Indic) and every other non-ASCII digit script
+# `fullmatch` — and the comment above would then be describing an echo that
+# does happen. Alembic revision ids are ASCII. `fullmatch` already bounds the
+# echo to exactly 4 characters so there was never any amplification; this
+# closes the last gap between the comment and the code.
+_REVISION_ID_RE = re.compile(r"[0-9]{4}")
 UNKNOWN_SCHEMA_LABEL = "?"
 
 # NDJSON media type for the pull stream (matches the push Content-Type).

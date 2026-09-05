@@ -159,7 +159,12 @@ def test_revision_ids_are_fixed_width():
 
         revision = re.search(r'^revision = "(.*)"$', source, re.MULTILINE)
         assert revision is not None, f"{path.name}: no quoted `revision` literal"
-        assert re.fullmatch(r"\d{4}", revision.group(1)), (
+        # IN-07 (33-REVIEW): `[0-9]`, not `\d` — Python's `\d` is Unicode-aware,
+        # so a revision id written in Arabic-Indic digits would PASS this
+        # tripwire and then sort nowhere near its ASCII neighbours under
+        # push_schema_ok's lexicographic `<=`. Same substitution in
+        # `app/routes/sync.py::_REVISION_ID_RE`, which mirrors this shape.
+        assert re.fullmatch(r"[0-9]{4}", revision.group(1)), (
             f"{path.name}: revision {revision.group(1)!r} is not a fixed-width "
             "4-digit id — push_schema_ok's lexicographic comparison would break"
         )
@@ -169,7 +174,7 @@ def test_revision_ids_are_fixed_width():
         literal = down.group(1).strip()
         if literal == "None":
             continue  # 0001 is the root of the chain
-        assert re.fullmatch(r'"\d{4}"', literal), (
+        assert re.fullmatch(r'"[0-9]{4}"', literal), (
             f"{path.name}: down_revision {literal} is not a fixed-width "
             "4-digit string literal"
         )

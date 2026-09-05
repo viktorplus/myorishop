@@ -255,6 +255,41 @@ def test_409_detail_never_echoes_a_junk_schema_version(
     assert session.scalar(select(func.count()).select_from(Operation)) == 0
 
 
+def test_409_detail_does_not_echo_non_ascii_digits(
+    device_client, session, product, batch, monkeypatch
+):
+    """IN-07 (33-REVIEW): `\\d` is Unicode-aware in Python, `[0-9]` is not.
+
+    "١٢٣٤" is four Arabic-Indic digits. Under `re.compile(r"\\d{4}")` it
+    `fullmatch`es, so the 409 detail echoed it back — four attacker-chosen
+    characters, next to a comment claiming the value is shown «only when it has
+    the exact shape of an Alembic revision id». Alembic revision ids are ASCII.
+
+    The impact was small (`fullmatch` bounds the echo to 4 characters, so there
+    is no amplification), which is exactly why it is worth pinning: nothing else
+    would have caught the comment drifting away from the code.
+    """
+    from app.routes.sync import SCHEMA_AHEAD_ERROR, UNKNOWN_SCHEMA_LABEL
+
+    _pin_server_schema(monkeypatch)
+    arabic_indic = "١٢٣٤"
+    body = _body(
+        arabic_indic, [_op_record("op-nonascii", product_id=product.id, batch_id=batch.id)]
+    )
+
+    resp = device_client.client.post(
+        "/api/sync/push", content=body, headers=_bearer(device_client.plaintext)
+    )
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert arabic_indic not in detail
+    assert detail == SCHEMA_AHEAD_ERROR.format(
+        client=UNKNOWN_SCHEMA_LABEL, server=SERVER_SCHEMA
+    )
+    assert session.scalar(select(func.count()).select_from(Operation)) == 0
+
+
 def test_behind_client_push_merges(device_client, session, product, batch, monkeypatch):
     """VA-1: a BEHIND client still merges (D-01) — its rows land with the new
     column NULL and bucket via the read-time COALESCE (DATE-08)."""
