@@ -190,8 +190,24 @@ def transfers_step_dest(
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
     cost: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    """Re-render «Куда и количество» from a posted form state.
+
+    IN-02 (33-REVIEW): NO template posts here — the dest step is entered only
+    via `GET /m/transfers/step/batch-pick` above, and the only callers are
+    tests (already recorded in `33-12-SUMMARY.md`). It is kept rather than
+    deleted because deleting a live route with its own tests is a refactor
+    decision, not a review fix.
+
+    `op_date` is accepted and forwarded even though nothing posts it today.
+    This was the ONE `_render_dest_step` caller that neither took nor threaded
+    it (contrast `transfers_create`'s three re-render branches), so wiring this
+    route up later would have silently reset a typed back-date to today —
+    a data bug planted by an omission, in a wizard whose date lives on this
+    very step (D-11).
+    """
     code_clean = code.strip()
     product = _find_product(session, code_clean)
     picked = _pick_batch(session, product, batch_id)
@@ -206,6 +222,7 @@ def transfers_step_dest(
         new_expiry=new_expiry,
         new_comment=new_comment,
         cost=cost,
+        op_date=op_date,
     )
 
 

@@ -129,6 +129,35 @@ def test_transfers_step_dest_hx_vals_back_button_is_single_quoted(
     assert 'hx-vals="{' not in response.text
 
 
+def test_transfers_step_dest_does_not_drop_a_posted_op_date(
+    mobile_client_factory, session, stocked_product
+):
+    """IN-02 (33-REVIEW): the one `_render_dest_step` caller that dropped the date.
+
+    Nothing posts to this route today (the dest step is entered via
+    `GET /m/transfers/step/batch-pick`), so this is a tripwire, not a
+    regression test for a live path: if the route is ever wired up, a typed
+    back-date must not silently reset to today. D-11 puts the date field on
+    THIS step for the transfer wizard, so the omission was on the exact screen
+    that owns it.
+    """
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers/step/dest",
+        data={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "op_date": "2026-07-10",
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'value="2026-07-10"' in response.text
+    assert f'value="{local_today_iso(settings.display_tz)}"' not in response.text
+
+
 def test_transfers_create_carries_name_through_oversell_retry(
     mobile_client_factory, session, stocked_product
 ):
