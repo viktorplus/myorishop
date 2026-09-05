@@ -816,6 +816,82 @@ def test_stale_threshold_zero_not_fallback(session, product, monkeypatch):
     assert matching == []
 
 
+def test_stale_products_reads_a_naive_created_at_as_utc(session, product, monkeypatch):
+    """WR-02 (33-REVIEW iteration 3): naive == UTC, like every sibling reader.
+
+    `merge._is_iso_timestamp` deliberately ACCEPTS a naive `created_at`, and
+    `astimezone()` on a naive datetime assumes the MACHINE's OS zone — so this
+    function used to disagree with `core.iso_to_local`,
+    `operations.is_backdated` and migration 0027's backfill, all of which read
+    naive as UTC. On s1 (OS zone UTC, display_tz Europe/Moscow) that was up to a
+    full day of drift for any merged naive row.
+
+    Formulated as an EQUIVALENCE — the same instant written naive and written
+    with an explicit `+00:00` must yield the same `days_since` — because that is
+    the property itself, and it is the only shape that is meaningful without
+    controlling the host's OS zone. HONEST LIMITATION: on a host whose OS zone
+    IS UTC the old code satisfied this by accident, so there the assertion is
+    vacuous. `tests/test_core.py::test_local_day_of_reads_a_naive_value_as_utc`
+    pins the rule host-independently, by passing the zone explicitly.
+    """
+    other = Product(id=new_id(), code="TEST-NAIVE", name="Наивная метка", quantity=0)
+    other.stale_days = 0
+    product.stale_days = 0
+    session.add(other)
+    session.commit()
+
+    aware_iso = _iso_days_ago(5)  # always ends in "+00:00" (see _iso_days_ago)
+    naive_iso = aware_iso[:-6]
+    assert not naive_iso.endswith("+00:00")
+
+    _record_sale_at(
+        session, monkeypatch, aware_iso, product=product, qty=1, price_cents=1000,
+        cost_cents=500, business_date="2026-01-01",
+    )
+    _record_sale_at(
+        session, monkeypatch, naive_iso, product=other, qty=1, price_cents=1000,
+        cost_cents=500, business_date="2026-01-01",
+    )
+
+    by_id = {row["product"].id: row for row in stale_products(session)}
+    assert by_id[product.id]["days_since"] == by_id[other.id]["days_since"] == 5
+
+
+def test_stale_products_does_not_raise_on_an_unparseable_created_at(
+    session, product, monkeypatch, client
+):
+    """WR-02: one unrepairable row costs its own LINE, never the whole page.
+
+    `datetime.fromisoformat` raised here and there was no `try`, so a single
+    poisoned `created_at` — which a pre-0027 row may already carry, and which
+    intake validation cannot retroactively repair because the ledger is
+    append-only — made /reports/products a permanent 500 with no recovery path.
+    That is precisely the scenario the «display never raises» rule in
+    `core.iso_to_local` / `core.format_ru_date` exists for.
+
+    The poisoned product is SKIPPED rather than reported with a fabricated
+    «дней без продажи»: this list exists to be acted on, so an invented number
+    would be worse than an absent row.
+    """
+    poisoned = Product(id=new_id(), code="TEST-BAD", name="Битая метка", quantity=0)
+    poisoned.stale_days = 0
+    session.add(poisoned)
+    session.commit()
+
+    _record_sale_at(
+        session, monkeypatch, "не дата", product=poisoned, qty=1, price_cents=1000,
+        cost_cents=500, business_date="2026-01-01",
+    )
+
+    result = stale_products(session)
+    assert poisoned.id not in {row["product"].id for row in result}
+    # the never-sold product beside it is still reported — one bad row, one loss
+    assert product.id in {row["product"].id for row in result}
+
+    response = client.get("/reports/products")
+    assert response.status_code == 200
+
+
 def test_stale_excludes_soft_deleted_never_sold_product(session, product):
     product.deleted_at = "2026-07-10T00:00:00+00:00"
     session.commit()

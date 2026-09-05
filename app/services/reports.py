@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import DEFAULT_CURRENCY
+from app.core import DEFAULT_CURRENCY, local_day_of
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product, Warehouse
 
 
@@ -282,9 +282,12 @@ def stale_products(session: Session) -> list[dict]:
     # by switching it to business_date_expr with the rest of Phase 33. It answers
     # «how long since this product last MOVED», a question about real elapsed
     # time, not about the operator's bookkeeping period; a back-dated entry made
-    # today must not make a product look freshly sold a month ago. The pre-existing
-    # type asymmetry with `today_local` below (ISO timestamp vs local date) is
-    # accepted as-is: pre-existing, not introduced by Phase 33.
+    # today must not make a product look freshly sold a month ago.
+    # WR-02 (33-REVIEW iteration 3) did NOT reopen that decision — it only made
+    # the way this function READS `created_at` match every other reader of that
+    # column (`core.local_day_of`: naive is UTC, unparseable never raises). The
+    # pre-existing ISO-timestamp-vs-local-date asymmetry that hid the defect is
+    # gone with it.
     last_sale = func.max(Operation.created_at).label("last_sale")
     stmt = (
         select(Product, last_sale)
@@ -307,11 +310,28 @@ def stale_products(session: Session) -> list[dict]:
                 {"product": product, "last_sale_iso": None, "days_since": None}
             )
             continue
-        days_since = (
-            today_local - datetime.fromisoformat(last_sale_iso).astimezone(
-                ZoneInfo(settings.display_tz)
-            ).date()
-        ).days
+        # WR-02 (33-REVIEW iteration 3): routed through the SAME rule as every
+        # sibling reader of this column. The inline `fromisoformat(...)
+        # .astimezone(...)` this replaces had two defects, both reachable:
+        # (1) `astimezone()` on a NAIVE datetime assumes the MACHINE's OS zone,
+        # while `core.iso_to_local`, `operations.is_backdated` and 0027's
+        # backfill all read naive as UTC — and `merge._is_iso_timestamp`
+        # deliberately ACCEPTS a naive `created_at`, so on the s1 container (OS
+        # zone UTC, display_tz Europe/Moscow) this one function was off by up to
+        # a day for any merged naive row while its siblings were right;
+        # (2) no `try` — an unparseable value raised, and a poisoned pre-0027
+        # row is unrepairable (the ledger is append-only), so /reports/products
+        # would 500 permanently with no recovery path.
+        last_sale_day = local_day_of(last_sale_iso, settings.display_tz)
+        if last_sale_day is None:
+            # Same posture as core.iso_to_local / format_ru_date: an
+            # unrepairable append-only row costs one LINE of a report, never
+            # the page. Skipping is the honest option here (unlike the marker's
+            # 10-char fallback): «дней без продажи» computed from a value we
+            # could not read would be a fabricated number, and this list exists
+            # to be acted on.
+            continue
+        days_since = (today_local - last_sale_day).days
         if days_since > _effective_stale_days(product):
             stale_with_date.append(
                 {

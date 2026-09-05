@@ -11,7 +11,13 @@ from datetime import date
 
 import pytest
 
-from app.core import date_input_value, format_cents, local_day_bounds_utc, to_cents
+from app.core import (
+    date_input_value,
+    format_cents,
+    local_day_bounds_utc,
+    local_day_of,
+    to_cents,
+)
 
 
 def test_to_cents_accepts_comma_and_dot():
@@ -190,4 +196,41 @@ def test_date_input_value_echoes_anything_the_input_can_render(raw):
     renderable and must come back verbatim.
     """
     assert date_input_value(raw, "2026-09-05") == raw
+
+
+# --- WR-01/WR-02 (33-REVIEW iteration 3): core.local_day_of -------------------
+
+
+def test_local_day_of_reads_a_naive_value_as_utc():
+    """The rule, pinned HOST-INDEPENDENTLY: the zone is an explicit argument.
+
+    21:30 UTC on 31 Aug is 00:30 local on 1 Sep at Europe/Moscow — the straddle
+    window where reading the timestamp in the wrong zone flips the answer. Read
+    in the MACHINE's OS zone (what a bare `astimezone()` does on a naive value)
+    it would come out 31 Aug on any host east of UTC. `merge._is_iso_timestamp`
+    deliberately ACCEPTS naive timestamps, so this input is reachable in
+    production, and migration 0027's backfill applies exactly this rule.
+    """
+    assert local_day_of("2026-08-31T21:30:00", "Europe/Moscow") == date(2026, 9, 1)
+    assert local_day_of("2026-08-31T21:30:00+00:00", "Europe/Moscow") == date(2026, 9, 1)
+    assert local_day_of("2026-08-31T21:30:00", "UTC") == date(2026, 8, 31)
+
+
+def test_local_day_of_follows_the_requested_zone():
+    """The same instant is a different calendar day east and west of UTC."""
+    moment = "2026-09-01T02:30:00+00:00"
+    assert local_day_of(moment, "Europe/Moscow") == date(2026, 9, 1)
+    assert local_day_of(moment, "America/New_York") == date(2026, 8, 31)
+
+
+@pytest.mark.parametrize("raw", [None, "", "не дата", "2026-09-01 not-a-time"])
+def test_local_day_of_returns_none_instead_of_raising(raw):
+    """NEVER raises — every caller of this helper renders a PAGE.
+
+    The ledger is append-only, so a row carrying an unreadable timestamp cannot
+    be repaired by the application; raising would turn /history, /reports/products
+    and both CSV exports into permanent 500s. Callers decide what None means for
+    them (a fallback comparison, or skipping one row).
+    """
+    assert local_day_of(raw, "Europe/Moscow") is None
 
