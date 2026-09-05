@@ -142,7 +142,13 @@ def test_push_schema_ok_is_total_on_a_non_string_version(untyped):
     `5 <= "0027"` is a TypeError and the push route's `try` covers only
     `parse_exchange` — so an `{"schema_version": 5}` header used to produce a raw
     500 from the one route whose design note is «never echo, never crash».
-    Refusal (fail CLOSED) is the safe answer: an untyped version is not a version.
+
+    WHAT THIS DOES AND DOES NOT PIN (WR-02, iteration 2). It pins the predicate
+    in ISOLATION, i.e. for a DIRECT caller. It does NOT describe what a push
+    does: `parse_exchange` coerces a non-string wire version to "" before this
+    predicate ever sees it, so the composed system ACCEPTS an untyped header via
+    the D-03 hatch. `test_non_string_schema_version_header_does_not_500` below is
+    the test that states the composed behaviour; read the two together.
     """
     from app.services.sync import push_schema_ok
 
@@ -167,11 +173,20 @@ def test_parse_exchange_coerces_a_non_string_schema_version(untyped):
 def test_non_string_schema_version_header_does_not_500(
     device_client, session, product, batch, monkeypatch
 ):
-    """WR-02, end to end: the route answers, it does not crash.
+    """WR-02, end to end: an untyped header is ACCEPTED, and the rows merge.
 
-    200 rather than 409 is the DELIBERATE outcome: the parse boundary degrades an
-    untyped version to "", which is the both-sides escape hatch. The property
-    under test is that a hand-built header cannot take the endpoint down.
+    This is the COMPOSED behaviour, and it is the one that describes production
+    (WR-02, iteration 2 — `push_schema_ok`'s isolated fail-closed answer above is
+    unreachable from this path). The parse boundary degrades an untyped version
+    to "", which is the both-sides D-03 escape hatch, so the push is treated
+    exactly like one whose header omits `schema_version` altogether: 200, rows
+    merged. Two properties are pinned at once — a hand-built header cannot take
+    the endpoint down, AND it does not silently become a 409 either.
+
+    If a future change makes `parse_exchange` RAISE on a non-string
+    `schema_version` (the fail-closed direction named in `push_schema_ok`'s
+    docstring), this assertion becomes 400 MALFORMED_BATCH_ERROR — change it
+    deliberately, and update that docstring in the same commit.
     """
     _pin_server_schema(monkeypatch)
     body = _body(5, [_op_record("op-untyped", product_id=product.id, batch_id=batch.id)])

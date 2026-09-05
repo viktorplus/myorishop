@@ -272,12 +272,28 @@ def push_schema_ok(client_schema: object, server_schema: object) -> bool:
 
     WR-02 (33-REVIEW): the predicate is TOTAL — it accepts ``object`` and never
     raises. ``client_schema`` originates in a pushed NDJSON header, so a JSON
-    number/list/dict reaches it; ``5 <= "0027"`` is a ``TypeError``, and the
+    number/list/dict could reach it; ``5 <= "0027"`` is a ``TypeError``, and the
     route's ``try`` covers only ``parse_exchange``, so that surfaced as a raw
-    500 from the one route whose design note is «never echo, never crash». A
-    non-string version is not «acceptable» — it is refused (False), which is the
-    fail-closed direction: the client re-pushes after fixing its header instead
-    of having rows silently dropped by the receiver's column projection.
+    500 from the one route whose design note is «never echo, never crash».
+
+    WHAT THE COMPOSED SYSTEM ACTUALLY DOES (WR-02, iteration 2 — the previous
+    version of this paragraph asserted the opposite and was false for every path
+    that exists). ``app/routes/sync.py`` is the ONLY production caller and it can
+    hand this predicate nothing but ``batch.schema_version``, which
+    ``merge.parse_exchange`` has ALREADY coerced to ``""`` when the wire value
+    was not a string. So an untyped header arrives here as ``""`` and is
+    **ACCEPTED** through the D-03 escape hatch above — exactly like a header that
+    omits the field. That is deliberate: this is the version gate, not the type
+    gate. Fail-CLOSED would mean raising on a non-string ``schema_version``
+    inside ``parse_exchange`` instead of coercing, which turns a malformed header
+    into ``400 MALFORMED_BATCH_ERROR`` — a behaviour change, so it is not done
+    here.
+
+    The ``isinstance`` pair below is therefore UNREACHABLE from that caller. It
+    is kept as a crash backstop for a future DIRECT caller (a second call site
+    added without re-reading this note would otherwise reintroduce the
+    ``TypeError``); it is NOT what decides the outcome of a push. Do not read it
+    as evidence that an untyped version is refused end to end — it is not.
     """
     if not isinstance(client_schema, str) or not isinstance(server_schema, str):
         return False
