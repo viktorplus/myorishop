@@ -184,9 +184,16 @@ select {
   background: #ffffff;
 }
 
-/* History filter bar (Phase 5, D-14). */
+/* History filter bar (Phase 5, D-14).
+   WR-08 (33-REVIEW): flex-wrap, matching .toolbar above. D-20 added a FOURTH
+   <select> («Задним числом») beside «Тип операции», «Сортировать по» (whose
+   «Сначала новые (по умолчанию)» option is wide) and «Пользователь». Four
+   selects plus 3x16px gaps overflow a ~1024px content column, and the default
+   `nowrap` clips them or forces a horizontal scrollbar instead of wrapping —
+   putting this phase's own new filter off-screen. Nothing relied on nowrap. */
 .filter-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: flex-end;
   margin-bottom: 24px;
