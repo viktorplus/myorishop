@@ -150,6 +150,20 @@ def local_day_bounds_utc(start_day: date, end_day: date, tz_name: str) -> tuple[
     `business_date_bounds` below, which produces date-only bounds for the
     `business_date` column and must never be replaced by this one (Phase 33).
 
+    IN-01 (33-REVIEW): as of Phase 33 this helper has NO caller under `app/` —
+    all 14 switched to `business_date_bounds`, and every remaining `app/`
+    mention (`core.py`, `export.py`) is a docstring cross-reference. It is kept
+    DELIBERATELY, on two grounds: `tests/` uses it as the sanctioned way to
+    BUILD `created_at` fixtures and to pin the half-open contract — MEASURED,
+    not copied from a plan: `test_core.py`, `test_export.py`,
+    `test_dashboard.py`, `test_attribution.py`, `test_business_date.py` (the
+    33-CONTEXT list also named `test_finance_reports.py` and `test_reports.py`;
+    they no longer reference it — re-grep, do not re-copy) — and the contrast
+    drawn in `business_date_bounds`
+    below is load-bearing documentation that needs both halves present. Do not
+    delete it as dead code; do not "revive" it by pointing a reader at it
+    either.
+
     end_day is the LAST included local calendar day; the returned upper
     bound is local midnight of the day AFTER end_day, converted to UTC —
     so callers filter created_at >= start AND created_at < end (never a
