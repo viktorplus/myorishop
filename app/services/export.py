@@ -190,9 +190,24 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
                 format_cents(op.unit_cost_cents) if op.unit_cost_cents is not None else "",
                 # CUR-02/LOCKED: a NULL-batch legacy row is RUB, same fallback
                 # rule as app.services.reports.operation_currency_clause.
-                row_currency or DEFAULT_CURRENCY,
+                # WR-04 (33-REVIEW iteration 3): wrapped. It is validated
+                # against CURRENCIES on the LOCAL write path
+                # (warehouses._clean_currency) but NOT by `parse_exchange`,
+                # which type-checks only money, `seq`, dates and timestamps —
+                # so a synced row's currency is stored bytes like any other.
+                _csv_safe(row_currency or DEFAULT_CURRENCY),
                 buyer,
-                op.created_by,
+                # WR-04 (33-REVIEW iteration 3): the LAST free-text cell in this
+                # file that was not wrapped, and the only one that is genuinely
+                # WIRE-SUPPLIED. `merge._LEDGER_REQUIRED` carries `created_by`
+                # verbatim from a pushed NDJSON record and `_ledger_row` bulk-
+                # inserts it, so a device holding a valid Bearer token controls
+                # these bytes; the append-only triggers then make the row
+                # unrepairable. `=cmd|'/c calc'!A1` reached column 9 unescaped.
+                # Iteration 2 saw this and declined it as «pre-existing and
+                # unrelated»; it was neither carried into a finding nor tracked,
+                # so it is closed here.
+                _csv_safe(op.created_by or ""),
                 # WR-04, same rule: `iso_to_local` is a pass-through too now.
                 _csv_safe(iso_to_local(op.created_at, settings.display_tz)),
             ]
@@ -275,7 +290,11 @@ def stream_cash_movements_csv(
             # stored value on anything it does not recognise.
             _csv_safe(format_ru_date(movement.business_date or movement.created_at[:10])),
             _csv_safe(CASH_CATEGORIES.get(movement.category, movement.category)),
-            movement.currency,
+            # WR-04 (33-REVIEW iteration 3): wrapped, same reasoning as
+            # stream_sales_csv's currency column — validated against CURRENCIES
+            # by `finance.record_cash_movement` on the local write path only,
+            # never by `parse_exchange`.
+            _csv_safe(movement.currency or ""),
             _csv_safe(movement.note or ""),
             format_cents(movement.amount_cents),
             # WR-04, same rule: `iso_to_local` is a pass-through too now.

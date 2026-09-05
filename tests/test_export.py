@@ -599,6 +599,48 @@ def test_sales_csv_when_column_is_formula_escaped(client, session, product):
     assert not any(row[0].startswith("=") for row in rows[1:])
 
 
+def test_sales_csv_created_by_column_is_formula_escaped(client, session, product, monkeypatch):
+    """WR-04 (33-REVIEW iteration 3): the one WIRE-SUPPLIED free-text CSV cell.
+
+    `_INJECTION_PREFIXES` hardening (T-06-10) wraps every other free-text cell
+    in all three exports — product code/name/category, customer
+    name/surname/consultant number, batch comment, cash note and (iteration 2's
+    own WR-04 fix) five date cells. `op.created_by` was the last one left, and
+    it is NOT locally generated: `merge._LEDGER_REQUIRED` (merge.py) carries it
+    verbatim from a pushed NDJSON record and `_ledger_row` bulk-inserts it, so
+    a device holding a valid Bearer token controls its bytes and the
+    append-only triggers then make the row unrepairable.
+
+    Reproduced by pointing the local author at the poisoned value rather than
+    by faking a push: the assertion is about the EXPORT's escaping, and this
+    reaches the identical column through the identical write path.
+    """
+    poisoned = "=cmd|'/c calc'!A1"
+    monkeypatch.setattr(settings, "operator_name", poisoned)
+    _record_sale_op(session, product, business_date="2026-06-15")
+
+    rows = _route_rows(client.get("/export/sales.csv"))
+
+    assert any(row[8] == "'" + poisoned for row in rows[1:]), rows
+    assert not any(row[8].startswith("=") for row in rows[1:])
+
+
+def test_money_columns_stay_unwrapped(session, product):
+    """The deliberate NON-change beside WR-04, pinned so nobody "finishes" it.
+
+    A negative amount legitimately starts with `-`, which IS an
+    `_INJECTION_PREFIXES` member — wrapping the `format_cents` columns would
+    apostrophe-prefix every withdrawal and CHANGE real output, unlike the
+    free-text wraps which are byte-identical for every well-formed value.
+    """
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000,
+                         business_date="2026-06-15")
+    start_day, end_day = business_date_bounds(date(2026, 6, 15), date(2026, 6, 15))
+    rows = _rows_of(stream_cash_movements_csv(session, start_day, end_day))
+    assert rows[1][4] == "-30,00"
+    assert not rows[1][4].startswith("'")
+
+
 def test_cash_csv_when_column_is_business_date(session):
     """D-23, the cash twin: same rule on CashMovement."""
     back_dated = date(2026, 6, 15)
