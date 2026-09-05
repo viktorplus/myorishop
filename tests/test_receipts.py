@@ -1279,9 +1279,18 @@ def _today_plus(days: int) -> str:
 
 
 def test_receipt_accepts_a_past_op_date(session, warehouse):
-    """DATE-01: a back-dated receipt lands the business date on the ledger row,
-    on BOTH ops it writes (product_created + receipt), while created_at keeps
-    stamping the real entry moment (DATE-04)."""
+    """DATE-01: a back-dated receipt lands the business date on the MOVEMENT row.
+
+    WR-05 (33-REVIEW iteration 3) — this test's second half is DELIBERATELY
+    INVERTED. It used to assert the date landed on «BOTH ops it writes
+    (product_created + receipt)». `product_created` is an AUDIT row: it records
+    when the CARD was created, which really is today, whatever day the goods
+    moved. /history buckets ALL types by business_date, so the inherited date
+    surfaced «Товар создан» inside last month's period for a card created
+    minutes earlier — with no cue, since HISTORY_TYPE_COLUMNS has no entry for
+    the audit types. `created_at` keeps stamping the real entry moment on both
+    (DATE-04).
+    """
     back_date = _today_plus(-30)
     result, errors = register_receipt(
         session,
@@ -1300,7 +1309,39 @@ def test_receipt_accepts_a_past_op_date(session, warehouse):
     created = session.scalars(
         select(Operation).where(Operation.type == "product_created")
     ).all()
-    assert [op.business_date for op in created] == [back_date]
+    assert [op.business_date for op in created] == [local_today_iso(settings.display_tz)]
+
+
+def test_backdated_receipt_price_change_audit_row_keeps_today(session, warehouse, product):
+    """WR-05: the second audit type, which had NO coverage at all before.
+
+    A back-dated top-up that also changes a price writes two rows: the
+    `receipt` movement, which carries the operator's date, and a `price_change`
+    audit row, which must not — the price changed today. The two are asserted
+    together so the split itself is what is pinned, not one side of it.
+    """
+    back_date = _today_plus(-30)
+    today = local_today_iso(settings.display_tz)
+
+    result, errors = register_receipt(
+        session,
+        code=product.code,
+        name=product.name,
+        qty_raw="2",
+        warehouse_id=warehouse.id,
+        batch_choice="new",
+        op_date=back_date,
+        cost_raw="",
+        sale_raw="99,00",
+    )
+
+    assert errors == {}
+    assert result["operation"].business_date == back_date
+    price_changes = session.scalars(
+        select(Operation).where(Operation.type == "price_change")
+    ).all()
+    assert price_changes, "the fixture price must actually have changed"
+    assert {op.business_date for op in price_changes} == {today}
 
 
 def test_receipt_empty_op_date_stamps_local_today(session, warehouse):

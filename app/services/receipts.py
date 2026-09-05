@@ -189,7 +189,27 @@ def register_receipt(
             product_id=product.id,
             qty_delta=0,
             payload={"code": code, "name": name},
-            business_date=resolved_business_date,
+            # WR-05 (33-REVIEW iteration 3): the operator's date is DELIBERATELY
+            # NOT passed to the two AUDIT rows. `product_created` records when
+            # the CARD was created and `price_change` records when the PRICE
+            # changed — both really happened today, whatever day the goods
+            # moved. `business_date=None` makes record_operation stamp the real
+            # local day.
+            #
+            # It matters because /history and /m/history bucket ALL types by
+            # business_date_expr (operations.py — there is no type restriction),
+            # so an inherited date surfaces «Товар создан» in last month's
+            # period for a card created minutes ago, and HISTORY_TYPE_COLUMNS
+            # has no entry for the audit types, so it renders in the generic
+            # view with no cue that its date was borrowed.
+            #
+            # Every sibling service already draws this line: writeoffs and
+            # corrections write exactly one op, transfers the two halves of one
+            # move, sales the N sale lines plus their one cash movement — the
+            # operator's date only ever lands on rows that ARE the movement.
+            # Plan 33-10 passed it to «all three record_operation calls»
+            # mechanically; no decision record chose that.
+            business_date=None,
             commit=False,
         )
     else:
@@ -216,7 +236,12 @@ def register_receipt(
                 product_id=product.id,
                 qty_delta=0,
                 payload={"field": field, "old_cents": old, "new_cents": entered[field]},
-                business_date=resolved_business_date,
+                # WR-05: audit row — the price changed TODAY. See the twin
+                # comment on the `product_created` call above for the full
+                # reasoning; `resolved_business_date` stays on the `receipt` op
+                # and on the D-24 batch auto-name, which really do describe the
+                # movement.
+                business_date=None,
                 commit=False,
             )
             setattr(product, field, entered[field])
