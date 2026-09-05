@@ -1614,6 +1614,39 @@ def test_web_withdraw_malformed_date_gets_the_other_message(client, session):
     assert _cash_count(session) == 0
 
 
+def test_web_withdraw_malformed_date_re_renders_today_not_a_blank_input(client, session):
+    """IN-04 (33-REVIEW): the malformed value must NOT be echoed into value=.
+
+    A browser renders `<input type="date" value="15.08.2026">` as EMPTY, and
+    re-submitting an empty date posts "", which `parse_op_date` treats as
+    «today» and writes with no error at all — the message the operator just
+    read and the row that gets written disagree. `33-SECURITY.md` R2 already
+    notes the «value is normalised» claim is false; this is its user-visible
+    consequence.
+
+    The FUTURE-date path is unaffected and is pinned by
+    `test_web_withdraw_future_date_...` above: a future date is valid ISO, the
+    input renders it, and it is still echoed verbatim.
+    """
+    today = local_today_iso(settings.display_tz)
+
+    response = client.post(
+        "/finance/withdraw",
+        data={
+            "amount": "15,00",
+            "category": "withdrawal_supplier",
+            "note": "",
+            "op_date": "15.08.2026",
+        },
+        headers=_HX,
+    )
+
+    assert response.status_code == 422
+    assert 'value="15.08.2026"' not in response.text
+    assert f'value="{today}"' in response.text
+    assert _cash_count(session) == 0
+
+
 def test_web_withdraw_date_survives_the_negative_balance_confirm(client, session):
     """D-05 + DATE-01 through the route: «Снять всё равно» re-POSTs the
     RE-RENDERED form, so the back-date has to come back in that form's value=

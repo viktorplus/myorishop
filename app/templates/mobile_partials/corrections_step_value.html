@@ -65,7 +65,7 @@
     <div class="field op-date">
       <label for="op_date">Дата операции</label>
       <input type="date" id="op_date" name="op_date"
-             value="{{ form.op_date if form is defined and form.op_date else today_iso() }}"
+             value="{{ op_date_value(form.op_date if form is defined else '') }}"
              max="{{ today_iso() }}"
              aria-describedby="op_date-error">
       {% if errors is defined and errors.op_date %}<p class="error" id="op_date-error">{{ errors.op_date }}</p>{% endif %}

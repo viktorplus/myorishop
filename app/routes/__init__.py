@@ -7,6 +7,7 @@ from app.config import settings as _config_settings
 from app.core import (
     CURRENCIES,
     DEFAULT_CURRENCY,
+    date_input_value,
     format_cents,
     format_money,
     format_ru_date,
@@ -240,3 +241,13 @@ templates.env.globals["batch_identity_label"] = batch_identity_label
 # with no visible cue. `local_today_iso` is the single shared definition, so the
 # pre-filled value and `parse_op_date`'s future check can never disagree.
 templates.env.globals["today_iso"] = lambda: local_today_iso(_config_settings.display_tz)
+# IN-04 (33-REVIEW): the value= companion of the global above. `<input
+# type="date">` renders a non-ISO value as EMPTY, so echoing a malformed typed
+# date back produced a blank field whose resubmit posts "" — booked as today,
+# with no error. One global rather than the same conditional pasted into 11
+# templates, so the rule cannot drift between surfaces. It is keyed on the
+# value's SHAPE, not on errors.op_date, so a legitimately typed FUTURE date is
+# still echoed exactly as before.
+templates.env.globals["op_date_value"] = lambda raw: date_input_value(
+    raw, local_today_iso(_config_settings.display_tz)
+)

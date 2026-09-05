@@ -110,6 +110,37 @@ def format_ru_date(iso: str | None) -> str:
         return str(iso)
 
 
+def date_input_value(raw: object, fallback: str) -> str:
+    """The value an `<input type="date">` can actually RENDER — never a blank one.
+
+    IN-04 (33-REVIEW). Every business-date input echoes back what the operator
+    typed on a 422 re-render, which is right for the FUTURE-date error (a future
+    date is valid ISO and re-renders as typed). It is wrong for the MALFORMED
+    error: the echoed string is by definition not an ISO date, and a browser
+    renders `<input type="date" value="31.12.2026">` as **empty**, silently.
+    Re-submitting then posts "", which `parse_op_date` treats as «today» and
+    writes with no error at all — so the error message and the resulting write
+    disagree. `33-SECURITY.md` R2 already notes the «value is normalised» claim
+    is false; this is its user-visible consequence.
+
+    Keyed on the VALUE's shape, NOT on `errors.op_date`: both date errors set
+    that key, so branching on it would also stop echoing a legitimately typed
+    FUTURE date and break the surfaces that pin that echo. Canonical ISO in →
+    unchanged; anything the input cannot render → `fallback` (today).
+
+    The round trip through :meth:`date.isoformat` is the same one
+    `merge._is_iso_date` uses, for the same reason: `date.fromisoformat` also
+    accepts the basic format "20260904", which an `<input type="date">` renders
+    as empty just like the malformed values above.
+    """
+    if not isinstance(raw, str) or not raw:
+        return fallback
+    try:
+        return raw if date.fromisoformat(raw).isoformat() == raw else fallback
+    except ValueError:
+        return fallback
+
+
 def iso_to_local(iso_str: str | None, tz_name: str) -> str:
     """Convert a UTC ISO-8601 string to local display time: '08.07.2026 15:00'.
 

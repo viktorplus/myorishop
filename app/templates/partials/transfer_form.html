@@ -80,7 +80,7 @@
     <div class="field op-date">
       <label for="op_date">Дата операции</label>
       <input type="date" id="op_date" name="op_date"
-             value="{{ form.op_date or today_iso() }}" max="{{ today_iso() }}">
+             value="{{ op_date_value(form.op_date) }}" max="{{ today_iso() }}">
       {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
     </div>
 

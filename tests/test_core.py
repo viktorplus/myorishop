@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from app.core import format_cents, local_day_bounds_utc, to_cents
+from app.core import date_input_value, format_cents, local_day_bounds_utc, to_cents
 
 
 def test_to_cents_accepts_comma_and_dot():
@@ -149,3 +149,45 @@ def test_local_day_bounds_utc_week_range_is_half_open():
     assert end_iso == next_monday_start_iso
     monday_start_iso, _ = local_day_bounds_utc(monday, monday, "Europe/Moscow")
     assert start_iso == monday_start_iso
+
+
+# --- IN-04 (33-REVIEW): what an <input type="date"> can actually render -------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "31.12.2026",  # the OP_DATE_FORMAT_ERROR path's typical echo
+        "2026/09/04",
+        "20260904",  # date.fromisoformat parses it; the input still renders blank
+        "не дата",
+        "2026-13-45",
+        "",
+        None,
+        12345,
+        True,
+    ],
+    ids=repr,
+)
+def test_date_input_value_falls_back_when_the_input_could_not_render_it(raw):
+    """A browser renders `<input type="date" value="31.12.2026">` as EMPTY.
+
+    The resubmit then posts "", which `parse_op_date` treats as «today» and
+    writes with NO error — so the error message and the resulting write
+    disagree. Falling back to today keeps the field non-empty, so the operator
+    always sees what will actually be booked.
+    """
+    assert date_input_value(raw, "2026-09-05") == "2026-09-05"
+
+
+@pytest.mark.parametrize("raw", ["2026-09-04", "2027-01-01", "1999-12-31"])
+def test_date_input_value_echoes_anything_the_input_can_render(raw):
+    """Keyed on the VALUE's shape, not on `errors.op_date`.
+
+    Both date errors set that key, so branching on the error would ALSO stop
+    echoing a legitimately typed FUTURE date — which several surfaces pin
+    (`test_web_withdraw_future_date_...` and its siblings). A future ISO date is
+    renderable and must come back verbatim.
+    """
+    assert date_input_value(raw, "2026-09-05") == raw
+
