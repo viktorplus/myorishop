@@ -15,6 +15,11 @@
         hx-post="/m/corrections/step/batch"
         hx-target="#corrections-step-wrap"
         hx-swap="outerHTML">
+    {# WR-03 (33-REVIEW iteration 3): the date typed on step 4 rides through
+       every step as a hidden input, so a «Назад» tap can never silently replace
+       it with today. Empty on a cold entry — step 4 then pre-fills today, as
+       before. #}
+    <input type="hidden" name="op_date" value="{{ op_date | default('') }}">
     <div class="field">
       <label for="code">Код</label>
       {# Debounced code->name lookup, mirrors desktop's correction_lookup

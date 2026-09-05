@@ -15,6 +15,11 @@
     <input type="hidden" name="name" value="{{ name }}">
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
     <input type="hidden" name="batch_qty" value="{{ batch_qty if batch_qty is not none else '' }}">
+    {# WR-03 (33-REVIEW iteration 3): THE missing link. Step 4's «Назад» posts
+       here with hx-include="closest form", so op_date arrived — it was simply
+       never re-emitted, and step 4 was then re-rendered with no `form` key at
+       all, so its input silently fell back to today. #}
+    <input type="hidden" name="op_date" value="{{ op_date | default('') }}">
     <div class="field">
       <label class="mobile-card{% if mode == 'count' %} selected{% endif %}">
         <input type="radio" name="mode" value="count" required

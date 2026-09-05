@@ -110,7 +110,11 @@
          by the data itself. #}
       <button type="button" class="secondary"
               hx-post="/m/transfers/step/batch"
-              hx-vals='{{ {'code': code} | tojson }}'
+              {# WR-03 (33-REVIEW iteration 3): «Назад» must carry the typed
+                 date, or the round trip step 3 → step 2 → step 3 silently
+                 replaces it with today — plausible, correctly formatted and
+                 wrong. #}
+              hx-vals='{{ {'code': code, 'op_date': op_date | default('')} | tojson }}'
               hx-target="#wizard-step"
               hx-swap="outerHTML">Назад</button>
       <button type="submit">Переместить</button>

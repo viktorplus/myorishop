@@ -28,6 +28,27 @@ logger = logging.getLogger(__name__)
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
 
+# WR-03 (33-REVIEW iteration 3): `op_date` is carried by EVERY step of this
+# wizard, not just the one that renders the input.
+#
+# The date field lives on step 4 (D-11: корректировка has no persistent shell to
+# put it on). Step 4's «Назад» posts to /step/mode with hx-include="closest
+# form", so the typed date IS sent — it was simply not declared by the route,
+# not re-emitted by the template, and step 4 was then re-rendered with no `form`
+# key at all, so `op_date_value(...)` fell back to today.
+#
+# Why that is worse than an ordinary lost form value: value/note/qty come back
+# EMPTY, so the operator can see they must retype them. The date came back
+# PLAUSIBLE — today, correctly formatted — and the operation was booked on the
+# wrong day with no cue, into an append-only ledger with no сторно until
+# Phase 34.
+#
+# Threaded through steps 1-4 rather than only the two the review named: every
+# «Назад» in this wizard uses hx-include="closest form" (or an hx-get whose
+# form is included), so a hidden input at each step is all it takes, and
+# stopping one step short would just move the same silent reset one tap further
+# back.
+
 
 def _warehouse_names(session: Session) -> dict[str, str]:
     """id -> name map so a wizard step can show its own «Склад:» line."""
@@ -35,8 +56,8 @@ def _warehouse_names(session: Session) -> dict[str, str]:
 
 
 @router.get("/m/corrections")
-def mobile_correction_start(request: Request, code: str = ""):
-    context = {"code": code.strip(), "not_found": False}
+def mobile_correction_start(request: Request, code: str = "", op_date: str = ""):
+    context = {"code": code.strip(), "not_found": False, "op_date": op_date}
     if bool(request.headers.get("HX-Request")):
         return templates.TemplateResponse(
             request, "mobile_partials/corrections_step_product.html", context
@@ -65,6 +86,7 @@ def mobile_correction_lookup(
 def mobile_correction_step_batch(
     request: Request,
     code: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -75,7 +97,7 @@ def mobile_correction_step_batch(
         # CR-01: this request is an htmx outerHTML swap targeting
         # #corrections-step-wrap — must return a bare fragment, not the
         # full mobile_pages/corrections.html document.
-        context = {"code": code_clean, "not_found": True}
+        context = {"code": code_clean, "not_found": True, "op_date": op_date}
         return templates.TemplateResponse(
             request, "mobile_partials/corrections_not_found.html", context, status_code=422
         )
@@ -90,6 +112,7 @@ def mobile_correction_step_batch(
         "selected_batch_id": None,
         "batch_qty": None,
         "show_empty": not batches,
+        "op_date": op_date,
     }
     return templates.TemplateResponse(
         request, "mobile_partials/corrections_step_batch.html", context
@@ -101,6 +124,7 @@ def mobile_correction_batch_pick(
     request: Request,
     batch_id: str = "",
     code: str = "",
+    op_date: str = "",
     session: Session = Depends(get_session),
 ):
     # T-11-16/T-09-08 precedent: re-query the open list (fresh remaining
@@ -124,6 +148,7 @@ def mobile_correction_batch_pick(
         "selected_batch_id": picked.id if picked else None,
         "batch_qty": picked.quantity if picked else None,
         "show_empty": product is not None and not batches,
+        "op_date": op_date,
     }
     return templates.TemplateResponse(
         request, "mobile_partials/corrections_step_batch.html", context
@@ -153,6 +178,7 @@ def mobile_correction_step_mode(
     name: str = Form(""),
     batch_id: str = Form(""),
     batch_qty: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -164,6 +190,7 @@ def mobile_correction_step_mode(
         "batch_id": batch_id_clean,
         "batch_qty": batch_qty,
         "mode": "",
+        "op_date": op_date,
     }
     return templates.TemplateResponse(
         request, "mobile_partials/corrections_step_mode.html", context
@@ -178,6 +205,7 @@ def mobile_correction_step_value(
     batch_id: str = Form(""),
     batch_qty: str = Form(""),
     mode: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -189,6 +217,7 @@ def mobile_correction_step_value(
         "batch_id": batch_id_clean,
         "batch_qty": batch_qty,
         "mode": mode,
+        "op_date": op_date,
     }
     return templates.TemplateResponse(
         request, "mobile_partials/corrections_step_value.html", context

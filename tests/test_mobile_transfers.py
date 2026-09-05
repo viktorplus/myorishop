@@ -115,7 +115,12 @@ def test_transfers_step_dest_hx_vals_back_button_is_single_quoted(
     mobile_client_factory, session, stocked_product
 ):
     """quick-260813-ezt: covers the fifth fixed line (transfers_step_dest.html
-    Назад button) — single-quoted hx-vals carries code intact."""
+    Назад button) — single-quoted hx-vals carries code intact.
+
+    WR-03 (33-REVIEW iteration 3) added `op_date` to the SAME payload, which
+    makes the quoting rule matter more, not less: a second key means two more
+    double quotes the browser's HTML parser would truncate the attribute at.
+    """
     source = _source_batch(session, stocked_product)
     client = mobile_client_factory(mobile_transfers.router)
 
@@ -125,7 +130,9 @@ def test_transfers_step_dest_hx_vals_back_button_is_single_quoted(
     )
 
     assert response.status_code == 200
-    assert f'hx-vals=\'{{"code": "{stocked_product.code}"}}\'' in response.text
+    assert (
+        f'hx-vals=\'{{"code": "{stocked_product.code}", "op_date": ""}}\'' in response.text
+    )
     assert 'hx-vals="{' not in response.text
 
 
@@ -672,23 +679,93 @@ def test_transfers_dest_step_renders_prefilled_date_field(
     assert response.text.index('name="op_date"') < response.text.index('class="mobile-actions"')
 
 
-def test_transfers_earlier_steps_never_emit_the_date(
+def test_transfers_earlier_steps_carry_the_date_but_never_render_an_input(
     mobile_client_factory, session, stocked_product
 ):
-    """Proof by negation (the D-11 shell-less half): the date exists on the
-    FINAL step and nowhere else. No earlier fragment mentions op_date, so
-    nothing htmx swaps before the terminal screen can carry a stale value, and
-    a future edit that threads it as a hidden field reddens this test."""
+    """WR-03 (33-REVIEW iteration 3) — this test's contract is DELIBERATELY INVERTED.
+
+    It used to assert «no earlier fragment mentions op_date», reasoning that
+    nothing swapped before the terminal screen could then carry a stale value.
+    That reasoning had the failure mode backwards. The date input lives on the
+    FINAL step, and every «Назад» in this wizard re-enters an earlier step: with
+    nothing carrying the value, the forward trip re-rendered the final step with
+    an EMPTY op_date, and the template pre-filled TODAY. Unlike qty/cost, which
+    come back visibly empty, the date came back plausible and correctly
+    formatted — so the transfer was booked on the wrong day with no cue, into an
+    append-only ledger with no сторно until Phase 34.
+
+    The D-11 half that still holds is the VISIBLE one, and it is what this test
+    now pins: earlier steps carry the value as an opaque hx-vals payload and
+    render NO date input, so there is still exactly one editable date field in
+    the wizard, on the last screen.
+    """
     client = mobile_client_factory(mobile_transfers.router)
 
-    product_step = client.get("/m/transfers", headers={"HX-Request": "true"})
+    product_step = client.get(
+        "/m/transfers", headers={"HX-Request": "true"}, params={"op_date": "2026-08-15"}
+    )
     batch_step = client.post(
-        "/m/transfers/step/batch", data={"code": stocked_product.code}
+        "/m/transfers/step/batch",
+        data={"code": stocked_product.code, "op_date": "2026-08-15"},
     )
 
     for fragment in (product_step, batch_step):
         assert fragment.status_code == 200
-        assert "op_date" not in fragment.text
+        assert "2026-08-15" in fragment.text  # carried
+        assert 'type="date"' not in fragment.text  # but never editable here
+        assert "Дата операции" not in fragment.text
+
+
+def test_transfers_back_from_the_final_step_preserves_a_typed_date(
+    mobile_client_factory, session, stocked_product
+):
+    """WR-03: the reachable round trip — final step → «Назад» → forward again.
+
+    Walks the three real requests the operator's taps produce and asserts the
+    typed date survives all of them. The IN-02 tripwire added in iteration 2
+    only covered `POST /m/transfers/step/dest`, a route whose own docstring says
+    NO template posts to it — so the live path was still broken.
+    """
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+    today = local_today_iso(settings.display_tz)
+
+    # «Назад» from the final step, carrying the date the operator typed there.
+    back = client.post(
+        "/m/transfers/step/batch",
+        data={"code": stocked_product.code, "op_date": "2026-08-15"},
+    )
+    assert back.status_code == 200
+    assert "2026-08-15" in back.text
+
+    # …then tapping a batch card advances to the final step again.
+    forward = client.get(
+        "/m/transfers/step/batch-pick",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "op_date": "2026-08-15",
+        },
+    )
+    assert forward.status_code == 200
+    assert 'value="2026-08-15"' in forward.text
+    assert f'value="{today}"' not in forward.text
+
+
+def test_transfers_batch_pick_still_defaults_to_today_without_a_carried_date(
+    mobile_client_factory, session, stocked_product
+):
+    """The carry must not change a COLD entry into the final step."""
+    source = _source_batch(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+    today = local_today_iso(settings.display_tz)
+
+    response = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"code": stocked_product.code, "batch_id": source.id},
+    )
+    assert response.status_code == 200
+    assert f'value="{today}"' in response.text
 
 
 def test_transfers_backdated_post_dates_both_rows_identically(

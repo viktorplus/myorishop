@@ -15,6 +15,9 @@
         hx-post="/m/corrections/step/batch"
         hx-target="#corrections-step-wrap"
         hx-swap="outerHTML">
+    {# WR-03: carried here too — a mistyped code must not cost the operator the
+       date they typed on step 4. #}
+    <input type="hidden" name="op_date" value="{{ op_date | default('') }}">
     <div class="field">
       <label for="code">Код</label>
       {# Debounced code->name lookup, mirrors desktop's correction_lookup

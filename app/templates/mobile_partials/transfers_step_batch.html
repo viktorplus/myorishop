@@ -27,7 +27,11 @@
              double-quote. tojson escapes any single quote appearing in the
              data to its unicode escape, so a single-quoted attribute can
              never be broken by the data itself. #}
-          hx-vals='{{ {'batch_id': b.id, 'code': code, 'name': name} | tojson }}'
+          {# WR-03: op_date rides in hx-vals because this step has no <form> of
+             its own to hold a hidden input — the same technique the file
+             already uses to carry `code`/`name`. Single-quoted attribute, per
+             the WR-02 note above. #}
+          hx-vals='{{ {'batch_id': b.id, 'code': code, 'name': name, 'op_date': op_date | default('')} | tojson }}'
           hx-target="#wizard-step"
           hx-swap="outerHTML">
     <p>{% if b.price_cents is not none %}Цена: {{ b.price_cents | cents }}{% else %}Цена: —{% endif %}</p>
@@ -56,7 +60,7 @@
        cards' own technique for carrying code forward (13-04). #}
     <button type="button" class="secondary"
             hx-get="/m/transfers"
-            hx-vals='{{ {'code': code} | tojson }}'
+            hx-vals='{{ {'code': code, 'op_date': op_date | default('')} | tojson }}'
             hx-target="#wizard-step"
             hx-swap="outerHTML">Назад</button>
   </div>

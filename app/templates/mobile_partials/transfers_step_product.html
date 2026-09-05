@@ -14,6 +14,10 @@
         hx-target="#wizard-step"
         hx-swap="outerHTML"
         hx-disabled-elt="find button">
+    {# WR-03 (33-REVIEW iteration 3): the date typed on step 3 rides through
+       every step, so a «Назад» tap can never silently replace it with today.
+       Empty on a cold entry — step 3 then pre-fills today, as before. #}
+    <input type="hidden" name="op_date" value="{{ op_date | default('') }}">
     <div class="field">
       <label for="code">Код товара</label>
       <input type="text" id="code" name="code" value="{{ code }}" required autofocus

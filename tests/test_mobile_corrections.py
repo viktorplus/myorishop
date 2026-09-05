@@ -355,27 +355,112 @@ def test_mobile_correction_value_step_renders_prefilled_date_field(
     assert response.text.index('name="op_date"') < response.text.index('class="mobile-actions"')
 
 
-def test_mobile_correction_earlier_steps_never_emit_the_date(
+def test_mobile_correction_earlier_steps_carry_the_date_but_render_no_input(
     mobile_client_factory, session, product, warehouse
 ):
-    """Proof by negation (the D-11 shell-less half): the date exists on the
-    FINAL step and nowhere else. No earlier fragment mentions op_date, so
-    nothing htmx swaps before the terminal screen can carry a stale value, and
-    a future edit that threads it as a hidden field through the wizard
-    accumulator reddens this test."""
+    """WR-03 (33-REVIEW iteration 3) — this test's contract is DELIBERATELY INVERTED.
+
+    It used to assert «no earlier fragment mentions op_date», reasoning that
+    nothing swapped before the terminal screen could then carry a stale value.
+    That reasoning had the failure mode backwards. The date input lives on step
+    4, and step 4's «Назад» posts to /step/mode with hx-include="closest form" —
+    so the typed date WAS sent; it was simply not declared or re-emitted, and
+    step 4 came back with no `form` key at all, falling through to today.
+    Unlike value/note, which come back visibly empty, the date came back
+    plausible and correctly formatted, so the correction was booked on the wrong
+    day with no cue, into an append-only ledger with no сторно until Phase 34.
+
+    The D-11 half that still holds is the VISIBLE one, and it is what this test
+    now pins: earlier steps carry the value in a hidden input and render NO date
+    field, so there is still exactly one editable date in the wizard.
+    """
     batch = _seed_batch(session, product, warehouse, 5)
     client = mobile_client_factory(mobile_corrections.router)
 
-    product_step = client.get("/m/corrections", headers={"HX-Request": "true"})
-    batch_step = client.post("/m/corrections/step/batch", data={"code": product.code})
+    product_step = client.get(
+        "/m/corrections", headers={"HX-Request": "true"}, params={"op_date": "2026-08-15"}
+    )
+    batch_step = client.post(
+        "/m/corrections/step/batch",
+        data={"code": product.code, "op_date": "2026-08-15"},
+    )
     mode_step = client.post(
         "/m/corrections/step/mode",
-        data={"code": product.code, "batch_id": batch.id, "name": product.name},
+        data={
+            "code": product.code,
+            "batch_id": batch.id,
+            "name": product.name,
+            "op_date": "2026-08-15",
+        },
     )
 
     for fragment in (product_step, batch_step, mode_step):
         assert fragment.status_code == 200
-        assert "op_date" not in fragment.text
+        assert '<input type="hidden" name="op_date" value="2026-08-15">' in fragment.text
+        assert 'type="date"' not in fragment.text
+        assert "Дата операции" not in fragment.text
+
+
+def test_mobile_correction_back_from_the_final_step_preserves_a_typed_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """WR-03: the reachable round trip — step 4 → «Назад» → «Далее» → step 4."""
+    batch = _seed_batch(session, product, warehouse, 5)
+    client = mobile_client_factory(mobile_corrections.router)
+    today = local_today_iso(settings.display_tz)
+
+    # «Назад» from step 4 posts the whole step-4 form, op_date included.
+    back = client.post(
+        "/m/corrections/step/mode",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "batch_id": batch.id,
+            "batch_qty": "5",
+            "mode": "delta",
+            "value": "-2",
+            "note": "",
+            "op_date": "2026-08-15",
+        },
+    )
+    assert back.status_code == 200
+
+    # «Далее» from step 3 re-enters step 4 — the date must come back as typed.
+    forward = client.post(
+        "/m/corrections/step/value",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "batch_id": batch.id,
+            "batch_qty": "5",
+            "mode": "delta",
+            "op_date": "2026-08-15",
+        },
+    )
+    assert forward.status_code == 200
+    assert 'value="2026-08-15"' in forward.text
+    assert f'value="{today}"' not in forward.text
+
+
+def test_mobile_correction_step_value_still_defaults_to_today_without_a_carried_date(
+    mobile_client_factory, session, product, warehouse
+):
+    """The carry must not change a COLD entry into step 4."""
+    batch = _seed_batch(session, product, warehouse, 5)
+    client = mobile_client_factory(mobile_corrections.router)
+    today = local_today_iso(settings.display_tz)
+
+    response = client.post(
+        "/m/corrections/step/value",
+        data={
+            "code": product.code,
+            "name": product.name,
+            "batch_id": batch.id,
+            "mode": "delta",
+        },
+    )
+    assert response.status_code == 200
+    assert f'value="{today}"' in response.text
 
 
 def test_mobile_correction_backdated_post_stores_the_business_date(

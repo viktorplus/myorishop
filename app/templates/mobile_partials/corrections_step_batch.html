@@ -17,6 +17,10 @@
     {# batch_qty carried forward as an opaque hint, computed once here and
        consumed by step "Значение" — never re-derived from the client. #}
     <input type="hidden" name="batch_qty" value="{{ batch_qty if batch_qty is not none else '' }}">
+    {# WR-03: both this step's controls include "closest form" — the «Назад»
+       hx-get and each batch card's hx-get — so one hidden input carries the
+       date in BOTH directions. #}
+    <input type="hidden" name="op_date" value="{{ op_date | default('') }}">
     {% with pick_url = "/m/corrections/step/batch-pick", batch_target = "#corrections-step-wrap" %}
     {% include "mobile_partials/batch_card_picker.html" %}
     {% endwith %}

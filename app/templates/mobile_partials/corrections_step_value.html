@@ -65,7 +65,12 @@
     <div class="field op-date">
       <label for="op_date">Дата операции</label>
       <input type="date" id="op_date" name="op_date" min="{{ OP_DATE_FLOOR_ISO }}"
-             value="{{ op_date_value(form.op_date if form is defined else '') }}"
+             {# WR-03 (33-REVIEW iteration 3): TWO sources, in priority order.
+                `form` exists only on the 422/oversell re-render and echoes what
+                was just submitted; the flat `op_date` key is what every step
+                carries forward, so a «Назад» → «Далее» round trip restores the
+                typed date instead of silently snapping back to today. #}
+             value="{{ op_date_value(form.op_date if form is defined else (op_date | default(''))) }}"
              max="{{ today_iso() }}"
              aria-describedby="op_date-error">
       {% if errors is defined and errors.op_date %}<p class="error" id="op_date-error">{{ errors.op_date }}</p>{% endif %}

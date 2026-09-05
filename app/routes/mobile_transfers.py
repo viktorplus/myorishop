@@ -57,7 +57,9 @@ def _find_product(session: Session, code: str) -> Product | None:
     ).first()
 
 
-def _render_batch_step(request: Request, session: Session, code: str, name: str = ""):
+def _render_batch_step(
+    request: Request, session: Session, code: str, name: str = "", op_date: str = ""
+):
     code_clean = code.strip()
     product = _find_product(session, code_clean)
     batches = open_batches(session, product.id) if product is not None else []
@@ -69,6 +71,11 @@ def _render_batch_step(request: Request, session: Session, code: str, name: str 
         "warehouse_names": _warehouse_names(session),
         "show_empty": product is not None and not batches,
         "product_missing": code_clean != "" and product is None,
+        # WR-03 (33-REVIEW iteration 3): the date typed on step 3 rides back
+        # through step 2 so «Назад» → tap-a-batch restores it instead of
+        # silently pre-filling today. This step has no <form>, so the value
+        # travels in each control's hx-vals rather than a hidden input.
+        "op_date": op_date,
     }
     return templates.TemplateResponse(request, "mobile_partials/transfers_step_batch.html", context)
 
@@ -132,8 +139,8 @@ def _render_dest_step(
 
 
 @router.get("/m/transfers")
-def transfers_step_product(request: Request, code: str = ""):
-    context = {"step_label": "Шаг 1 из 3", "code": code, "errors": {}}
+def transfers_step_product(request: Request, code: str = "", op_date: str = ""):
+    context = {"step_label": "Шаг 1 из 3", "code": code, "errors": {}, "op_date": op_date}
     # D-01/D-02 uniformity (13-04): a "Назад" hx-get from step 2 re-fetches
     # this route with the typed code carried in ?code= — an HX-Request gets
     # only the bare fragment (this wizard's swap convention is outerHTML, so
@@ -149,6 +156,7 @@ def transfers_step_product(request: Request, code: str = ""):
 def transfers_step_batch(
     request: Request,
     code: str = Form(""),
+    op_date: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # D-04/D-14: reuses the receipt lookup (transfer has no price fields of
@@ -157,7 +165,11 @@ def transfers_step_batch(
     code_clean = code.strip()
     result = lookup_prefill(session, code_clean) if code_clean else None
     return _render_batch_step(
-        request, session, code, name=(result["name"] or "") if result else ""
+        request,
+        session,
+        code,
+        name=(result["name"] or "") if result else "",
+        op_date=op_date,
     )
 
 
@@ -167,6 +179,7 @@ def transfers_step_batch_pick(
     batch_id: str = "",
     code: str = "",
     name: str = "",
+    op_date: str = "",
     session: Session = Depends(get_session),
 ):
     code_clean = code.strip()
@@ -175,10 +188,19 @@ def transfers_step_batch_pick(
     if picked is None:
         # Invalid/foreign/unknown id -> safe fallback: re-render step
         # "Партия" instead of advancing with no source batch.
-        return _render_batch_step(request, session, code_clean, name=name)
+        return _render_batch_step(request, session, code_clean, name=name, op_date=op_date)
     # D-07: tapping a batch card advances the wizard straight to "Куда и
     # количество" — no separate confirm sub-step.
-    return _render_dest_step(request, session, code=code_clean, picked=picked, name=name)
+    #
+    # WR-03 (33-REVIEW iteration 3): this was THE reachable defect. Step 3's
+    # «Назад» posts to /step/batch and tapping a card lands here, which called
+    # _render_dest_step with NO op_date — so the flat key was "" and the
+    # template pre-filled today. Unlike value/qty, which come back empty and
+    # visibly need retyping, the date came back PLAUSIBLE and the transfer was
+    # booked on the wrong day with no cue.
+    return _render_dest_step(
+        request, session, code=code_clean, picked=picked, name=name, op_date=op_date
+    )
 
 
 @router.post("/m/transfers/step/dest")
