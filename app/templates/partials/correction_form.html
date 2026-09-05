@@ -109,7 +109,7 @@
        desktop surfaces carry byte-identical markup. #}
     <div class="field op-date">
       <label for="op_date">Дата операции</label>
-      <input type="date" id="op_date" name="op_date"
+      <input type="date" id="op_date" name="op_date" min="{{ OP_DATE_FLOOR_ISO }}"
              value="{{ op_date_value(form.op_date) }}" max="{{ today_iso() }}">
       {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
     </div>

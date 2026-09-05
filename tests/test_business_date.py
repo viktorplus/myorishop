@@ -32,8 +32,11 @@ from app.core import (
 from app.models import Operation
 from app.services import merge
 from app.services.ledger import (
+    OP_DATE_FLOOR,
+    OP_DATE_FLOOR_ISO,
     OP_DATE_FORMAT_ERROR,
     OP_DATE_FUTURE_ERROR,
+    OP_DATE_TOO_OLD_ERROR,
     parse_op_date,
     record_operation,
 )
@@ -210,6 +213,115 @@ def test_parse_op_date_honours_the_key_argument():
     errors: dict[str, str] = {}
     assert parse_op_date("нет", errors, key="withdraw_op_date") is None
     assert errors == {"withdraw_op_date": OP_DATE_FORMAT_ERROR}
+
+
+# --- CR-01 (33-REVIEW iteration 3): the sanity floor --------------------------
+
+
+def test_the_future_check_alone_cannot_see_a_mistyped_year():
+    """The BASELINE this fix exists for — pinned so the hole cannot silently reopen.
+
+    `parse_op_date`'s future bound is a LEXICOGRAPHIC string comparison, and
+    "0226-09-04" sorts BEFORE any realistic «today». So before the floor
+    existed a mistyped year passed every check, was written to an append-only
+    table the application can never repair, vanished from every
+    business_date-scoped report, and still counted in Product.quantity.
+
+    This test asserts the property of `>` itself, not of the function: if
+    someone ever "simplifies" the floor away, the mechanism it defends against
+    is documented right here.
+    """
+    today_iso = local_today_iso(settings.display_tz)
+    for typo in ("0226-09-04", "0026-09-04", "1026-09-04"):
+        assert not (typo > today_iso), typo
+        # …and a `date` comparison, which the floor uses, DOES see it.
+        assert date.fromisoformat(typo) < OP_DATE_FLOOR, typo
+
+
+def test_parse_op_date_rejects_a_mistyped_year():
+    """CR-01: every year-typo shape is refused, in Russian, writing nothing."""
+    for typo in ("0226-09-04", "0026-09-04", "1026-09-04", "0001-01-01"):
+        errors: dict[str, str] = {}
+        assert parse_op_date(typo, errors) is None, typo
+        assert errors["op_date"] == OP_DATE_TOO_OLD_ERROR, typo
+
+
+def test_parse_op_date_accepts_the_floor_itself():
+    """The floor is INSIDE the allowed range — the same closed-bound rule as «today»."""
+    errors: dict[str, str] = {}
+    assert parse_op_date(OP_DATE_FLOOR_ISO, errors) == OP_DATE_FLOOR_ISO
+    assert errors == {}
+
+
+def test_parse_op_date_rejects_the_day_before_the_floor():
+    """One day below the floor is the boundary on the other side."""
+    errors: dict[str, str] = {}
+    below = (OP_DATE_FLOOR - timedelta(days=1)).isoformat()
+    assert parse_op_date(below, errors) is None
+    assert errors["op_date"] == OP_DATE_TOO_OLD_ERROR
+
+
+def test_op_date_too_old_error_is_its_own_message():
+    """D-12: three operator mistakes, three DISTINCT messages, never shared."""
+    assert len({OP_DATE_FORMAT_ERROR, OP_DATE_FUTURE_ERROR, OP_DATE_TOO_OLD_ERROR}) == 3
+
+
+def test_op_date_floor_is_a_sanity_bound_not_a_business_policy():
+    """The floor must be old enough that it can NEVER refuse a legitimate entry.
+
+    This is the property that let CR-01 land without the still-open operator
+    decision about a business floor. The oldest artefact this project knows of
+    is a 2013 Oriflame price list (`catalogs/price_lists`), so anything at or
+    before 2000-01-01 is safely below every real business date. If a later
+    change raises this constant it becomes a BUSINESS rule and needs the
+    operator's answer first — this test is the tripwire for that.
+    """
+    assert OP_DATE_FLOOR <= date(2000, 1, 1)
+    errors: dict[str, str] = {}
+    assert parse_op_date("2013-01-01", errors) == "2013-01-01"
+    assert errors == {}
+
+
+def test_op_date_floor_iso_is_the_constant_and_is_a_template_global():
+    """The `min=` hint is DERIVED from the guard, so the two cannot drift apart."""
+    from app.routes import templates
+
+    assert OP_DATE_FLOOR_ISO == OP_DATE_FLOOR.isoformat()
+    assert templates.env.globals["OP_DATE_FLOOR_ISO"] == OP_DATE_FLOOR_ISO
+
+
+def test_every_echoing_date_input_carries_the_min_hint():
+    """CR-01: the 11 templates that echo a typed date all bound it in the browser too.
+
+    Scanned from source rather than rendered, for the same reason
+    `test_business_date_absent_from_sync_layer` is a scan: a new write surface
+    added later must not be able to ship a date input that has `max=` but no
+    `min=`. The three mobile SHELL wizards are excluded ON PURPOSE — neither
+    attribute fires there (hx-post sits on the button and htmx
+    preventDefault()s the click), so the server check is their only guard and a
+    `min=` there would make the hole look closed.
+    """
+    shells = {
+        Path("app/templates/mobile_pages/receipts.html"),
+        Path("app/templates/mobile_pages/sales.html"),
+        Path("app/templates/mobile_pages/writeoff.html"),
+    }
+    offenders = []
+    echoing = 0
+    for path in sorted(Path("app/templates").rglob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        if 'max="{{ today_iso() }}"' not in text:
+            continue
+        if path in shells:
+            assert 'min="{{ OP_DATE_FLOOR_ISO }}"' not in text, (
+                f"{path}: the inert shells must NOT gain a min= hint"
+            )
+            continue
+        echoing += 1
+        if 'min="{{ OP_DATE_FLOOR_ISO }}"' not in text:
+            offenders.append(str(path))
+    assert not offenders, "date input with max= but no min=:\n" + "\n".join(offenders)
+    assert echoing == 11, f"expected 11 echoing date surfaces, found {echoing}"
 
 
 # --- DATE-01 / DATE-04 / DATE-08: the write paths -----------------------------

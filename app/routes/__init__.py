@@ -24,6 +24,7 @@ from app.models import (
     WRITEOFF_REASONS,
     SyncState,
 )
+from app.services.ledger import OP_DATE_FLOOR_ISO
 from app.services.security import session_csrf
 from app.services.sync_client import (
     SyncResult,
@@ -251,3 +252,11 @@ templates.env.globals["today_iso"] = lambda: local_today_iso(_config_settings.di
 templates.env.globals["op_date_value"] = lambda raw: date_input_value(
     raw, local_today_iso(_config_settings.display_tz)
 )
+# CR-01 (33-REVIEW iteration 3): the `min=` companion of `max="{{ today_iso() }}"`.
+# A PLAIN STRING, not a callable — unlike «today», the floor is a fixed calendar
+# date, so freezing it at import time is correct and cheaper. It is sourced from
+# `ledger.OP_DATE_FLOOR` so the browser hint and `parse_op_date`'s server-side
+# guard cannot drift; the guard, not this attribute, is what actually refuses a
+# mistyped year (on the three mobile shell wizards the browser never validates
+# at all — htmx preventDefault()s the click).
+templates.env.globals["OP_DATE_FLOOR_ISO"] = OP_DATE_FLOOR_ISO

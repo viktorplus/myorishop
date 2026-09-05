@@ -23,11 +23,38 @@ STOCK_AFFECTING_TYPES = frozenset(
 )
 
 # Copy taken verbatim from 33-UI-SPEC.md's Copywriting Contract, "Error state —
-# malformed date" and "Error state — future date". Two DISTINCT messages on
-# purpose (D-12): a typo and a date in the future are different operator
-# mistakes and must never share one message.
+# malformed date", "Error state — future date" and "Error state — implausible
+# year". THREE DISTINCT messages on purpose (D-12): a format typo, a date in the
+# future and a mistyped year are different operator mistakes and must never
+# share one message.
 OP_DATE_FORMAT_ERROR = "Укажите дату в формате ГГГГ-ММ-ДД."
 OP_DATE_FUTURE_ERROR = "Дата операции не может быть в будущем."
+OP_DATE_TOO_OLD_ERROR = "Дата операции слишком старая — проверьте год."
+
+# CR-01 (33-REVIEW iteration 3): a SANITY floor, deliberately NOT a business
+# policy. The future bound below is a lexicographic string comparison, and
+# "0226-09-04" > "2026-09-05" is False — so a mistyped year was ACCEPTED and
+# written to an append-only table that the application can never repair (the
+# operations_no_update / cash_movements_no_update triggers, app/db.py), while
+# сторно does not exist until Phase 34. Such a row vanishes from every
+# business_date-scoped report yet still counts in Product.quantity, so stock
+# and reports disagree with no visible cue.
+#
+# 2000-01-01 is chosen precisely BECAUSE it needs no operator decision: no
+# MyOriShop data predates it, so this bound can never refuse a legitimate
+# entry, while it catches every year typo ("0226-…", "0026-…", "1026-…") that
+# the lexicographic `>` lets through. The BUSINESS floor — «how far back may
+# the operator book?» — is a separate, later decision (still open; see
+# 33-REVIEW-FIX.md § WR-01) and, when it lands, replaces this constant's value,
+# not its mechanism.
+OP_DATE_FLOOR = date(2000, 1, 1)
+# The `min=` browser hint that mirrors this floor on all 11 echoing templates.
+# Derived from the constant rather than hardcoded per template so the hint and
+# the server-side guard cannot drift apart. It is only a hint: the check in
+# parse_op_date is the guard, because on the three mobile SHELL wizards the
+# browser's interactive validation never fires at all (hx-post sits on the
+# button and htmx preventDefault()s the click).
+OP_DATE_FLOOR_ISO = OP_DATE_FLOOR.isoformat()
 
 
 # Home-placement rationale: all nine real `record_operation` call sites already
@@ -46,8 +73,9 @@ def parse_op_date(raw: str, errors: dict[str, str], key: str = "op_date") -> str
     `<input type="date">` always posts, regardless of the browser's locale.
     Form values are untrusted (ASVS V5), so that browser guarantee is
     re-checked server-side. This differs from `parse_optional_expiry` in
-    exactly one place: a SECOND branch after the parse succeeds, refusing a
-    date later than today.
+    exactly one place: TWO extra branches after the parse succeeds, refusing a
+    date later than today and a date before `OP_DATE_FLOOR` (CR-01 — the
+    lexicographic future check alone cannot see a mistyped year).
 
     The returned value NEVER reaches SQL as text: it is re-serialised through
     `date.isoformat()` and passed only as a bound ORM parameter, so there is no
@@ -66,6 +94,12 @@ def parse_op_date(raw: str, errors: dict[str, str], key: str = "op_date") -> str
         parsed = date.fromisoformat(s)
     except ValueError:
         errors[key] = OP_DATE_FORMAT_ERROR
+        return None
+    # CR-01: the floor is checked FIRST and compared as a `date`, not as text —
+    # the future check below is lexicographic and therefore blind to a mistyped
+    # year ("0226-09-04" sorts BEFORE today and passes). See OP_DATE_FLOOR.
+    if parsed < OP_DATE_FLOOR:
+        errors[key] = OP_DATE_TOO_OLD_ERROR
         return None
     if parsed.isoformat() > local_today_iso(settings.display_tz):
         errors[key] = OP_DATE_FUTURE_ERROR

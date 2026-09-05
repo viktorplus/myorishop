@@ -83,7 +83,7 @@
        silently replaced by today on the confirm. #}
     <div class="field op-date">
       <label for="withdraw-op-date">Дата операции</label>
-      <input type="date" id="withdraw-op-date" name="op_date"
+      <input type="date" id="withdraw-op-date" name="op_date" min="{{ OP_DATE_FLOOR_ISO }}"
              value="{{ op_date_value(form.op_date) }}" max="{{ today_iso() }}">
       {% if errors.op_date %}<p class="error">{{ errors.op_date }}</p>{% endif %}
     </div>
