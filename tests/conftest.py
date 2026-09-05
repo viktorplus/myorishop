@@ -72,12 +72,23 @@ def _run_alembic(db_url: str, *args: str) -> None:
     # Escape '%' for Alembic's ConfigParser interpolation, mirroring env.py:22.
     config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
+    # IN-05 (33-REVIEW): an explicit allow-list instead of `getattr(command,
+    # args[0])`, which would call ANY attribute of `alembic.command`. Same line
+    # count, and a typo fails HERE, by name, instead of as a TypeError deep
+    # inside Alembic. Resolved BEFORE the globals below are retargeted, so a bad
+    # verb cannot leave `settings.database_url` pointing at the test DB. Add a
+    # verb to the map when a test needs one.
+    verbs = {"upgrade": command.upgrade, "downgrade": command.downgrade}
+    if args[0] not in verbs:
+        raise ValueError(f"unsupported alembic verb: {args[0]!r}; allowed: {sorted(verbs)}")
+    verb = verbs[args[0]]
+
     previous_url = settings.database_url
     previous_env = os.environ.get("DATABASE_URL")
     settings.database_url = db_url
     os.environ["DATABASE_URL"] = db_url
     try:
-        getattr(command, args[0])(config, *args[1:])
+        verb(config, *args[1:])
     finally:
         settings.database_url = previous_url
         if previous_env is None:
