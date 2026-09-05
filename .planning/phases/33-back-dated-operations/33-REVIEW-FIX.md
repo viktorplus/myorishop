@@ -2,23 +2,22 @@
 phase: 33-back-dated-operations
 fixed_at: 2026-09-05T00:00:00Z
 review_path: .planning/phases/33-back-dated-operations/33-REVIEW.md
-iteration: 2
-fix_scope: all
-findings_in_scope: 18
-fixed: 13
-partial: 1
-skipped: 4
+iteration: 3
+fix_scope: critical_warning
+findings_in_scope: 8
+fixed: 7
+skipped: 1
 status: partial
-suite: 1784 passed, 16 skipped, 0 failed
-version: 1.110 -> 1.124
+suite: 1812 passed, 16 skipped, 0 failed
+version: 1.124 -> 1.132
 ---
 
 # Phase 33: Code Review Fix Report
 
 **Fixed at:** 2026-09-05
-**Source review:** `.planning/phases/33-back-dated-operations/33-REVIEW.md` (iteration 2)
-**Iteration:** 2
-**Base commit:** `db12d31` → **head after fixes:** `43c2925`
+**Source review:** `.planning/phases/33-back-dated-operations/33-REVIEW.md` (iteration 3)
+**Iteration:** 3
+**Base commit:** `1adc3c8` → **head after fixes:** `9589df8`
 
 ---
 
@@ -30,460 +29,404 @@ Iteration 1 ran with `fix_scope: critical_warning` — 9 findings in scope, **7 
 | Prior finding | Outcome in iteration 1 |
 |---|---|
 | CR-01 wire `business_date` + `format_ru_date` | fixed (`a471ca6`, `1d3bd4d`) |
-| WR-02 `push_schema_ok` TypeError | fixed (`3d73b07`) — see WR-02 below for what the fix broke |
+| WR-02 `push_schema_ok` TypeError | fixed (`3d73b07`) |
 | WR-03 409 echo | fixed (`df7f337`) |
 | WR-04 naive `created_at` in `_is_backdated` | fixed (`9fc0b19`) |
 | WR-06 `isascii()` in `register_receipt` | fixed (`781b8b7`) |
 | WR-07 `StopIteration` in `register_sale` | fixed (`e918fa7`) |
 | WR-08 downgrade trigger DDL asserted | fixed (`99522b1`) |
-| WR-05 dated-filter trade-off | **partial** (`12c1611`) — documentation only, behaviour deliberately unchanged; re-raised this iteration as WR-09 |
-| WR-01 `parse_op_date` past bound | **skipped** — needs an operator decision (floor value + a third RU string) |
+| WR-05 dated-filter trade-off | **partial** (`12c1611`) — documentation only, behaviour deliberately unchanged; re-raised in iteration 2 as WR-09 and again in iteration 3 as WR-06 |
+| WR-01 `parse_op_date` past bound | **skipped** — needs an operator decision (floor value + a third RU string). **Escalated to CR-01 in iteration 3 and FIXED there** — see below |
 
-IN-01..IN-06 were declared out of scope in iteration 1. **They are in scope now**
-(`fix_scope: all`), and the iteration-2 review added IN-07 and IN-08.
+IN-01..IN-06 were declared out of scope in iteration 1.
 
 ---
 
-## Summary — iteration 2
+## Iteration 2 recap (do not lose this)
 
-- Findings in scope: **18** (CR-01, WR-01..WR-09, IN-01..IN-08)
-- Fixed: **13**
-- Partially fixed: **1** (IN-08 — documented in code, the decision itself is Phase 34's)
-- Skipped: **4** (WR-01, WR-09, IN-03, IN-06)
+Iteration 2 ran with `fix_scope: all` — 18 findings in scope (CR-01, WR-01..WR-09,
+IN-01..IN-08), **13 fixed, 1 partial, 4 skipped**, `1.110 → 1.124`, base `db12d31`,
+head `43c2925`, suite **1784 passed / 16 skipped / 0 failed**.
 
-Iteration 2 is the first pass where the Info tier was actually worked, so 8 of the
-13 fixes are IN-* items.
+| Prior finding | Outcome in iteration 2 |
+|---|---|
+| CR-01 `iso_to_local` raised on a wire `created_at`; naive read in the OS zone | fixed (`8f6ee9e`) — wire gate `_is_iso_timestamp` + never-raises display; 28 tests |
+| WR-02 schema gate's two halves cancel | fixed (`a892a73`) — **documentation only**, `isinstance` branch deliberately KEPT as a crash backstop |
+| WR-03 date gate missed `Batch.expiry` | fixed (`c2df0b6`) — 9 tests |
+| WR-04 CSV column 1 outside `_csv_safe` | fixed (`9e86506`) — 5 date cells wrapped; `op.created_by` explicitly declined, **re-raised and fixed in iteration 3 as WR-04** |
+| WR-05 `register_return` None guard | fixed (`9517ed1`) — lookup also moved inside `if debit:` |
+| WR-06 `register_transfer` None guard | fixed (`16254c6`) |
+| WR-07 revision-id tripwire glob | fixed (`1571fd0`) — `*.py`, floor 27 |
+| WR-08 `.filter-bar` `flex-wrap` | fixed (`bd6d0b1`) — **still unverified in a browser** |
+| IN-01 `local_day_bounds_utc` caller list | fixed (`dd6b9fd`) |
+| IN-02 `POST /m/transfers/step/dest` dropped a date | fixed (`9c891ef`) — a tripwire on a DEAD route; **the reachable path stayed broken and is iteration 3's WR-03** |
+| IN-04 invalid `op_date` blanked the date input | fixed (`30d19e9`) — `core.date_input_value` + the `op_date_value` Jinja global, 11 templates, 13 tests |
+| IN-05 unbounded `getattr` in the Alembic helper | fixed (`54ffbc6`) |
+| IN-07 `\d` matched non-ASCII digits | fixed (`254305c`) |
+| IN-08 reversal ORM FK vs migration 0027 | **partial** (`43c2925`) — documented in `models.py` only; **re-raised as iteration 3's WR-07 and FIXED there** |
+| WR-01 `parse_op_date` past bound | **skipped** — operator decision |
+| WR-09 «Только в день операции» straddle | **skipped** — operator decision |
+| IN-03 no DB-level date shape constraint | **skipped** — needs revision `0028` against a live production database |
+| IN-06 four near-identical period resolvers | **skipped** — refactor-mode work needing an explicit scope |
+
+---
+
+## Summary — iteration 3
+
+- Findings in scope: **8** (CR-01, WR-01..WR-07). The five IN-* items were out of
+  scope for this pass by instruction.
+- Fixed: **7**
+- Skipped: **1** (WR-06)
+
+Three of the seven were findings earlier iterations had deferred (CR-01 was
+iteration 1+2's WR-01; WR-04 was declined in iteration 2; WR-07 was iteration 2's
+partial IN-08). All three are now closed.
 
 ### Verification actually run (not inferred)
 
-- **Full suite**, in the isolated worktree, after every fix:
-  **1784 passed, 16 skipped, 0 failed** (575 s / 9m35s).
-  Iteration 1's baseline was 1728 passed; the delta is exactly the **56 tests added
-  here** (CR-01 28, WR-03 9, WR-04 1, WR-05 2, WR-06 1, IN-02 1, IN-04 13, IN-07 1).
-- The **4 known-flaky `tests/test_sync_ui.py` failures** named in the brief
-  **did not reproduce**, exactly as in iteration 1. Nothing here touches
-  `sync_client._run_lock` or the lifespan auto-sync thread, so treat their absence
-  as an ordering/environment artefact, not as a repair.
-- **`ruff check` on all 21 touched `.py` files: 4 errors before, 4 errors after —
-  the same four, byte for byte.** Baseline measured by running ruff against the
-  clean `db12d31` checkout in the main repo, not inferred:
-  - `app/routes/__init__.py:3 I001` (import block unsorted — pre-existing)
-  - `app/routes/__init__.py:192 E402` (module-level import not at top — pre-existing)
-  - `app/services/merge.py UP028` (`yield` over `for` — pre-existing)
-  - `tests/test_export.py:333 E501` (102-char docstring — pre-existing)
-  No new lint findings. Project-wide `ruff check` / `ruff format --check` are not
+- **Full suite, at the final HEAD `9589df8`, with a clean working tree:**
+  **1812 passed, 16 skipped, 0 failed** (466 s / 7m46s).
+  Iteration 2's baseline was 1784 passed; the delta is **exactly the 28 tests
+  added here** (CR-01 8, WR-01 4, WR-02 8, WR-03 4, WR-04 2, WR-05 1, WR-07 1).
+- **The 4 known-flaky `tests/test_sync_ui.py` failures named in the brief DID NOT
+  REPRODUCE**, exactly as in iterations 1 and 2. Nothing here touches
+  `sync_client._run_lock` or the lifespan auto-sync thread, so their absence is
+  an ordering/environment artefact, not a repair.
+- **One earlier full-suite run is reported as INVALID and is not the number
+  above.** A first run finished `1 failed, 1811 passed` on
+  `test_release_verify.py::test_build_asserts_tag_matches_version`. That failure
+  was self-inflicted, not a regression: I edited `app/__init__.py` (1.131 → 1.132)
+  while that run was executing, and the test compares `app.__version__` (cached
+  from the module imported at collection time) against
+  `build_release._read_version()` (which re-reads the file from disk). The whole
+  suite was re-run afterwards against an untouched tree; it passes there.
+- **`ruff check` on all 22 touched `.py` files: 3 errors, and all 3 are
+  pre-existing.** Measured by extracting the base-commit (`1adc3c8`) versions of
+  the offending files and running ruff against them, not inferred:
+  - `app/routes/__init__.py` I001 (import block unsorted) and E402 — both present
+    at `1adc3c8`;
+  - `tests/test_export.py:333` E501 (102-char docstring) — present at `1adc3c8`.
+  One NEW error was introduced and then fixed inside this iteration: WR-01's
+  rationale comment sat between two imports and tripped I001 in
+  `app/services/finance.py`; commit `9589df8` moved the rationale into the
+  function docstring. Project-wide `ruff check` / `ruff format --check` are not
   gates this repo passes today and were not touched.
-- Every fix was re-read after editing, syntax-checked, and its own test module run
-  before the commit.
-- **IN-08's claim was verified by execution**, not asserted: compiled
-  `CreateTable` for both ledger tables against the SQLite dialect and confirmed
-  both reversal ForeignKeys appear in the `create_all` DDL while `0027:343,346`
-  add plain `sa.Column`s.
+- Every fix was re-read after editing and its own test modules run green before
+  the commit.
+- **WR-07's claim was verified by execution, not asserted**: the new test compiles
+  `CreateTable` for both ledger tables against the SQLite dialect and asserts no
+  `REFERENCES` clause on either reversal column — the inverse of the same probe
+  iteration 2 used to prove the divergence existed.
 
 ### Pending human checks (NOT verified here)
 
-1. **WR-08 (`.filter-bar` `flex-wrap`)** — there is no browser in this
-   environment. The `needs verification` carried from `33-CONTEXT.md`
-   § Deferred Ideas is still open: **open `/history` at 1024 px and confirm
-   there is no horizontal scrollbar and no clipped fourth `<select>`.** The CSS
-   change is one purely-additive line, but nobody has looked at the result.
-2. **CR-01's `created_at` intake gate against a REAL client push.** The gate was
-   proven by unit tests over 8 bad and 4 good shapes, and every shipped client
-   stamps `created_at` via `utcnow_iso()` (full ISO-8601 with a `+00:00` offset),
-   which the gate accepts. That was established by READING the write path, not by
-   pushing from a real `0027` client. Worth one live push before the client
-   release tag — which is the same gate the phase's UAT is already blocked on.
-3. **WR-05's behaviour change** (the warehouse lookup moved inside `if debit:`)
-   is a semantic change, not just a guard. It is covered by two new tests, but a
-   human should confirm the intent: a zero-price return no longer resolves a
-   warehouse currency at all.
+1. **WR-08 from iteration 2 (`.filter-bar` `flex-wrap`)** — still open, still
+   unverified. There is no browser in this environment. **Open `/history` at
+   1024 px and confirm there is no horizontal scrollbar and no clipped fourth
+   `<select>`.**
+2. **Iteration 2's CR-01 `created_at` intake gate against a REAL client push** —
+   still open. Worth one live push from a real `0027` client before the client
+   release tag, which is the same gate the phase's UAT is already blocked on.
+3. **WR-01's two cash surfaces have not been LOOKED AT.** The marker is proven by
+   four tests through the real routes, but nobody has seen the rendered table or
+   the mobile cards. The desktop change adds a `<br>` + muted second line inside
+   an existing `<td>` — the same markup `/history` already ships — so the risk is
+   low, but the mobile card gains a second `<p class="muted">` line and that is a
+   layout change on a 4-line card.
+4. **WR-03's two wizards have not been TAPPED.** The round trips are pinned by
+   tests that issue the exact requests the buttons issue, but the htmx wiring
+   itself (does «Назад» really include the form? does the batch card's `hx-vals`
+   really carry the new key?) was read, not observed. This is the one fix where a
+   two-minute manual walk-through on a phone would add real information.
+5. **WR-05 is a behaviour change on live data semantics.** A back-dated receipt
+   now dates its `product_created`/`price_change` audit rows TODAY. If the
+   operator has been relying on the old inheritance for anything, this changes
+   what `/history` shows for those rows. It is the right default and the review
+   asked for it, but it is a judgement worth confirming.
 
 ---
 
 ## Fixed Issues
 
-### CR-01: `| local_dt` raised on a wire-supplied `created_at` and read a naive one in the OS zone
+### CR-01: `parse_op_date` bounded the future but not the past
 
-**Commit:** `8f6ee9e`
-**Files:** `app/core.py`, `app/services/merge.py`, `tests/test_business_date.py`
+**Commit:** `0e37369` — **requires human verification** (it introduces a new refusal path)
+**Files:** `app/services/ledger.py`, `app/routes/__init__.py`, 11 templates,
+`tests/test_business_date.py`, `33-UI-SPEC.md`
 
-Applied both of iteration 1's rules to the sibling column, as the review asked.
+Deferred in iterations 1 and 2 as an operator decision; the review escalated it to
+BLOCKER and separated the two questions that had been conflated. The deferral was
+about picking a **business** floor («how far back may the operator book?»). The
+year-typo class needs no business decision at all.
 
-*Layer 1 — the wire.* `parse_exchange` now checks the SHAPE of a ledger
-`created_at`, not just its presence. `_LEDGER_REQUIRED` only asserted
-`is not None`, `_ledger_row` copies the value verbatim into the bulk INSERT, and
-the append-only triggers then make the row unrepairable by the application.
-`_is_iso_timestamp` requires three properties, each load-bearing:
+`OP_DATE_FLOOR = date(2000, 1, 1)` is a **sanity** floor, chosen precisely because
+it can never refuse a legitimate entry — the oldest artefact this project knows of
+is a 2013 price list. It catches every `"0226-09-04"` / `"0026-09-04"` shape that
+the existing **lexicographic** future check lets through (`"0226-09-04" >
+"2026-09-05"` is `False`). Such a row is written to an append-only table the
+application can never repair, vanishes from every `business_date`-scoped report,
+and still counts in `Product.quantity`.
 
-- it parses (`_is_backdated` and `iso_to_local` both call `fromisoformat`);
-- it carries a time part — a bare `"2026-09-04"` in a timestamp column renders a
-  fabricated 00:00 and sorts before every real timestamp of that day, and the
-  sync cursor orders by this column;
-- `value[:10]` is a **canonical** ISO date, because every read-side fallback for
-  a NULL `business_date` is the literal slice `created_at[:10]`. Without this,
-  `"20260904T100000+0000"` (which `fromisoformat` accepts on 3.11+) slices to
-  `"20260904"` and poisons every period comparison — the same value
-  `_is_iso_date` already refuses for `business_date`.
+Two details worth reading:
 
-**A naive timestamp is deliberately ACCEPTED.** All three readers treat one as
-UTC, so refusing it would turn a whole push into a 400 over a value the readers
-handle correctly.
+- **The floor is compared as a `date`, not as text, and is checked FIRST.** The
+  text comparison is exactly what could not see the typo, so reusing it would have
+  reproduced the bug.
+- **`min=` is derived from the constant via one Jinja global**
+  (`OP_DATE_FLOOR_ISO`), not hardcoded into 11 templates, so the browser hint and
+  the server guard cannot drift. It is placed **before** `value=` in the tag so the
+  `value="X" max="X"` adjacency that **14 existing route tests assert** stays
+  intact — the first attempt split those onto separate lines and would have
+  reddened all 14.
+- The three mobile SHELL wizards deliberately get **no** `min=`: neither attribute
+  fires there (`hx-post` sits on the button and htmx `preventDefault()`s the
+  click), so adding one would make the hole look closed. A test asserts they do
+  not gain it.
 
-*Layer 2 — display.* `iso_to_local` no longer raises and reads a naive value as
-UTC instead of in the machine's OS zone. It renders the same column, on the same
-rows, on the same pages as `format_ru_date`: `/history`, `/m/history`, the home
-page, the customer purchase tab and both CSV exports, none of which has a `try`.
+`33-UI-SPEC.md` § Copywriting Contract gained the third RU string and a
+field-bounds row **in the same commit**, as the review required.
 
-**Tests added:** 28.
+**Still open, deliberately:** the BUSINESS floor. When the operator answers «how
+far back may I book?», that changes this constant's value, not its mechanism, and
+not this copy. A test (`test_op_date_floor_is_a_sanity_bound_not_a_business_policy`)
+is the tripwire for anyone raising the floor without asking.
 
-### WR-02: the schema gate's two halves cancel — prose said fail-closed, composition failed open
+**Tests added:** 8.
 
-**Commit:** `a892a73` — **documentation only, no behaviour change**
-**Files:** `app/services/sync.py`, `tests/test_sync_schema_gate.py`
+### WR-01: cash-movement history rendered `created_at` only
 
-`push_schema_ok`'s docstring claimed a non-string version «is refused (False),
-which is the fail-closed direction». That was false for every path that exists:
-`app/routes/sync.py` is the sole production caller and can only pass
-`batch.schema_version`, which `parse_exchange` has already coerced to `""` — so
-an untyped header is ACCEPTED via the D-03 hatch. Corrected the prose, not the
-code: the fail-closed direction means raising inside `parse_exchange`, which
-turns a malformed header into `400 MALFORMED_BATCH_ERROR` — a behaviour change
-nobody asked for.
+**Commit:** `89066b6`
+**Files:** `app/core.py`, `app/services/operations.py`, `app/services/finance.py`,
+`app/templates/partials/cash_history_rows.html`,
+`app/templates/mobile_partials/cash_history_cards.html`, `tests/test_finance.py`,
+`tests/test_history.py`, `33-UI-SPEC.md`
 
-**Deviation from the suggested patch, stated:** the review proposed deleting the
-`isinstance` branch as dead code. **Kept**, and relabelled as an explicit crash
-backstop for a future DIRECT caller. Without it the predicate is no longer total
-(`5 <= "0027"` raises past the falsy hatch) — the exact 500 iteration 1's fix
-existed to close. Two lines of dead-but-honest defence beat re-opening it in
-Phase 34.
+Took the review's **first** option — generalise the marker — rather than growing a
+second definition in `finance.py`. `operations._is_backdated(op, tz)` became public
+`is_backdated(business_date, created_at, tz_name)`, and its naive==UTC / malformed
+rules moved into `core.local_day_of`. That move was not invention: the old
+function's own comment said to move it «beside `local_today_iso` if a second caller
+ever appears», and WR-01 and WR-02 are the second and third callers.
 
-Both schema-gate tests now say which layer they pin: the predicate test states it
-describes a direct caller only, and the end-to-end test states the composed
-answer is 200-and-merged plus what to change if the fail-closed direction is ever
-taken.
+The flag is computed in `cash_history_view`, not in the template, for the reason
+`history_view` does the same: a template-side marker cannot be filtered or counted.
+`rows` are now `{mv, business_day, is_backdated}` dicts, matching `/history`.
 
-### WR-03: the date gate covered `business_date` but not `Batch.expiry`
+Migration `0027` keeps its own private copy of the rule ON PURPOSE — a migration
+must not import application code that will keep changing under it.
 
-**Commit:** `c2df0b6`
-**Files:** `app/services/merge.py`, `tests/test_business_date.py`
+**Deviation worth stating:** four existing assertions in `test_finance.py` read
+`rows` as bare `CashMovement`s and were updated with the shape change. That is a
+test-contract change, not a test weakening — the same four facts are asserted.
 
-`_DATE_FIELDS`' own comment said «add the next date-only column here when one
-appears». That column shipped in Phase 9. Added `expiry`; `_date_fields()`
-already intersects with `KIND_TO_FIELDS[kind]`, so nothing else changed.
+**Tests added:** 4 (service-level row contract including the DATE-08 NULL
+sentinel; desktop marked; desktop unmarked; mobile both ways). Two existing
+`_is_backdated` unit tests moved to the new signature, which let their
+`SimpleNamespace` fake disappear entirely.
 
-Empty string is deliberately **not** special-cased, and this was checked rather
-than assumed: `parse_optional_expiry`, `batches.update_batch` and
-`transfers.register_transfer` all store `None` for «no expiry», and `0008`'s
-legacy backfill inserts a literal NULL — so no existing row can carry `""` and
-be refused by the new gate.
+### WR-02: `reports.stale_products` read a naive `created_at` in the OS zone with no parse guard
 
-**Tests added:** 9.
+**Commit:** `d7bcc8d`
+**Files:** `app/services/reports.py`, `tests/test_reports.py`, `tests/test_core.py`
 
-### WR-04: CSV column 1 was a stored-bytes pass-through outside `_csv_safe`
+Routed through `core.local_day_of` so there is no fourth copy of the rule. Both
+defects the review named were reachable: `astimezone()` on a naive value reads the
+**machine's** zone (on s1 — OS zone UTC, `display_tz` Europe/Moscow — that is up to
+a day of drift for any merged naive row, while every sibling reader was correct),
+and the missing `try` made a poisoned pre-0027 row a permanent 500 on
+`/reports/products`.
 
-**Commit:** `9e86506`
+**D-25 is NOT reopened.** The function still answers «how long since this product
+last MOVED» from `created_at`, never `business_date`. Only the way it reads that
+column changed, and the docstring says so.
+
+An unreadable row is **skipped**, not reported with a fabricated «дней без
+продажи» — unlike the marker's 10-char fallback, an invented number here would be
+worse than an absent row, because this list exists to be acted on. Stated at the
+call site.
+
+**Honest limitation, recorded in the test's own docstring:** the naive-vs-aware
+equivalence test through `stale_products` is **vacuous on a host whose OS zone is
+UTC**, because there the old code satisfied it by accident. That is why three
+additional `core.local_day_of` unit tests were added: they pass the zone
+explicitly and are host-independent.
+
+**Tests added:** 8 (2 through `stale_products`, 6 on `core.local_day_of`).
+
+### WR-03: both mobile wizards silently reset a typed back-date on «Назад»
+
+**Commit:** `6f6abbe`
+**Files:** `app/routes/mobile_corrections.py`, `app/routes/mobile_transfers.py`,
+7 templates, `tests/test_mobile_corrections.py`, `tests/test_mobile_transfers.py`,
+`33-UI-SPEC.md`
+
+**Scope beyond the review's list, and why.** The review named `step/mode` +
+`step/value` for корректировка and `batch_pick` + the «Назад» `hx-vals` for
+перемещение. That list could not have worked on its own: without step 2 carrying
+`op_date`, nothing reaches `batch-pick` at all. And stopping one step short only
+moves the same silent reset one tap further back. `op_date` is therefore threaded
+through **every** step of both wizards — hidden input where the step has a
+`<form>`, `hx-vals` where it does not (перемещение's step 2), single-quoted per the
+standing `| tojson` note.
+
+**Two tests were DELIBERATELY INVERTED, not deleted.**
+`test_*_earlier_steps_never_emit_the_date` asserted the exact opposite of this
+fix, and their docstrings even predicted it («a future edit that threads it as a
+hidden field reddens this test»). Their reasoning had the failure mode backwards:
+the risk was never a **stale** date, it was a silently **fabricated** one. They now
+pin the half of D-11 that still holds — earlier steps carry the value and render
+**no** date input, so there is still exactly one editable date per wizard. Each
+inverted test says in its docstring what it used to assert and why that was wrong.
+`33-UI-SPEC.md` rows 12–13, whose «terminal with no accumulator round-trip» claim
+is what produced the defect, carry the correction inline.
+
+**Tests added:** 4 (a forward → «Назад» → forward round trip per wizard, plus a
+cold-entry-still-defaults-to-today guard per wizard); 2 inverted; 1 `hx-vals`
+quoting assertion updated for the second key.
+
+### WR-04: `created_by` was the last unescaped free-text CSV cell, and it is wire-supplied
+
+**Commit:** `137e8f7`
 **Files:** `app/services/export.py`, `tests/test_export.py`
 
-**Scope beyond the review's two lines, and why:** this iteration's CR-01 fix gave
-`iso_to_local` the same never-raises/pass-through contract `format_ru_date` has,
-so the «Внесено» columns and `customers.csv`'s «Создан» acquired the identical
-property in the same commit. Wrapping only the two named cells would have left
-the same hole one column to the right — introduced by this iteration, not by
-Phase 33. **Five cells wrapped.** A well-formed date or timestamp never starts
-with `=`, `+`, `-` or `@`, so no existing byte of output changes.
+Iteration 2 saw this and declined it as «pre-existing and unrelated». Defensible on
+scope, but it was neither carried into a finding nor tracked anywhere, so the
+review raised it again; closed here. `merge._LEDGER_REQUIRED` carries `created_by`
+verbatim from a pushed NDJSON record and `_ledger_row` bulk-inserts it, so a device
+holding a valid Bearer token controls those bytes and the append-only triggers then
+make the row unrepairable.
 
-**Left alone deliberately, reported instead** (CLAUDE.md additive-change rule):
-`op.created_by` (sales.csv column 9) is also unwrapped and IS wire-supplied free
-text — `merge._LEDGER_REQUIRED` carries it verbatim. Pre-existing and unrelated
-to the date change. The `format_cents` money columns stay unwrapped on purpose: a
-negative amount legitimately starts with `-` and wrapping those WOULD change
-output.
+`row_currency` and `movement.currency` were wrapped too: both are checked against
+`CURRENCIES` on the **local** write path but not by `parse_exchange`, which
+type-checks only money, `seq`, dates and timestamps.
 
-**Test added:** 1 — a stored `business_date` of `=HYPERLINK(...)` comes back from
-the real `/export/sales.csv` route apostrophe-prefixed.
+All three are output-identical for every well-formed value. The `format_cents`
+money columns stay unwrapped ON PURPOSE and now have a test saying so — a negative
+amount legitimately starts with `-`, so wrapping those WOULD change real output.
 
-### WR-05: `register_return` dereferenced `batch`/`warehouse` with no None guard
+**Tests added:** 2.
 
-**Commit:** `9517ed1`
-**Files:** `app/services/returns.py`, `tests/test_returns.py`
+### WR-05: a back-dated receipt stamped the operator's date onto the audit rows
 
-`AttributeError` is in neither `except` clause, so it escaped into the routes'
-blanket `except Exception` — the operator got «Не удалось сохранить» by accident
-rather than by design, and the log got a stack trace for a data shape the code
-knows about.
+**Commit:** `5450a19` — **requires human verification** (a semantic change to what /history shows)
+**Files:** `app/services/receipts.py`, `tests/test_receipts.py`
 
-The lookup also **moved inside the `if debit:` guard**, which closes the review's
-second observation: it was resolved unconditionally, so a return of a zero-price
-sale would have failed over a currency it never reads.
+`business_date=None` on the two audit calls, so `record_operation` stamps the real
+local day. `resolved_business_date` stays on the `receipt` op and on the D-24 batch
+auto-name, which really do describe the movement.
 
-**Tests added:** 2, using the `PRAGMA foreign_keys=OFF` orphan idiom from
-`test_sales.py`'s WR-07 test because the ORM path cannot produce the shape.
+The review's reading was confirmed against the phase's own artefacts:
+`33-10-SUMMARY.md` records this as «`business_date=resolved_business_date` on all
+three `record_operation` calls» — mechanical, with no decision behind it. D-25
+reasoned about which **readers** stay on `created_at`; nothing decided it for audit
+**writes**. Every sibling service already draws the line the same way.
 
-### WR-06: `register_transfer` dereferenced `source_warehouse` with no None guard
+**One existing test was DELIBERATELY INVERTED**, not deleted:
+`test_backdated_receipt_stamps_business_date` asserted the date landed on «BOTH ops
+it writes». Its docstring now says why that was wrong. `price_change` had **no**
+coverage at all; it has a test now, which asserts the receipt row and the audit row
+**together**, so the split itself is what is pinned rather than one side of it.
 
-**Commit:** `16254c6`
-**Files:** `app/services/transfers.py`, `tests/test_transfers.py`
+**Tests added:** 1; 1 inverted.
 
-Same shape, same precondition. `dest_warehouse` is safe (its id is checked
-against `active_ids`); `source.warehouse_id` never was. Reuses the field and
-message the ownership check twelve lines above already uses —
-`{"batch": BATCH_REQUIRED_ERROR}` — rather than inventing a third RU string for a
-state the operator fixes the same way.
+### WR-07: `reverses_*_id` carried an ORM `ForeignKey` migration 0027 does not create
 
-**Test added:** 1.
+**Commit:** `5cc8bea`
+**Files:** `app/models.py`, `tests/test_migrations.py`
 
-### WR-07: the revision-id tripwire could not see the filenames it exists to catch
+Iteration 2 closed this as documentation-only, reasoning that neither option was a
+review fix. The review disagreed and asked for the decision to be taken **before**
+Phase 34 writes its first reversal. Taken here, and it turned out to be
+decision-free once one claim was checked rather than trusted:
 
-**Commit:** `1571fd0`
-**File:** `tests/test_migrations.py`
+**The «merge insert-ordering» the ForeignKey was documented as providing did not
+exist.** `merge._LEDGER_INSERT_ORDER` and `_REFERENCE_INSERT_ORDER` are hardcoded
+tuples of KINDS, not derived from ORM metadata — and this is a SELF-link, so both
+rows land in the same bulk insert of the same kind and no kind ordering could ever
+satisfy it. «PostgreSQL portability» was not real either: `0027` adds the column
+bare on PostgreSQL too, so the ORM FK never matched production on **any** dialect.
 
-`[0-9]*.py` excluded exactly the Alembic-default `<hexrev>_<slug>.py` shape the
-test's docstring names as its failure case, and the `>= 26` floor still passed
-because the numbered files are all there. Now globs `*.py` and the floor is the
-real count, 27.
+So option 1 (drop the ORM FK) costs nothing and makes the two schema build paths
+agree. Option 2 (add the real FK in `0028`) was rejected as the more expensive one:
+on SQLite it needs a table rebuild, which `0027`'s own Pitfall 3 says would drop all
+four append-only triggers.
 
-### WR-08: `.filter-bar` had no `flex-wrap` and this phase added a fourth `<select>`
+Scoped to the two reversal columns only — `sale_id`/`batch_id`/`author_id` share the
+shape but are pre-existing and deliberate, and were not touched.
 
-**Commit:** `bd6d0b1`
-**File:** `app/static/style.css`
-
-One additive line, matching `.toolbar` at the top of the same file. **Not
-verified in a browser — see Pending human checks above.**
-
-### IN-01: `local_day_bounds_utc` has no `app/` caller and the docstring did not say so
-
-**Commit:** `dd6b9fd`
-**File:** `app/core.py`
-
-Re-grepped rather than copied. The live callers are `tests/test_core.py`,
-`test_export.py`, `test_dashboard.py`, `test_attribution.py`,
-`test_business_date.py`. **`33-CONTEXT.md` also named `test_finance_reports.py`
-and `test_reports.py`; they no longer reference it** — the note says so
-explicitly so the list is not re-copied stale, the same trap `local_today_iso`'s
-docstring already warns about.
-
-### IN-02: `POST /m/transfers/step/dest` would have dropped a typed date
-
-**Commit:** `9c891ef`
-**Files:** `app/routes/mobile_transfers.py`, `tests/test_mobile_transfers.py`
-
-Took the *thread it* option, not the *delete it* one: deleting a live route with
-three tests is a refactor decision, and CLAUDE.md puts that behind an explicit
-scope from the user. It was the ONE `_render_dest_step` caller that neither took
-nor threaded `op_date`, so wiring it up later would have silently reset a
-back-date to today — on the exact screen D-11 puts the transfer wizard's date
-field on. The docstring now states the route is unreachable and why it is kept.
-
-**Test added:** 1 (a tripwire, not a live-path regression test).
-
-### IN-04: an invalid `op_date` was echoed into `<input type="date">`, blanking it
-
-**Commit:** `30d19e9`
-**Files:** `app/core.py`, `app/routes/__init__.py`, 11 templates,
-`tests/test_core.py`, `tests/test_finance.py`
-
-**The review's suggested patch is wrong, and this is the one deviation worth
-reading.** It proposed `value="{{ today_iso() if errors.op_date else ... }}"`.
-Both date errors write `errors["op_date"]`, so keying on it would ALSO stop
-echoing a legitimately typed FUTURE date — which the review's own note says must
-be unaffected, and which route tests pin
-(`test_web_withdraw_future_date_returns_422_and_echoes_the_typed_value` and
-siblings). Keyed on the **value's shape** instead: canonical ISO in → echoed
-verbatim; anything an `<input type="date">` cannot render → today.
-
-Implemented as `core.date_input_value` + one Jinja global `op_date_value`,
-registered beside the existing `today_iso` callable, rather than the same
-conditional pasted into 11 templates — the rule then cannot drift between
-surfaces. The round trip through `date.isoformat` mirrors `merge._is_iso_date`
-for the same reason: `"20260904"` parses but still renders as an empty input.
-
-11 templates converted. The three mobile shell wizards keep
-`value="{{ today_iso() }}"` — that shell is never re-rendered, so it has nothing
-to echo.
-
-**Tests added:** 13.
-
-### IN-05: unbounded `getattr` dispatch in the Alembic test helper
-
-**Commit:** `54ffbc6`
-**File:** `tests/conftest.py`
-
-Two-entry allow-list. **One detail the review's snippet did not have:** the
-lookup is resolved BEFORE `settings.database_url` and `DATABASE_URL` are
-retargeted. Their restore lives in the `finally` of the call below, so raising
-inside that block — as a bare dict-index would — would leave the app's real
-engine pointed at the test database for every later test. That is exactly the
-leak the helper's own docstring says the `finally` exists to prevent.
-
-### IN-07: `\d` matches non-ASCII digits, so the 409 detail could echo them
-
-**Commit:** `254305c`
-**Files:** `app/routes/sync.py`, `tests/test_migrations.py`,
-`tests/test_sync_schema_gate.py`
-
-`[0-9]{4}` in both places. In the test the consequence is sharper than in the
-route: a revision id written in Arabic-Indic digits would have PASSED the
-fixed-width tripwire and then sorted nowhere near its ASCII neighbours under
-`push_schema_ok`'s lexicographic `<=`.
-
-**Test added:** 1 — a push carrying `"١٢٣٤"` gets a 409 whose detail contains
-`"?"` and none of those four characters.
-
----
-
-## Partially Fixed
-
-### IN-08: `reverses_*_id` carry an ORM `ForeignKey` migration 0027 does not create
-
-**Commit:** `43c2925` — **documentation only**
-**File:** `app/models.py`
-
-The divergence was **verified by execution**, not assumed (see Verification
-above): `create_all` emits both reversal FKs, `0027:343,346` add plain columns,
-and `app/db.py:128` sets `PRAGMA foreign_keys=ON`. So a Phase-34 test pushing a
-reversal whose target has not arrived will raise `IntegrityError` in the suite
-while succeeding in production.
-
-**What was NOT done:** the review says «pick one before building a test around
-the dangling-link behaviour». Neither option is a review fix — dropping the ORM
-ForeignKey loses merge insert-ordering, and adding the real FK needs a follow-up
-revision against a live production database. The divergence is in the false-RED
-direction (the safer one) and follows the pre-existing
-`sale_id`/`batch_id`/`author_id` precedent, so nothing is changed. It is
-documented where a Phase-34 author will actually hit it — in `models.py` beside
-the two columns — instead of only in a review artefact.
+**Test added:** 1, asserted against the **compiled** `CreateTable` DDL rather than
+the model source, so a comment cannot satisfy it.
 
 ---
 
 ## Skipped Issues
 
-### WR-01: `parse_op_date` bounds the future but not the past
+### WR-06: «Только в день операции» under-includes in the UTC-straddle window
 
-**File:** `app/services/ledger.py:62-73`
-**Reason:** unchanged from iteration 1 — **the floor value and the copy are both
-operator policy**, and the review agrees («still blocked on the same two
-decisions»).
+**File:** `app/services/operations.py:305-332`
+**Reason:** **unchanged from iterations 1 and 2 — the review itself says «still
+needs one decision, and only one», and I have no channel to ask the operator.**
 
-1. The floor is a business rule. Any number picked here silently defines what the
-   operator may enter, and the ledger is append-only, so a too-tight floor is a
-   hard block with no workaround until Phase 34 ships сторно.
-2. It needs a **third** RU error string for this field.
-   `33-UI-SPEC.md` § Copywriting Contract lists exactly two error states for the
-   date field and carries an explicit «Copy that must NOT be written» clause.
+Both remedies are decisions, not local edits:
 
-The `min=` template half alone was deliberately not shipped: it is a browser hint
-on a field that is re-validated server-side precisely because form values are
-untrusted, so shipping it would make the hole look closed.
+- **Relabel** — «Только в день операции» is a row in the locked
+  `33-UI-SPEC.md` § Copywriting Contract; replacing it (e.g. with «Без пометки»)
+  is new operator-facing copy.
+- **Make it exact** — a fifth ledger column and revision `0028`, which drags in the
+  phase's LOCKED five-artifact lockstep and its server→client rollout ordering.
 
-**Still open and still real:** `"0226-09-04" > "2026-09-05"` is `False`, so a
-mistyped year is accepted, written, invisible to every period report, and
-uncorrectable until Phase 34. **Next step:** ask the operator for the oldest
-enterable date, then land floor + string + `min=` as one change with the spec
-updated alongside.
+**A decision-free third option was looked for and does not exist.** Making the SQL
+predicate compare against the LOCAL day needs either date arithmetic on an ISO text
+timestamp (not expressible in portable ORM — `datetime(created_at, '+3 hours')` on
+SQLite / `created_at::date` on PostgreSQL are both banned by CLAUDE.md PC-2) or a
+Python-side computation after the page is fetched, which breaks `total` and the
+pager — the exact defect `test_history_period_count_agrees_with_its_own_rows` pins.
+That is why CR-01 could be escalated to a decision-free fix and this one cannot.
 
-### WR-09: «Только в день операции» under-includes in the UTC-straddle window
+**The docstring was NOT edited**, per the review's explicit «do not close this by
+editing the docstring a third time».
 
-**File:** `app/services/operations.py`
-**Reason:** unchanged from iteration 1's WR-05 — **an operator/spec decision, and
-the review explicitly says «do not close it by editing the docstring again».**
-
-Both remedies are spec changes, not local edits:
-
-- *Relabel* — «Только в день операции» is a row in the locked
-  `33-UI-SPEC.md` § Copywriting Contract table.
-- *Widen the predicate* — breaks `backdated`/`same_day` complementarity and
-  reddens
-  `test_backdated_filter_and_marker_diverge_only_on_utc_straddle`, which pins
-  today's behaviour on purpose.
-
-The documentation half was already closed in iteration 1 (`12c1611`). **Next
-step:** ask the operator which answer they want, in the same pass as WR-01 —
-both are copy + spec changes to the same UI-SPEC.
-
-### IN-03: no DB-level shape constraint on `business_date` / `created_at`
-
-**Files:** `app/models.py`, `alembic/versions/0027…py`
-**Reason:** **needs a NEW migration against a live production database, and it
-cannot be written safely from here.** Four separate blockers, any one sufficient:
-
-1. `0027` is LIVE on s1 and on client installs and must not be edited — so this
-   needs revision `0028`, which drags in the phase's LOCKED five-artifact
-   lockstep and its server→client rollout ordering.
-2. A `CHECK` constraint on SQLite cannot be added without
-   `op.batch_alter_table`, and **Pitfall 3 says a batch operation other than
-   `add_column` recreates the table and DROPS ALL FOUR append-only triggers** —
-   the exact failure `0024` caused and `0026` had to repair. The ledger would
-   come back unguarded and silent.
-3. The `GLOB` pattern in the review's snippet is SQLite-specific. Production is
-   PostgreSQL, where the same check is a `~` regex — so it needs the dual-dialect
-   branch, and CLAUDE.md forbids dialect-specific SQL without one.
-4. On PostgreSQL, adding a `CHECK` **fails outright if any existing row violates
-   it** — and IN-03's own text says a pre-0027 row may already carry a poisoned
-   `business_date` from the `created_at[:10]` backfill. That data cannot be
-   inspected from this environment, and V4 («run against a copy of the s1 dump»)
-   was never carried out for this.
-
-**What is closed anyway:** the intake is now gated on **all three** date/timestamp
-columns — `business_date` (iteration 1), `expiry` (WR-03) and `created_at`
-(CR-01) — and both display filters are total. So nothing new can be poisoned via
-the wire, and a poisoned row degrades one cell rather than 500-ing a page.
-
-**What is NOT closed:** a row poisoned BEFORE 0027 ran cannot be repaired by
-intake validation, and CR-01 notes it would make every future push containing it
-fail with `400 MALFORMED_BATCH_ERROR`. **Next step:** one revision `0028` that
-(a) repairs poisoned `business_date`/`created_at` rows found on the s1 dump and
-(b) adds the dual-dialect CHECK — planned deliberately, with V4 executed against
-a real dump first, and `add_column`-only discipline for the trigger rebuild.
-
-### IN-06: four near-identical period resolvers
-
-**Files:** `app/routes/reports.py`, `history.py`, `mobile_history.py`,
-`finance.py` + `mobile_finance.py`, `app/services/dashboard.py`
-**Reason:** **refactor-mode work, and CLAUDE.md requires an explicit scope from
-the user before it starts.** The review itself frames it as scheduling («worth
-scheduling a shared `period.py` helper before the next phase touches period
-logic»), not as a defect — the duplication predates this phase, each copy is
-documented as intentional, and consolidating five callers of Monday-start-week /
-calendar-month arithmetic into one helper is a behaviour-preserving refactor that
-needs its own blast-radius map and its own commit series.
-
-**Next step:** schedule `app/services/period.py` before the next phase that
-touches period logic — Phase 34 does touch reports, so this is the natural
-moment to ask for the scope.
+**Next step:** ask the operator which answer they want. It is now the ONLY finding
+across three iterations still blocked on an operator decision — CR-01, the other
+half of that pair, was closed this iteration.
 
 ---
 
 ## Process notes
 
-- Ran in an isolated `git worktree` on a temp branch
-  (`gsd-reviewfix/33-…`), fast-forwarded into `main` on completion. The recovery
-  sentinel was written after `worktree add` and removed after `worktree remove`;
-  no orphan worktree or branch remains.
+- Ran in an isolated `git worktree` on a temp branch (`gsd-reviewfix/33-2465`),
+  fast-forwarded into `main` on completion (`1adc3c8` → `9589df8`, `--ff-only`,
+  clean). The recovery sentinel was written after `worktree add` and removed after
+  `worktree remove`; the temp branch was deleted only after the fast-forward
+  succeeded. **No orphan worktree, branch or sentinel remains** — verified with
+  `git worktree list`. The unrelated pre-existing worktree
+  (`.claude/worktrees/agent-a97d10bfdb502533b`) was left untouched.
 - `git add` used explicit paths only — the 51 untracked files (`reports/`,
   `input/`, `AGENTS.md`, `plan1.txt`) were never staged.
-- `__version__` bumped once per fix commit: **1.110 → 1.124** — 14 commits
-  (`8f6ee9e` CR-01, `a892a73` WR-02, `c2df0b6` WR-03, `9e86506` WR-04,
-  `9517ed1` WR-05, `16254c6` WR-06, `1571fd0` WR-07, `bd6d0b1` WR-08,
-  `dd6b9fd` IN-01, `9c891ef` IN-02, `30d19e9` IN-04, `54ffbc6` IN-05,
-  `254305c` IN-07, `43c2925` IN-08).
-- **`sed -i` was not used on any repo file** (iteration 1 recorded that it rewrote
-  line endings). All edits went through the Edit/Write tools; commit messages went
-  through `git commit -F`.
-- **One incident, recorded rather than hidden:** while measuring the ruff
-  baseline I ran `git stash -u && git checkout db12d31 -- .` inside the worktree,
-  which reverted the working tree mid-run and invalidated a full-suite run that
-  was executing at the time. Recovered with `git reset --hard HEAD` (all 13 fixes
-  were already committed, so nothing was lost), dropped only my own stash entry —
-  the three pre-existing stashes from other agent worktrees were left untouched —
-  and re-ran the full suite cleanly. The baseline was then measured the correct
-  way: by running ruff against the untouched `db12d31` checkout in the main repo.
-  The 1784-passed figure quoted above is from the clean re-run.
-- The project's mandatory `robust-console-commands` skill could not be invoked —
-  no Skill/SlashCommand tool is exposed in this agent context. Console use was
-  kept to single-purpose commands. Flagging rather than silently bypassing.
+- `__version__` bumped once per commit: **1.124 → 1.132** — 8 commits
+  (`0e37369` CR-01, `89066b6` WR-01, `d7bcc8d` WR-02, `6f6abbe` WR-03,
+  `137e8f7` WR-04, `5450a19` WR-05, `5cc8bea` WR-07, `9589df8` ruff cleanup).
+- `sed -i` was not used on any repo file. All edits went through the Edit/Write
+  tools; commit messages went through `git commit -F`.
+- **One incident, recorded rather than hidden:** I edited `app/__init__.py` and
+  `app/services/finance.py` while a full-suite run was in progress, which broke
+  `test_release_verify.py::test_build_asserts_tag_matches_version` (it compares the
+  cached `app.__version__` against a fresh read of the file from disk). Nothing was
+  lost — all fixes were already committed — and the suite was re-run cleanly
+  afterwards. The 1812-passed figure quoted above is from that clean re-run, at the
+  final HEAD, with `git status --porcelain` empty of tracked changes.
+- **Three test contracts were deliberately inverted this iteration** (two in WR-03,
+  one in WR-05). Every one of them is a test that pinned the defective behaviour
+  rather than a decision, each inverted test's docstring states what it used to
+  assert and why that reasoning was wrong, and no test was deleted or weakened to
+  make a fix pass.
+- **The project's mandatory `robust-console-commands` skill could not be invoked** —
+  no Skill/SlashCommand tool is exposed in this agent context. Console use was kept
+  to single-purpose commands (`git`, `uv run pytest`, `uv run ruff`, `grep`).
+  Flagging rather than silently bypassing, as in iteration 2.
 
 ---
 
 _Fixed: 2026-09-05_
 _Fixer: Claude (gsd-code-fixer)_
-_Iteration: 2_
+_Iteration: 3_
