@@ -94,7 +94,19 @@ _LEDGER_REQUIRED: tuple[str, ...] = ("device_id", "seq", "created_at", "created_
 # `deleted_at`/`synced_at` are server-owned, so a suffix rule would either miss
 # this column or wrongly capture the timestamps. Add the next date-only column
 # here when one appears.
-_DATE_FIELDS: frozenset[str] = frozenset({"business_date"})
+#
+# WR-03 (33-REVIEW iteration 2): `expiry` was ALREADY that next column and was
+# missed — `Batch.expiry` is a `String(10)` ISO date shipped in Phase 9,
+# `batch` is one of the six reference kinds on the wire, and `_reference_row`
+# copies every declared column verbatim. An unvalidated value makes
+# `expiring_batches`' `Batch.expiry <= horizon` and the two `reports_expiry`
+# templates' `expiry < today` into lexicographic accidents, so a batch sorts
+# arbitrarily into or out of the expiry report. Batches are upsertable, so this
+# is recoverable — unlike `business_date` — but the gate is advertised as
+# schema-tracking and was not. Empty string is NOT special-cased: every write
+# path (`parse_optional_expiry`, `batches.update_batch`, `transfers`) stores
+# None for «no expiry», and 0008's backfill inserts a literal NULL.
+_DATE_FIELDS: frozenset[str] = frozenset({"business_date", "expiry"})
 
 # CR-01 (33-REVIEW iteration 2): timestamp-typed wire columns on a LEDGER record.
 # `created_at` is already in `_LEDGER_REQUIRED`, but presence is not shape:

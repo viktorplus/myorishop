@@ -905,6 +905,52 @@ def test_parse_exchange_accepts_iso_and_null_business_date(kind, good):
     assert batch.records[0].data["business_date"] == good
 
 
+def _ndjson_batch_with_expiry(value) -> list[str]:
+    """A minimal one-record NDJSON push whose `batch` reference row carries ``value``."""
+    header = {
+        "kind": "header",
+        "format_version": merge.FORMAT_VERSION,
+        "schema_version": "0027",
+        "source_device_id": "device-A",
+    }
+    record = {
+        "kind": "batch",
+        "id": "batch-exp-1",
+        "product_id": "p-1",
+        "warehouse_id": "w-1",
+        "quantity": 0,
+        "expiry": value,
+    }
+    return [
+        json.dumps(header, ensure_ascii=False),
+        json.dumps(record, ensure_ascii=False),
+    ]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ("не дата", "2026/09/04", "04.09.2026", "20260904", "2026-13-45", 12345, True),
+    ids=repr,
+)
+def test_parse_exchange_refuses_a_non_iso_batch_expiry(bad):
+    """WR-03 (33-REVIEW iteration 2): `expiry` is the OTHER `String(10)` ISO date
+    on the wire, and the CR-01 gate covered only `business_date`.
+
+    Unvalidated, it makes `expiring_batches`' `Batch.expiry <= horizon` and the
+    two `reports_expiry` templates' `expiry < today` lexicographic accidents —
+    the batch sorts arbitrarily into or out of the expiry report.
+    """
+    with pytest.raises(ValueError, match="expiry"):
+        merge.parse_exchange(_ndjson_batch_with_expiry(bad))
+
+
+@pytest.mark.parametrize("good", ("2026-09-04", None), ids=repr)
+def test_parse_exchange_accepts_iso_and_null_batch_expiry(good):
+    """NULL is «no expiry» — every write path stores None for an empty field."""
+    batch = merge.parse_exchange(_ndjson_batch_with_expiry(good))
+    assert batch.records[0].data["expiry"] == good
+
+
 @pytest.mark.parametrize("junk", ("не дата", "2026/09/04", "04.09.2026", 12345), ids=repr)
 def test_format_ru_date_renders_junk_instead_of_raising(junk):
     """CR-01 layer 2: the display filter never 500s on stored data.
