@@ -20,6 +20,10 @@ from app.core import (
 )
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, CashMovement
 from app.services.ledger import parse_op_date
+# WR-01: the «задним числом» marker is defined ONCE, beside /history's own use
+# of it. operations.py imports catalog/customers/ledger/pagination/reports and
+# none of those imports finance, so this is not a cycle.
+from app.services.operations import is_backdated
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.security import author_fields
 
@@ -275,6 +279,17 @@ def cash_history_view(
     guard (T-16-07). An out-of-range page is clamped server-side (T-14-04).
     CUR-02: `currency` defaults to RUB so every pre-existing call site keeps
     working unchanged. Portable ORM only — no raw/SQLite-specific SQL.
+
+    WR-01 (33-REVIEW iteration 3): `rows` are DICTS, not bare CashMovements —
+    the same `{mv, business_day, is_backdated}` shape
+    `operations.history_view` returns, and the marker is computed HERE, not in
+    the template, for the reason that one does the same: a template-side marker
+    cannot be filtered or counted, and both cash surfaces need one identical
+    rule. Phase 33 gave the cash forms a «Дата операции» field and made
+    `cash_expense_total` / `cash_flow_report` / `stream_cash_movements_csv`
+    bucket by `business_date`, but left these two LIST surfaces on `created_at`:
+    a withdrawal booked today for 15.08 showed 05.09 in the list while the tiles
+    on the SAME page counted it in August — no marker, no filter, no cue.
     """
     stmt = select(CashMovement).where(CashMovement.currency == currency).order_by(
         *_CASH_DEFAULT_ORDER
@@ -294,9 +309,25 @@ def cash_history_view(
     total_pages = max(1, -(-total // page_size))
     page = max(0, min(page, total_pages - 1))
 
-    rows = list(session.scalars(stmt.limit(page_size).offset(page * page_size)))
+    movements = list(session.scalars(stmt.limit(page_size).offset(page * page_size)))
     return {
-        "rows": rows,
+        "rows": [
+            {
+                "mv": mv,
+                # DATE-05: the PRIMARY date both cash surfaces now render. A
+                # String(10) ISO day, so the templates MUST use `| ru_date`;
+                # `| local_dt` would build a naive datetime and print a bogus
+                # time. None for a DATE-08 pre-0027 row — which then renders
+                # byte-identically to how it rendered before this change.
+                "business_day": mv.business_date,
+                # DATE-06: the marker, SHARED with /history so the two ledgers
+                # can never disagree about what «задним числом» means.
+                "is_backdated": is_backdated(
+                    mv.business_date, mv.created_at, settings.display_tz
+                ),
+            }
+            for mv in movements
+        ],
         "page": page,
         "total": total,
         "total_pages": total_pages,

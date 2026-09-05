@@ -173,6 +173,47 @@ def iso_to_local(iso_str: str | None, tz_name: str) -> str:
     return moment.astimezone(ZoneInfo(tz_name)).strftime("%d.%m.%Y %H:%M")
 
 
+def local_day_of(iso_str: str | None, tz_name: str) -> date | None:
+    """The LOCAL calendar DAY of a stored UTC timestamp — None when unreadable.
+
+    The one place the project's «read a stored `created_at` as a local day» rule
+    lives. It was previously written out three times: `operations._is_backdated`
+    (the «задним числом» marker), `alembic/versions/0027…::_local_business_date`
+    (the backfill) and `reports.stale_products` — and the third copy had drifted
+    (WR-02, 33-REVIEW iteration 3): it omitted the naive branch, so
+    `astimezone()` read a naive value in the MACHINE's OS zone, and it had no
+    `try`, so an unparseable value 500'd the page. `_is_backdated`'s own comment
+    said this helper should move here «if a second caller ever appears»; WR-01
+    and WR-02 are the second and third.
+
+    A NAIVE value is read as UTC, never as the machine's OS zone — the same
+    rule `iso_to_local` above and migration 0027's backfill apply to this same
+    column. `merge._is_iso_timestamp` deliberately ACCEPTS a naive `created_at`,
+    so naive values are reachable, and the backfill's whole correctness argument
+    is that `business_date == local_day(created_at)` for every historical row:
+    if these two disagreed on an input, the marker would contradict the data the
+    migration wrote.
+
+    Returns None rather than raising, for the reason `iso_to_local` and
+    `format_ru_date` never raise: the ledger is append-only, so a row carrying an
+    unparseable timestamp cannot be repaired by the application, and every
+    caller of this helper renders a PAGE. Callers decide what None means for
+    them (a fallback comparison, or skipping one row) — none of them may 500.
+
+    The 0027 migration keeps its own private copy ON PURPOSE: a migration must
+    not import application code that will keep changing under it.
+    """
+    if not iso_str:
+        return None
+    try:
+        moment = datetime.fromisoformat(iso_str)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(ZoneInfo(tz_name)).date()
+
+
 def local_day_bounds_utc(start_day: date, end_day: date, tz_name: str) -> tuple[str, str]:
     """UTC ISO bounds for the LOCAL half-open range [start_day, end_day] inclusive.
 

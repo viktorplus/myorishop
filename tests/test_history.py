@@ -728,16 +728,11 @@ def test_history_null_business_date_row_is_never_marked(session, stocked_product
     assert row["is_backdated"] is False
 
 
-def _fake_op(created_at: str, business_date: str):
-    """The two attributes `_is_backdated` reads, with no DB row behind them.
-
-    Deliberately not a real `Operation`: `record_operation` cannot produce a
-    NAIVE `created_at` (it stamps `utcnow_iso()`), but `merge` can — it inserts
-    the wire value verbatim and `_LEDGER_REQUIRED` only checks it is not None.
-    """
-    from types import SimpleNamespace
-
-    return SimpleNamespace(created_at=created_at, business_date=business_date)
+# WR-01 (33-REVIEW iteration 3): `is_backdated` now takes the two COLUMNS, so
+# the fixture that used to fake an `Operation` is gone — a naive `created_at` is
+# simply passed as a string. `record_operation` cannot produce one (it stamps
+# `utcnow_iso()`), but `merge` can: it inserts the wire value verbatim and
+# `_LEDGER_REQUIRED` only checks it is not None.
 
 
 def test_is_backdated_reads_a_naive_created_at_as_utc():
@@ -752,15 +747,13 @@ def test_is_backdated_reads_a_naive_created_at_as_utc():
     21:30 UTC on 31 Aug is 00:30 local on 1 Sep at Europe/Moscow — the straddle
     window where reading the timestamp in the wrong zone flips the answer.
     """
-    from zoneinfo import ZoneInfo
+    from app.services.operations import is_backdated
 
-    from app.services.operations import _is_backdated
+    tz = "Europe/Moscow"
 
-    tz = ZoneInfo("Europe/Moscow")
-
-    assert _is_backdated(_fake_op("2026-08-31T21:30:00", "2026-09-01"), tz) is False
-    assert _is_backdated(_fake_op("2026-08-31T21:30:00+00:00", "2026-09-01"), tz) is False
-    assert _is_backdated(_fake_op("2026-08-31T21:30:00", "2026-08-31"), tz) is True
+    assert is_backdated("2026-09-01", "2026-08-31T21:30:00", tz) is False
+    assert is_backdated("2026-09-01", "2026-08-31T21:30:00+00:00", tz) is False
+    assert is_backdated("2026-08-31", "2026-08-31T21:30:00", tz) is True
 
 
 def test_is_backdated_does_not_raise_on_an_unparseable_created_at():
@@ -771,14 +764,12 @@ def test_is_backdated_does_not_raise_on_an_unparseable_created_at():
     with no application-level repair possible. Same 10-character fallback
     migration 0027 uses.
     """
-    from zoneinfo import ZoneInfo
+    from app.services.operations import is_backdated
 
-    from app.services.operations import _is_backdated
+    tz = "Europe/Moscow"
 
-    tz = ZoneInfo("Europe/Moscow")
-
-    assert _is_backdated(_fake_op("не дата", "2026-09-01"), tz) is True
-    assert _is_backdated(_fake_op("2026-09-01 not-a-time", "2026-09-01"), tz) is False
+    assert is_backdated("2026-09-01", "не дата", tz) is True
+    assert is_backdated("2026-09-01", "2026-09-01 not-a-time", tz) is False
 
 
 def test_history_dated_backdated_returns_only_backdated_rows(session, stocked_product):

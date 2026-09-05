@@ -5,13 +5,11 @@ single write path (app.services.ledger.record_operation). Portable ORM
 only, no SQLite-specific SQL (D-05 sync-readiness).
 """
 
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
-
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core import local_day_of
 from app.models import (
     OPERATION_TYPES,
     Batch,
@@ -70,8 +68,16 @@ assert set(HISTORY_TYPE_COLUMNS) == STOCK_AFFECTING_TYPES
 _DATED_FILTERS = ("backdated", "same_day")
 
 
-def _is_backdated(op: Operation, tz: ZoneInfo) -> bool:
+def is_backdated(business_date: str | None, created_at: str | None, tz_name: str) -> bool:
     """True when this row's business date differs from the day it was ENTERED.
+
+    WR-01 (33-REVIEW iteration 3): takes the two COLUMNS, not an `Operation`.
+    `cash_movements` carries the identical pair and its two list surfaces
+    rendered `created_at` only, so a back-dated withdrawal showed today's date
+    in the list while the tiles and `/finance/report` counted it in its business
+    month — the list and the report on one page disagreeing, silently. One
+    shared rule now serves both ledgers; there is no second definition of the
+    marker to drift.
 
     THE MARKER AND THE FILTER COMPARE DIFFERENT THINGS, DELIBERATELY (33-14
     locked decision, `33-UI-SPEC.md` § Interaction Contract §6):
@@ -124,35 +130,28 @@ def _is_backdated(op: Operation, tz: ZoneInfo) -> bool:
     DATE-08: a `business_date IS NULL` row (pushed by a pre-0027 client) is
     NEVER marked — it must render byte-identically to today.
     """
-    if op.business_date is None:
+    if business_date is None:
         return False
-    # Reuse audit (CLAUDE.md): app/core.py has `iso_to_local` (formats a
-    # timestamp for DISPLAY) and `local_today_iso` (today only); neither yields
-    # the local calendar DAY of an arbitrary stored timestamp. This is the only
-    # caller, so it stays private here — move it beside `local_today_iso` if a
-    # second one ever appears.
-    #
-    # WR-04 (33-REVIEW): the naive and malformed branches below are migration
-    # 0027's `_local_business_date` rule, character for character, and they have
-    # to be. The backfill's whole correctness argument is that
+    # WR-04 (33-REVIEW iteration 1): the naive and malformed rules are migration
+    # 0027's `_local_business_date`, character for character, and they have to
+    # be. The backfill's whole correctness argument is that
     # `business_date == local_day(created_at)` for every historical row — if the
-    # two functions disagree on an input, this marker contradicts the data the
+    # two disagreed on an input, this marker would contradict the data the
     # migration wrote. Locally written rows always carry an offset
     # (`utcnow_iso`), but a row MERGED from another client is not guaranteed to:
-    # `merge._LEDGER_REQUIRED` only checks `created_at is not None`. On a naive
-    # value `astimezone()` would read the machine's OS zone, so on any server
-    # whose OS zone is not `display_tz` the marker came out wrong.
-    try:
-        moment = datetime.fromisoformat(op.created_at)
-    except (TypeError, ValueError):
+    # `merge._LEDGER_REQUIRED` only checks `created_at is not None`.
+    #
+    # WR-02 (iteration 3): those rules now live in ONE place, `core.local_day_of`
+    # — the comment that used to sit here said to move them «if a second caller
+    # ever appears», and WR-01 (cash history) plus WR-02 (stale_products) are the
+    # second and third.
+    local_day = local_day_of(created_at, tz_name)
+    if local_day is None:
         # A timestamp this function cannot parse must not 500 /history — the
         # ledger is append-only, so such a row cannot be repaired. Same 10-char
         # fallback the migration uses.
-        return op.business_date != str(op.created_at)[:10]
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=UTC)
-    local_day = moment.astimezone(tz).date().isoformat()
-    return op.business_date != local_day
+        return business_date != str(created_at)[:10]
+    return business_date != local_day.isoformat()
 
 
 def history_view(
@@ -204,7 +203,7 @@ def history_view(
 
     Phase 33/DATE-05/DATE-06: every row additionally carries `business_day`
     (the `String(10)` ISO business date, or None) and `is_backdated` (see
-    `_is_backdated` — the marker compares against the LOCAL day of
+    `is_backdated` — the marker compares against the LOCAL day of
     `created_at`, the `dated` predicate below against the UTC day, and that
     divergence is deliberate). `dated` is an allow-listed filter
     ("" / "backdated" / "same_day", `_DATED_FILTERS`) and is echoed back in the
@@ -297,7 +296,7 @@ def history_view(
     # DATE-06/D-20: the «Задним числом» filter. The comparison is against the
     # UTC day `substr(created_at, 1, 10)` — NOT the local day the `is_backdated`
     # marker uses — because only that form is expressible in portable ORM; see
-    # `_is_backdated`'s docstring for the full trade-off and the test that pins
+    # `is_backdated`'s docstring for the full trade-off and the test that pins
     # it. T-33-22: like the period predicate above, this MUST land on BOTH
     # `stmt` and `count_stmt` or the pager's total disagrees with its own rows.
     # T-33-35: `dated` is resolved through `_DATED_FILTERS` first, so only a
@@ -318,7 +317,7 @@ def history_view(
             #
             # WR-05 (33-REVIEW): this branch UNDER-includes in the UTC-straddle
             # window — a row entered at 00:30 local is dropped even though it is
-            # rendered with no marker. Read `_is_backdated`'s «ACCEPTED
+            # rendered with no marker. Read `is_backdated`'s «ACCEPTED
             # CONSEQUENCE — BOTH DIRECTIONS» block before changing anything
             # here: widening the predicate breaks the backdated/same_day
             # complementarity, so it is an operator decision, not a local edit.
@@ -337,7 +336,6 @@ def history_view(
 
     stmt = stmt.limit(page_size).offset(page * page_size)
     rows = session.execute(stmt).all()
-    tz = ZoneInfo(settings.display_tz)
     return {
         "rows": [
             {
@@ -355,7 +353,9 @@ def history_view(
                 # time. None for a DATE-08 pre-0027 row.
                 "business_day": op.business_date,
                 # DATE-06: the marker. False for every NULL-business_date row.
-                "is_backdated": _is_backdated(op, tz),
+                "is_backdated": is_backdated(
+                    op.business_date, op.created_at, settings.display_tz
+                ),
             }
             for op, p, b, w, c, u in rows
         ],

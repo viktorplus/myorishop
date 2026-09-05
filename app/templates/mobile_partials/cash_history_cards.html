@@ -19,11 +19,22 @@
   {%- endif -%}
 </p>
 {% else %}
-{% for mv in rows %}
+{% for r in rows %}
+{% set mv = r.mv %}
 <div class="mobile-card">
   {# D-01b: RU label from the CASH_CATEGORIES global; fall back to the raw key if a
-     legacy/unknown category ever appears. Autoescape only. #}
+     legacy/unknown category ever appears. Autoescape only.
+     WR-01 (33-REVIEW iteration 3): same rule as the desktop cash list and as
+     mobile_partials/history_cards.html — business date first, «задним числом ·
+     внесено …» as a muted second line and ONLY when the two differ. `| ru_date`
+     is mandatory on business_day (String(10)). A same-day row and every
+     pre-0027 NULL-business_date row render byte-identically to before. #}
+  {%- if r.is_backdated %}
+  <p class="muted">{{ r.business_day | ru_date }} · {{ CASH_CATEGORIES.get(mv.category, mv.category) }}</p>
+  <p class="muted">задним числом · внесено {{ mv.created_at | local_dt }}</p>
+  {%- else %}
   <p class="muted">{{ mv.created_at | local_dt }} · {{ CASH_CATEGORIES.get(mv.category, mv.category) }}</p>
+  {%- endif %}
   {%- if mv.note %}
   <p>{{ mv.note }}</p>
   {%- endif %}

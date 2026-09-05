@@ -741,8 +741,8 @@ def test_cash_history_newest_first(session):
     for _ in range(3):
         record_cash_movement(session, category="sale", amount_cents=100)
     rows = cash_history_view(session)["rows"]
-    assert rows[0].created_at >= rows[1].created_at
-    assert rows[0].seq > rows[1].seq
+    assert rows[0]["mv"].created_at >= rows[1]["mv"].created_at
+    assert rows[0]["mv"].seq > rows[1]["mv"].seq
 
 
 def test_cash_history_bucket_withdrawal(session):
@@ -755,7 +755,7 @@ def test_cash_history_bucket_withdrawal(session):
     result = cash_history_view(session, bucket="withdrawal")
     assert result["total"] == 5
     assert result["bucket"] == "withdrawal"
-    assert {r.category for r in result["rows"]} == set(_WITHDRAWAL_KEYS)
+    assert {r["mv"].category for r in result["rows"]} == set(_WITHDRAWAL_KEYS)
 
 
 def test_cash_history_bucket_sale_only(session):
@@ -764,7 +764,7 @@ def test_cash_history_bucket_sale_only(session):
     record_cash_movement(session, category="return", amount_cents=-50)
     result = cash_history_view(session, bucket="sale")
     assert result["total"] == 1
-    assert result["rows"][0].category == "sale"
+    assert result["rows"][0]["mv"].category == "sale"
 
 
 def test_cash_history_unknown_bucket_ignored(session):
@@ -783,7 +783,7 @@ def test_cash_history_includes_all_categories(session):
     record_cash_movement(session, category="return", amount_cents=-50)
     record_cash_movement(session, category="withdrawal_rent", amount_cents=-30)
     record_cash_movement(session, category="deposit_opening", amount_cents=200)
-    cats = {r.category for r in cash_history_view(session)["rows"]}
+    cats = {r["mv"].category for r in cash_history_view(session)["rows"]}
     assert cats == {"sale", "return", "withdrawal_rent", "deposit_opening"}
 
 
@@ -983,6 +983,94 @@ def test_web_cash_history_empty_states(client, session):
     record_cash_movement(session, category="sale", amount_cents=100)
     filtered = client.get("/finance/history?bucket=withdrawal", headers=_HX)
     assert "Нет движений по выбранному типу." in filtered.text
+
+
+def test_cash_history_rows_carry_business_day_and_the_marker(session):
+    """WR-01 (33-REVIEW iteration 3): the service computes the flag, not the template.
+
+    A template-side marker cannot be filtered or counted, which is exactly why
+    `operations.history_view` computes its own server-side. This pins the same
+    contract for the cash ledger, and pins DATE-08 with it: a NULL business_date
+    row is NEVER marked.
+    """
+    today = local_today_iso(settings.display_tz)
+    marked = record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-3000, business_date="2026-08-15"
+    )
+    plain = record_cash_movement(session, category="sale", amount_cents=100)
+    # DATE-08: a row pushed by a pre-0027 client carries no business date at all.
+    # It can only be built by a direct INSERT — `record_cash_movement` always
+    # substitutes today's local day, and `cash_movements_no_update` ABORTs any
+    # later UPDATE (the same reason test_history._insert_legacy_op exists).
+    legacy = CashMovement(
+        id=new_id(),
+        category="sale",
+        amount_cents=200,
+        device_id=settings.device_id,
+        seq=next_seq(session, settings.device_id),
+        created_at=utcnow_iso(),
+        business_date=None,
+        created_by=settings.operator_name,
+    )
+    session.add(legacy)
+    session.commit()
+
+    by_id = {r["mv"].id: r for r in cash_history_view(session)["rows"]}
+    assert by_id[marked.id]["business_day"] == "2026-08-15"
+    assert by_id[marked.id]["is_backdated"] is True
+    assert by_id[plain.id]["business_day"] == today
+    assert by_id[plain.id]["is_backdated"] is False
+    assert by_id[legacy.id]["business_day"] is None
+    assert by_id[legacy.id]["is_backdated"] is False
+
+
+def test_web_cash_history_shows_the_business_date_not_the_entry_day(client, session):
+    """WR-01: the desktop cash list stops contradicting the tiles above it.
+
+    Before this fix the list rendered `created_at` only, so a withdrawal booked
+    today for 15.08 showed today's date while `cash_expense_total` /
+    `/finance/report` — on the same page — counted it in August, with no marker
+    and no filter that could find it.
+    """
+    record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-3000, business_date="2026-08-15"
+    )
+    response = client.get("/finance/history", headers=_HX)
+    assert response.status_code == 200
+    assert "15.08.2026" in response.text
+    assert "задним числом" in response.text
+    assert "внесено" in response.text
+
+
+def test_web_cash_history_same_day_row_renders_unchanged(client, session):
+    """WR-01: no marker, no business-date line, for an ordinary same-day movement.
+
+    DATE-07's «existing operations keep reporting exactly as they do today»
+    applies to the cash ledger too — the marker must be the exception, not the
+    default, or it stops carrying information.
+    """
+    record_cash_movement(session, category="withdrawal_rent", amount_cents=-3000)
+    response = client.get("/finance/history", headers=_HX)
+    assert response.status_code == 200
+    assert "задним числом" not in response.text
+
+
+def test_mobile_cash_history_shows_the_business_date_not_the_entry_day(
+    mobile_client_factory, session
+):
+    """WR-01: the mobile card list carries the identical rule to the desktop table."""
+    mc = _mobile_finance_client(mobile_client_factory)
+    record_cash_movement(
+        session, category="withdrawal_rent", amount_cents=-3000, business_date="2026-08-15"
+    )
+    response = mc.get("/m/finance/history", headers=_HX)
+    assert response.status_code == 200
+    assert "15.08.2026" in response.text
+    assert "задним числом" in response.text
+
+    record_cash_movement(session, category="sale", amount_cents=100)
+    same_day_only = mc.get("/m/finance/history?bucket=sale", headers=_HX)
+    assert "задним числом" not in same_day_only.text
 
 
 def test_web_cash_history_escapes_note(client, session):

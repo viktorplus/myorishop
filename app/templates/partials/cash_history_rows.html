@@ -40,9 +40,30 @@
         </td>
       </tr>
       {% else %}
-      {% for mv in rows %}
+      {% for r in rows %}
+      {% set mv = r.mv %}
       <tr>
-        <td>{{ mv.created_at | local_dt }}</td>
+        {# WR-01 (33-REVIEW iteration 3): the PRIMARY date is the business date,
+           the entry timestamp becomes a muted SECOND LINE, and only when the two
+           differ. Byte-for-byte the same shape partials/history_rows.html
+           already ships, deliberately — the cash ledger and the operation ledger
+           must not teach the operator two different reading rules. The flag is
+           computed in finance.cash_history_view, never here: a template-side
+           marker cannot be filtered or counted.
+           `| ru_date` on business_day is mandatory — it is a String(10) and
+           `| local_dt` would build a naive datetime and print a bogus time.
+           A same-day row, and every `business_date IS NULL` row from a pre-0027
+           client, renders BYTE-IDENTICALLY to before this change. The marker is
+           the RU WORDS, never colour alone (style.css:363-368 / 18-REVIEW
+           WR-03). #}
+        <td>
+          {%- if r.is_backdated -%}
+          {{ r.business_day | ru_date }}<br>
+          <span class="muted">задним числом · внесено {{ mv.created_at | local_dt }}</span>
+          {%- else -%}
+          {{ mv.created_at | local_dt }}
+          {%- endif -%}
+        </td>
         {# D-01b: RU label from the CASH_CATEGORIES global; fall back to the raw
            key if a legacy/unknown category ever appears. Autoescape only. #}
         <td>{{ CASH_CATEGORIES.get(mv.category, mv.category) }}</td>
