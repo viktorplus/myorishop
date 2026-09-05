@@ -139,11 +139,20 @@ def test_revision_ids_are_fixed_width():
     the exact silent-data-loss window plan 33-01 exists to close. Nothing else
     in the repo enforces the shape, so this regex is the enforcement.
 
-    Baseline today: 26 revision files, `0001` ... `0026`. Migration 0027 and
-    everything after it are covered automatically by the glob.
+    Baseline today: 27 revision files, `0001` ... `0027`. Everything after them
+    is covered automatically by the glob.
+
+    WR-07 (33-REVIEW): the glob is `*.py`, NOT `[0-9]*.py`. Alembic's default
+    template names a revision file `<rev>_<slug>.py`, so
+    `alembic revision -m "..."` with an auto-generated hex id produces e.g.
+    `a1b2c3d4e5f6_add_thing.py` — which `[0-9]*.py` does not match and which
+    therefore contributed NOTHING to `paths`. The `>=` floor still passed
+    because the numbered files are all still there, so the one case this test
+    is written for was the one case it silently skipped. Globbing everything
+    and letting the regex do the work is the enforcement the docstring claims.
     """
-    paths = sorted(_VERSIONS_DIR.glob("[0-9]*.py"))
-    assert len(paths) >= 26, f"revision glob found only {len(paths)} files"
+    paths = sorted(p for p in _VERSIONS_DIR.glob("*.py") if p.name != "__init__.py")
+    assert len(paths) >= 27, f"revision glob found only {len(paths)} files"
 
     for path in paths:
         source = path.read_text(encoding="utf-8")
