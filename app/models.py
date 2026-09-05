@@ -390,30 +390,33 @@ class Operation(Base):
     )
     # Phase 33 (REV-*): nullable self-link to the operation this row reverses
     # (сторно). Ships UNUSED but TRIGGER-GUARDED in Phase 33 — nothing writes it
-    # yet; Phase 34 is the first phase that WRITES it. Bare native column in
-    # migration 0027 (no DB-level FK — the sale_id/batch_id/author_id
-    # precedent); the ORM ForeignKey here gives merge insert-ordering +
-    # PostgreSQL portability, so a reversal whose target has not arrived yet
-    # renders as a dangling link instead of rolling back an entire push.
+    # yet; Phase 34 is the first phase that WRITES it.
     #
-    # IN-08 (33-REVIEW) — READ THIS BEFORE WRITING THE FIRST PHASE-34 TEST.
-    # The sentence above is true on an ALEMBIC-BUILT database (production, s1).
-    # It is FALSE on every test fixture: `tests/conftest.py` builds schema with
-    # `Base.metadata.create_all`, which emits the `REFERENCES operations(id)`
-    # clause from this ORM ForeignKey, and `app/db.py` sets
-    # `PRAGMA foreign_keys=ON`. So a Phase-34 test that pushes a reversal whose
-    # TARGET has not arrived yet raises IntegrityError in the suite while
-    # succeeding in production — the opposite of the documented contract. The
-    # divergence is in the false-RED direction (a test fails that production
-    # would not), which is the better of the two, and it follows the
-    # pre-existing `sale_id`/`batch_id`/`author_id` precedent, so nothing is
-    # changed here. Phase 34 must pick ONE before building a test around the
-    # dangling-link behaviour: drop this ORM ForeignKey (losing merge
-    # insert-ordering) or add the real FK in a follow-up revision.
-    reverses_op_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("operations.id", name="fk_operations_reverses_op_id_operations"),
-    )
+    # WR-07 (33-REVIEW iteration 3) — THE ORM ForeignKey WAS REMOVED. Do not
+    # re-add it without also adding the DB constraint. Migration 0027 adds a
+    # bare `sa.Column` on BOTH dialects (`:343,346`), while
+    # `Base.metadata.create_all` — the build path for every test fixture
+    # (`tests/conftest.py`) — emitted `REFERENCES operations(id)` from the
+    # ForeignKey, and `app/db.py` sets `PRAGMA foreign_keys=ON`. The suite
+    # therefore enforced a constraint production does not have on ANY dialect: a
+    # Phase-34 test pushing a reversal whose TARGET has not arrived yet would
+    # raise IntegrityError in CI while the identical push succeeds on s1 —
+    # "proving" a dangling-link behaviour production does not have, or forcing a
+    # Phase-34 author to weaken a test to make it pass.
+    #
+    # The «merge insert-ordering» this ForeignKey was documented as providing
+    # DID NOT EXIST: `merge._LEDGER_INSERT_ORDER` / `_REFERENCE_INSERT_ORDER`
+    # are hardcoded tuples of KINDS, not derived from ORM metadata, and this is
+    # a SELF-link — both rows land in the same bulk insert of the same kind, so
+    # no kind ordering could ever satisfy it. Removing it costs nothing and
+    # makes the two schema paths agree.
+    #
+    # The alternative — adding the real constraint in a revision `0028` — was
+    # rejected as the more expensive one: on SQLite it needs a table rebuild,
+    # which 0027's own Pitfall 3 says would drop all four append-only triggers.
+    # A later phase may still add it on PostgreSQL via `op.create_foreign_key`;
+    # `models.py` must move in the SAME commit if it does.
+    reverses_op_id: Mapped[str | None] = mapped_column(String(36))
     # Phase 25 (USER-05): nullable link to the User who authored this row.
     # Mirrors batch_id — bare native column in migration 0017 (no inline DB-FK,
     # the sale_id/batch_id precedent); the ORM ForeignKey gives insert ordering
@@ -569,22 +572,12 @@ class CashMovement(Base):
     )
     # Phase 33 (REV-*): nullable self-link to the cash movement this row
     # reverses (сторно). Ships UNUSED but TRIGGER-GUARDED in Phase 33 — nothing
-    # writes it yet; Phase 34 is the first phase that WRITES it. Bare native
-    # column in migration 0027 (no DB-level FK — the sale_id/author_id
-    # precedent); the ORM ForeignKey gives merge insert-ordering + PostgreSQL
-    # portability, so a reversal whose target has not arrived yet renders as a
-    # dangling link instead of rolling back an entire push.
-    # IN-08 (33-REVIEW): the SAME create_all-vs-Alembic divergence documented in
-    # full on `Operation.reverses_op_id` applies here — `create_all` emits this
-    # ForeignKey, Alembic 0027 does not, so the suite enforces a constraint
-    # production does not have. Decide both columns together in Phase 34.
-    reverses_movement_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey(
-            "cash_movements.id",
-            name="fk_cash_movements_reverses_movement_id_cash_movements",
-        ),
-    )
+    # writes it yet; Phase 34 is the first phase that WRITES it.
+    # WR-07 (33-REVIEW iteration 3): the ORM ForeignKey was REMOVED here for the
+    # same reason and in the same commit as `Operation.reverses_op_id` — read
+    # the full rationale there. Both columns were decided together, as the
+    # review asked, and BEFORE Phase 34 writes its first reversal.
+    reverses_movement_id: Mapped[str | None] = mapped_column(String(36))
     # Phase 25 (USER-05): nullable link to the authoring User. Mirrors sale_id —
     # bare native column in migration 0017; ORM ForeignKey for insert ordering +
     # PostgreSQL portability. NULL for pre-auth rows (never backfilled). The

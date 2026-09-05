@@ -128,6 +128,51 @@ def test_downgrade_upgrade_roundtrip_preserves_triggers(alembic_engine, run_alem
     assert _live_triggers(alembic_engine) == _declared_triggers()
 
 
+def test_create_all_emits_no_foreign_key_the_migrations_do_not_create():
+    """WR-07 (33-REVIEW iteration 3): the two schema build paths must AGREE.
+
+    `Base.metadata.create_all` builds every test fixture; Alembic builds
+    production. Migration 0027 adds the two reversal columns as bare
+    `sa.Column`s on BOTH dialects (`:343,346`), while the ORM used to declare a
+    `ForeignKey` on each — and `app/db.py` sets `PRAGMA foreign_keys=ON`. The
+    suite therefore ENFORCED a constraint production does not have, in the
+    false-RED direction: a Phase-34 test pushing a reversal whose target row has
+    not arrived yet would raise IntegrityError in CI while the identical push
+    succeeds on s1.
+
+    Asserted against the compiled DDL rather than against the model source, so
+    the check cannot be satisfied by a comment. Scoped to the two REVERSAL
+    columns only: `sale_id` / `batch_id` / `author_id` carry the same
+    ORM-FK-without-a-DB-FK shape and are pre-existing, deliberate, and NOT
+    touched here.
+    """
+    from sqlalchemy.dialects import sqlite
+    from sqlalchemy.schema import CreateTable
+
+    from app.models import CashMovement, Operation
+
+    ops_ddl = str(CreateTable(Operation.__table__).compile(dialect=sqlite.dialect()))
+    cash_ddl = str(CreateTable(CashMovement.__table__).compile(dialect=sqlite.dialect()))
+
+    # The columns themselves exist…
+    assert "reverses_op_id" in ops_ddl
+    assert "reverses_movement_id" in cash_ddl
+    # …and neither carries a REFERENCES clause, matching 0027 exactly.
+    assert "fk_operations_reverses_op_id_operations" not in ops_ddl
+    assert "fk_cash_movements_reverses_movement_id_cash_movements" not in cash_ddl
+    for ddl, column in ((ops_ddl, "reverses_op_id"), (cash_ddl, "reverses_movement_id")):
+        for line in ddl.splitlines():
+            if column in line:
+                assert "REFERENCES" not in line.upper(), line
+
+    # The 0027 source really does add them bare — pinned so the two halves of
+    # this contract can never drift apart silently.
+    source = (_VERSIONS_DIR / "0027_ledger_business_date_and_reversal_links.py").read_text(
+        encoding="utf-8"
+    )
+    assert "create_foreign_key" not in source
+
+
 def test_revision_ids_are_fixed_width():
     """VA-7 (D-04): every revision / down_revision literal is a 4-digit string.
 
