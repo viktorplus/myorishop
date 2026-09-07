@@ -66,3 +66,16 @@ def public_office_receipt_report():
     if not RECEIPT_FILE.is_file():
         raise HTTPException(status_code=404, detail="page not found")
     return FileResponse(RECEIPT_FILE, media_type="text/html; charset=utf-8")
+
+
+# Отчёт по приходу 1735 шт на склад «Офис» 07.09.2026. Режим тот же: статический
+# файл, никаких запросов к базе и никаких параметров запроса.
+RECEIPT_SEP07_PATH = "/code/report/office-receipt-2026-09-07"
+RECEIPT_SEP07_FILE = Path("app/static/public/report-office-receipt-2026-09-07.html")
+
+
+@router.get(RECEIPT_SEP07_PATH, include_in_schema=False)
+def public_office_receipt_report_sep07():
+    if not RECEIPT_SEP07_FILE.is_file():
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(RECEIPT_SEP07_FILE, media_type="text/html; charset=utf-8")

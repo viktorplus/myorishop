@@ -47,6 +47,7 @@ PUBLIC_PATHS = {
     "/code/report/office-import-2026-09-02",
     "/code/report/unknown-codes-2026-09-02",
     "/code/artifact/143c5a2c-d93f-4361-ae44-0059c828962a",
+    "/code/report/office-receipt-2026-09-07",
 }
 
 # SYNC-09 / threat T-28-03: the token-authenticated sync tree bypass.

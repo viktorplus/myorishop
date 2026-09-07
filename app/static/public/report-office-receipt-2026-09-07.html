@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Приход на склад Офис, 7 сентября 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    /* neutrals biased warm, like the paper the sheets were written on */
+    --paper:      #FAF8F4;
+    --surface:    #FFFFFF;
+    --ink:        #1C1E24;
+    --muted:      #6B6E77;
+    --rule:       #E4E0D7;
+    --rule-soft:  #EFECE5;
+    /* accent: the dark-blue ballpoint the inventory was written in */
+    --pen:        #29387E;
+    --pen-soft:   #EAECF6;
+    /* semantic — separate from the accent */
+    --ok:         #2B6B4F;
+    --ok-soft:    #E6F0EA;
+    --warn:       #8C6415;
+    --warn-soft:  #F6EFDF;
+    --bad:        #9C382C;
+    --bad-soft:   #F7E8E5;
+
+    --measure: 68ch;
+    --rail: 62rem;
+    color-scheme: light dark;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #16181D;
+      --surface:   #1D2027;
+      --ink:       #E9E7E1;
+      --muted:     #9CA0AA;
+      --rule:      #333844;
+      --rule-soft: #262A33;
+      --pen:       #93A6EE;
+      --pen-soft:  #232941;
+      --ok:        #74C79C;
+      --ok-soft:   #1D2C26;
+      --warn:      #D5AC5C;
+      --warn-soft: #2C2619;
+      --bad:       #E1897C;
+      --bad-soft:  #2E1F1D;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #16181D;
+    --surface:   #1D2027;
+    --ink:       #E9E7E1;
+    --muted:     #9CA0AA;
+    --rule:      #333844;
+    --rule-soft: #262A33;
+    --pen:       #93A6EE;
+    --pen-soft:  #232941;
+    --ok:        #74C79C;
+    --ok-soft:   #1D2C26;
+    --warn:      #D5AC5C;
+    --warn-soft: #2C2619;
+    --bad:       #E1897C;
+    --bad-soft:  #2E1F1D;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: var(--rail);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pen);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: Literata, Georgia, "Times New Roman", serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    max-width: var(--measure);
+    color: var(--muted);
+    font-size: 1.0625rem;
+    margin: 0;
+  }
+
+  .meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.75rem 2rem;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 1rem 0;
+    margin: 0.5rem 0 0;
+  }
+  .meta div { display: flex; flex-direction: column; gap: 0.15rem; }
+  .meta dt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .meta dd { margin: 0; font-size: 0.9375rem; }
+  .meta code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.875em; }
+
+  /* ---------- headline figures ---------- */
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .figure {
+    background: var(--surface);
+    padding: 1.25rem 1.25rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .figure .n {
+    font-family: Literata, Georgia, serif;
+    font-size: 2.125rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .figure .n.accent { color: var(--pen); }
+  .figure .k { font-size: 0.8125rem; color: var(--muted); }
+
+  /* ---------- sections ---------- */
+
+  section { display: flex; flex-direction: column; gap: 1rem; }
+
+  h2 {
+    font-family: Literata, Georgia, serif;
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+  }
+  h2 .num {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--pen);
+  }
+
+  h3 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 0.75rem 0 0;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+  p + p { margin-top: 0.65rem; }
+  .muted { color: var(--muted); font-size: 0.9375rem; }
+
+  ol, ul { max-width: var(--measure); margin: 0; padding-left: 1.25rem; }
+  li + li { margin-top: 0.45rem; }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.875em;
+    background: var(--rule-soft);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- tables ---------- */
+
+  .scroll { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+  }
+  caption {
+    text-align: left;
+    color: var(--muted);
+    font-size: 0.875rem;
+    padding-bottom: 0.5rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.55rem 0.9rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    white-space: nowrap;
+  }
+  th {
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+  }
+  td.name, th.name { white-space: normal; min-width: 16rem; }
+  td.num, th.num { text-align: right; padding-right: 0; font-family: "IBM Plex Mono", monospace; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.total td { border-top: 1px solid var(--rule); border-bottom: none; font-weight: 600; }
+  td.code { font-family: "IBM Plex Mono", monospace; }
+
+  .delta { font-family: "IBM Plex Mono", monospace; font-size: 0.8125rem; color: var(--pen); }
+
+  /* ---------- expiry bar ---------- */
+
+  .bar {
+    display: flex;
+    height: 2.5rem;
+    border: 1px solid var(--rule);
+    overflow: hidden;
+  }
+  .bar span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8125rem;
+  }
+  .bar .s-ok  { background: var(--ok-soft);   color: var(--ok);   }
+  .bar .s-non { background: var(--warn-soft); color: var(--warn); }
+  .bar .s-bad { background: var(--bad-soft);  color: var(--bad);  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+  .legend b { font-weight: 500; color: var(--ink); }
+  .swatch {
+    display: inline-block;
+    width: 0.7rem; height: 0.7rem;
+    margin-right: 0.4rem;
+    vertical-align: -1px;
+  }
+  .sw-ok  { background: var(--ok);   }
+  .sw-non { background: var(--warn); }
+  .sw-bad { background: var(--bad);  }
+
+  /* ---------- callout ---------- */
+
+  .note {
+    border-left: 3px solid var(--pen);
+    background: var(--pen-soft);
+    padding: 0.9rem 1.1rem;
+    max-width: var(--measure);
+  }
+  .note p { max-width: none; }
+  .note .lbl {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pen);
+    display: block;
+    margin-bottom: 0.3rem;
+  }
+
+  .checks { display: flex; flex-direction: column; gap: 0.9rem; max-width: var(--measure); }
+  .check { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.7rem; }
+  .check .mark { color: var(--ok); font-family: "IBM Plex Mono", monospace; grid-row: span 2; }
+  .check .t { font-weight: 600; font-size: 0.9375rem; }
+  .check .d { color: var(--muted); font-size: 0.9375rem; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+    max-width: var(--measure);
+  }
+
+  @media (max-width: 30rem) {
+    .page { padding: 2rem 1rem 3.5rem; gap: 2.5rem; }
+    th, td { padding-right: 0.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">MyOriShop · журнал складских операций</p>
+    <h1>Приход на склад «Офис», 7 сентября 2026</h1>
+    <p class="standfirst">
+      35 рукописных листов распознаны, сверены со справочником и записаны
+      в боевую базу одним приходом. Импорт проведён — цифры ниже сняты
+      с базы после записи.
+    </p>
+
+    <dl class="meta">
+      <div>
+        <dt>Источник</dt>
+        <dd>35 листов, <code>IMG_7797…IMG_7831</code></dd>
+      </div>
+      <div>
+        <dt>Файл импорта</dt>
+        <dd><code>оприходование-2026-09-07.csv</code></dd>
+      </div>
+      <div>
+        <dt>База</dt>
+        <dd>s1 · PostgreSQL · склад «Офис»</dd>
+      </div>
+      <div>
+        <dt>Статус</dt>
+        <dd>записано 07.09.2026</dd>
+      </div>
+    </dl>
+  </header>
+
+  <div class="figures">
+    <div class="figure"><span class="n accent">1735</span><span class="k">штук оприходовано</span></div>
+    <div class="figure"><span class="n">493</span><span class="k">строки прихода</span></div>
+    <div class="figure"><span class="n">243</span><span class="k">уникальных кода</span></div>
+    <div class="figure"><span class="n">18</span><span class="k">мест хранения</span></div>
+  </div>
+
+  <section>
+    <h2><span class="num">01</span> Как легли 493 строки</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="name">Случай</th><th class="num">Строк</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Новая партия</td><td class="num">405</td></tr>
+          <tr><td class="name">Долив в партию, которая уже лежала на складе</td><td class="num">88</td></tr>
+          <tr class="total"><td class="name">Итого</td><td class="num">493</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">
+      Новых карточек товара заведено <b>199</b> — это коды, которых в базе
+      ещё не было. Ключ партии — код плюс год-месяц срока годности: совпал —
+      количество прибавляется к существующей партии, срок другой — заводится
+      новая.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span> База до и после</h2>
+    <div class="scroll">
+      <table>
+        <caption>Вся база s1</caption>
+        <thead><tr><th class="name">Показатель</th><th class="num">До</th><th class="num">После</th><th class="num">Изменение</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Товары</td><td class="num">592</td><td class="num">791</td><td class="num delta">+199</td></tr>
+          <tr><td class="name">Партии</td><td class="num">837</td><td class="num">1242</td><td class="num delta">+405</td></tr>
+          <tr><td class="name">Операции в журнале</td><td class="num">1504</td><td class="num">2196</td><td class="num delta">+692</td></tr>
+          <tr><td class="name">Справочник</td><td class="num">12&thinsp;582</td><td class="num">12&thinsp;582</td><td class="num delta">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <caption>Склад «Офис»</caption>
+        <thead><tr><th class="name">Показатель</th><th class="num">До</th><th class="num">После</th><th class="num">Изменение</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Товаров</td><td class="num">590</td><td class="num">789</td><td class="num delta">+199</td></tr>
+          <tr><td class="name">Партий</td><td class="num">835</td><td class="num">1240</td><td class="num delta">+405</td></tr>
+          <tr><td class="name">Штук</td><td class="num">5401</td><td class="num">7136</td><td class="num delta">+1735</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="muted">
+      Сверка сходится по всем осям: прирост товаров равен числу новых карточек,
+      прирост партий — числу новых партий, прирост штук — объёму прихода.
+      Прирост операций 692 = 493 прихода + 199 созданий карточек. Остальные
+      склады не тронуты. После записи сайт отвечает
+      <code>{"version":"1.132","status":"ok"}</code>.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span> Разбивка по местам хранения</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="name">Место</th><th class="num">Кодов</th><th class="num">Строк</th><th class="num">Штук</th></tr></thead>
+        <tbody>
+          <tr><td class="name">полка 3</td><td class="num">11</td><td class="num">19</td><td class="num">112</td></tr>
+          <tr><td class="name">полка 4</td><td class="num">26</td><td class="num">48</td><td class="num">108</td></tr>
+          <tr><td class="name">полка 5</td><td class="num">12</td><td class="num">19</td><td class="num">29</td></tr>
+          <tr><td class="name">полка 6</td><td class="num">22</td><td class="num">36</td><td class="num">92</td></tr>
+          <tr><td class="name">полка 7</td><td class="num">19</td><td class="num">32</td><td class="num">73</td></tr>
+          <tr><td class="name">полка 10</td><td class="num">14</td><td class="num">25</td><td class="num">155</td></tr>
+          <tr><td class="name">полка 11</td><td class="num">8</td><td class="num">14</td><td class="num">91</td></tr>
+          <tr><td class="name">полка 12</td><td class="num">15</td><td class="num">34</td><td class="num">98</td></tr>
+          <tr><td class="name">полка 13</td><td class="num">3</td><td class="num">7</td><td class="num">120</td></tr>
+          <tr><td class="name">полка 14</td><td class="num">21</td><td class="num">33</td><td class="num">99</td></tr>
+          <tr><td class="name">полка 17</td><td class="num">10</td><td class="num">27</td><td class="num">83</td></tr>
+          <tr><td class="name">полка 18</td><td class="num">32</td><td class="num">48</td><td class="num">89</td></tr>
+          <tr><td class="name">полка 19</td><td class="num">15</td><td class="num">21</td><td class="num">90</td></tr>
+          <tr><td class="name">полка 20</td><td class="num">10</td><td class="num">13</td><td class="num">41</td></tr>
+          <tr><td class="name">полка 23</td><td class="num">25</td><td class="num">30</td><td class="num">80</td></tr>
+          <tr><td class="name">полка 25</td><td class="num">21</td><td class="num">33</td><td class="num">69</td></tr>
+          <tr><td class="name">полка 63</td><td class="num">13</td><td class="num">28</td><td class="num">104</td></tr>
+          <tr><td class="name">под зеркалом</td><td class="num">15</td><td class="num">26</td><td class="num">202</td></tr>
+          <tr class="total"><td class="name">Итого</td><td class="num">243</td><td class="num">493</td><td class="num">1735</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span> Крупнейшие позиции</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="num">Код</th><th class="name">Наименование</th><th class="num">Штук</th></tr></thead>
+        <tbody>
+          <tr><td class="code num">43054</td><td class="name">Освежающий гель для интимной гигиены feminelle (рефил)</td><td class="num">82</td></tr>
+          <tr><td class="code num">41264</td><td class="name">Бодрящий гель для душа с кокосовой водой и дыней love nature</td><td class="num">65</td></tr>
+          <tr><td class="code num">41354</td><td class="name">Шампунь для жирных волос с лимоном и мятой love nature</td><td class="num">65</td></tr>
+          <tr><td class="code num">41341</td><td class="name">Крем для рук с розовым грейпфрутом love nature</td><td class="num">65</td></tr>
+          <tr><td class="code num">45819</td><td class="name">Питательный крем для рук и тела milk &amp; honey gold</td><td class="num">52</td></tr>
+          <tr><td class="code num">46219</td><td class="name">Мини-крем для рук</td><td class="num">43</td></tr>
+          <tr><td class="code num">47203</td><td class="name">Крем для рук spring song</td><td class="num">40</td></tr>
+          <tr><td class="code num">47204</td><td class="name">Мыло spring song</td><td class="num">40</td></tr>
+          <tr><td class="code num">47205</td><td class="name">Гель для душа spring song</td><td class="num">40</td></tr>
+          <tr><td class="code num">44956</td><td class="name">Шампунь для защиты цвета duologi</td><td class="num">37</td></tr>
+          <tr><td class="code num">29900</td><td class="name">Ожерелье possess the secret</td><td class="num">31</td></tr>
+          <tr><td class="code num">43053</td><td class="name">Защитный гель для интимной гигиены feminelle (рефил)</td><td class="num">30</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span> Сроки годности</h2>
+    <div class="bar" role="img" aria-label="Из 1735 штук: 1010 годны, 60 без срока, 665 просрочены">
+      <span class="s-ok"  style="flex: 1010">1010</span>
+      <span class="s-non" style="flex: 60">60</span>
+      <span class="s-bad" style="flex: 665">665</span>
+    </div>
+    <div class="legend">
+      <span><i class="swatch sw-ok"></i><b>1010</b> годен на 07.09.2026</span>
+      <span><i class="swatch sw-non"></i><b>60</b> без срока</span>
+      <span><i class="swatch sw-bad"></i><b>665</b> просрочен</span>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <caption>Просрочка по годам, штук</caption>
+        <thead>
+          <tr>
+            <th class="num">2015</th><th class="num">2018</th><th class="num">2019</th>
+            <th class="num">2020</th><th class="num">2021</th><th class="num">2022</th>
+            <th class="num">2023</th><th class="num">2024</th><th class="num">2025</th>
+            <th class="num">2026</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">1</td><td class="num">2</td><td class="num">28</td>
+            <td class="num">20</td><td class="num">23</td><td class="num">30</td>
+            <td class="num">49</td><td class="num">69</td><td class="num">115</td>
+            <td class="num">328</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="muted">
+      2026 — только месяцы до сентября. Просрочка оприходована как есть:
+      это учёт факта на полке, а не разрешение к продаже. Списание —
+      отдельная операция. Проверка: 1010 + 60 + 665 = 1735.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span> Что решал оператор</h2>
+    <p>
+      Четыре позиции нельзя было закрыть распознаванием. Решения приняты
+      оператором и применены до импорта — ни одно не угадано.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="name">Вопрос</th><th class="name">Решение</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="name">Склад назначения</td>
+            <td class="name">«Офис»</td>
+          </tr>
+          <tr>
+            <td class="name"><code>IMG_7799</code>, код 43054: итог исправлен поверх (<code>35→40</code>, «+7»), в разбивке зачёркнуто число</td>
+            <td class="name">80 шт со сроком 02/27 и 2 шт со сроком 12/27</td>
+          </tr>
+          <tr>
+            <td class="name"><code>IMG_7804</code>, код 43624: итог 2, а разбивка давала 5 (<code>1 − 08/25</code>, <code>4 − 10/25</code>)</td>
+            <td class="name">1 + 1, итого 2</td>
+          </tr>
+          <tr>
+            <td class="name"><code>IMG_7824</code>, код 43081: в справочнике Oriflame такого кода нет</td>
+            <td class="name">Код оставить, название — «Универсальный крем для лица и тела Cranberry Bliss (с ароматом клюквы), 150 мл»</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="lbl">Собственный код</span>
+      <p>
+        <code>43081</code> заведён как собственный код оператора: в справочник
+        Oriflame он НЕ добавлен, каталожной цены для него нет — она будет
+        определена при продаже или внесена в карточку позже.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">07</span> Примечания по этому добавлению</h2>
+
+    <h3>Полки перечисляются, а не заменяют друг друга</h3>
+    <p>
+      Если один и тот же код с одним и тем же месяцем срока лежит на нескольких
+      местах, это ОДНА партия, а места накапливаются: первое попадает в поле
+      «Размещение», каждое следующее дописывается в примечание партии через
+      «<code>; </code>». Ни одно не затирает предыдущее; сравнение идёт по частям,
+      поэтому «полка 4» никогда не считается уже присутствующей внутри
+      «полка 47». Таких партий в этом приходе <b>35</b>.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="num">Код</th><th class="num">Месяц</th><th class="num">Всего</th><th class="name">Откуда собрано</th></tr></thead>
+        <tbody>
+          <tr><td class="code num">41264</td><td class="num">01/26</td><td class="num">62</td><td class="name">полка 11 (30), полка 6 (28), полка 7 (3), полка 3 (1)</td></tr>
+          <tr><td class="code num">45819</td><td class="num">05/26</td><td class="num">34</td><td class="name">полка 19 (16 + 3), полка 25 (15)</td></tr>
+          <tr><td class="code num">44956</td><td class="num">05/27</td><td class="num">25</td><td class="name">полка 4 (17), полка 5 (4), полка 7 (3), полка 11 (1)</td></tr>
+          <tr><td class="code num">41362</td><td class="num">01/29</td><td class="num">13</td><td class="name">под зеркалом (11), полка 7 (2)</td></tr>
+          <tr><td class="code num">44966</td><td class="num">06/26</td><td class="num">13</td><td class="name">полка 4 (12), полка 3 (1)</td></tr>
+          <tr><td class="code num">45819</td><td class="num">04/27</td><td class="num">13</td><td class="name">полка 19 (8), полка 25 (5)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">
+      Ещё 11 случаев, когда код с одним месяцем встретился дважды на ОДНОЙ
+      полке (<code>41354 10/26</code> на полке 3: 30 + 2 + 32 = 64 шт; тройка
+      <code>47203</code>/<code>47204</code>/<code>47205</code> на полке 13) —
+      они тоже сливаются в одну партию, место при этом одно.
+    </p>
+
+    <h3>Предупреждение импорта</h3>
+    <p>
+      Строка 267, код <code>34022</code>: на складе уже лежало несколько партий
+      за 2022-05, долив ушёл в самую раннюю (2022-05-18). Это штатное правило
+      разрешения неоднозначности, но если 2 шт должны были лечь в другую
+      партию — партию правят руками.
+    </p>
+
+    <h3>Исправления на листах, восстановленные по контрольной сумме</h3>
+    <ul>
+      <li>
+        <code>IMG_7822</code>: строка <code>34024 · 28 · 02/26</code> зачёркнута
+        целиком — не оприходована. Такая же строка есть на <code>IMG_7819</code>
+        (полка 12), то есть снят дубль.
+      </li>
+      <li>
+        <code>IMG_7802</code>, <code>44960</code>: итог переправлен, вторая
+        строка срока (<code>1 − 11/27</code>) зачёркнута — записано 1 шт
+        со сроком 12/27.
+      </li>
+      <li>
+        <code>IMG_7815</code>, <code>47205</code> (13 шт): месяц переписан
+        поверх, принято 10/28 — на том же листе тот же код уже идёт с 10/28.
+      </li>
+      <li>
+        <code>IMG_7797</code>, <code>32004</code>: итог замазан, восстановлен
+        по единственной строке разбивки — 1 шт, 06/22.
+      </li>
+    </ul>
+
+    <h3>Прочее</h3>
+    <ul>
+      <li>
+        <b>Сроки 2029 года</b> — впервые в описях: <code>41362 01/29</code>,
+        <code>42314 03/29</code>, <code>42317 02/29</code>,
+        <code>46964 02/29</code>, <code>47702 01/29</code>. Для товара
+        2026 года это нормально.
+      </li>
+      <li>
+        <b>Товар без срока (60 шт)</b> — ожерелье <code>29900</code> (31),
+        спрей-автозагар <code>23377</code> (17), мыльница <code>48565</code> (4),
+        шампунь <code>32621</code> (3) и мелочь. Партии легли с пустым сроком;
+        пустой срок совпадает только с пустым.
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span> Как проверялось распознавание</h2>
+    <div class="checks">
+      <div class="check">
+        <span class="mark">✓</span>
+        <span class="t">Контрольная сумма листа</span>
+        <span class="d">
+          Итог у кода обязан равняться сумме разбивки «кол-во − ММ/ГГ».
+          Сошлась на всех листах, кроме двух строк — обе вынесены оператору
+          и не угаданы.
+        </span>
+      </div>
+      <div class="check">
+        <span class="mark">✓</span>
+        <span class="t">Сверка со справочником</span>
+        <span class="d">
+          242 из 243 кодов нашлись в справочнике на 12 582 записи, и названия
+          принадлежат одной товарной группе: гели для душа, кремы для рук,
+          шампуни, средства feminelle. Ошибка в цифре почти наверняка дала бы
+          либо несуществующий код, либо название не из этой группы.
+        </span>
+      </div>
+      <div class="check">
+        <span class="mark">✓</span>
+        <span class="t">Цены</span>
+        <span class="d">
+          Для всех 242 кодов справочника нашлась каталожная цена. Единственный
+          код без цены — собственный <code>43081</code>.
+        </span>
+      </div>
+      <div class="check">
+        <span class="mark">✓</span>
+        <span class="t">Сухой прогон перед записью</span>
+        <span class="d">
+          Дал ровно те же 493 строки, 1735 штук, 199 карточек, 405 партий
+          и 88 доливов, что и запись.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">09</span> Безопасность операции</h2>
+    <ul>
+      <li>
+        Перед записью снята копия базы:
+        <code>/opt/myorishop/backups/myorishop-2026-09-07-pre-import.dump</code>,
+        11 665 514 байт, sha256 <code>e0a79f0f…b97e3d97</code>. Архив проверен
+        <code>pg_restore --list</code>: 15 таблиц с данными.
+      </li>
+      <li>
+        Импорт пишет только через сервис <code>register_receipt</code> —
+        прямых INSERT в товары, партии и журнал в скрипте нет.
+      </li>
+      <li>
+        Импорт <b>не идемпотентен</b>: повторный запуск с <code>--apply</code>
+        добавит всё второй раз. Отката нет — только восстановление из дампа.
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">10</span> Что осталось</h2>
+    <ol>
+      <li>
+        665 просроченных штук: если часть подлежит списанию, это отдельная
+        операция — приход её не заменяет.
+      </li>
+      <li>
+        Код <code>43081</code> живёт как собственный, без каталожной цены —
+        задать её при первой продаже или внести в карточку.
+      </li>
+      <li>
+        Партия <code>34022</code> за 2022-05 — проверить, в ту ли из нескольких
+        партий ушёл долив.
+      </li>
+    </ol>
+  </section>
+
+  <footer>
+    Отчёт собран из файла импорта
+    <code>reports/оприходование-2026-09-07.csv</code> и снимков боевой базы s1
+    до и после записи. Ни одна цифра не введена руками.
+  </footer>
+
+</div>
+
+</body>
+</html>
