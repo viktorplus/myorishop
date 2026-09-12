@@ -43,11 +43,7 @@ PUBLIC_PATHS = {
     "/logout",
     "/setup",
     "/health",
-    "/code/artifact/0ac2f0bf-4df3-4de0-864a-b87d09e87305",
-    "/code/report/office-import-2026-09-02",
-    "/code/report/unknown-codes-2026-09-02",
-    "/code/artifact/143c5a2c-d93f-4361-ae44-0059c828962a",
-    "/code/report/office-receipt-2026-09-07",
+    "/otchet-prihodov",
 }
 
 # SYNC-09 / threat T-28-03: the token-authenticated sync tree bypass.
