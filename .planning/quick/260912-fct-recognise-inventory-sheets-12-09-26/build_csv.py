@@ -230,6 +230,10 @@ CHECK = {
 }
 
 NO_EXPIRY_MARKERS = {"бу", "без", "нет"}
+# «бу» is a CONDITION marker, not an expiry: the operator confirmed on 2026-09-12
+# that it means «бывшее в употреблении». It goes into the comment column after
+# the shelf, which makes the importer open a fresh batch and forbid a top-up.
+CONDITION_MARKERS = {"бу": "б/у"}
 
 
 def expiry_iso(written: str) -> str:
@@ -260,8 +264,10 @@ def main() -> None:
                 missing.append((src, code))
                 name = ""
             for qty, written in parts:
+                condition = CONDITION_MARKERS.get(written, "")
+                comment = f"полка {shelf}, {condition}" if condition else f"полка {shelf}"
                 w.writerow([shelf, code, name, qty, expiry_iso(written), written,
-                            f"полка {shelf}", src, CHECK.get((src, code), "")])
+                            comment, src, CHECK.get((src, code), "")])
                 rows += 1
                 units += qty
 
