@@ -245,7 +245,10 @@
   }
   td.name, th.name { white-space: normal; min-width: 15rem; }
   td.wrap, th.wrap { white-space: normal; min-width: 18rem; }
-  td.num, th.num { text-align: right; padding-right: 0; font-family: "IBM Plex Mono", monospace; }
+  td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; }
+  /* правый отступ снимаем только у последней колонки — иначе код
+     упирается в название соседней ячейки */
+  td.num:last-child, th.num:last-child { padding-right: 0; }
   tbody tr:last-child td { border-bottom: none; }
   tr.total td { border-top: 1px solid var(--rule); border-bottom: none; font-weight: 600; }
   td.code { font-family: "IBM Plex Mono", monospace; }
