@@ -261,11 +261,13 @@ UNKNOWN_HINT = {
     "19140": "САМ КОД ПОМЕЧЕН НА ЛИСТЕ «???»; ПОДПИСЬ НА ЛИСТЕ: SWEDISH NOURISHING SPA FOOT MASK",
 }
 
+# «бу» here is a MISREADING of «без», corrected 2026-09-13: in this hand «е» is
+# tiny and «з» drops a long loop, so «без» looks like «бу». Proven by comparing
+# the glyph with the same word on IMG_7752 of the August sheets, where it sits
+# beside expiry dates as the plain «no expiry» marker. The value is kept
+# verbatim in the «Срок (как в записи)» column, as every other marker is.
 NO_EXPIRY_MARKERS = {"бу", "без", "нет"}
-# «бу» is a CONDITION marker, not an expiry: the operator confirmed on 2026-09-12
-# that it means «бывшее в употреблении». It goes into the comment column after
-# the shelf, which makes the importer open a fresh batch and forbid a top-up.
-CONDITION_MARKERS = {"бу": "б/у"}
+CONDITION_MARKERS: dict[str, str] = {}
 
 
 def expiry_iso(written: str) -> str:
