@@ -24,6 +24,9 @@
 <form method="post" action="{% if product %}/products/{{ product.id }}{% else %}/products{% endif %}" class="stacked-form"
       hx-on::before-swap="if (event.detail.target.id === 'name-wrap'
         && document.getElementById('name').value.trim()) event.detail.shouldSwap = false">
+  {# CR-01 (review 260927-k1m): tells the update route the ₴/€ fields were
+     on this page, so an emptied one clears the stored price. #}
+  <input type="hidden" name="currency_prices_posted" value="1">
   <div class="field">
     <label for="code">Код</label>
     {# D-23: debounced dictionary autofill; the 204 guard (Pitfall 5) makes

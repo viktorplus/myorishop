@@ -1527,3 +1527,47 @@ def test_web_product_create_stores_currency_prices(client, session):
     created = session.scalars(select(Product).where(Product.code == "7272")).one()
     for field, cents in _CURRENCY_CENTS.items():
         assert getattr(created, field) == cents
+
+
+def test_web_product_form_empty_currency_price_clears_it(client, session):
+    """CR-01 (review 260927-k1m): an emptied ₴/€ field on the edit form clears
+    the stored price, like the RUB fields do. FastAPI turns a posted "" into
+    the field default, so the route decides "submitted" by the form's marker.
+    """
+    product, errors = create_product(session, **_base("7171"), **_CURRENCY_RAW)
+    assert errors == {}
+    page = client.get(f"/products/{product.id}/edit")
+    assert 'name="currency_prices_posted"' in page.text
+
+    response = client.post(
+        f"/products/{product.id}",
+        data=_web_form(
+            cost="", cost_uah="", min_sale_uah="", currency_prices_posted="1"
+        ),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    session.expire_all()
+    stored = get_product(session, product.id)
+    assert stored.cost_cents is None
+    assert stored.cost_uah_cents is None
+    assert stored.min_sale_uah_cents is None
+    assert stored.sale_uah_cents == 124950
+    assert stored.cost_eur_cents == 1434
+
+
+def test_web_product_update_without_marker_keeps_empty_currency_prices(client, session):
+    """CR-01: a POST without the form marker (an old cached page, another
+    caller) keeps "empty = not submitted = unchanged" for the ₴/€ prices."""
+    product, errors = create_product(session, **_base("7171"), **_CURRENCY_RAW)
+    assert errors == {}
+    response = client.post(
+        f"/products/{product.id}",
+        data=_web_form(cost_uah="", sale_eur=""),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    session.expire_all()
+    stored = get_product(session, product.id)
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(stored, field) == cents

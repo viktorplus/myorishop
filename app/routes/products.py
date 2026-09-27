@@ -311,16 +311,25 @@ def product_update(
     min_sale: str = Form(""),
     low_stock_threshold: str = Form(""),
     stale_days: str = Form(""),
-    # Quick 260927-k1m: None = the field was not posted (an old cached page)
-    # -> update_product leaves that UAH/EUR price unchanged.
-    cost_uah: str | None = Form(None),
-    sale_uah: str | None = Form(None),
-    min_sale_uah: str | None = Form(None),
-    cost_eur: str | None = Form(None),
-    sale_eur: str | None = Form(None),
-    min_sale_eur: str | None = Form(None),
+    cost_uah: str = Form(""),
+    sale_uah: str = Form(""),
+    min_sale_uah: str = Form(""),
+    cost_eur: str = Form(""),
+    sale_eur: str = Form(""),
+    min_sale_eur: str = Form(""),
+    currency_prices_posted: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    # CR-01 (review 260927-k1m): FastAPI turns a posted "" into the default, so
+    # an emptied field and an absent one look the same. The form's hidden
+    # currency_prices_posted marker says the six fields were on the page: an
+    # empty one then clears that price. Without the marker (an old cached page)
+    # an empty field is None = not submitted = update_product leaves it as is.
+    posted = currency_prices_posted == "1"
+    cost_uah, sale_uah, min_sale_uah, cost_eur, sale_eur, min_sale_eur = (
+        raw if raw or posted else None
+        for raw in (cost_uah, sale_uah, min_sale_uah, cost_eur, sale_eur, min_sale_eur)
+    )
     # D-01/Pitfall 4 (Phase 18 plan 02): update_product no longer accepts a
     # catalog_raw kwarg — see product_create's comment above.
     product, errors = update_product(
