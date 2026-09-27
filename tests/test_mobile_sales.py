@@ -1174,3 +1174,25 @@ def test_qty_price_step_uah_batch_fills_uah_price_and_ref(mobile_client_factory,
     session.commit()
     resp = client.post("/m/sales/step/qty-price", data=data)
     assert 'value="1300,00"' in resp.text
+
+
+def test_qty_price_step_labels_converted_card_price(mobile_client_factory, session, product):
+    """WR-01 (review 260927-k1m): mobile sale, same labels as desktop."""
+    product.sale_cents = 249900
+    uah = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(uah)
+    session.commit()
+    batch = _seed_batch(session, product, uah)
+    client = _client(mobile_client_factory)
+    data = {"code": product.code, "batch_id": batch.id}
+
+    resp = client.post("/m/sales/step/qty-price", data=data)
+    assert resp.status_code == 200
+    assert (
+        "Цена пересчитана из рублёвой (÷2) — уточните; изменение сохранится только в этой продаже."
+    ) in resp.text
+
+    product.sale_uah_cents = 130000
+    session.commit()
+    resp = client.post("/m/sales/step/qty-price", data=data)
+    assert "пересчитана" not in resp.text

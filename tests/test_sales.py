@@ -2031,3 +2031,32 @@ def test_web_sale_422_uah_batch_row_ref_cents_in_uah(client, session, product):
     )
     assert response.status_code == 422
     assert 'data-ref-cents="124950"' in response.text
+
+
+SALE_UAH_CONVERTED_HINT = (
+    "Цена пересчитана из рублёвой (÷2) — уточните; изменение сохранится только в этой продаже."
+)
+
+
+def test_web_sale_fills_label_converted_card_price(client, session, product):
+    """WR-01 (review 260927-k1m): a RUB/2 card suggestion in a UAH sale is
+    labelled as converted, not as a card price; a real UAH card price is not."""
+    product.sale_cents = 249900
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert SALE_UAH_CONVERTED_HINT in response.text
+
+    params = {"row": "", "batch_id": uah_batch.id, "code": product.code}
+    response = client.get("/sales/batch-pick", params=params)
+    assert SALE_UAH_CONVERTED_HINT in response.text
+
+    product.sale_uah_cents = 130000
+    session.commit()
+    response = client.get("/sales/batch-pick", params=params)
+    assert "пересчитана" not in response.text
+    assert "Цена подставлена из карточки товара" in response.text

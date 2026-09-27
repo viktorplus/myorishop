@@ -805,6 +805,7 @@ def test_lookup_prefill_catalog_source_dictionary_name_only(session):
         "source": "catalog",
         "name": "Тушь",
         "prices": {"cost": None, "catalog": None, "sale": None},
+        "converted": [],  # RUB: nothing converted (WR-01)
     }
 
 
@@ -819,6 +820,7 @@ def test_lookup_prefill_catalog_source_price_only(session):
         "source": "catalog",
         "name": None,
         "prices": {"cost": 900, "catalog": 1500, "sale": 1500},
+        "converted": [],  # RUB: nothing converted (WR-01)
     }
 
 
@@ -834,6 +836,7 @@ def test_lookup_prefill_catalog_source_combines_dictionary_and_price(session):
         "source": "catalog",
         "name": "Помада",
         "prices": {"cost": 1200, "catalog": 2000, "sale": 2000},
+        "converted": [],  # RUB: nothing converted (WR-01)
     }
 
 
@@ -1834,3 +1837,38 @@ def test_web_receipt_422_typed_values_stay_unmarked(client, session, product, wa
     for input_id in ("name", "cost", "sale"):
         assert 'data-autofilled="true"' not in _input_tag(response.text, input_id), input_id
     assert 'value="100,00"' in _input_tag(response.text, "cost")
+
+
+# --- Review 260927-k1m WR-01: converted suggestions are labelled -----------
+
+UAH_CONVERTED_HINT = "Цена пересчитана из рублёвой (÷2) — уточните."
+
+
+def test_lookup_prefill_reports_converted_fields(session, product):
+    _rub_priced(session, product)
+    product.sale_uah_cents = 120000
+    session.commit()
+    assert lookup_prefill(session, "TEST-001", currency="UAH")["converted"] == ["cost"]
+    assert lookup_prefill(session, "TEST-001")["converted"] == []
+    session.add(_catalog_price("42499", consumer=249900, consultant=143400))
+    session.commit()
+    assert lookup_prefill(session, "42499", currency="UAH")["converted"] == ["cost", "sale"]
+    assert lookup_prefill(session, "42499")["converted"] == []
+
+
+def test_web_lookup_labels_converted_price_distinctly(client, session, product, warehouse):
+    _rub_priced(session, product)
+    product.sale_uah_cents = 120000
+    session.commit()
+    uah = _uah_warehouse(session)
+    params = {"code": "TEST-001", "name": "", "cost": "", "sale": ""}
+
+    response = client.get("/receipts/lookup", params={**params, "warehouse_id": uah.id})
+    assert response.status_code == 200
+    cost_wrap = response.text.split('id="cost-wrap"', 1)[1].split('id="sale-wrap"', 1)[0]
+    sale_wrap = response.text.split('id="sale-wrap"', 1)[1]
+    assert UAH_CONVERTED_HINT in cost_wrap
+    assert "пересчитана" not in sale_wrap
+
+    response = client.get("/receipts/lookup", params={**params, "warehouse_id": warehouse.id})
+    assert "пересчитана" not in response.text

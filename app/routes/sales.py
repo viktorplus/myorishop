@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import DEFAULT_CURRENCY, card_price_suggestion, new_id
+from app.core import DEFAULT_CURRENCY, card_price_is_converted, card_price_suggestion, new_id
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
@@ -22,6 +22,7 @@ from app.services.sales import (
     non_blank_lines,
     recent_sales,
     register_sale,
+    sale_converted_fill_hint,
 )
 
 router = APIRouter()
@@ -240,6 +241,8 @@ def sale_lookup(
                             fill_price_hint = SALE_BATCH_FILL_HINT
                         else:
                             fill_price_cents = card_price_suggestion(product, "sale", currency)
+                            if card_price_is_converted(product, "sale", currency):
+                                fill_price_hint = sale_converted_fill_hint(currency)
 
     context = {
         "row": row,
@@ -340,7 +343,11 @@ def sale_batch_pick(
             # D-14: a legacy NULL-price batch falls back to the card sale price
             # in the batch warehouse's currency (RUB/2, RUB/100 suggestion).
             fill_price_cents = card_price_suggestion(product, "sale", currency)
-            fill_price_hint = SALE_CARD_FILL_HINT
+            fill_price_hint = (
+                sale_converted_fill_hint(currency)
+                if card_price_is_converted(product, "sale", currency)
+                else SALE_CARD_FILL_HINT
+            )
 
     # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
     # reference (D-05/D-08/D-22), resolved independently of fill_price_cents

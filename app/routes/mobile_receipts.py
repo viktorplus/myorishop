@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import format_cents
+from app.core import converted_price_hint, format_cents
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
@@ -176,9 +176,18 @@ def mobile_receipt_step_details(
     # own cost/sale values, so the cue compares against the right thing on
     # every re-render of this step (initial arrival AND the "Назад" bounce).
     # Quick 260927-k1m: in the chosen warehouse's currency.
-    ref_cost_cents, ref_sale_cents = reference_prices_for_code(
-        session, code, warehouse_currency(session, warehouse_id)
-    )
+    currency = warehouse_currency(session, warehouse_id)
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code, currency)
+    # WR-01 (review 260927-k1m): a price that is still the converted RUB
+    # suggestion (same value, re-derived here — the wizard carries no flag)
+    # gets its own label; a value the operator changed gets none.
+    result = lookup_prefill(session, code, currency=currency)
+    posted = {"cost": cost.strip(), "sale": sale.strip()}
+    converted_hints = {
+        kind: converted_price_hint(currency)
+        for kind in (result["converted"] if result else [])
+        if posted[kind] == format_cents(result["prices"][kind])
+    }
     context = {
         "code": code,
         "warehouse_id": warehouse_id,
@@ -190,6 +199,7 @@ def mobile_receipt_step_details(
         "sale": sale,
         "ref_cost_cents": ref_cost_cents,
         "ref_sale_cents": ref_sale_cents,
+        "converted_hints": converted_hints,
         "expiry": expiry,
         "location": location,
         "comment": comment,

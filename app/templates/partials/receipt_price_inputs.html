@@ -4,7 +4,9 @@
    value, error (optional), oob (optional, default false),
    ref_cents (optional), autofilled (optional — quick 260927-k1m: marks a
    lookup-filled value so a warehouse change may clear and re-suggest it;
-   the first keystroke drops the mark, so a typed value is never replaced). #}
+   the first keystroke drops the mark, so a typed value is never replaced),
+   converted_hint (optional — review WR-01: labels a RUB/2, RUB/100
+   suggestion so it is never mistaken for a card price). #}
 {# PROD-06 (Phase 18 plan 08): being the single source for BOTH the static
    and OOB render paths (D-14/Pitfall 2) means this one ref_cents param
    covers both at once — the price-cue.js listener (plan 18-07) reads
@@ -15,5 +17,6 @@
          {% if ref_cents is not none %}data-ref-cents="{{ ref_cents }}"{% endif %}
          {% if autofilled %}data-autofilled="true" oninput="this.removeAttribute('data-autofilled')"{% endif %}
          value="{{ value or '' }}">
+  {% if converted_hint %}<p class="muted">{{ converted_hint }}</p>{% endif %}
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
 </div>

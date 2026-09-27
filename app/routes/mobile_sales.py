@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import card_price_suggestion
+from app.core import card_price_is_converted, card_price_suggestion
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
@@ -29,6 +29,7 @@ from app.services.sales import (
     SALE_CARD_FILL_HINT,
     lookup_prefill,
     register_sale,
+    sale_converted_fill_hint,
 )
 
 router = APIRouter()
@@ -405,7 +406,11 @@ def mobile_sale_step_qty_price(
             fill_price_cents = (
                 card_price_suggestion(product, "sale", currency) if product is not None else None
             )
-            fill_price_hint = SALE_CARD_FILL_HINT
+            fill_price_hint = (
+                sale_converted_fill_hint(currency)
+                if product is not None and card_price_is_converted(product, "sale", currency)
+                else SALE_CARD_FILL_HINT
+            )
 
     # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
     # reference (D-05/D-08/D-22), resolved independently of fill_price_cents

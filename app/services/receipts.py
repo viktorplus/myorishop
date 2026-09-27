@@ -354,6 +354,9 @@ def lookup_prefill(
     into one "catalog" source — the catalog's consumer price (ПЦ) doubles as
     this shop's default sale price (D-02 superseded), same as on the product
     form's autofill. Unknown everywhere -> None (the route answers 204).
+
+    "converted" (review WR-01) lists the price kinds whose suggestion is a
+    converted RUB price, so the form can label them; always [] for RUB.
     """
     code = code.strip()
     if not code:
@@ -374,22 +377,40 @@ def lookup_prefill(
                 for kind in prices:
                     if prices[kind] is None:
                         prices[kind] = rub_suggestion(catalog[kind], currency)
-        return {"source": "product", "name": product.name, "prices": prices}
+        own = card_price_fields(currency)
+        converted = [
+            kind
+            for kind in ("cost", "sale")
+            if prices[kind] is not None and getattr(product, own[kind]) is None
+        ]
+        return {
+            "source": "product",
+            "name": product.name,
+            "prices": prices,
+            "converted": converted,
+        }
     entry = dictionary_lookup(session, code)
     latest = latest_price_for_code(session, code)
     if entry is not None or latest is not None:
+        prices = {
+            "cost": rub_suggestion(
+                latest.consultant_cents if latest is not None else None, currency
+            ),
+            "catalog": latest.consumer_cents if latest is not None else None,
+            "sale": rub_suggestion(
+                latest.consumer_cents if latest is not None else None, currency
+            ),
+        }
         return {
             "source": "catalog",
             "name": entry.name if entry is not None else None,
-            "prices": {
-                "cost": rub_suggestion(
-                    latest.consultant_cents if latest is not None else None, currency
-                ),
-                "catalog": latest.consumer_cents if latest is not None else None,
-                "sale": rub_suggestion(
-                    latest.consumer_cents if latest is not None else None, currency
-                ),
-            },
+            "prices": prices,
+            # The catalog is RUB-only: every non-RUB price here is converted.
+            "converted": [
+                kind
+                for kind in ("cost", "sale")
+                if prices[kind] is not None and currency != DEFAULT_CURRENCY
+            ],
         }
     return None
 

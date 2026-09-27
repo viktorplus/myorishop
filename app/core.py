@@ -101,6 +101,21 @@ def card_price_suggestion(product, kind: str, currency: str | None) -> int | Non
     return rub_suggestion(getattr(product, CARD_PRICE_FIELDS[DEFAULT_CURRENCY][kind]), currency)
 
 
+def card_price_is_converted(product, kind: str, currency: str | None) -> bool:
+    """True when `card_price_suggestion` returns the RUB price converted, not a
+    card price of `currency` — the form must label it (review WR-01)."""
+    own = card_price_fields(currency)[kind]
+    rub = CARD_PRICE_FIELDS[DEFAULT_CURRENCY][kind]
+    return own != rub and getattr(product, own) is None and getattr(product, rub) is not None
+
+
+def converted_price_hint(currency: str | None, scope: str = "") -> str:
+    """Label for a `rub_suggestion` value on a form: the operator must correct it.
+    `scope` is appended before the final full stop (the sale-only wording)."""
+    divisor = _RUB_DIVISOR.get(currency or DEFAULT_CURRENCY, 1)
+    return f"Цена пересчитана из рублёвой (÷{divisor}) — уточните{scope}."
+
+
 def currency_symbol(currency: str | None) -> str:
     """Display symbol for a currency code; unknown/empty falls back to the code.
 

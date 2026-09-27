@@ -32,7 +32,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import card_price_fields, local_today_iso, new_id, to_cents, utcnow_iso
+from app.core import (
+    card_price_fields,
+    converted_price_hint,
+    local_today_iso,
+    new_id,
+    to_cents,
+    utcnow_iso,
+)
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
@@ -62,6 +69,15 @@ SALE_CARD_FILL_HINT = (
 SALE_BATCH_FILL_HINT = (
     "Цена подставлена из партии — можно изменить; изменение сохранится только в этой продаже."
 )
+
+
+def sale_converted_fill_hint(currency: str | None) -> str:
+    """Review WR-01 (260927-k1m): the fill is the card's RUB price converted
+    (RUB/2, RUB/100), not a card price of the basket currency — say so, with
+    the same sale-only scope as the two hints above."""
+    return converted_price_hint(currency, "; изменение сохранится только в этой продаже")
+
+
 # LOT-02/D-04: service-level enforcement that every line has a picked, owned
 # batch. This is the primary guard (the record_operation D-12 guard is only a
 # Plan 05 backstop).

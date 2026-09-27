@@ -577,3 +577,22 @@ def test_web_step_details_uah_warehouse_ref_cents(mobile_client_factory, session
     assert response.status_code == 200
     assert 'data-ref-cents="71700"' in response.text
     assert 'data-ref-cents="124950"' in response.text
+
+
+def test_web_step_details_labels_converted_prices(mobile_client_factory, session, product):
+    """WR-01 (review 260927-k1m): step 3 labels a price that is still the
+    RUB/2 suggestion; an operator-typed value gets no label."""
+    product.cost_cents = 143400
+    product.sale_cents = 249900
+    session.commit()
+    uah = _uah_warehouse(session)
+    client = mobile_client_factory(mobile_receipts.router)
+    data = {
+        "code": product.code, "warehouse_id": uah.id, "name": product.name,
+        "batch_choice": "new", "cost": "717,00", "sale": "1300,00",
+    }
+    response = client.post("/m/receipts/step/details", data=data)
+    assert response.status_code == 200
+    assert response.text.count("Цена пересчитана из рублёвой (÷2) — уточните.") == 1
+    cost_field = response.text.split('id="receipt-cost"', 1)[1].split('id="receipt-sale"', 1)[0]
+    assert "Цена пересчитана из рублёвой (÷2) — уточните." in cost_field

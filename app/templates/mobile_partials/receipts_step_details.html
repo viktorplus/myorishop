@@ -23,12 +23,14 @@
   <input type="text" id="receipt-cost" name="cost" inputmode="decimal"
          {% if ref_cost_cents is not none %}data-ref-cents="{{ ref_cost_cents }}"{% endif %}
          value="{{ cost }}">
+  {% if converted_hints.cost %}<p class="muted">{{ converted_hints.cost }}</p>{% endif %}
 </div>
 <div class="field">
   <label for="receipt-sale">Цена продажи <span class="muted">(необязательно)</span></label>
   <input type="text" id="receipt-sale" name="sale" inputmode="decimal"
          {% if ref_sale_cents is not none %}data-ref-cents="{{ ref_sale_cents }}"{% endif %}
          value="{{ sale }}">
+  {% if converted_hints.sale %}<p class="muted">{{ converted_hints.sale }}</p>{% endif %}
 </div>
 {% if is_new_batch %}
 <div class="field">

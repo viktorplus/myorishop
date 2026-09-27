@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import converted_price_hint
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
@@ -194,6 +195,9 @@ def receipt_lookup(
         "source": result["source"],
         "fill_fields": fill_fields,
         "prices": result["prices"],
+        # WR-01 (review 260927-k1m): a converted RUB suggestion is labelled
+        # under its own input, distinct from a card price in this currency.
+        "converted_hints": {kind: converted_price_hint(currency) for kind in result["converted"]},
         "ref_cost_cents": ref_cost_cents,
         "ref_sale_cents": ref_sale_cents,
         "include_chooser": include_chooser,

@@ -14,7 +14,9 @@ import pytest
 from app.core import (
     CARD_PRICE_FIELDS,
     card_price_fields,
+    card_price_is_converted,
     card_price_suggestion,
+    converted_price_hint,
     date_input_value,
     format_cents,
     local_day_bounds_utc,
@@ -306,3 +308,27 @@ def test_card_price_fields_are_product_cents_columns():
         for name in fields.values():
             assert name in columns
             assert name.endswith("_cents")
+
+
+def test_card_price_is_converted_only_for_a_rub_fallback():
+    """WR-01 (review 260927-k1m): a suggestion is "converted" exactly when
+    card_price_suggestion fell back to the RUB price."""
+    from types import SimpleNamespace
+
+    product = SimpleNamespace(
+        cost_cents=143400, sale_cents=249900, min_sale_cents=None,
+        cost_uah_cents=None, sale_uah_cents=120000, min_sale_uah_cents=None,
+        cost_eur_cents=None, sale_eur_cents=None, min_sale_eur_cents=None,
+    )
+    assert card_price_is_converted(product, "cost", "UAH") is True
+    assert card_price_is_converted(product, "sale", "UAH") is False
+    assert card_price_is_converted(product, "sale", "EUR") is True
+    assert card_price_is_converted(product, "sale", "RUB") is False
+    assert card_price_is_converted(product, "sale", "USD") is False
+    product.cost_cents = None
+    assert card_price_is_converted(product, "cost", "UAH") is False
+
+
+def test_converted_price_hint_names_the_divisor():
+    assert converted_price_hint("UAH") == "Цена пересчитана из рублёвой (÷2) — уточните."
+    assert converted_price_hint("EUR") == "Цена пересчитана из рублёвой (÷100) — уточните."
