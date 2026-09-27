@@ -1213,9 +1213,14 @@ def test_same_currency_transfer_ignores_posted_sale_price(session, stocked_produ
 
 
 def test_transfer_price_fields_suggests_converted_rub_prices(session, stocked_product):
-    """D-02: empty cost/sale get RUB card /2 for UAH, marked and hinted."""
+    """D-02: an empty sale price gets RUB card /2 for UAH, marked and hinted.
+
+    Review WR-02: a converted COST is never filled in (it would satisfy
+    COST_REQUIRED_ERROR with one click); it is only a guide, taken from the
+    moved batch's own RUB cost (400 -> 2,00), not from the card.
+    """
     from app.core import converted_price_hint
-    from app.services.transfers import transfer_price_fields
+    from app.services.transfers import COST_GUIDE_TMPL, transfer_price_fields
 
     source = _priced_source(session, stocked_product)
     uah = _uah_warehouse(session)
@@ -1229,18 +1234,17 @@ def test_transfer_price_fields_suggests_converted_rub_prices(session, stocked_pr
     )
 
     assert fields["cross_currency"] is True
-    assert fields["cost"] == "717,00"
+    assert fields["cost"] == ""
     assert fields["sale_price"] == "1249,50"
-    assert fields["cost_autofilled"] is True
+    assert fields["cost_autofilled"] is False
     assert fields["sale_price_autofilled"] is True
-    assert fields["cost_hint"] == converted_price_hint("UAH")
+    assert fields["cost_hint"] == COST_GUIDE_TMPL.format(amount="2,00")
     assert fields["sale_price_hint"] == converted_price_hint("UAH")
 
 
 def test_transfer_price_fields_prefers_own_currency_card_price(session, stocked_product):
     """D-02: a card UAH sale price is suggested as-is, with no hint."""
-    from app.core import converted_price_hint
-    from app.services.transfers import transfer_price_fields
+    from app.services.transfers import COST_GUIDE_TMPL, transfer_price_fields
 
     source = _priced_source(session, stocked_product)
     stocked_product.sale_uah_cents = 130000
@@ -1257,8 +1261,8 @@ def test_transfer_price_fields_prefers_own_currency_card_price(session, stocked_
 
     assert fields["sale_price"] == "1300,00"
     assert fields["sale_price_hint"] == ""
-    assert fields["cost"] == "717,00"
-    assert fields["cost_hint"] == converted_price_hint("UAH")
+    assert fields["cost"] == ""
+    assert fields["cost_hint"] == COST_GUIDE_TMPL.format(amount="2,00")
 
 
 def test_transfer_price_fields_never_replaces_typed_value(session, stocked_product):
@@ -1328,7 +1332,8 @@ def test_transfer_price_fields_no_suggestion_without_suggest(session, stocked_pr
 def test_web_dest_pick_cross_currency_shows_suggested_sale_price(
     client, session, stocked_product
 ):
-    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled."""
+    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled;
+    the converted cost is only a guide, never the input's value (WR-02)."""
     source = _priced_source(session, stocked_product)
     uah = _uah_warehouse(session)
 
@@ -1344,7 +1349,9 @@ def test_web_dest_pick_cross_currency_shows_suggested_sale_price(
     assert response.status_code == 200
     assert 'id="transfer-price-fields"' in response.text
     assert 'name="sale_price"' in response.text
-    assert 'value="717,00"' in response.text
+    assert 'value="717,00"' not in response.text
+    assert 'value="2,00"' not in response.text
+    assert "Ориентир: 2,00" in response.text
     assert 'value="1249,50"' in response.text
     assert 'data-autofilled="true"' in response.text
     assert "пересчитана" in response.text
@@ -1492,3 +1499,149 @@ def test_web_same_currency_422_has_no_sale_price_field(client, session, stocked_
     assert response.status_code == 422
     assert 'id="cost"' in response.text
     assert 'name="sale_price"' not in response.text
+
+
+# --- Review fixes for quick 260927-nnj (WR-01, WR-02, WR-04, WR-05, IN-02, IN-05)
+
+
+def _cost_input(html):
+    import re
+
+    match = re.search(r'<input[^>]*id="cost"[^>]*>', html, re.S)
+    assert match, "no cost input"
+    return match.group(0)
+
+
+def test_transfer_price_fields_cost_guide_falls_back_to_card(session, stocked_product):
+    """WR-02: a source batch without a cost -> the guide is the card cost /2."""
+    from app.services.transfers import COST_GUIDE_TMPL, transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    source.cost_cents = None
+    session.commit()
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        suggest=True,
+    )
+
+    assert fields["cost"] == ""
+    assert fields["cost_autofilled"] is False
+    assert fields["cost_hint"] == COST_GUIDE_TMPL.format(amount="717,00")
+
+
+def test_transfer_price_fields_own_currency_card_cost_prefills(session, stocked_product):
+    """WR-02: a card cost in the destination currency is a real price -> it may fill."""
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    stocked_product.cost_uah_cents = 70000
+    session.commit()
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        suggest=True,
+    )
+
+    assert fields["cost"] == "700,00"
+    assert fields["cost_autofilled"] is True
+    assert fields["cost_hint"] == ""
+
+
+def test_transfer_price_fields_carries_dest_currency_and_keeps_typed(
+    session, stocked_product
+):
+    """WR-01: a UAH -> EUR switch keeps typed values (never cleared) and reports
+    the new destination currency so the form labels show it."""
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    _uah_warehouse(session)
+    eur = _eur_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=eur.id,
+        cost="650",
+        sale_price="450",
+        suggest=True,
+    )
+
+    assert fields["currency"] == "EUR"
+    assert fields["cost"] == "650"
+    assert fields["sale_price"] == "450"
+    assert fields["sale_price_autofilled"] is False
+    empty = transfer_price_fields(
+        session, code=stocked_product.code, batch_id=source.id, dest_warehouse_id=""
+    )
+    assert empty["currency"] == ""
+
+
+def test_web_dest_pick_labels_show_destination_currency(client, session, stocked_product):
+    """WR-01: the cost and sale labels name the destination currency's symbol."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    eur = _eur_warehouse(session)
+    rub = _second_warehouse(session)
+    params = {"code": stocked_product.code, "batch_id": source.id}
+
+    uah_resp = client.get("/transfers/dest-pick", params={**params, "dest_warehouse_id": uah.id})
+    assert "Себестоимость партии, ₴" in uah_resp.text
+    assert "Цена продажи, ₴" in uah_resp.text
+
+    eur_resp = client.get(
+        "/transfers/dest-pick",
+        params={**params, "dest_warehouse_id": eur.id, "sale_price": "450"},
+    )
+    assert "Себестоимость партии, €" in eur_resp.text
+    assert "Цена продажи, €" in eur_resp.text
+    assert 'value="450"' in eur_resp.text
+
+    rub_resp = client.get("/transfers/dest-pick", params={**params, "dest_warehouse_id": rub.id})
+    assert "Себестоимость партии, ₽" in rub_resp.text
+    assert 'name="sale_price"' not in rub_resp.text
+
+
+def test_web_dest_pick_never_prefills_converted_cost(client, session, stocked_product):
+    """WR-02: the cost input stays empty so COST_REQUIRED_ERROR still fires on
+    an untouched field; the guide is shown next to it (also on the 422)."""
+    from app.services.transfers import COST_REQUIRED_ERROR
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    pick = client.get(
+        "/transfers/dest-pick",
+        params={"code": stocked_product.code, "batch_id": source.id, "dest_warehouse_id": uah.id},
+    )
+    cost_input = _cost_input(pick.text)
+    assert 'value=""' in cost_input
+    assert "data-autofilled" not in cost_input
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "",
+            "sale_price": "1249,50",
+            "sale_price_autofilled": "true",
+        },
+    )
+    assert response.status_code == 422
+    assert COST_REQUIRED_ERROR in response.text
+    assert "Ориентир: 2,00" in response.text
+    assert _transfer_ops(session) == []

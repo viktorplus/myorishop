@@ -4,14 +4,20 @@
    swap this whole div (outerHTML). `price_fields` comes from
    app.services.transfers.transfer_price_fields. A suggested value carries the
    autofilled mark (receipt_price_inputs.html idiom): the first keystroke drops
-   it, so a destination change never replaces a typed value. #}
+   it, so a destination change never replaces a typed value. Review WR-01:
+   once a destination is chosen both labels carry its currency symbol, so a
+   kept typed value is visibly tied to the currency it will be saved in. #}
 {% set _pf = price_fields | default({}) %}
+{% set _sym = CURRENCIES.get(_pf.currency, _pf.currency) if _pf.currency else '' %}
 <div id="transfer-price-fields">
   {# CUR-02: required only when the destination warehouse's currency differs
      from the source batch's — otherwise optional (inherits source.cost_cents
-     when left blank). #}
+     when left blank). Review WR-02: for a cross-currency move the field is
+     filled only from a card cost in the destination currency; a converted
+     figure is shown as the cost_hint guide, never as the value, so an
+     untouched field still gets COST_REQUIRED_ERROR. #}
   <div class="field">
-    <label for="cost">Себестоимость партии в валюте склада назначения</label>
+    <label for="cost">Себестоимость партии{% if _sym %}, {{ _sym }}{% else %} в валюте склада назначения{% endif %}</label>
     <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
            {% if _pf.cost_autofilled %}data-autofilled="true" oninput="this.removeAttribute('data-autofilled')"{% endif %}
            value="{{ _pf.cost | default('') }}">
@@ -25,7 +31,7 @@
      price of the destination currency. #}
   {% if _pf.cross_currency %}
   <div class="field">
-    <label for="sale_price">Цена продажи в валюте склада назначения</label>
+    <label for="sale_price">Цена продажи{% if _sym %}, {{ _sym }}{% else %} в валюте склада назначения{% endif %}</label>
     <input type="text" id="sale_price" name="sale_price" inputmode="decimal" placeholder="0,00"
            {% if _pf.sale_price_autofilled %}data-autofilled="true" oninput="this.removeAttribute('data-autofilled')"{% endif %}
            value="{{ _pf.sale_price | default('') }}">

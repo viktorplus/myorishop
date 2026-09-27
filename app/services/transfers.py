@@ -11,7 +11,9 @@ Quick 260927-nnj: a CROSS-currency transfer does not inherit price_cents —
 stored money never crosses currencies. The destination batch takes the
 optional sale price typed in the destination warehouse's currency, or NULL
 (a sale then falls back to the card price of that currency). A transfer
-never writes the product card.
+never writes the product card. The form may pre-fill a converted sale price,
+but a converted COST is only shown as a guide next to the empty field
+(review WR-02), so the operator always types the real one.
 
 Single-write-path contract: Operation rows and Product/Batch.quantity are
 written ONLY through app.services.ledger.record_operation.
@@ -22,7 +24,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import converted_price_hint, format_cents, local_today_iso, new_id, to_cents
+from app.core import (
+    DEFAULT_CURRENCY,
+    converted_price_hint,
+    format_cents,
+    local_today_iso,
+    new_id,
+    rub_suggestion,
+    to_cents,
+)
 from app.models import Batch, Operation, Product, Warehouse
 from app.services.batches import active_warehouses, warehouse_currency
 from app.services.catalog import PRICE_ERROR, parse_optional_cents
@@ -39,10 +49,15 @@ SAME_WAREHOUSE_REQUIRES_OVERRIDE_ERROR = (
 )
 SAVE_FAILED_ERROR = "Не удалось сохранить. Попробуйте ещё раз."
 # CUR-02: a transfer into a different-currency warehouse always requires a
-# real destination cost — no conversion, no FX rate.
+# destination cost the operator types — nothing is converted on save. The form
+# shows a converted figure only as COST_GUIDE_TMPL text, never as the input's
+# value, so an untouched cost field still hits this error (review WR-02).
 COST_REQUIRED_ERROR = (
     "Укажите себестоимость партии в валюте склада назначения — "
     "склады используют разную валюту."
+)
+COST_GUIDE_TMPL = (
+    "Ориентир: {amount} — пересчитана из рублёвой, укажите реальную себестоимость."
 )
 
 
@@ -124,9 +139,11 @@ def register_transfer(
         return None, {"warehouse": WAREHOUSE_ERROR}
 
     # CUR-02: a cross-currency transfer REQUIRES an entered destination cost
-    # (no conversion — the operator states the real cost in the destination
-    # warehouse's own currency); a same-currency transfer accepts an optional
-    # cost and otherwise inherits the source batch's cost_cents unchanged.
+    # (nothing converted here — the operator states the real cost in the
+    # destination warehouse's own currency; the form only shows a converted
+    # guide beside the field, see COST_GUIDE_TMPL); a same-currency transfer
+    # accepts an optional cost and otherwise inherits the source batch's
+    # cost_cents unchanged.
     # Quick 260927-nnj: the sale price follows the same split — cross-currency
     # takes the optional `sale_price_raw` (empty -> NULL), same-currency
     # inherits source.price_cents and ignores `sale_price_raw`.
@@ -279,19 +296,28 @@ def transfer_price_fields(
     destination-currency suggestion from lookup_prefill; a typed value is never
     replaced. Without `suggest` (a POST re-render) posted values are echoed and
     an empty field stays empty, so a cleared sale price is saved as NULL.
+
+    Review WR-02: only a card cost in the destination currency itself fills the
+    cost field. A converted cost is returned as `cost_hint` (COST_GUIDE_TMPL):
+    the moved batch's own RUB cost via rub_suggestion when the source is RUB,
+    else lookup_prefill's converted card/catalog cost. Review WR-01: `currency`
+    is the destination's currency code ("" until an active one is chosen) so
+    the labels can name it.
     """
     cross = False
     batch_id, dest_id = batch_id.strip(), dest_warehouse_id.strip()
+    active_ids = {w.id for w in active_warehouses(session)}
     dest_currency = warehouse_currency(session, dest_id)
     product = session.scalars(
         select(Product).where(Product.code == code.strip(), Product.deleted_at.is_(None))
     ).first()
     source = session.get(Batch, batch_id) if batch_id else None
+    source_warehouse = None
     if (
         product is not None
         and source is not None
         and source.product_id == product.id
-        and dest_id in {w.id for w in active_warehouses(session)}
+        and dest_id in active_ids
     ):
         source_warehouse = session.get(Warehouse, source.warehouse_id)
         dest_warehouse = session.get(Warehouse, dest_id)
@@ -303,7 +329,17 @@ def transfer_price_fields(
     prices = prefill["prices"] if prefill else {}
     converted = prefill["converted"] if prefill else []
 
-    fields: dict = {"cross_currency": cross}
+    cost_guide = None
+    if cross and (prices.get("cost") is None or "cost" in converted):
+        if source_warehouse.currency == DEFAULT_CURRENCY and source.cost_cents is not None:
+            cost_guide = rub_suggestion(source.cost_cents, dest_currency)
+        else:
+            cost_guide = prices.get("cost")
+
+    fields: dict = {
+        "cross_currency": cross,
+        "currency": dest_currency if dest_id in active_ids else "",
+    }
     for kind, key, raw, flag in (
         ("cost", "cost", cost, cost_autofilled),
         ("sale", "sale_price", sale_price, sale_price_autofilled),
@@ -313,17 +349,25 @@ def transfer_price_fields(
             value, autofilled = "", False
         elif suggest and (not value or autofilled):
             price = prices.get(kind)
-            if cross and price is not None:
+            # WR-02: a converted cost never becomes the value (cost_guide below).
+            if cross and price is not None and not (kind == "cost" and kind in converted):
                 value, autofilled = format_cents(price), True
             else:
                 value, autofilled = "", False
         fields[key] = value
         fields[f"{key}_autofilled"] = autofilled
-        fields[f"{key}_hint"] = (
-            converted_price_hint(dest_currency)
-            if cross and autofilled and kind in converted
-            else ""
-        )
+        if kind == "cost":
+            fields["cost_hint"] = (
+                COST_GUIDE_TMPL.format(amount=format_cents(cost_guide))
+                if cost_guide is not None
+                else ""
+            )
+        else:
+            fields["sale_price_hint"] = (
+                converted_price_hint(dest_currency)
+                if cross and autofilled and kind in converted
+                else ""
+            )
     return fields
 
 

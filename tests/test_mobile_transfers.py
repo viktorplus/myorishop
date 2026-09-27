@@ -891,7 +891,8 @@ def _priced_source(session, stocked_product):
 def test_transfers_dest_prices_cross_currency_suggests_sale_price(
     mobile_client_factory, session, stocked_product
 ):
-    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled."""
+    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled;
+    the converted cost is only a guide, never the input's value (WR-02)."""
     source = _priced_source(session, stocked_product)
     uah = _uah_warehouse(session)
     client = mobile_client_factory(mobile_transfers.router)
@@ -908,10 +909,14 @@ def test_transfers_dest_prices_cross_currency_suggests_sale_price(
     assert response.status_code == 200
     assert 'id="transfer-price-fields"' in response.text
     assert 'name="sale_price"' in response.text
-    assert 'value="717,00"' in response.text
+    assert 'value="717,00"' not in response.text
+    assert "Ориентир: 2,00" in response.text
     assert 'value="1249,50"' in response.text
     assert 'data-autofilled="true"' in response.text
     assert "пересчитана" in response.text
+    # WR-01: the labels name the destination currency.
+    assert "Себестоимость партии, ₴" in response.text
+    assert "Цена продажи, ₴" in response.text
 
 
 def test_transfers_dest_prices_same_currency_hides_sale_price(
@@ -1019,3 +1024,30 @@ def test_transfers_create_cross_currency_422_keeps_typed_prices(
     assert 'value="450,50"' in response.text
     assert 'value="300"' in response.text
     assert re.search(rf'value="{uah.id}"\s+checked', response.text)
+
+
+# --- Review fixes for quick 260927-nnj (WR-01, WR-04, WR-05, IN-02) ---------
+
+
+def test_transfers_dest_prices_eur_switch_keeps_typed_value_under_eur_label(
+    mobile_client_factory, session, stocked_product
+):
+    """WR-01: a typed sale price survives a UAH -> EUR switch, now labelled €."""
+    source = _priced_source(session, stocked_product)
+    _uah_warehouse(session)
+    eur = _eur_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers/step/dest-prices",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "dest_warehouse_id": eur.id,
+            "sale_price": "450",
+        },
+    )
+
+    assert 'value="450"' in response.text
+    assert "Цена продажи, €" in response.text
+    assert "Себестоимость партии, €" in response.text
