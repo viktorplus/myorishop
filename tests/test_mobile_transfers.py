@@ -1029,6 +1029,38 @@ def test_transfers_create_cross_currency_422_keeps_typed_prices(
 # --- Review fixes for quick 260927-nnj (WR-01, WR-04, WR-05, IN-02) ---------
 
 
+def test_transfers_dest_prices_ownership_guards_give_no_prices(
+    mobile_client_factory, session, stocked_product, product
+):
+    """IN-02 / T-nnj-01: a foreign batch, a foreign code, an unknown code or a
+    soft-deleted destination -> no sale field and no price at all."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    deleted_uah = _uah_warehouse(session, name="Удалённый")
+    deleted_uah.deleted_at = "2026-09-01T00:00:00+00:00"
+    product.sale_cents = 249900
+    foreign_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=source.warehouse_id, quantity=0
+    )
+    session.add(foreign_batch)
+    session.commit()
+    client = mobile_client_factory(mobile_transfers.router)
+
+    cases = [
+        {"code": stocked_product.code, "batch_id": foreign_batch.id, "dest_warehouse_id": uah.id},
+        {"code": product.code, "batch_id": source.id, "dest_warehouse_id": uah.id},
+        {"code": "NO-SUCH-CODE", "batch_id": source.id, "dest_warehouse_id": uah.id},
+        {"code": stocked_product.code, "batch_id": source.id, "dest_warehouse_id": deleted_uah.id},
+    ]
+    for params in cases:
+        response = client.get("/m/transfers/step/dest-prices", params=params)
+        assert response.status_code == 200, params
+        assert 'name="sale_price"' not in response.text, params
+        assert "1249,50" not in response.text, params
+        assert "Ориентир" not in response.text, params
+        assert "пересчитана" not in response.text, params
+
+
 def test_transfers_dest_prices_eur_switch_keeps_typed_value_under_eur_label(
     mobile_client_factory, session, stocked_product
 ):

@@ -1645,3 +1645,34 @@ def test_web_dest_pick_never_prefills_converted_cost(client, session, stocked_pr
     assert COST_REQUIRED_ERROR in response.text
     assert "Ориентир: 2,00" in response.text
     assert _transfer_ops(session) == []
+
+
+def test_web_dest_pick_ownership_guards_give_no_prices(
+    client, session, stocked_product, product
+):
+    """IN-02 / T-nnj-01: a foreign batch, a foreign code, an unknown code or a
+    soft-deleted destination -> no sale field and no price at all."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    deleted_uah = _uah_warehouse(session)
+    deleted_uah.deleted_at = "2026-09-01T00:00:00+00:00"
+    product.sale_cents = 249900
+    foreign_batch = Batch(
+        id=new_id(), product_id=product.id, warehouse_id=source.warehouse_id, quantity=0
+    )
+    session.add(foreign_batch)
+    session.commit()
+
+    cases = [
+        {"code": stocked_product.code, "batch_id": foreign_batch.id, "dest_warehouse_id": uah.id},
+        {"code": product.code, "batch_id": source.id, "dest_warehouse_id": uah.id},
+        {"code": "NO-SUCH-CODE", "batch_id": source.id, "dest_warehouse_id": uah.id},
+        {"code": stocked_product.code, "batch_id": source.id, "dest_warehouse_id": deleted_uah.id},
+    ]
+    for params in cases:
+        response = client.get("/transfers/dest-pick", params=params)
+        assert response.status_code == 200, params
+        assert 'name="sale_price"' not in response.text, params
+        assert "1249,50" not in response.text, params
+        assert "Ориентир" not in response.text, params
+        assert "пересчитана" not in response.text, params
