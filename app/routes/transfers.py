@@ -215,16 +215,18 @@ def transfers_create(
     # Quick 260927-nnj (A2): a re-render echoes the posted prices and marks
     # and never suggests into an empty field — a cleared sale price stays
     # empty and is saved as NULL.
-    price_fields = transfer_price_fields(
-        session,
-        code=code,
-        batch_id=batch_id,
-        dest_warehouse_id=dest_warehouse_id,
-        cost=cost,
-        sale_price=sale_price,
-        cost_autofilled=cost_autofilled,
-        sale_price_autofilled=sale_price_autofilled,
-    )
+    def _price_fields() -> dict:
+        return transfer_price_fields(
+            session,
+            code=code,
+            batch_id=batch_id,
+            dest_warehouse_id=dest_warehouse_id,
+            cost=cost,
+            sale_price=sale_price,
+            cost_autofilled=cost_autofilled,
+            sale_price_autofilled=sale_price_autofilled,
+        )
+
     try:
         result, errors = register_transfer(
             session,
@@ -240,6 +242,10 @@ def transfers_create(
             confirm=confirm,
             op_date=op_date,
         )
+        # Review IN-05: built inside the try (a DB error here gets the RU
+        # block below, never a raw 500) and only for a re-render — a saved
+        # transfer never depends on it.
+        price_fields = _price_fields() if result is None or result.get("oversell") else None
     except Exception:  # noqa: BLE001 — block error, never a raw 500
         # T-10-09/Pitfall 7: defensive rollback before re-querying anything.
         session.rollback()
@@ -251,7 +257,7 @@ def transfers_create(
             "include_oob_rows": False,
             "selected_batch": selected_batch,
             "warehouses": _dest_warehouses(session, selected_batch),
-            "price_fields": price_fields,
+            "price_fields": _price_fields(),
         }
         return templates.TemplateResponse(
             request, "partials/transfer_form.html", context, status_code=422

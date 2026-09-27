@@ -1716,3 +1716,40 @@ def test_web_oversell_confirm_carries_autofilled_flags(client, session, stocked_
     assert "Перемещение сохранено" in done.text
     dest = open_batches(session, stocked_product.id, uah.id)
     assert [b.price_cents for b in dest] == [45050]
+
+
+def test_web_post_price_fields_failure_is_a_ru_block_not_a_500(
+    client, session, stocked_product, monkeypatch
+):
+    """IN-05: a DB error while building the re-render's price fields gets the RU
+    save-failed block, like every other failure in the POST — never a raw 500."""
+    import app.routes.transfers as transfers_routes
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    real = transfers_routes.transfer_price_fields
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(transfers_routes, "transfer_price_fields", flaky)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "abc",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "300",
+        },
+    )
+
+    assert response.status_code == 422
+    assert transfers_routes.SAVE_FAILED_ERROR in response.text
+    assert 'id="transfer-price-fields"' in response.text
