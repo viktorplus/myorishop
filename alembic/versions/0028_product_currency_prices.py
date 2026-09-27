@@ -17,6 +17,11 @@ form suggestions only and never reach stored money unless the operator saves.
 
 Offline bundles are schema-version matched exactly, so bundles built before
 0028 are rejected afterwards and must be re-downloaded.
+
+DOWNGRADE IS DATA-LOSSY: it drops the six columns, destroying EVERY UAH and
+EUR card price entered after the upgrade (the `price_change` history that
+names those fields stays behind, orphaned). Take a backup first — copy the
+SQLite .db file with the app closed, or `pg_dump` on PostgreSQL.
 """
 
 import sqlalchemy as sa
@@ -48,6 +53,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # DATA-LOSSY (review WR-03): drops ALL UAH/EUR card prices — back up the
+    # database (copy the .db / `pg_dump`) before running this.
     # Plain `op.drop_column` — NEVER `op.batch_alter_table` (see 0027's
     # downgrade note): a batch drop rebuilds `products`, which carries the
     # partial unique index `uq_products_code_active` (WHERE deleted_at IS NULL).
