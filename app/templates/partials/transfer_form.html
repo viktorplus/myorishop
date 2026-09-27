@@ -22,6 +22,12 @@
      responseHandling) they also reach the dest select's /transfers/dest-pick
      GET, which then re-suggests an autofilled value but never a typed one.
      Single-quoted: the payload contains double quotes. #}
+  {# Review WR-04 (quick 260927-nnj): the /transfers/dest-pick response
+     replaces #transfer-price-fields wholesale, so the cost/sale values are
+     snapshotted when that request starts; if the operator typed into either
+     field while it was in flight, the swap is vetoed and the dest select's
+     request is re-fired — it then carries the typed values, which the server
+     never replaces. #}
   <form class="stacked-form"
         id="transfer-form"
         hx-vals='js:{cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
@@ -29,8 +35,13 @@
         hx-target="#transfer-form-wrap"
         hx-swap="outerHTML"
         hx-disabled-elt="find button"
+        hx-on::before-request="if (event.detail.target && event.detail.target.id === 'transfer-price-fields')
+          this.dataset.pf = ['cost', 'sale_price'].map(function (id) { var f = document.getElementById(id); return f ? f.value : ''; }).join('|')"
         hx-on::before-swap="if (event.detail.target.id === 'name-wrap'
-          && document.getElementById('name').value.trim()) event.detail.shouldSwap = false">
+          && document.getElementById('name').value.trim()) event.detail.shouldSwap = false;
+          if (event.detail.target.id === 'transfer-price-fields'
+          && this.dataset.pf !== ['cost', 'sale_price'].map(function (id) { var f = document.getElementById(id); return f ? f.value : ''; }).join('|')) {
+            event.detail.shouldSwap = false; htmx.trigger(event.detail.requestConfig.elt, 'change'); }">
     <div class="field">
       <label for="code">Код</label>
       {# D-04: debounced code->name lookup — the server decides fill vs 204. #}

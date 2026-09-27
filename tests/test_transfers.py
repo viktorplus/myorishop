@@ -1676,3 +1676,13 @@ def test_web_dest_pick_ownership_guards_give_no_prices(
         assert "1249,50" not in response.text, params
         assert "Ориентир" not in response.text, params
         assert "пересчитана" not in response.text, params
+
+
+def test_web_form_guards_price_fragment_swap_against_typing(client):
+    """WR-04: the form snapshots the price inputs when the dest-pick request
+    starts and vetoes (then re-requests) the swap if they changed meanwhile."""
+    page = client.get("/transfers")
+
+    assert "hx-on::before-request=" in page.text
+    assert page.text.count("transfer-price-fields") >= 2
+    assert "event.detail.shouldSwap = false; htmx.trigger(" in page.text

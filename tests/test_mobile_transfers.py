@@ -1083,3 +1083,21 @@ def test_transfers_dest_prices_eur_switch_keeps_typed_value_under_eur_label(
     assert 'value="450"' in response.text
     assert "Цена продажи, €" in response.text
     assert "Себестоимость партии, €" in response.text
+
+
+def test_transfers_dest_form_guards_price_fragment_swap_against_typing(
+    mobile_client_factory, session, stocked_product
+):
+    """WR-04: the step-3 form snapshots the price inputs when the dest-prices
+    request starts and vetoes (then re-requests) the swap if they changed."""
+    source = _priced_source(session, stocked_product)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"code": stocked_product.code, "batch_id": source.id},
+    )
+
+    assert "hx-on::before-request=" in response.text
+    assert "hx-on::before-swap=" in response.text
+    assert "event.detail.shouldSwap = false; htmx.trigger(" in response.text

@@ -28,13 +28,21 @@
   {# Quick 260927-nnj (k1m CR-02 idiom, mirrors desktop transfer_form.html):
      the price inputs' autofilled marks ride the POST as flags and, through
      htmx attribute inheritance, the dest radios' dest-prices GET. Single-
-     quoted: the payload contains double quotes. #}
+     quoted: the payload contains double quotes.
+     Review WR-04: same swap guard as desktop transfer_form.html — typing into
+     cost/sale while the dest-prices GET is in flight vetoes its swap and
+     re-fires it from the radios' container with the typed values. #}
   <form class="stacked-form" id="transfer-dest-form"
         hx-vals='js:{cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
         hx-post="/m/transfers"
         hx-target="#wizard-step"
         hx-swap="outerHTML"
-        hx-disabled-elt="find button">
+        hx-disabled-elt="find button"
+        hx-on::before-request="if (event.detail.target && event.detail.target.id === 'transfer-price-fields')
+          this.dataset.pf = ['cost', 'sale_price'].map(function (id) { var f = document.getElementById(id); return f ? f.value : ''; }).join('|')"
+        hx-on::before-swap="if (event.detail.target.id === 'transfer-price-fields'
+          && this.dataset.pf !== ['cost', 'sale_price'].map(function (id) { var f = document.getElementById(id); return f ? f.value : ''; }).join('|')) {
+            event.detail.shouldSwap = false; htmx.trigger(event.detail.requestConfig.elt, 'change'); }">
     <input type="hidden" name="code" value="{{ code }}">
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
     <input type="hidden" name="name" value="{{ name }}">
