@@ -25,7 +25,12 @@
   {% include "mobile_partials/transfers_warning.html" %}
   {% endif %}
 
+  {# Quick 260927-nnj (k1m CR-02 idiom, mirrors desktop transfer_form.html):
+     the price inputs' autofilled marks ride the POST as flags and, through
+     htmx attribute inheritance, the dest radios' dest-prices GET. Single-
+     quoted: the payload contains double quotes. #}
   <form class="stacked-form" id="transfer-dest-form"
+        hx-vals='js:{cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
         hx-post="/m/transfers"
         hx-target="#wizard-step"
         hx-swap="outerHTML"
@@ -34,7 +39,10 @@
     <input type="hidden" name="batch_id" value="{{ batch_id }}">
     <input type="hidden" name="name" value="{{ name }}">
 
-    <div class="field">
+    {# Quick 260927-nnj: a destination change re-renders the price fields. #}
+    <div class="field"
+         hx-get="/m/transfers/step/dest-prices" hx-trigger="change" hx-include="closest form"
+         hx-target="#transfer-price-fields" hx-swap="outerHTML">
       <label>Склад назначения</label>
       {% if warehouses %}
       {% for w in warehouses %}
@@ -66,17 +74,7 @@
       <input type="text" id="new_comment" name="new_comment" value="{{ new_comment | default('') }}">
     </div>
 
-    {# CUR-02: required only when the destination warehouse's currency
-       differs from the source batch's — otherwise optional (inherits
-       source.cost_cents when left blank). #}
-    <div class="field">
-      <label for="cost">Себестоимость партии в валюте склада назначения</label>
-      <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
-             value="{{ cost | default('') }}">
-      <p class="muted">Обязательно, если склад назначения использует другую валюту, иначе можно
-        оставить пустым — унаследуется от партии-источника.</p>
-      {% if errors is defined and errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
-    </div>
+    {% include "partials/transfer_price_fields.html" %}
 
     {# DATE-01/D-11: the date lives on the FINAL step, not on a wizard shell —
        перемещение has no persistent shell to put it on (every step renders its

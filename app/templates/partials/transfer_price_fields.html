@@ -1,0 +1,37 @@
+{# Transfer cost + sale-price fields (quick 260927-nnj): the single source for
+   the desktop form, the mobile step 3 and both destination-change fragment
+   routes (GET /transfers/dest-pick, GET /m/transfers/step/dest-prices), which
+   swap this whole div (outerHTML). `price_fields` comes from
+   app.services.transfers.transfer_price_fields. A suggested value carries the
+   autofilled mark (receipt_price_inputs.html idiom): the first keystroke drops
+   it, so a destination change never replaces a typed value. #}
+{% set _pf = price_fields | default({}) %}
+<div id="transfer-price-fields">
+  {# CUR-02: required only when the destination warehouse's currency differs
+     from the source batch's — otherwise optional (inherits source.cost_cents
+     when left blank). #}
+  <div class="field">
+    <label for="cost">Себестоимость партии в валюте склада назначения</label>
+    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
+           {% if _pf.cost_autofilled %}data-autofilled="true" oninput="this.removeAttribute('data-autofilled')"{% endif %}
+           value="{{ _pf.cost | default('') }}">
+    <p class="muted">Обязательно, если склад назначения использует другую валюту, иначе можно
+      оставить пустым — унаследуется от партии-источника.</p>
+    {% if _pf.cost_hint %}<p class="muted">{{ _pf.cost_hint }}</p>{% endif %}
+    {% if errors is defined and errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
+  </div>
+  {# D-01/D-03: cross-currency only — the source batch's price is never
+     copied across currencies; empty -> NULL, the sale then uses the card
+     price of the destination currency. #}
+  {% if _pf.cross_currency %}
+  <div class="field">
+    <label for="sale_price">Цена продажи в валюте склада назначения</label>
+    <input type="text" id="sale_price" name="sale_price" inputmode="decimal" placeholder="0,00"
+           {% if _pf.sale_price_autofilled %}data-autofilled="true" oninput="this.removeAttribute('data-autofilled')"{% endif %}
+           value="{{ _pf.sale_price | default('') }}">
+    <p class="muted">Можно оставить пустым — при продаже подставится цена из карточки товара в валюте склада назначения.</p>
+    {% if _pf.sale_price_hint %}<p class="muted">{{ _pf.sale_price_hint }}</p>{% endif %}
+    {% if errors is defined and errors.sale_price %}<p class="error">{{ errors.sale_price }}</p>{% endif %}
+  </div>
+  {% endif %}
+</div>

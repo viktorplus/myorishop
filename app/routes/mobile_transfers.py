@@ -25,7 +25,7 @@ from app.models import Batch, Product, Warehouse
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
 from app.services.receipts import lookup_prefill
-from app.services.transfers import register_transfer
+from app.services.transfers import register_transfer, transfer_price_fields
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -104,12 +104,27 @@ def _render_dest_step(
     new_expiry: str = "",
     new_comment: str = "",
     cost: str = "",
+    sale_price: str = "",
+    cost_autofilled: str = "",
+    sale_price_autofilled: str = "",
     op_date: str = "",
     errors: dict | None = None,
     oversell: dict | None = None,
     saved: dict | None = None,
     status_code: int = 200,
 ):
+    # Quick 260927-nnj (A2): echo the posted prices and marks; a re-render
+    # never suggests into an empty field (the dest-prices fragment does).
+    price_fields = transfer_price_fields(
+        session,
+        code=code,
+        batch_id=picked.id if picked else "",
+        dest_warehouse_id=dest_warehouse_id,
+        cost=cost,
+        sale_price=sale_price,
+        cost_autofilled=cost_autofilled,
+        sale_price_autofilled=sale_price_autofilled,
+    )
     context = {
         "step_label": "Шаг 3 из 3",
         "code": code,
@@ -120,9 +135,9 @@ def _render_dest_step(
         "qty": qty,
         "new_expiry": new_expiry,
         "new_comment": new_comment,
-        "cost": cost,
-        # DATE-01: flat context key, matching this template's `new_expiry` /
-        # `cost` idiom. Empty on a fresh entry into the step, so the template's
+        "price_fields": price_fields,
+        # DATE-01: flat context key, matching this template's `new_expiry`
+        # idiom. Empty on a fresh entry into the step, so the template's
         # `| default(today_iso(), true)` pre-fills today; echoed back on a
         # 422/oversell re-render so the typed date is not lost.
         "op_date": op_date,
@@ -203,6 +218,39 @@ def transfers_step_batch_pick(
     )
 
 
+@router.get("/m/transfers/step/dest-prices")
+def transfers_step_dest_prices(
+    request: Request,
+    code: str = "",
+    batch_id: str = "",
+    dest_warehouse_id: str = "",
+    cost: str = "",
+    sale_price: str = "",
+    cost_autofilled: str = "",
+    sale_price_autofilled: str = "",
+    session: Session = Depends(get_session),
+):
+    # Quick 260927-nnj: a destination radio change re-renders the cost/sale-
+    # price fields with destination-currency suggestions (D-02), never over a
+    # typed value.
+    price_fields = transfer_price_fields(
+        session,
+        code=code,
+        batch_id=batch_id,
+        dest_warehouse_id=dest_warehouse_id,
+        cost=cost,
+        sale_price=sale_price,
+        cost_autofilled=cost_autofilled,
+        sale_price_autofilled=sale_price_autofilled,
+        suggest=True,
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/transfer_price_fields.html",
+        {"price_fields": price_fields, "errors": {}},
+    )
+
+
 @router.post("/m/transfers/step/dest")
 def transfers_step_dest(
     request: Request,
@@ -259,6 +307,9 @@ def transfers_create(
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
     cost: str = Form(""),
+    sale_price: str = Form(""),
+    cost_autofilled: str = Form(""),
+    sale_price_autofilled: str = Form(""),
     confirm: str = Form(""),
     op_date: str = Form(""),
     session: Session = Depends(get_session),
@@ -277,6 +328,7 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost_raw=cost,
+            sale_price_raw=sale_price,
             confirm=confirm,
             op_date=op_date,
         )
@@ -295,6 +347,9 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            sale_price=sale_price,
+            cost_autofilled=cost_autofilled,
+            sale_price_autofilled=sale_price_autofilled,
             op_date=op_date,
             errors={"form": SAVE_FAILED_ERROR},
             status_code=422,
@@ -314,6 +369,9 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            sale_price=sale_price,
+            cost_autofilled=cost_autofilled,
+            sale_price_autofilled=sale_price_autofilled,
             op_date=op_date,
             oversell=result["oversell"],
         )
@@ -330,6 +388,9 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost=cost,
+            sale_price=sale_price,
+            cost_autofilled=cost_autofilled,
+            sale_price_autofilled=sale_price_autofilled,
             op_date=op_date,
             errors=errors,
             status_code=422,

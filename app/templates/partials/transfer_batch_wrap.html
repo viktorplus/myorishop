@@ -10,7 +10,10 @@
    warehouse <select> (D-02) — rendered only once a source batch is picked
    AND a `warehouses` list (active warehouses minus the source's own
    warehouse) is supplied; before a source is picked `warehouses` is empty
-   so no select is shown. #}
+   so no select is shown. Quick 260927-nnj: changing the destination re-renders
+   the cost/sale-price fields (#transfer-price-fields, the shared
+   transfer_price_fields.html) via GET /transfers/dest-pick, which suggests
+   destination-currency prices for a cross-currency move. #}
 <div class="field" id="batch-wrap-first"{% if oob_batch | default(false) %} hx-swap-oob="outerHTML"{% endif %}>
   {% with row_id = "",
           code = code | default("") or "",
@@ -30,7 +33,9 @@
   {% if selected_batch_id and _wh_list %}
   <div class="field">
     <label for="dest_warehouse_id">Склад назначения</label>
-    <select id="dest_warehouse_id" name="dest_warehouse_id">
+    <select id="dest_warehouse_id" name="dest_warehouse_id"
+            hx-get="/transfers/dest-pick" hx-trigger="change" hx-include="closest form"
+            hx-target="#transfer-price-fields" hx-swap="outerHTML">
       <option value=""></option>
       {% for w in _wh_list %}
       <option value="{{ w.id }}"{% if w.id == _dest_value %} selected{% endif %}>{{ w.name }}</option>
@@ -55,16 +60,6 @@
     <label for="new_comment">Новое состояние или комментарий <span class="muted">(например: повреждена упаковка, вскрыт образец)</span></label>
     <input type="text" id="new_comment" name="new_comment" value="{{ new_comment_value | default('') }}">
   </div>
-  {# CUR-02: required only when the destination warehouse's currency differs
-     from the source batch's — otherwise optional (inherits source.cost_cents
-     when left blank). #}
-  <div class="field">
-    <label for="cost">Себестоимость партии в валюте склада назначения</label>
-    <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
-           value="{{ cost_value | default('') }}">
-    <p class="muted">Обязательно, если склад назначения использует другую валюту, иначе можно
-      оставить пустым — унаследуется от партии-источника.</p>
-    {% if errors is defined and errors.cost %}<p class="error">{{ errors.cost }}</p>{% endif %}
-  </div>
+  {% include "partials/transfer_price_fields.html" %}
   {% endif %}
 </div>

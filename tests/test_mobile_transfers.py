@@ -302,6 +302,13 @@ def _eur_warehouse(session, name="Склад EUR"):
     return wh
 
 
+def _uah_warehouse(session, name="Запорожье"):
+    wh = Warehouse(id=new_id(), name=name, currency="UAH")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
 def test_transfers_create_cross_currency_blank_cost_rejected_zero_writes(
     mobile_client_factory, session, stocked_product
 ):
@@ -864,3 +871,151 @@ def test_transfers_step_labels_unchanged(mobile_client_factory, session, stocked
     assert '<p class="mobile-step-indicator">Шаг 3 из 3</p>' in dest.text
     assert "Шаг 2 из 3" in batch.text
     assert "Шаг 1 из 3" in first.text
+
+
+# --- Quick 260927-nnj: cross-currency transfer sale price (D-01..D-05) ------
+
+
+def _priced_source(session, stocked_product):
+    """RUB card prices only; the fixture batch gets price 1500 / cost 400
+    (conftest builds it with price_cents None — set it or NULL asserts are vacuous)."""
+    stocked_product.cost_cents = 143400
+    stocked_product.sale_cents = 249900
+    source = _source_batch(session, stocked_product)
+    source.price_cents = 1500
+    source.cost_cents = 400
+    session.commit()
+    return source
+
+
+def test_transfers_dest_prices_cross_currency_suggests_sale_price(
+    mobile_client_factory, session, stocked_product
+):
+    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers/step/dest-prices",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'id="transfer-price-fields"' in response.text
+    assert 'name="sale_price"' in response.text
+    assert 'value="717,00"' in response.text
+    assert 'value="1249,50"' in response.text
+    assert 'data-autofilled="true"' in response.text
+    assert "пересчитана" in response.text
+
+
+def test_transfers_dest_prices_same_currency_hides_sale_price(
+    mobile_client_factory, session, stocked_product
+):
+    """D-05: a same-currency destination keeps only the cost field."""
+    source = _priced_source(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers/step/dest-prices",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'id="cost"' in response.text
+    assert 'name="sale_price"' not in response.text
+    assert "пересчитана" not in response.text
+
+
+def test_transfers_dest_step_wires_radios_to_dest_prices(
+    mobile_client_factory, session, stocked_product
+):
+    """The dest radios re-render the price fields; the form posts the flags."""
+    source = _priced_source(session, stocked_product)
+    _uah_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.get(
+        "/m/transfers/step/batch-pick",
+        params={"code": stocked_product.code, "batch_id": source.id},
+    )
+
+    assert response.status_code == 200
+    assert 'hx-get="/m/transfers/step/dest-prices"' in response.text
+    assert "sale_price_autofilled" in response.text
+    assert 'name="sale_price"' not in response.text
+
+
+def test_transfers_create_cross_currency_sale_price_blank_and_typed(
+    mobile_client_factory, session, stocked_product
+):
+    """D-03: blank sale price -> dest NULL; typed -> that value on dest only."""
+    from app.services.batches import open_batches
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+    data = {
+        "code": stocked_product.code,
+        "name": stocked_product.name,
+        "qty": "3",
+        "batch_id": source.id,
+        "dest_warehouse_id": uah.id,
+        "cost": "300",
+    }
+
+    response = client.post("/m/transfers", data=data)
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+    dest_batches = open_batches(session, stocked_product.id, uah.id)
+    assert [b.price_cents for b in dest_batches] == [None]
+
+    response = client.post("/m/transfers", data={**data, "sale_price": "450,50"})
+    assert response.status_code == 200
+    prices = sorted(
+        (b.price_cents for b in open_batches(session, stocked_product.id, uah.id)),
+        key=lambda p: -1 if p is None else p,
+    )
+    assert prices == [None, 45050]
+    session.refresh(source)
+    assert source.price_cents == 1500
+
+
+def test_transfers_create_cross_currency_422_keeps_typed_prices(
+    mobile_client_factory, session, stocked_product
+):
+    """A2: a 422 re-render echoes cost, sale price and the chosen destination."""
+    import re
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    client = mobile_client_factory(mobile_transfers.router)
+
+    response = client.post(
+        "/m/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "abc",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "300",
+            "sale_price": "450,50",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'name="sale_price"' in response.text
+    assert 'value="450,50"' in response.text
+    assert 'value="300"' in response.text
+    assert re.search(rf'value="{uah.id}"\s+checked', response.text)

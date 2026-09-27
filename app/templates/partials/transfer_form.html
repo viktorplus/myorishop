@@ -16,8 +16,15 @@
   {# Swap-time guard (RESEARCH Pitfall 7): the #name-wrap swap from the
      lookup response is discarded if the operator typed into the name field
      while the request was in flight — a lookup never clobbers typed input. #}
+  {# Quick 260927-nnj (k1m CR-02 idiom): the price inputs' autofilled marks
+     are posted as flags so a 422 re-render keeps them; through htmx attribute
+     inheritance (not disabled — base.html's htmx-config sets only
+     responseHandling) they also reach the dest select's /transfers/dest-pick
+     GET, which then re-suggests an autofilled value but never a typed one.
+     Single-quoted: the payload contains double quotes. #}
   <form class="stacked-form"
         id="transfer-form"
+        hx-vals='js:{cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
         hx-post="/transfers"
         hx-target="#transfer-form-wrap"
         hx-swap="outerHTML"
@@ -63,8 +70,7 @@
             warehouses = warehouses | default([]),
             dest_warehouse_id_value = form.dest_warehouse_id or '',
             new_expiry_value = form.new_expiry or '',
-            new_comment_value = form.new_comment or '',
-            cost_value = form.cost or '' %}
+            new_comment_value = form.new_comment or '' %}
     {% include "partials/transfer_batch_wrap.html" %}
     {% endwith %}
 

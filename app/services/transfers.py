@@ -7,6 +7,12 @@ destination batch that inherits the source's price_cents/expiry/comment/
 location/name (this is HOW cost/price history survives the move). Product-
 level quantity nets to zero; only the two Batch.quantity caches move.
 
+Quick 260927-nnj: a CROSS-currency transfer does not inherit price_cents —
+stored money never crosses currencies. The destination batch takes the
+optional sale price typed in the destination warehouse's currency, or NULL
+(a sale then falls back to the card price of that currency). A transfer
+never writes the product card.
+
 Single-write-path contract: Operation rows and Product/Batch.quantity are
 written ONLY through app.services.ledger.record_operation.
 """
@@ -16,11 +22,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_today_iso, new_id, to_cents
+from app.core import converted_price_hint, format_cents, local_today_iso, new_id, to_cents
 from app.models import Batch, Operation, Product, Warehouse
-from app.services.batches import active_warehouses
-from app.services.catalog import PRICE_ERROR
+from app.services.batches import active_warehouses, warehouse_currency
+from app.services.catalog import PRICE_ERROR, parse_optional_cents
 from app.services.ledger import parse_op_date, record_operation
+from app.services.receipts import lookup_prefill
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 BATCH_REQUIRED_ERROR = "Выберите партию."
@@ -50,6 +57,7 @@ def register_transfer(
     new_expiry: str = "",
     new_comment: str = "",
     cost_raw: str = "",
+    sale_price_raw: str = "",
     confirm: str = "",
     op_date: str = "",
 ) -> tuple[dict | None, dict[str, str]]:
@@ -119,6 +127,9 @@ def register_transfer(
     # (no conversion — the operator states the real cost in the destination
     # warehouse's own currency); a same-currency transfer accepts an optional
     # cost and otherwise inherits the source batch's cost_cents unchanged.
+    # Quick 260927-nnj: the sale price follows the same split — cross-currency
+    # takes the optional `sale_price_raw` (empty -> NULL), same-currency
+    # inherits source.price_cents and ignores `sale_price_raw`.
     dest_warehouse = session.get(Warehouse, dest_warehouse_id)
     # WR-06 (33-REVIEW): `dest_warehouse` is safe — its id was just checked
     # against `active_ids` above. `source.warehouse_id` never was: `source` is
@@ -141,7 +152,12 @@ def register_transfer(
             cost_cents = to_cents(cost_text)
         except ValueError:
             return None, {"cost": PRICE_ERROR}
+        sale_errors: dict[str, str] = {}
+        price_cents = parse_optional_cents(sale_price_raw, sale_errors, "sale_price")
+        if sale_errors:
+            return None, sale_errors
     else:
+        price_cents = source.price_cents
         if not cost_text:
             cost_cents = source.cost_cents
         else:
@@ -177,19 +193,21 @@ def register_transfer(
             {},
         )
 
-    # D-05: the destination batch is created fresh, inheriting the source's
-    # frozen price_cents (direct assignment, never a bare `or` — a
-    # legitimate 0-cent price must survive) plus expiry/comment/location/
-    # name. session.add() BEFORE either record_operation call so autoflush
-    # inserts it (Pitfall 2 — record_operation's session.get(Batch, dest.id)
-    # must resolve).
+    # D-05: the destination batch is created fresh with the branch-computed
+    # price_cents — the source's frozen price for a same-currency move (direct
+    # assignment, never a bare `or` — a legitimate 0-cent price must survive),
+    # the typed destination-currency price or NULL for a cross-currency one
+    # (quick 260927-nnj) — plus the source's expiry/comment/location/name.
+    # session.add() BEFORE either record_operation call so autoflush inserts
+    # it (Pitfall 2 — record_operation's session.get(Batch, dest.id) must
+    # resolve).
     dest = Batch(
         id=new_id(),
         product_id=product.id,
         warehouse_id=dest_warehouse_id,
         name=source.name,
         expiry=new_expiry_clean if new_expiry_clean else source.expiry,
-        price_cents=source.price_cents,
+        price_cents=price_cents,
         cost_cents=cost_cents,
         location=source.location,
         comment=new_comment_clean if new_comment_clean else source.comment,
@@ -238,6 +256,75 @@ def register_transfer(
         return None, {"form": SAVE_FAILED_ERROR}
 
     return {"product": product, "source": source, "dest": dest, "qty": qty}, {}
+
+
+def transfer_price_fields(
+    session: Session,
+    *,
+    code: str,
+    batch_id: str,
+    dest_warehouse_id: str,
+    cost: str = "",
+    sale_price: str = "",
+    cost_autofilled: str = "",
+    sale_price_autofilled: str = "",
+    suggest: bool = False,
+) -> dict:
+    """Values for the transfer cost + sale-price fields (quick 260927-nnj). Read-only.
+
+    `cross_currency` is True only when every untrusted id resolves exactly as
+    register_transfer checks it (T-nnj-01) and the two warehouses' currencies
+    differ; any miss is simply "not cross", never an exception. With `suggest`
+    (a destination change) an EMPTY or still-autofilled field gets the
+    destination-currency suggestion from lookup_prefill; a typed value is never
+    replaced. Without `suggest` (a POST re-render) posted values are echoed and
+    an empty field stays empty, so a cleared sale price is saved as NULL.
+    """
+    cross = False
+    batch_id, dest_id = batch_id.strip(), dest_warehouse_id.strip()
+    dest_currency = warehouse_currency(session, dest_id)
+    product = session.scalars(
+        select(Product).where(Product.code == code.strip(), Product.deleted_at.is_(None))
+    ).first()
+    source = session.get(Batch, batch_id) if batch_id else None
+    if (
+        product is not None
+        and source is not None
+        and source.product_id == product.id
+        and dest_id in {w.id for w in active_warehouses(session)}
+    ):
+        source_warehouse = session.get(Warehouse, source.warehouse_id)
+        dest_warehouse = session.get(Warehouse, dest_id)
+        cross = (
+            source_warehouse is not None
+            and dest_warehouse.currency != source_warehouse.currency
+        )
+    prefill = lookup_prefill(session, code, currency=dest_currency) if cross else None
+    prices = prefill["prices"] if prefill else {}
+    converted = prefill["converted"] if prefill else []
+
+    fields: dict = {"cross_currency": cross}
+    for kind, key, raw, flag in (
+        ("cost", "cost", cost, cost_autofilled),
+        ("sale", "sale_price", sale_price, sale_price_autofilled),
+    ):
+        value, autofilled = raw.strip(), flag == "true"
+        if key == "sale_price" and not cross:
+            value, autofilled = "", False
+        elif suggest and (not value or autofilled):
+            price = prices.get(kind)
+            if cross and price is not None:
+                value, autofilled = format_cents(price), True
+            else:
+                value, autofilled = "", False
+        fields[key] = value
+        fields[f"{key}_autofilled"] = autofilled
+        fields[f"{key}_hint"] = (
+            converted_price_hint(dest_currency)
+            if cross and autofilled and kind in converted
+            else ""
+        )
+    return fields
 
 
 def recent_transfers(session: Session, limit: int = 10) -> list[dict]:

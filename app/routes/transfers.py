@@ -11,14 +11,14 @@ from app.models import Batch, Product
 from app.routes import templates
 from app.services.batches import active_warehouses, open_batches
 from app.services.receipts import lookup_prefill
-from app.services.transfers import recent_transfers, register_transfer
+from app.services.transfers import recent_transfers, register_transfer, transfer_price_fields
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Route order: the literal /transfers/lookup and /transfers/batch-pick paths
-# MUST stay declared before any parameterized /transfers/{...} route added
-# later.
+# Route order: the literal /transfers/lookup, /transfers/batch-pick and
+# /transfers/dest-pick paths MUST stay declared before any parameterized
+# /transfers/{...} route added later.
 
 SAVE_FAILED_ERROR = "Не удалось сохранить. Проверьте данные и попробуйте ещё раз."
 
@@ -133,6 +133,39 @@ def transfers_batch_pick(
     return templates.TemplateResponse(request, "partials/transfer_batch_wrap.html", context)
 
 
+@router.get("/transfers/dest-pick")
+def transfers_dest_pick(
+    request: Request,
+    code: str = "",
+    batch_id: str = "",
+    dest_warehouse_id: str = "",
+    cost: str = "",
+    sale_price: str = "",
+    cost_autofilled: str = "",
+    sale_price_autofilled: str = "",
+    session: Session = Depends(get_session),
+):
+    # Quick 260927-nnj: a destination change re-renders the cost/sale-price
+    # fields; a cross-currency move gets destination-currency suggestions in
+    # EMPTY (or still-autofilled) fields, never over a typed value (D-02).
+    price_fields = transfer_price_fields(
+        session,
+        code=code,
+        batch_id=batch_id,
+        dest_warehouse_id=dest_warehouse_id,
+        cost=cost,
+        sale_price=sale_price,
+        cost_autofilled=cost_autofilled,
+        sale_price_autofilled=sale_price_autofilled,
+        suggest=True,
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/transfer_price_fields.html",
+        {"price_fields": price_fields, "errors": {}},
+    )
+
+
 @router.post("/transfers")
 def transfers_create(
     request: Request,
@@ -144,6 +177,9 @@ def transfers_create(
     new_expiry: str = Form(""),
     new_comment: str = Form(""),
     cost: str = Form(""),
+    sale_price: str = Form(""),
+    cost_autofilled: str = Form(""),
+    sale_price_autofilled: str = Form(""),
     confirm: str = Form(""),
     op_date: str = Form(""),
     session: Session = Depends(get_session),
@@ -160,7 +196,6 @@ def transfers_create(
         "dest_warehouse_id": dest_warehouse_id,
         "new_expiry": new_expiry,
         "new_comment": new_comment,
-        "cost": cost,
         "op_date": op_date,
     }
     # WH-03/D-10: resolve the picked batch (if any) for the re-echoed picker +
@@ -177,6 +212,19 @@ def transfers_create(
         candidate = session.get(Batch, batch_id_clean)
         if candidate is not None and candidate.product_id == lookup_product.id:
             selected_batch = candidate
+    # Quick 260927-nnj (A2): a re-render echoes the posted prices and marks
+    # and never suggests into an empty field — a cleared sale price stays
+    # empty and is saved as NULL.
+    price_fields = transfer_price_fields(
+        session,
+        code=code,
+        batch_id=batch_id,
+        dest_warehouse_id=dest_warehouse_id,
+        cost=cost,
+        sale_price=sale_price,
+        cost_autofilled=cost_autofilled,
+        sale_price_autofilled=sale_price_autofilled,
+    )
     try:
         result, errors = register_transfer(
             session,
@@ -188,6 +236,7 @@ def transfers_create(
             new_expiry=new_expiry,
             new_comment=new_comment,
             cost_raw=cost,
+            sale_price_raw=sale_price,
             confirm=confirm,
             op_date=op_date,
         )
@@ -202,6 +251,7 @@ def transfers_create(
             "include_oob_rows": False,
             "selected_batch": selected_batch,
             "warehouses": _dest_warehouses(session, selected_batch),
+            "price_fields": price_fields,
         }
         return templates.TemplateResponse(
             request, "partials/transfer_form.html", context, status_code=422
@@ -218,6 +268,7 @@ def transfers_create(
             "oversell": result["oversell"],
             "selected_batch": selected_batch,
             "warehouses": _dest_warehouses(session, selected_batch),
+            "price_fields": price_fields,
         }
         return templates.TemplateResponse(request, "partials/transfer_form.html", context)
 
@@ -229,6 +280,7 @@ def transfers_create(
             "include_oob_rows": False,
             "selected_batch": selected_batch,
             "warehouses": _dest_warehouses(session, selected_batch),
+            "price_fields": price_fields,
         }
         return templates.TemplateResponse(
             request, "partials/transfer_form.html", context, status_code=422

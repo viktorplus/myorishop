@@ -407,6 +407,14 @@ def _eur_warehouse(session):
     return wh
 
 
+def _uah_warehouse(session):
+    """Seed and return an active UAH warehouse (quick 260927-nnj)."""
+    wh = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
 def test_cross_currency_transfer_blank_cost_rejected_zero_writes(session, stocked_product):
     """CUR-02: a cross-currency transfer with a blank cost is rejected, zero writes."""
     from sqlalchemy import select
@@ -1090,3 +1098,397 @@ def test_web_transfer_future_date_returns_422_and_echoes_the_typed_value(
     assert OP_DATE_FUTURE_ERROR in response.text
     assert f'value="{tomorrow}"' in response.text
     assert _transfer_ops(session) == []
+
+
+# --- Quick 260927-nnj: cross-currency transfer sale price (D-01..D-05) ------
+
+_CARD_PRICE_COLUMNS = (
+    "cost_cents", "sale_cents", "min_sale_cents",
+    "cost_uah_cents", "sale_uah_cents", "min_sale_uah_cents",
+    "cost_eur_cents", "sale_eur_cents", "min_sale_eur_cents",
+)
+
+
+def _priced_source(session, stocked_product):
+    """RUB card prices only; the fixture batch gets price 1500 / cost 400.
+
+    The conftest batch is built with price_cents None, so without this the
+    NULL-price assertions below would pass vacuously before the fix.
+    """
+    stocked_product.cost_cents = 143400
+    stocked_product.sale_cents = 249900
+    source = open_batches(session, stocked_product.id)[0]
+    source.price_cents = 1500
+    source.cost_cents = 400
+    session.commit()
+    return source
+
+
+def test_cross_currency_blank_sale_price_leaves_dest_price_null(session, stocked_product):
+    """D-03: an empty sale price on a cross-currency transfer -> dest price NULL."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        cost_raw="300",
+    )
+
+    assert errors == {}
+    assert result["dest"].price_cents is None
+    session.refresh(source)
+    assert source.price_cents == 1500
+
+
+def test_cross_currency_typed_sale_price_lands_on_dest_only(session, stocked_product):
+    """D-03/D-04: a typed sale price goes to the dest batch only, never the card."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    before = {col: getattr(stocked_product, col) for col in _CARD_PRICE_COLUMNS}
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        cost_raw="300",
+        sale_price_raw="450,50",
+    )
+
+    assert errors == {}
+    assert result["dest"].price_cents == 45050
+    session.refresh(source)
+    assert source.price_cents == 1500
+    session.refresh(stocked_product)
+    assert {col: getattr(stocked_product, col) for col in _CARD_PRICE_COLUMNS} == before
+
+
+def test_cross_currency_bad_sale_price_rejected_zero_writes(session, stocked_product):
+    """A6: garbage or negative sale price -> PRICE_ERROR, zero writes."""
+    from app.services.catalog import PRICE_ERROR
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    for raw in ("abc", "-5"):
+        result, errors = register_transfer(
+            session,
+            code=stocked_product.code,
+            name=stocked_product.name,
+            qty_raw="3",
+            batch_id=source.id,
+            dest_warehouse_id=uah.id,
+            cost_raw="300",
+            sale_price_raw=raw,
+        )
+        assert result is None
+        assert errors == {"sale_price": PRICE_ERROR}
+    assert _transfer_ops(session) == []
+
+
+def test_same_currency_transfer_ignores_posted_sale_price(session, stocked_product):
+    """D-05/A5: same currency inherits source.price_cents; sale_price ignored."""
+    source = _priced_source(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+
+    result, errors = register_transfer(
+        session,
+        code=stocked_product.code,
+        name=stocked_product.name,
+        qty_raw="3",
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+        sale_price_raw="999",
+    )
+
+    assert errors == {}
+    assert result["dest"].price_cents == 1500
+
+
+def test_transfer_price_fields_suggests_converted_rub_prices(session, stocked_product):
+    """D-02: empty cost/sale get RUB card /2 for UAH, marked and hinted."""
+    from app.core import converted_price_hint
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        suggest=True,
+    )
+
+    assert fields["cross_currency"] is True
+    assert fields["cost"] == "717,00"
+    assert fields["sale_price"] == "1249,50"
+    assert fields["cost_autofilled"] is True
+    assert fields["sale_price_autofilled"] is True
+    assert fields["cost_hint"] == converted_price_hint("UAH")
+    assert fields["sale_price_hint"] == converted_price_hint("UAH")
+
+
+def test_transfer_price_fields_prefers_own_currency_card_price(session, stocked_product):
+    """D-02: a card UAH sale price is suggested as-is, with no hint."""
+    from app.core import converted_price_hint
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    stocked_product.sale_uah_cents = 130000
+    session.commit()
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        suggest=True,
+    )
+
+    assert fields["sale_price"] == "1300,00"
+    assert fields["sale_price_hint"] == ""
+    assert fields["cost"] == "717,00"
+    assert fields["cost_hint"] == converted_price_hint("UAH")
+
+
+def test_transfer_price_fields_never_replaces_typed_value(session, stocked_product):
+    """D-02: a typed value stays; an autofilled one is re-suggested."""
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+        cost="800",
+        sale_price="5,00",
+        sale_price_autofilled="true",
+        suggest=True,
+    )
+
+    assert fields["cost"] == "800"
+    assert fields["cost_autofilled"] is False
+    assert fields["sale_price"] == "1249,50"
+    assert fields["sale_price_autofilled"] is True
+
+
+def test_transfer_price_fields_same_currency_clears_autofilled(session, stocked_product):
+    """A3: a same-currency destination hides the sale field, clears an autofilled cost."""
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=dest_wh.id,
+        cost="717,00",
+        cost_autofilled="true",
+        suggest=True,
+    )
+
+    assert fields["cross_currency"] is False
+    assert fields["cost"] == ""
+    assert fields["sale_price"] == ""
+
+
+def test_transfer_price_fields_no_suggestion_without_suggest(session, stocked_product):
+    """A2: a POST re-render (suggest=False) never fills an empty field."""
+    from app.services.transfers import transfer_price_fields
+
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    fields = transfer_price_fields(
+        session,
+        code=stocked_product.code,
+        batch_id=source.id,
+        dest_warehouse_id=uah.id,
+    )
+
+    assert fields["cost"] == ""
+    assert fields["sale_price"] == ""
+
+
+def test_web_dest_pick_cross_currency_shows_suggested_sale_price(
+    client, session, stocked_product
+):
+    """D-01/D-02: choosing a UAH destination shows the sale field, pre-filled."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    response = client.get(
+        "/transfers/dest-pick",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'id="transfer-price-fields"' in response.text
+    assert 'name="sale_price"' in response.text
+    assert 'value="717,00"' in response.text
+    assert 'value="1249,50"' in response.text
+    assert 'data-autofilled="true"' in response.text
+    assert "пересчитана" in response.text
+
+
+def test_web_dest_pick_same_currency_hides_sale_price(client, session, stocked_product):
+    """D-05: a same-currency destination keeps only the cost field."""
+    source = _priced_source(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+
+    response = client.get(
+        "/transfers/dest-pick",
+        params={
+            "code": stocked_product.code,
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'id="cost"' in response.text
+    assert 'name="sale_price"' not in response.text
+    assert "пересчитана" not in response.text
+
+
+def test_web_batch_pick_wires_dest_select_to_dest_pick(client, session, stocked_product):
+    """The dest select re-renders the price fields; the form posts the flags."""
+    source = _priced_source(session, stocked_product)
+    _uah_warehouse(session)
+
+    response = client.get(
+        "/transfers/batch-pick",
+        params={"batch_id": source.id, "code": stocked_product.code},
+    )
+
+    assert response.status_code == 200
+    assert 'hx-get="/transfers/dest-pick"' in response.text
+    assert 'name="sale_price"' not in response.text
+    page = client.get("/transfers")
+    assert "sale_price_autofilled" in page.text
+
+
+def test_web_cross_currency_blank_sale_price_falls_back_to_card_on_sale(
+    client, session, stocked_product
+):
+    """D-03 end to end: NULL dest price -> /sales/batch-pick fills the UAH card price."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "300",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Перемещение сохранено" in response.text
+    dest = open_batches(session, stocked_product.id, uah.id)[0]
+    assert dest.price_cents is None
+
+    stocked_product.sale_uah_cents = 130000
+    session.commit()
+    pick = client.get(
+        "/sales/batch-pick",
+        params={"row": "", "batch_id": dest.id, "code": stocked_product.code},
+    )
+    assert pick.status_code == 200
+    assert 'value="1300,00"' in pick.text
+
+
+def test_web_cross_currency_typed_sale_price_saved(client, session, stocked_product):
+    """D-03: a typed sale price posted from the form lands on the dest batch."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "3",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "300",
+            "sale_price": "450,50",
+        },
+    )
+
+    assert response.status_code == 200
+    dest = open_batches(session, stocked_product.id, uah.id)[0]
+    assert dest.price_cents == 45050
+
+
+def test_web_cross_currency_422_keeps_typed_prices_and_marks(
+    client, session, stocked_product
+):
+    """A2: a 422 re-render echoes cost, sale price and the autofilled marks."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "abc",
+            "batch_id": source.id,
+            "dest_warehouse_id": uah.id,
+            "cost": "717,00",
+            "cost_autofilled": "true",
+            "sale_price": "450,50",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'name="sale_price"' in response.text
+    assert 'value="450,50"' in response.text
+    assert 'value="717,00"' in response.text
+    assert 'data-autofilled="true"' in response.text
+    assert "пересчитана" in response.text
+
+
+def test_web_same_currency_422_has_no_sale_price_field(client, session, stocked_product):
+    """D-05 guard: a same-currency 422 shows the cost field and no sale field."""
+    source = _priced_source(session, stocked_product)
+    dest_wh = _second_warehouse(session)
+
+    response = client.post(
+        "/transfers",
+        data={
+            "code": stocked_product.code,
+            "name": stocked_product.name,
+            "qty": "abc",
+            "batch_id": source.id,
+            "dest_warehouse_id": dest_wh.id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'id="cost"' in response.text
+    assert 'name="sale_price"' not in response.text
