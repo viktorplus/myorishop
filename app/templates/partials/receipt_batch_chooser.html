@@ -17,6 +17,10 @@
   </div>
 {% else %}
   {% set new_selected = not batches %}
+  {# /receipts/lookup and /receipts/batches pass no `form` (only the full-form
+     render echoes one) — without this default an existing product with no
+     open batch 500'd on `form.expiry`. #}
+  {% set form = form | default({}) %}
   <fieldset class="field">
     <legend>Партия</legend>
     {% if not code_entered %}

@@ -1056,6 +1056,23 @@ def test_web_receipt_batches_chooser_lists_open_batches(client, session, product
     assert "стеллаж А3" in response.text  # WH-02 location echoed in the radio
 
 
+def test_web_lookup_and_batches_product_without_open_batches(client, product, warehouse):
+    """Existing product with no open batch -> the «Новая партия» fields render
+    without a `form` in the context (was a 500 on s1 for code 42499)."""
+    params = {"code": "TEST-001", "name": "", "cost": "", "sale": "",
+              "warehouse_id": warehouse.id}
+    lookup = client.get("/receipts/lookup", params=params)
+    assert lookup.status_code == 200
+    assert "Тестовый товар" in lookup.text
+    assert 'id="receipt-expiry"' in lookup.text
+
+    batches = client.get(
+        "/receipts/batches", params={"code": "TEST-001", "warehouse_id": warehouse.id}
+    )
+    assert batches.status_code == 200
+    assert 'id="receipt-expiry"' in batches.text
+
+
 def test_web_receipt_batches_zero_warehouses_blocks_with_link(client):
     """No active warehouses -> blocking «Нет активных складов» hint + /warehouses link."""
     response = client.get(
