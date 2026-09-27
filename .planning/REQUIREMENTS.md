@@ -104,7 +104,7 @@ The feature shipped 2026-08-10; this closes its adoption tail.
 - **Lock dates / closed accounting periods** — they exist to protect filed statutory accounts and a month-end close, neither of which a single reseller has. Their only observable effect here would be locking the operator out of fixing their own data.
 - **Automatic cascading reversal** — reversing an operation must never silently reverse others derived from it.
 - **A dedicated `storno` operation type** — every existing `WHERE type == ...` filter would miss it and nothing would net out. The compensating row keeps the original's type.
-- **Currency conversion, FX rates, an «все валюты» option** — settled at CUR-01: amounts in different currencies are never summed, so there is nothing to convert.
+- **Currency conversion, FX rates, an «все валюты» option** — settled at CUR-01: amounts in different currencies are never summed, so there is nothing to convert. One exception, added by quick task 260927-k1m: when a product card has no price in the warehouse currency, the form SUGGESTS the RUB price converted (UAH = RUB/2, EUR = RUB/100, rounded half-up). The suggestion is stored only if the operator saves the form (into that currency's own card field), and totals still never mix currencies.
 - **Storno of a sale** (operator decision 1) — the «Возврат» flow covers it.
 - **Bumping Alembic to 1.19.x during this milestone** — CHECK-constraint autogeneration becomes default and would add diff noise across 26 existing migrations.
 - **Any new dependency** — research verified by execution that the milestone needs none. babel, freezegun/time-machine, `sqlalchemy.Date` and every date library are explicitly rejected with reasons recorded in `.planning/research/STACK.md`.
