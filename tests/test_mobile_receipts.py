@@ -596,3 +596,29 @@ def test_web_step_details_labels_converted_prices(mobile_client_factory, session
     assert response.text.count("Цена пересчитана из рублёвой (÷2) — уточните.") == 1
     cost_field = response.text.split('id="receipt-cost"', 1)[1].split('id="receipt-sale"', 1)[0]
     assert "Цена пересчитана из рублёвой (÷2) — уточните." in cost_field
+
+
+def test_web_step_batch_back_keeps_typed_price(mobile_client_factory, session, product):
+    """IN-02 (review 260927-k1m): step 3 "Назад" re-posts step/batch with the
+    prices the operator typed; the suggestion must not replace them."""
+    product.cost_cents = 143400
+    product.sale_cents = 249900
+    session.commit()
+    uah = _uah_warehouse(session)
+    client = mobile_client_factory(mobile_receipts.router)
+
+    arrival = client.post(
+        "/m/receipts/step/batch", data={"code": product.code, "warehouse_id": uah.id}
+    )
+    assert '<input type="hidden" name="cost" value="717,00">' in arrival.text
+
+    bounce = client.post(
+        "/m/receipts/step/batch",
+        data={
+            "code": product.code, "warehouse_id": uah.id, "name": product.name,
+            "cost": "800,00", "sale": "",
+        },
+    )
+    assert bounce.status_code == 200
+    assert '<input type="hidden" name="cost" value="800,00">' in bounce.text
+    assert '<input type="hidden" name="sale" value="1249,50">' in bounce.text

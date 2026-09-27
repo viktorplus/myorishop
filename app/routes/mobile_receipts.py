@@ -130,12 +130,14 @@ def mobile_receipt_step_batch(
     prices = result["prices"] if result and result["prices"] else {}
     resolved_cost = format_cents(prices["cost"]) if prices.get("cost") is not None else ""
     resolved_sale = format_cents(prices["sale"]) if prices.get("sale") is not None else ""
-    # CR-01: a fresh lookup wins over stale typed prices (code changed to a
-    # now-known match); otherwise preserve whatever the operator already
-    # typed on step 3, so tapping "Назад" and then "Далее" again does not
-    # silently discard a manual price edit.
-    final_cost = resolved_cost or cost.strip()
-    final_sale = resolved_sale or sale.strip()
+    # IN-02 (review 260927-k1m): posted prices win over the fresh suggestion.
+    # They only arrive on step 3's "Назад" bounce (step 1 renders no price
+    # fields, so a changed code or warehouse always comes back empty here),
+    # and there they are what the operator saw or typed for this same code
+    # and warehouse — "Назад" then "Далее" must not replace a typed price
+    # with the RUB/2 (or card) suggestion.
+    final_cost = cost.strip() or resolved_cost
+    final_sale = sale.strip() or resolved_sale
     context = {
         "code": code_clean,
         "warehouse_id": selected,
