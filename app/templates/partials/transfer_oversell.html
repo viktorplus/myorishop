@@ -7,9 +7,14 @@
   <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, перемещаете {{ oversell.requested }}.</p>
   <div class="form-actions">
     {# Re-POSTs the SAME form via form association (mirrors writeoff_oversell.html):
-       hx-vals merges confirm=1 into the transfer-form fields, no re-serialization. #}
+       hx-vals merges confirm=1 into the transfer-form fields, no re-serialization.
+       Review WR-05 (quick 260927-nnj): this button sits outside #transfer-form,
+       so it does not inherit the form's hx-vals — it posts the price inputs'
+       autofilled flags itself, or a 422 after confirm would turn suggestions
+       into "typed" values. Single-quoted: the payload contains double quotes. #}
     <button type="submit" class="danger" form="transfer-form"
-            hx-post="/transfers" hx-vals='{"confirm": "1"}'
+            hx-post="/transfers"
+            hx-vals='js:{confirm: "1", cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
             hx-target="#transfer-form-wrap" hx-swap="outerHTML"
             hx-disabled-elt="this">Переместить всё равно</button>
     {# Client-side dismiss only — no server call, no write; the form

@@ -1686,3 +1686,33 @@ def test_web_form_guards_price_fragment_swap_against_typing(client):
     assert "hx-on::before-request=" in page.text
     assert page.text.count("transfer-price-fields") >= 2
     assert "event.detail.shouldSwap = false; htmx.trigger(" in page.text
+
+
+def test_web_oversell_confirm_carries_autofilled_flags(client, session, stocked_product):
+    """WR-05: «Переместить всё равно» posts the autofilled flags (it sits outside
+    the form) and the confirmed transfer saves the sale price."""
+    source = _priced_source(session, stocked_product)
+    uah = _uah_warehouse(session)
+    data = {
+        "code": stocked_product.code,
+        "name": stocked_product.name,
+        "qty": "99",
+        "batch_id": source.id,
+        "dest_warehouse_id": uah.id,
+        "cost": "300",
+        "sale_price": "450,50",
+    }
+
+    warn = client.post("/transfers", data=data)
+    assert warn.status_code == 200
+    start = warn.text.index('id="transfer-oversell-warning"')
+    block = warn.text[start : warn.text.index("Вернуться к форме", start)]
+    assert 'confirm: "1"' in block
+    assert "cost_autofilled" in block
+    assert "sale_price_autofilled" in block
+
+    done = client.post("/transfers", data={**data, "confirm": "1"})
+    assert done.status_code == 200
+    assert "Перемещение сохранено" in done.text
+    dest = open_batches(session, stocked_product.id, uah.id)
+    assert [b.price_cents for b in dest] == [45050]

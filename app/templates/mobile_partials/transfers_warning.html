@@ -7,8 +7,12 @@
   <p><strong>Товара не хватает в партии</strong></p>
   <p>{{ oversell.product.name }}: в партии {{ oversell.available }}, перемещаете {{ oversell.requested }}.</p>
   <div class="mobile-actions">
+    {# Review WR-05 (quick 260927-nnj): outside #transfer-dest-form, so it
+       posts the price inputs' autofilled flags itself (the form's hx-vals is
+       not inherited). Single-quoted: the payload contains double quotes. #}
     <button type="submit" class="danger" form="transfer-dest-form"
-            hx-post="/m/transfers" hx-vals='{"confirm": "1"}'
+            hx-post="/m/transfers"
+            hx-vals='js:{confirm: "1", cost_autofilled: document.getElementById("cost") ? document.getElementById("cost").dataset.autofilled || "" : "", sale_price_autofilled: document.getElementById("sale_price") ? document.getElementById("sale_price").dataset.autofilled || "" : ""}'
             hx-target="#wizard-step" hx-swap="outerHTML"
             hx-disabled-elt="this">Переместить всё равно</button>
     {# Client-side dismiss only — no server call, no write; the form
