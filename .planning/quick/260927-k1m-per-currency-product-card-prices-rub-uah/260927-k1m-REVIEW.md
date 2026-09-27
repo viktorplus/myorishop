@@ -66,7 +66,7 @@ Two defects break stated requirements:
 | CR-01 | fixed | `e6aa06c` | Hidden `currency_prices_posted` marker on the product form; with it an empty ₴/€ field clears the price, without it empty = unchanged. Route tests (TestClient POST) for both. |
 | CR-02 | fixed: requires human (browser) verification | `cad4135` | Form `hx-vals='js:…'` posts the live `data-autofilled` state of name/cost/sale; route echoes it; 422 re-render restores the marks. Route test replays the review scenario. The `js:` evaluation itself runs only in a browser — not exercised here. |
 | WR-01 | fixed | `9b40a20` | «Цена пересчитана из рублёвой (÷2) — уточните.» under each converted receipt price (desktop lookup, mobile step 3); sale hint gets the same wording plus the sale-only scope (desktop lookup / batch pick, mobile qty-price). |
-| WR-02 | not in scope (left as is) | — | |
+| WR-02 | not applicable — user confirmed 2026-09-27 there are no offline clients, every operator works through the s1 server | — | |
 | WR-03 | fixed | `66611aa` | Docstring + `downgrade()` comment: DATA-LOSSY, back up first. No behaviour change. |
 | IN-01 | not in scope (left as is) | — | |
 | IN-02 | fixed | `57d44d6` | Mobile step/batch: posted (typed) prices win over the fresh suggestion. |
