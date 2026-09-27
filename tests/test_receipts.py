@@ -1764,3 +1764,73 @@ def test_web_receipt_uah_real_case_end_to_end(client, session, product):
     session.commit()
     response = client.get("/receipts/lookup", params=params)
     assert 'value="717,00"' in response.text and 'value="1249,50"' in response.text
+
+
+# --- Review 260927-k1m CR-02: autofilled marks survive a 422 re-render ------
+
+
+def _input_tag(html, input_id):
+    return html.split(f'id="{input_id}"', 1)[1].split(">", 1)[0]
+
+
+def test_web_receipt_form_posts_autofilled_state(client, warehouse):
+    """CR-02: the form sends the live data-autofilled state of name/cost/sale
+    with every POST, so the server can restore the marks on a re-render."""
+    response = client.get("/receipts/new")
+    form_tag = response.text.split('hx-post="/receipts"', 1)[1].split(">", 1)[0]
+    for flag in ("name_autofilled", "cost_autofilled", "sale_autofilled"):
+        assert flag in form_tag
+    assert "hx-vals='js:" in form_tag
+
+
+def test_web_receipt_422_keeps_autofilled_marks(client, session, product, warehouse):
+    """CR-02 review scenario: a RUB-warehouse lookup fills name/cost/sale, the
+    save fails on the empty quantity (422), and the re-rendered form must still
+    mark those values as autofilled — so a later switch to a UAH warehouse
+    clears and re-suggests them instead of saving RUB money into UAH fields."""
+    _rub_priced(session, product)
+    params = {"code": "TEST-001", "name": "", "cost": "", "sale": ""}
+    lookup = client.get("/receipts/lookup", params={**params, "warehouse_id": warehouse.id})
+    assert 'value="1434,00"' in lookup.text and 'value="2499,00"' in lookup.text
+
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "TEST-001",
+            "name": product.name,
+            "qty": "",
+            "cost": "1434,00",
+            "sale": "2499,00",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+            "name_autofilled": "true",
+            "cost_autofilled": "true",
+            "sale_autofilled": "true",
+        },
+    )
+    assert response.status_code == 422
+    for input_id in ("name", "cost", "sale"):
+        assert 'data-autofilled="true"' in _input_tag(response.text, input_id), input_id
+    assert 'value="1434,00"' in _input_tag(response.text, "cost")
+
+
+def test_web_receipt_422_typed_values_stay_unmarked(client, session, product, warehouse):
+    """CR-02: operator-typed values (no autofilled flag posted) stay unmarked,
+    so a warehouse change never clears them."""
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "TEST-001",
+            "name": "Моё название",
+            "qty": "",
+            "cost": "100,00",
+            "sale": "200,00",
+            "warehouse_id": warehouse.id,
+            "batch_choice": "new",
+            "cost_autofilled": "",
+        },
+    )
+    assert response.status_code == 422
+    for input_id in ("name", "cost", "sale"):
+        assert 'data-autofilled="true"' not in _input_tag(response.text, input_id), input_id
+    assert 'value="100,00"' in _input_tag(response.text, "cost")

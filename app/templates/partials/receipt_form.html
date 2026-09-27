@@ -19,9 +19,17 @@
      mean re-rendering the OOB fragment (and re-running this guard's value
      check) on every keystroke, widening the race window this guard exists
      to close. The cue still renders correctly on full-page loads and every
-     mobile wizard step. #}
+     mobile wizard step.
+     CR-02 (review 260927-k1m): hx-vals sends the LIVE data-autofilled state
+     of name/cost/sale with the POST (read at request time, so every script
+     that drops the mark is respected), and a 422 re-render restores the
+     marks from it — the warehouse-change handler below can then still clear
+     and re-suggest an autofilled value. Operator-typed values carry no mark. #}
   <form class="stacked-form"
         hx-post="/receipts"
+        hx-vals='js:{name_autofilled: document.getElementById("name").dataset.autofilled || "",
+          cost_autofilled: document.getElementById("cost").dataset.autofilled || "",
+          sale_autofilled: document.getElementById("sale").dataset.autofilled || ""}'
         hx-target="#receipt-form-wrap"
         hx-swap="outerHTML"
         hx-disabled-elt="find button"
@@ -44,7 +52,8 @@
     </div>
 
     {# PD-6: single source for the name field — shared with the product form. #}
-    {% with name = form.name or '', autofilled = False %}
+    {% with name = form.name or '', autofilled = form.name_autofilled == "true" and form.name,
+            hint = "Название подставлено автоматически — можно изменить." %}
     {% include "partials/name_input.html" %}
     {% endwith %}
 
@@ -91,11 +100,11 @@
        reference_prices_for_code (18-01), resolved independently for the
        code echoed in `form`/re-rendered here — D-08/D-22: a ДЦ-only code
        still cues its ДЦ. #}
-    {% with field = "cost", label = "Закупочная цена", value = form.cost or "", error = errors.cost, ref_cents = ref_cost_cents %}
+    {% with field = "cost", label = "Закупочная цена", value = form.cost or "", error = errors.cost, ref_cents = ref_cost_cents, autofilled = form.cost_autofilled == "true" %}
     {% include "partials/receipt_price_inputs.html" %}
     {% endwith %}
 
-    {% with field = "sale", label = "Цена продажи", value = form.sale or "", error = errors.sale, ref_cents = ref_sale_cents %}
+    {% with field = "sale", label = "Цена продажи", value = form.sale or "", error = errors.sale, ref_cents = ref_sale_cents, autofilled = form.sale_autofilled == "true" %}
     {% include "partials/receipt_price_inputs.html" %}
     {% endwith %}
 

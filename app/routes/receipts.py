@@ -216,6 +216,9 @@ def receipt_create(
     location: str = Form(""),
     comment: str = Form(""),
     op_date: str = Form(""),
+    name_autofilled: str = Form(""),
+    cost_autofilled: str = Form(""),
+    sale_autofilled: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money/qty fields arrive as strings on purpose: Pydantic v2 rejects ""
@@ -235,6 +238,12 @@ def receipt_create(
         "location": location,
         "comment": comment,
         "op_date": op_date,
+        # CR-02 (review 260927-k1m): the form's live data-autofilled state,
+        # echoed so a 422 re-render keeps the marks. Display-only — never
+        # passed to register_receipt.
+        "name_autofilled": name_autofilled,
+        "cost_autofilled": cost_autofilled,
+        "sale_autofilled": sale_autofilled,
     }
     try:
         result, errors = register_receipt(
