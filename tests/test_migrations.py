@@ -75,7 +75,7 @@ def test_alembic_head_triggers_match_app_db(alembic_engine):
 
 
 def test_downgrade_upgrade_roundtrip_preserves_triggers(alembic_engine, run_alembic):
-    """VA-6 (SYNC-13): head -> downgrade -1 -> head still leaves all four triggers.
+    """VA-6 (SYNC-13): head -> downgrade 0026 -> head still leaves all four triggers.
 
     WHY this exists, recorded from an executed run: `alembic downgrade 0026 ->
     0023` SILENTLY DESTROYS both `cash_movements_no_update` and
@@ -104,7 +104,9 @@ def test_downgrade_upgrade_roundtrip_preserves_triggers(alembic_engine, run_alem
     migration 0026 exists to fix, which is exactly what this file is about.
     """
     url = str(alembic_engine.url)
-    run_alembic(url, "downgrade", "-1")
+    # Pinned to "0026" (not "-1") since 0028 exists: this test checks 0027's
+    # downgrade DDL, so it must step back past 0027 itself.
+    run_alembic(url, "downgrade", "0026")
 
     # (1) The downgraded state — the half nothing used to look at.
     downgraded = _live_triggers(alembic_engine)
@@ -223,3 +225,56 @@ def test_revision_ids_are_fixed_width():
             f"{path.name}: down_revision {literal} is not a fixed-width "
             "4-digit string literal"
         )
+
+
+_CURRENCY_PRICE_COLUMNS = (
+    "cost_uah_cents",
+    "sale_uah_cents",
+    "min_sale_uah_cents",
+    "cost_eur_cents",
+    "sale_eur_cents",
+    "min_sale_eur_cents",
+)
+
+
+def _product_columns(engine) -> dict[str, bool]:
+    """`{column: nullable}` of `products` — a FRESH inspector each call (they cache)."""
+    from sqlalchemy import inspect
+
+    return {c["name"]: c["nullable"] for c in inspect(engine).get_columns("products")}
+
+
+def _code_index_sql(engine) -> str:
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master WHERE type='index' "
+                "AND name='uq_products_code_active'"
+            )
+        ).scalar_one()
+
+
+def test_0028_product_currency_columns_roundtrip(alembic_engine, run_alembic):
+    """Quick 260927-k1m: 0028 adds six nullable price columns and is reversible.
+
+    The downgrade must not rebuild `products` (the partial unique index keeps
+    its WHERE) and must leave all four append-only triggers intact.
+    """
+    url = str(alembic_engine.url)
+    columns = _product_columns(alembic_engine)
+    for name in _CURRENCY_PRICE_COLUMNS:
+        assert columns[name] is True
+    assert "deleted_at IS NULL" in _code_index_sql(alembic_engine)
+
+    run_alembic(url, "downgrade", "0027")
+    columns = _product_columns(alembic_engine)
+    assert not set(_CURRENCY_PRICE_COLUMNS) & set(columns)
+    assert "deleted_at IS NULL" in _code_index_sql(alembic_engine)
+    assert _live_triggers(alembic_engine) == _declared_triggers()
+
+    run_alembic(url, "upgrade", "head")
+    columns = _product_columns(alembic_engine)
+    for name in _CURRENCY_PRICE_COLUMNS:
+        assert columns[name] is True
+    assert _live_triggers(alembic_engine) == _declared_triggers()
+    assert "deleted_at IS NULL" in _code_index_sql(alembic_engine)

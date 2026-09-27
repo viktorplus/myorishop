@@ -217,6 +217,12 @@ def product_create(
     min_sale: str = Form(""),
     low_stock_threshold: str = Form(""),
     stale_days: str = Form(""),
+    cost_uah: str = Form(""),
+    sale_uah: str = Form(""),
+    min_sale_uah: str = Form(""),
+    cost_eur: str = Form(""),
+    sale_eur: str = Form(""),
+    min_sale_eur: str = Form(""),
     session: Session = Depends(get_session),
 ):
     # Money fields arrive as strings on purpose: Pydantic v2 rejects ""
@@ -234,6 +240,12 @@ def product_create(
         min_sale_raw=min_sale,
         low_stock_threshold_raw=low_stock_threshold,
         stale_days_raw=stale_days,
+        cost_uah_raw=cost_uah,
+        sale_uah_raw=sale_uah,
+        min_sale_uah_raw=min_sale_uah,
+        cost_eur_raw=cost_eur,
+        sale_eur_raw=sale_eur,
+        min_sale_eur_raw=min_sale_eur,
     )
     if errors:
         context = {
@@ -250,6 +262,12 @@ def product_create(
                 "min_sale": min_sale,
                 "low_stock_threshold": low_stock_threshold,
                 "stale_days": stale_days,
+                "cost_uah": cost_uah,
+                "sale_uah": sale_uah,
+                "min_sale_uah": min_sale_uah,
+                "cost_eur": cost_eur,
+                "sale_eur": sale_eur,
+                "min_sale_eur": min_sale_eur,
             },
             "low_stock_default": settings.low_stock_threshold,
             "stale_days_default": settings.stale_days,
@@ -293,6 +311,14 @@ def product_update(
     min_sale: str = Form(""),
     low_stock_threshold: str = Form(""),
     stale_days: str = Form(""),
+    # Quick 260927-k1m: None = the field was not posted (an old cached page)
+    # -> update_product leaves that UAH/EUR price unchanged.
+    cost_uah: str | None = Form(None),
+    sale_uah: str | None = Form(None),
+    min_sale_uah: str | None = Form(None),
+    cost_eur: str | None = Form(None),
+    sale_eur: str | None = Form(None),
+    min_sale_eur: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     # D-01/Pitfall 4 (Phase 18 plan 02): update_product no longer accepts a
@@ -308,6 +334,12 @@ def product_update(
         min_sale_raw=min_sale,
         low_stock_threshold_raw=low_stock_threshold,
         stale_days_raw=stale_days,
+        cost_uah_raw=cost_uah,
+        sale_uah_raw=sale_uah,
+        min_sale_uah_raw=min_sale_uah,
+        cost_eur_raw=cost_eur,
+        sale_eur_raw=sale_eur,
+        min_sale_eur_raw=min_sale_eur,
     )
     if errors:
         existing = get_product(session, product_id)
@@ -328,6 +360,14 @@ def product_update(
                 "min_sale": min_sale,
                 "low_stock_threshold": low_stock_threshold,
                 "stale_days": stale_days,
+                # None (not posted) is kept: the template then shows the
+                # stored value, so a re-save cannot clear it by accident.
+                "cost_uah": cost_uah,
+                "sale_uah": sale_uah,
+                "min_sale_uah": min_sale_uah,
+                "cost_eur": cost_eur,
+                "sale_eur": sale_eur,
+                "min_sale_eur": min_sale_eur,
             },
             "low_stock_default": settings.low_stock_threshold,
             "stale_days_default": settings.stale_days,

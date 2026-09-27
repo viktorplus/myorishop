@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import local_today_iso, new_id
-from app.models import Batch, CatalogPrice, Operation
+from app.models import Batch, CatalogPrice, Operation, Warehouse
 from app.routes import mobile_receipts
 from app.services.dictionary import add_entry
 from app.services.ledger import OP_DATE_FUTURE_ERROR
@@ -530,3 +530,50 @@ def test_mobile_receipt_future_date_error_is_the_first_element_of_the_step(
     assert text.index(OP_DATE_FUTURE_ERROR) < text.index("Шаг 4 из 4")
     assert f'<div class="error-block">{OP_DATE_FUTURE_ERROR}</div>' not in text
     assert session.scalars(select(Operation)).all() == []
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+
+def _uah_warehouse(session):
+    wh = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
+def test_web_step_batch_uah_warehouse_forwards_converted_prices(
+    mobile_client_factory, session, product
+):
+    product.cost_cents = 143400
+    product.sale_cents = 249900
+    session.commit()
+    uah = _uah_warehouse(session)
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/batch", data={"code": product.code, "warehouse_id": uah.id}
+    )
+    assert response.status_code == 200
+    assert '<input type="hidden" name="cost" value="717,00">' in response.text
+    assert '<input type="hidden" name="sale" value="1249,50">' in response.text
+
+
+def test_web_step_details_uah_warehouse_ref_cents(mobile_client_factory, session):
+    session.add(
+        CatalogPrice(
+            id=new_id(), code="42499", year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    session.commit()
+    uah = _uah_warehouse(session)
+
+    client = mobile_client_factory(mobile_receipts.router)
+    response = client.post(
+        "/m/receipts/step/details",
+        data={"code": "42499", "warehouse_id": uah.id, "name": "Крем", "batch_choice": "new"},
+    )
+    assert response.status_code == 200
+    assert 'data-ref-cents="71700"' in response.text
+    assert 'data-ref-cents="124950"' in response.text

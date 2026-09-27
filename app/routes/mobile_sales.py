@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import card_price_suggestion
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
@@ -19,7 +20,7 @@ from app.routes import templates
 # the in-repo precedent for a mobile route module importing a private
 # helper from a desktop route module — it licenses this import too.
 from app.routes.sales import _CUSTOMER_MODES
-from app.services.batches import active_warehouses, open_batches
+from app.services.batches import active_warehouses, open_batches, warehouse_currency
 from app.services.customers import create_customer, customer_search_view, get_customer
 from app.services.pricing import reference_prices_for_code
 from app.services.sales import (
@@ -393,19 +394,24 @@ def mobile_sale_step_qty_price(
     # sale_cents only when the batch itself has no price snapshot (D-14).
     fill_price_cents: int | None = None
     fill_price_hint = ""
+    # Quick 260927-k1m: the picked batch's warehouse fixes the currency of the
+    # fill suggestion and the cue; no picked batch -> RUB, as before.
+    currency = warehouse_currency(session, picked.warehouse_id if picked else None)
     if picked is not None:
         if picked.price_cents is not None:
             fill_price_cents = picked.price_cents
             fill_price_hint = SALE_BATCH_FILL_HINT
         else:
-            fill_price_cents = product.sale_cents if product is not None else None
+            fill_price_cents = (
+                card_price_suggestion(product, "sale", currency) if product is not None else None
+            )
             fill_price_hint = SALE_CARD_FILL_HINT
 
     # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
     # reference (D-05/D-08/D-22), resolved independently of fill_price_cents
     # — the batch/card fill value is not the same thing as the catalog
     # reference the cue compares against.
-    _, ref_pc_cents = reference_prices_for_code(session, code_clean)
+    _, ref_pc_cents = reference_prices_for_code(session, code_clean, currency)
 
     context = {
         "code": code_clean,

@@ -1892,3 +1892,142 @@ def test_web_sale_back_date_survives_to_the_ledger_and_the_cash_row(
     assert _sale_cash(session)[0].business_date == back_date
     # A saved sale starts the next basket from today again.
     assert _input_value(response.text, "op_date") == local_today_iso(settings.display_tz)
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+
+def _uah_warehouse(session):
+    wh = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(wh)
+    session.commit()
+    return wh
+
+
+def _sell_one(session, product, batch, price):
+    return register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=[price],
+        batch_ids=[batch.id],
+    )
+
+
+def test_uah_sale_freezes_uah_card_cost(session, product):
+    product.cost_cents = 143400
+    product.cost_uah_cents = 70000
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    result, errors = _sell_one(session, product, uah_batch, "1200,00")
+    assert errors == {}
+    assert _sale_ops(session)[0].unit_cost_cents == 70000
+
+
+def test_uah_sale_without_uah_card_cost_freezes_null(session, product):
+    product.cost_cents = 143400
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    result, errors = _sell_one(session, product, uah_batch, "1200,00")
+    assert errors == {}
+    assert _sale_ops(session)[0].unit_cost_cents is None
+
+
+def test_uah_sale_min_guard_uses_uah_minimum(session, product):
+    product.min_sale_cents = 200000
+    product.min_sale_uah_cents = 100000
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    result, errors = _sell_one(session, product, uah_batch, "900,00")
+    assert errors == {}
+    assert result.get("below_minimum")
+    assert result["below_minimum"][0]["minimum"] == 100000
+    assert _sale_ops(session) == []
+
+    result, errors = _sell_one(session, product, uah_batch, "1100,00")
+    assert errors == {}
+    assert not result.get("below_minimum")
+    assert len(_sale_ops(session)) == 1
+
+
+def test_uah_sale_ignores_rub_minimum_when_uah_minimum_unset(session, product):
+    product.min_sale_cents = 200000
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    result, errors = _sell_one(session, product, uah_batch, "900,00")
+    assert errors == {}
+    assert not result.get("below_minimum")
+    assert len(_sale_ops(session)) == 1
+
+
+def test_web_sale_lookup_single_uah_batch_fills_uah_suggestion(client, session, product):
+    product.sale_cents = 249900
+    session.add(
+        CatalogPrice(
+            id=new_id(), code=product.code, year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+    assert uah_batch.price_cents is None
+
+    response = client.get(
+        "/sales/lookup", params={"code[]": product.code, "name[]": "", "price[]": ""}
+    )
+    assert response.status_code == 200
+    assert 'value="1249,50"' in response.text
+    assert 'data-ref-cents="124950"' in response.text
+
+
+def test_web_sale_batch_pick_uah_batch_fills_uah_price(client, session, product):
+    product.sale_cents = 249900
+    session.add(
+        CatalogPrice(
+            id=new_id(), code=product.code, year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+    params = {"row": "", "batch_id": uah_batch.id, "code": product.code}
+
+    response = client.get("/sales/batch-pick", params=params)
+    assert response.status_code == 200
+    assert 'value="1249,50"' in response.text
+    assert 'data-ref-cents="124950"' in response.text
+
+    product.sale_uah_cents = 130000
+    session.commit()
+    response = client.get("/sales/batch-pick", params=params)
+    assert 'value="1300,00"' in response.text
+
+
+def test_web_sale_422_uah_batch_row_ref_cents_in_uah(client, session, product):
+    session.add(
+        CatalogPrice(
+            id=new_id(), code=product.code, year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    session.commit()
+    uah_batch = _batch(session, product, _uah_warehouse(session), qty=3)
+
+    response = client.post(
+        "/sales",
+        data={
+            "code[]": [product.code],
+            "qty[]": ["abc"],
+            "price[]": ["1200,00"],
+            "batch_id[]": [uah_batch.id],
+            "customer_id": "",
+            "confirm": "",
+        },
+    )
+    assert response.status_code == 422
+    assert 'data-ref-cents="124950"' in response.text

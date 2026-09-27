@@ -72,7 +72,7 @@
      resolve a reference for this render (e.g. create/update 422 re-render);
      falsy latest_price (unknown code, D-07) simply omits the attribute. #}
   <div class="field">
-    <label for="cost">ДЦ — закупочная цена <span class="muted">(необязательно)</span></label>
+    <label for="cost">ДЦ — закупочная цена, ₽ <span class="muted">(необязательно)</span></label>
     <input type="text" id="cost" name="cost" inputmode="decimal" placeholder="0,00"
            {% if latest_price is defined and latest_price and latest_price.consultant_cents is not none %}data-ref-cents="{{ latest_price.consultant_cents }}"{% endif %}
            value="{% if form %}{{ form.cost or '' }}{% elif product and product.cost_cents is not none %}{{ product.cost_cents | cents }}{% endif %}">
@@ -80,11 +80,39 @@
   </div>
 
   <div class="field">
-    <label for="sale">ПЦ — цена продажи <span class="muted">(необязательно)</span></label>
+    <label for="sale">ПЦ — цена продажи, ₽ <span class="muted">(необязательно)</span></label>
     <input type="text" id="sale" name="sale" inputmode="decimal" placeholder="0,00"
            {% if latest_price is defined and latest_price and latest_price.consumer_cents is not none %}data-ref-cents="{{ latest_price.consumer_cents }}"{% endif %}
            value="{% if form %}{{ form.sale or '' }}{% elif product and product.sale_cents is not none %}{{ product.sale_cents | cents }}{% endif %}">
     {% if errors.sale %}<p class="error">{{ errors.sale }}</p>{% endif %}
+  </div>
+
+  {# Quick 260927-k1m: the card's own UAH and EUR price sets. No
+     data-ref-cents: catalog prices are RUB-only and this form has no
+     warehouse (Assumption A5). #}
+  <div class="field">
+    <label for="cost_uah">ДЦ — закупочная цена, ₴ <span class="muted">(необязательно)</span></label>
+    <input type="text" id="cost_uah" name="cost_uah" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.cost_uah is not none %}{{ form.cost_uah }}{% elif product and product.cost_uah_cents is not none %}{{ product.cost_uah_cents | cents }}{% endif %}">
+    {% if errors.cost_uah %}<p class="error">{{ errors.cost_uah }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label for="sale_uah">ПЦ — цена продажи, ₴ <span class="muted">(необязательно)</span></label>
+    <input type="text" id="sale_uah" name="sale_uah" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.sale_uah is not none %}{{ form.sale_uah }}{% elif product and product.sale_uah_cents is not none %}{{ product.sale_uah_cents | cents }}{% endif %}">
+    {% if errors.sale_uah %}<p class="error">{{ errors.sale_uah }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label for="cost_eur">ДЦ — закупочная цена, € <span class="muted">(необязательно)</span></label>
+    <input type="text" id="cost_eur" name="cost_eur" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.cost_eur is not none %}{{ form.cost_eur }}{% elif product and product.cost_eur_cents is not none %}{{ product.cost_eur_cents | cents }}{% endif %}">
+    {% if errors.cost_eur %}<p class="error">{{ errors.cost_eur }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label for="sale_eur">ПЦ — цена продажи, € <span class="muted">(необязательно)</span></label>
+    <input type="text" id="sale_eur" name="sale_eur" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.sale_eur is not none %}{{ form.sale_eur }}{% elif product and product.sale_eur_cents is not none %}{{ product.sale_eur_cents | cents }}{% endif %}">
+    {% if errors.sale_eur %}<p class="error">{{ errors.sale_eur }}</p>{% endif %}
   </div>
 
   <div class="field">
@@ -98,9 +126,21 @@
      changed to read as a limit, but the id/name/value binding and PRICE-01
      logic are unchanged (frozen, no data-ref-cents). #}
   <div class="field">
-    <label for="min_sale">Порог минимальной цены продажи <span class="muted">(необязательно)</span></label>
+    <label for="min_sale">Порог минимальной цены продажи, ₽ <span class="muted">(необязательно)</span></label>
     <input type="text" id="min_sale" name="min_sale" inputmode="decimal" placeholder="0,00" value="{% if form %}{{ form.min_sale or '' }}{% elif product and product.min_sale_cents is not none %}{{ product.min_sale_cents | cents }}{% endif %}">
     {% if errors.min_sale %}<p class="error">{{ errors.min_sale }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label for="min_sale_uah">Порог минимальной цены продажи, ₴ <span class="muted">(необязательно)</span></label>
+    <input type="text" id="min_sale_uah" name="min_sale_uah" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.min_sale_uah is not none %}{{ form.min_sale_uah }}{% elif product and product.min_sale_uah_cents is not none %}{{ product.min_sale_uah_cents | cents }}{% endif %}">
+    {% if errors.min_sale_uah %}<p class="error">{{ errors.min_sale_uah }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label for="min_sale_eur">Порог минимальной цены продажи, € <span class="muted">(необязательно)</span></label>
+    <input type="text" id="min_sale_eur" name="min_sale_eur" inputmode="decimal" placeholder="0,00"
+           value="{% if form and form.min_sale_eur is not none %}{{ form.min_sale_eur }}{% elif product and product.min_sale_eur_cents is not none %}{{ product.min_sale_eur_cents | cents }}{% endif %}">
+    {% if errors.min_sale_eur %}<p class="error">{{ errors.min_sale_eur }}</p>{% endif %}
   </div>
 
   <div class="field">

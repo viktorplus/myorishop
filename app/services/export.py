@@ -91,13 +91,18 @@ def stream_products_csv(session: Session) -> StreamingResponse:
     # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price column is
     # dropped from this export — PROD-05 collapses product pricing to ДЦ/ПЦ
     # only (T-18-CSV: this REDUCES the exported surface; every remaining cell
-    # stays _csv_safe-wrapped).
+    # stays _csv_safe-wrapped). Quick 260927-k1m: the RUB pair keeps its
+    # headers; the UAH and EUR card prices follow it.
     header = [
         "Код",
         "Название",
         "Категория",
         "Закупка",
         "Продажа",
+        "Закупка ₴",
+        "Продажа ₴",
+        "Закупка €",
+        "Продажа €",
         "Остаток",
         "Удалён",
     ]
@@ -108,6 +113,10 @@ def stream_products_csv(session: Session) -> StreamingResponse:
             _csv_safe(product.category or ""),
             format_cents(product.cost_cents) if product.cost_cents is not None else "",
             format_cents(product.sale_cents) if product.sale_cents is not None else "",
+            format_cents(product.cost_uah_cents) if product.cost_uah_cents is not None else "",
+            format_cents(product.sale_uah_cents) if product.sale_uah_cents is not None else "",
+            format_cents(product.cost_eur_cents) if product.cost_eur_cents is not None else "",
+            format_cents(product.sale_eur_cents) if product.sale_eur_cents is not None else "",
             product.quantity,
             "Да" if product.deleted_at else "",
         ]

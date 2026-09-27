@@ -9,7 +9,7 @@ this codebase.
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core import DEFAULT_CURRENCY
+from app.core import DEFAULT_CURRENCY, card_price_fields
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, Batch, CashMovement, Product, Warehouse
 from app.services.reports import business_date_expr
 
@@ -53,23 +53,27 @@ def stock_valuation(session: Session, currency: str = DEFAULT_CURRENCY) -> dict:
     Batch to Product (active only) and to Warehouse (Warehouse.currency ==
     currency), restricted to Batch.quantity > 0.
     cost_value_cents = SUM(Batch.quantity * COALESCE(Batch.cost_cents,
-    Product.cost_cents)) — a batch's own cost snapshot wins, falling back to
-    the product card when unset. sale_value_cents prefers Batch.price_cents
-    (the existing per-batch sale-price snapshot, D-02 in receipts.py) over
-    Product.sale_cents — a deliberate upgrade to the more precise per-lot
-    figure, made possible by this batch-level join already existing for the
-    currency scoping. A NULL COALESCE result makes the SUM term NULL, which
-    SQL SUM skips (excluded, never zero-filled, D-02a); its count is surfaced
-    separately via *_unknown_count, counting DISTINCT products (mirrors the
-    old product-level semantics) under the same quantity>0 + active-product +
+    <card cost in `currency`>)) — a batch's own cost snapshot wins, falling
+    back to the product card's price IN THE SAME CURRENCY when unset (quick
+    260927-k1m: e.g. Product.cost_uah_cents for UAH; a missing price in that
+    currency stays NULL, never converted). sale_value_cents prefers
+    Batch.price_cents (the existing per-batch sale-price snapshot, D-02 in
+    receipts.py) over the card sale price in `currency` — a deliberate
+    upgrade to the more precise per-lot figure, made possible by this
+    batch-level join already existing for the currency scoping. A NULL
+    COALESCE result makes the SUM term NULL, which SQL SUM skips (excluded,
+    never zero-filled, D-02a); its count is surfaced separately via
+    *_unknown_count, counting DISTINCT products (mirrors the old
+    product-level semantics) under the same quantity>0 + active-product +
     currency scope. Returned dict key names are unchanged — callers
     (dashboard.py) are unaffected by this rewrite. Takes NO period argument
     (D-02b) — always "as of now".
     """
     active = Product.deleted_at.is_(None)
     scope = (Batch.quantity > 0, active, Warehouse.currency == currency)
-    cost_expr = func.coalesce(Batch.cost_cents, Product.cost_cents)
-    sale_expr = func.coalesce(Batch.price_cents, Product.sale_cents)
+    fields = card_price_fields(currency)
+    cost_expr = func.coalesce(Batch.cost_cents, getattr(Product, fields["cost"]))
+    sale_expr = func.coalesce(Batch.price_cents, getattr(Product, fields["sale"]))
 
     base = (
         select(Batch)

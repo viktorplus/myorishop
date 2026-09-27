@@ -66,6 +66,10 @@ _PRODUCTS_HEADER_AT_HEAD = [
     "Категория",
     "Закупка",
     "Продажа",
+    "Закупка ₴",
+    "Продажа ₴",
+    "Закупка €",
+    "Продажа €",
     "Остаток",
     "Удалён",
 ]
@@ -313,12 +317,17 @@ def test_products_csv_roundtrip(client, product):
     rows = list(reader)
     # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price column is
     # gone from the export header — PROD-05 collapses pricing to ДЦ/ПЦ only.
+    # Quick 260927-k1m: per-currency card prices follow the RUB pair.
     assert rows[0] == [
         "Код",
         "Название",
         "Категория",
         "Закупка",
         "Продажа",
+        "Закупка ₴",
+        "Продажа ₴",
+        "Закупка €",
+        "Продажа €",
         "Остаток",
         "Удалён",
     ]
@@ -804,3 +813,21 @@ def test_products_and_customers_csv_unchanged(session, product):
     assert "Внесено" not in customers_rows[0]
     # customers.csv's «Создан» keeps its full dd.mm.yyyy HH:MM entry-time render.
     assert ":" in customers_rows[1][3]
+
+
+def test_products_csv_exports_currency_card_prices(client, session, product):
+    """Quick 260927-k1m: UAH/EUR card prices render with format_cents."""
+    product.cost_uah_cents = 71700
+    product.sale_uah_cents = 124950
+    product.cost_eur_cents = 1434
+    session.commit()
+
+    response = client.get("/export/products.csv")
+    text = response.content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text), delimiter=";"))
+    header = rows[0]
+    row = dict(zip(header, rows[1], strict=True))
+    assert row["Закупка ₴"] == "717,00"
+    assert row["Продажа ₴"] == "1249,50"
+    assert row["Закупка €"] == "14,34"
+    assert row["Продажа €"] == ""

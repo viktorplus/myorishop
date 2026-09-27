@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import local_today_iso, new_id
-from app.models import Batch, CashMovement, CatalogPrice, Operation, Sale
+from app.models import Batch, CashMovement, CatalogPrice, Operation, Sale, Warehouse
 from app.routes import mobile_sales
 from app.services.ledger import record_operation
 
@@ -1145,3 +1145,32 @@ def test_mobile_sale_future_date_error_is_the_first_element_of_the_basket(
     assert resp.text.index(message) < resp.text.index("Корзина")
     assert _sale_ops(session) == []
     assert _sale_cash(session) == []
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+
+def test_qty_price_step_uah_batch_fills_uah_price_and_ref(mobile_client_factory, session, product):
+    product.sale_cents = 249900
+    session.add(
+        CatalogPrice(
+            id=new_id(), code=product.code, year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    uah = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(uah)
+    session.commit()
+    batch = _seed_batch(session, product, uah)
+    client = _client(mobile_client_factory)
+    data = {"code": product.code, "batch_id": batch.id}
+
+    resp = client.post("/m/sales/step/qty-price", data=data)
+    assert resp.status_code == 200
+    assert 'value="1249,50"' in resp.text
+    assert 'data-ref-cents="124950"' in resp.text
+
+    product.sale_uah_cents = 130000
+    session.commit()
+    resp = client.post("/m/sales/step/qty-price", data=data)
+    assert 'value="1300,00"' in resp.text

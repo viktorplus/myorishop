@@ -19,6 +19,7 @@ from datetime import date
 from sqlalchemy import nullslast, select
 from sqlalchemy.orm import Session
 
+from app.core import DEFAULT_CURRENCY
 from app.models import Batch, Product, Warehouse
 from app.services.catalog import parse_optional_cents
 
@@ -113,6 +114,14 @@ def active_warehouses(session: Session) -> list[Warehouse]:
             .order_by(Warehouse.name)
         )
     )
+
+
+def warehouse_currency(session: Session, warehouse_id: str | None) -> str:
+    """Currency of a warehouse; empty id, unknown warehouse, or no currency -> RUB."""
+    warehouse = session.get(Warehouse, warehouse_id) if warehouse_id else None
+    if warehouse is None or not warehouse.currency:
+        return DEFAULT_CURRENCY
+    return warehouse.currency
 
 
 def update_batch(

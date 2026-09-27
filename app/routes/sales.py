@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import new_id
+from app.core import DEFAULT_CURRENCY, card_price_suggestion, new_id
 from app.db import get_session
 from app.models import Batch, Product
 from app.routes import templates
-from app.services.batches import open_batches
+from app.services.batches import open_batches, warehouse_currency
 from app.services.catalog import search_products, split_match
 from app.services.customers import create_customer, customer_search_view, get_customer
 from app.services.pricing import reference_prices_for_code
@@ -123,7 +123,13 @@ def _build_lines(
         # resolved per basket row independently of the fill/error values —
         # a 422/warn re-render must not lose the colour cue on the echoed
         # basket (D-08/D-22).
-        _, ref_pc_cents = reference_prices_for_code(session, code)
+        # Quick 260927-k1m: in the resolved batch warehouse's currency, else RUB.
+        currency = (
+            warehouse_currency(session, batch.warehouse_id)
+            if batch is not None
+            else DEFAULT_CURRENCY
+        )
+        _, ref_pc_cents = reference_prices_for_code(session, code, currency)
         lines.append(
             {
                 "row_id": "" if i == 0 else new_id(),
@@ -223,13 +229,17 @@ def sale_lookup(
                     # rules — batch price, card sale_cents fallback (D-14).
                     selected_batch = batches[0]
                     auto_note = True
+                    # Quick 260927-k1m: the one batch fixes the currency — the
+                    # fill suggestion and the cue follow its warehouse.
+                    currency = warehouse_currency(session, selected_batch.warehouse_id)
+                    _, ref_pc_cents = reference_prices_for_code(session, code_clean, currency)
                     if not price.strip():
                         fill_price = True
                         if selected_batch.price_cents is not None:
                             fill_price_cents = selected_batch.price_cents
                             fill_price_hint = SALE_BATCH_FILL_HINT
                         else:
-                            fill_price_cents = product.sale_cents
+                            fill_price_cents = card_price_suggestion(product, "sale", currency)
 
     context = {
         "row": row,
@@ -320,13 +330,16 @@ def sale_batch_pick(
     fill_price = picked is not None
     fill_price_cents: int | None = None
     fill_price_hint = ""
+    # Quick 260927-k1m: a picked batch fixes the currency (fill + cue).
+    currency = warehouse_currency(session, picked.warehouse_id) if picked else DEFAULT_CURRENCY
     if picked is not None:
         if picked.price_cents is not None:
             fill_price_cents = picked.price_cents
             fill_price_hint = SALE_BATCH_FILL_HINT
         else:
-            # D-14: a legacy NULL-price batch falls back to the card sale_cents.
-            fill_price_cents = product.sale_cents
+            # D-14: a legacy NULL-price batch falls back to the card sale price
+            # in the batch warehouse's currency (RUB/2, RUB/100 suggestion).
+            fill_price_cents = card_price_suggestion(product, "sale", currency)
             fill_price_hint = SALE_CARD_FILL_HINT
 
     # PROD-06 (Phase 18 plan 08): ref_pc_cents is the code's CATALOG ПЦ
@@ -341,7 +354,7 @@ def sale_batch_pick(
     # batch pick resolves, that field never gets the colour cue on this
     # AJAX path either. Purely advisory/cosmetic — not fixed to avoid
     # touching the race guard that protects operator-typed money values.
-    _, ref_pc_cents = reference_prices_for_code(session, code_clean)
+    _, ref_pc_cents = reference_prices_for_code(session, code_clean, currency)
 
     context = {
         "row": row,

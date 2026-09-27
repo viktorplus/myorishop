@@ -12,10 +12,14 @@ from datetime import date
 import pytest
 
 from app.core import (
+    CARD_PRICE_FIELDS,
+    card_price_fields,
+    card_price_suggestion,
     date_input_value,
     format_cents,
     local_day_bounds_utc,
     local_day_of,
+    rub_suggestion,
     to_cents,
 )
 
@@ -234,3 +238,71 @@ def test_local_day_of_returns_none_instead_of_raising(raw):
     """
     assert local_day_of(raw, "Europe/Moscow") is None
 
+
+# --- Per-currency card prices (quick 260927-k1m) ----------------------------
+
+
+@pytest.mark.parametrize(
+    ("currency", "expected"),
+    [
+        ("RUB", ("cost_cents", "sale_cents", "min_sale_cents")),
+        ("UAH", ("cost_uah_cents", "sale_uah_cents", "min_sale_uah_cents")),
+        ("EUR", ("cost_eur_cents", "sale_eur_cents", "min_sale_eur_cents")),
+        (None, ("cost_cents", "sale_cents", "min_sale_cents")),
+        ("", ("cost_cents", "sale_cents", "min_sale_cents")),
+        ("USD", ("cost_cents", "sale_cents", "min_sale_cents")),
+    ],
+)
+def test_card_price_fields(currency, expected):
+    fields = card_price_fields(currency)
+    assert (fields["cost"], fields["sale"], fields["min_sale"]) == expected
+
+
+@pytest.mark.parametrize(
+    ("rub_cents", "currency", "expected"),
+    [
+        (None, "UAH", None),
+        (None, "RUB", None),
+        (None, "EUR", None),
+        (143400, "UAH", 71700),
+        (249900, "UAH", 124950),
+        (143400, "EUR", 1434),
+        (143400, "RUB", 143400),
+        # Half-up, never banker's rounding.
+        (1, "UAH", 1),
+        (5, "UAH", 3),
+        (250, "EUR", 3),
+        (249, "EUR", 2),
+        # Unknown currency: divisor 1.
+        (143400, "USD", 143400),
+        (143400, None, 143400),
+    ],
+)
+def test_rub_suggestion(rub_cents, currency, expected):
+    assert rub_suggestion(rub_cents, currency) == expected
+
+
+def test_card_price_suggestion_prefers_own_currency_then_converts_rub():
+    from types import SimpleNamespace
+
+    product = SimpleNamespace(
+        cost_cents=143400, sale_cents=249900, min_sale_cents=None,
+        cost_uah_cents=None, sale_uah_cents=120000, min_sale_uah_cents=None,
+        cost_eur_cents=None, sale_eur_cents=None, min_sale_eur_cents=None,
+    )
+    assert card_price_suggestion(product, "sale", "UAH") == 120000
+    assert card_price_suggestion(product, "cost", "UAH") == 71700
+    assert card_price_suggestion(product, "sale", "EUR") == 2499
+    assert card_price_suggestion(product, "sale", "RUB") == 249900
+    product.sale_cents = None
+    assert card_price_suggestion(product, "sale", "RUB") is None
+
+
+def test_card_price_fields_are_product_cents_columns():
+    from app.models import Product
+
+    columns = set(Product.__table__.columns.keys())
+    for fields in CARD_PRICE_FIELDS.values():
+        for name in fields.values():
+            assert name in columns
+            assert name.endswith("_cents")

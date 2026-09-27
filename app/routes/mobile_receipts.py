@@ -21,7 +21,7 @@ from app.core import format_cents
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
-from app.services.batches import active_warehouses, open_batches
+from app.services.batches import active_warehouses, open_batches, warehouse_currency
 from app.services.pricing import reference_prices_for_code
 from app.services.receipts import lookup_prefill, register_receipt
 
@@ -115,7 +115,12 @@ def mobile_receipt_step_batch(
     # source match — the Каталог price field itself is removed from the
     # receipt slice (Pitfall 1). result["name"] can be None for a
     # CatalogPrice-only match with no Dictionary entry (None-guard below).
-    result = lookup_prefill(session, code_clean) if code_clean else None
+    # Quick 260927-k1m: suggestions in the chosen warehouse's currency.
+    result = (
+        lookup_prefill(session, code_clean, currency=warehouse_currency(session, selected))
+        if code_clean
+        else None
+    )
     resolved_name = (result["name"] or "") if result else ""
     # A fresh lookup wins over a stale typed name (code changed to a now-known
     # product); otherwise preserve whatever the operator already typed (e.g.
@@ -170,7 +175,10 @@ def mobile_receipt_step_details(
     # another (D-08/D-22) — the code's CATALOG reference, not the wizard's
     # own cost/sale values, so the cue compares against the right thing on
     # every re-render of this step (initial arrival AND the "Назад" bounce).
-    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
+    # Quick 260927-k1m: in the chosen warehouse's currency.
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(
+        session, code, warehouse_currency(session, warehouse_id)
+    )
     context = {
         "code": code,
         "warehouse_id": warehouse_id,

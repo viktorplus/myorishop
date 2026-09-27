@@ -442,3 +442,32 @@ def test_note_splits_into_placement_and_condition(note, shelf, expected):
     from scripts.import_inventory_receipt import split_note
 
     assert split_note(note, shelf) == expected
+
+
+def test_non_rub_warehouse_import_sends_no_catalog_prices(session, tmp_path):
+    """Quick 260927-k1m (orchestrator decision b): catalog prices are RUB, so a
+    new code imported into a UAH warehouse gets a card with no prices at all."""
+    uah = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(uah)
+    session.add(
+        CatalogPrice(
+            id=new_id(), code="42499", year=2026, number=1,
+            consumer_cents=249900, consultant_cents=143400,
+        )
+    )
+    session.commit()
+    path = _write_csv(tmp_path, [("47", "42499", "Крем", "2", "")])
+
+    summary = _import(session, uah, path)
+
+    assert summary["error"] is None
+    assert summary["codes_without_price"] == 1
+    product = session.query(Product).filter(Product.code == "42499").one()
+    for field in (
+        "cost_cents", "sale_cents", "min_sale_cents",
+        "cost_uah_cents", "sale_uah_cents", "min_sale_uah_cents",
+        "cost_eur_cents", "sale_eur_cents", "min_sale_eur_cents",
+    ):
+        assert getattr(product, field) is None, field
+    batch = session.query(Batch).one()
+    assert (batch.price_cents, batch.cost_cents) == (None, None)

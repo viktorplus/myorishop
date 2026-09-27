@@ -395,6 +395,35 @@ def test_pull_applies_server_update(sync_driver_pair, session):
     assert session.get(Product, pid).name == "Новое имя"  # server wins (D-14)
 
 
+def test_pull_keeps_server_currency_prices(sync_driver_pair, session):
+    """Quick 260927-k1m: a pull carries the server's UAH/EUR card prices to a
+    0028 client — onto an existing product (server wins) and a new one."""
+    pair = sync_driver_pair
+    pid, qid = new_id(), new_id()
+    session.add(Product(id=pid, code="P-CUR", name="Товар", quantity=0))
+    session.commit()
+    pair.server_session.add(
+        Product(
+            id=pid, code="P-CUR", name="Товар", quantity=0,
+            cost_uah_cents=71700, sale_eur_cents=2499,
+        )
+    )
+    pair.server_session.add(
+        Product(id=qid, code="Q-CUR", name="Только на сервере", quantity=0,
+                sale_uah_cents=124950)
+    )
+    pair.server_session.commit()
+
+    result = sync_client.run_sync_once(session, client=pair.client)
+
+    assert result.status == "ok"
+    session.expire_all()
+    local_p = session.get(Product, pid)
+    assert local_p.cost_uah_cents == 71700
+    assert local_p.sale_eur_cents == 2499
+    assert session.get(Product, qid).sale_uah_cents == 124950
+
+
 def test_pull_inserts_new_server_rows(sync_driver_pair, session):
     """A NEW server reference row the client lacks is inserted on pull (D-14 keeps
     the existing insert behavior for new rows)."""

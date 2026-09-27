@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
-from app.services.batches import active_warehouses, open_batches
+from app.services.batches import active_warehouses, open_batches, warehouse_currency
 from app.services.pricing import reference_prices_for_code
 from app.services.receipts import lookup_prefill, recent_receipts, register_receipt
 
@@ -77,7 +77,11 @@ def _form_extras(session: Session, *, code: str = "", warehouse_id: str = "") ->
     """
     actives = active_warehouses(session)
     selected = _preselect_warehouse_id(actives, warehouse_id)
-    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
+    # Quick 260927-k1m: the cue compares like with like — in the currency of
+    # the selected warehouse.
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(
+        session, code, warehouse_currency(session, selected)
+    )
     return {
         "active_warehouses": actives,
         "selected_warehouse_id": selected,
@@ -130,14 +134,17 @@ def receipt_lookup(
     # typed price fields are excluded from the fill (empty-after-strip only).
     if name.strip():
         return Response(status_code=204)
-    result = lookup_prefill(session, code)
+    # Quick 260927-k1m: suggestions and cues in the hx-included warehouse's
+    # currency (empty/unknown id -> RUB).
+    currency = warehouse_currency(session, warehouse_id.strip())
+    result = lookup_prefill(session, code, currency=currency)
     if result is None:
         return Response(status_code=204)
     # PROD-06 (Phase 18 plan 08): the colour-cue reference is the code's
     # CATALOG price (D-05/D-08/D-22), resolved independently of `source` —
     # a "product" match's own card price is NOT the same thing as the
     # catalog reference the cue compares against.
-    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code)
+    ref_cost_cents, ref_sale_cents = reference_prices_for_code(session, code, currency)
     # 18-REVIEW WR-02 (accepted limitation): fill_fields below only covers
     # price fields that arrived empty, and receipt_lookup.html only renders
     # an OOB fragment (which is what carries data-ref-cents) for fields in

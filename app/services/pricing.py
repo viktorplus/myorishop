@@ -13,6 +13,7 @@ history. `price_history_for_code` is still called by no route.
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import DEFAULT_CURRENCY, rub_suggestion
 from app.models import CatalogPrice
 
 
@@ -62,8 +63,13 @@ def latest_prices_for_codes(
     return result
 
 
-def reference_prices_for_code(session: Session, code: str) -> tuple[int | None, int | None]:
+def reference_prices_for_code(
+    session: Session, code: str, currency: str = DEFAULT_CURRENCY
+) -> tuple[int | None, int | None]:
     """(ДЦ, ПЦ) reference prices for a code, independently of one another.
+
+    Catalog prices are RUB; a non-RUB `currency` gets them as a suggestion via
+    `rub_suggestion` (quick 260927-k1m) — colour cues compare like with like.
 
     D-05: consultant_cents pairs to ДЦ, consumer_cents pairs to ПЦ.
     D-08/D-22: ДЦ is never gated on ПЦ's presence — a consultant-only row
@@ -73,7 +79,10 @@ def reference_prices_for_code(session: Session, code: str) -> tuple[int | None, 
     row = latest_price_for_code(session, code)
     if row is None:
         return (None, None)
-    return (row.consultant_cents, row.consumer_cents)
+    return (
+        rub_suggestion(row.consultant_cents, currency),
+        rub_suggestion(row.consumer_cents, currency),
+    )
 
 
 def price_history_for_code(session: Session, code: str) -> list[CatalogPrice]:

@@ -24,6 +24,7 @@ import sqlite3
 from contextlib import closing
 from datetime import date, timedelta
 
+import pytest
 from alembic.config import Config
 from sqlalchemy import select
 
@@ -32,6 +33,7 @@ from app.config import settings
 from app.core import format_ru_date, local_today_iso, new_id
 from app.models import Batch, CatalogPrice, Operation, Product, Warehouse
 from app.services import catalog
+from app.services.batches import warehouse_currency
 from app.services.catalog import create_product, soft_delete_product
 from app.services.dictionary import add_entry
 from app.services.ledger import (
@@ -40,6 +42,7 @@ from app.services.ledger import (
     compute_stock,
     record_operation,
 )
+from app.services.pricing import reference_prices_for_code
 from app.services.receipts import (
     lookup_prefill,
     parse_optional_expiry,
@@ -1521,3 +1524,243 @@ def test_web_receipt_future_date_returns_422_and_echoes_the_typed_value(
     assert response.status_code == 422
     assert "Дата операции не может быть в будущем." in response.text
     assert f'value="{tomorrow}"' in response.text
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+
+def _uah_warehouse(session, currency="UAH", name="Запорожье"):
+    wh = Warehouse(id=new_id(), name=name, currency=currency)
+    session.add(wh)
+    session.commit()
+    return wh
+
+
+def _rub_priced(session, product):
+    product.cost_cents = 143400
+    product.sale_cents = 249900
+    session.commit()
+    return product
+
+
+def test_warehouse_currency_resolves_and_falls_back(session, warehouse):
+    uah = _uah_warehouse(session)
+    assert warehouse_currency(session, uah.id) == "UAH"
+    assert warehouse_currency(session, warehouse.id) == "RUB"
+    assert warehouse_currency(session, "") == "RUB"
+    assert warehouse_currency(session, None) == "RUB"
+    assert warehouse_currency(session, "no-such-id") == "RUB"
+
+
+def test_reference_prices_for_code_converts_to_currency(session):
+    session.add(_catalog_price("42499", consumer=249900, consultant=143400))
+    session.commit()
+    assert reference_prices_for_code(session, "42499") == (143400, 249900)
+    assert reference_prices_for_code(session, "42499", "UAH") == (71700, 124950)
+    assert reference_prices_for_code(session, "42499", "EUR") == (1434, 2499)
+
+
+def test_lookup_prefill_product_suggests_in_warehouse_currency(session, product):
+    _rub_priced(session, product)
+    assert lookup_prefill(session, "TEST-001", currency="UAH")["prices"] == {
+        "cost": 71700,
+        "sale": 124950,
+    }
+    assert lookup_prefill(session, "TEST-001", currency="EUR")["prices"] == {
+        "cost": 1434,
+        "sale": 2499,
+    }
+    assert lookup_prefill(session, "TEST-001")["prices"] == {"cost": 143400, "sale": 249900}
+    product.sale_uah_cents = 120000
+    session.commit()
+    assert lookup_prefill(session, "TEST-001", currency="UAH")["prices"]["sale"] == 120000
+
+
+def test_lookup_prefill_catalog_source_converts_to_currency(session):
+    session.add(_catalog_price("42499", consumer=249900, consultant=143400))
+    session.commit()
+    prices = lookup_prefill(session, "42499", currency="UAH")["prices"]
+    assert prices["cost"] == 71700
+    assert prices["sale"] == 124950
+
+
+def test_lookup_prefill_unpriced_product_falls_back_to_catalog_in_non_rub(session, product):
+    """Orchestrator amendment A1: a non-RUB lookup on a card with neither an own
+    nor a RUB price suggests the RUB catalog price converted; RUB stays as is."""
+    session.add(_catalog_price("TEST-001", consumer=249900, consultant=143400))
+    session.commit()
+    assert lookup_prefill(session, "TEST-001", currency="UAH")["prices"] == {
+        "cost": 71700,
+        "sale": 124950,
+    }
+    assert lookup_prefill(session, "TEST-001")["prices"] == {"cost": None, "sale": None}
+
+
+def test_register_receipt_uah_writes_only_uah_card_fields(session, product):
+    _rub_priced(session, product)
+    uah = _uah_warehouse(session)
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Тестовый товар",
+        qty_raw="1",
+        cost_raw="717,00",
+        sale_raw="1249,50",
+        warehouse_id=uah.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    session.refresh(product)
+    assert (product.cost_uah_cents, product.sale_uah_cents) == (71700, 124950)
+    assert (product.cost_cents, product.sale_cents) == (143400, 249900)
+    ops = session.scalars(select(Operation).where(Operation.type == "price_change")).all()
+    assert {op.payload["field"] for op in ops} == {"cost_uah_cents", "sale_uah_cents"}
+    assert all(op.payload["old_cents"] is None for op in ops)
+    batch = result["batch"]
+    assert (batch.cost_cents, batch.price_cents) == (71700, 124950)
+
+
+def test_register_receipt_uah_empty_prices_store_nothing(session, product):
+    _rub_priced(session, product)
+    uah = _uah_warehouse(session)
+    result, errors = register_receipt(
+        session,
+        code="TEST-001",
+        name="Тестовый товар",
+        qty_raw="1",
+        cost_raw="",
+        sale_raw="",
+        warehouse_id=uah.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    session.refresh(product)
+    assert product.cost_uah_cents is None
+    assert product.sale_uah_cents is None
+    assert (product.cost_cents, product.sale_cents) == (143400, 249900)
+    assert (result["batch"].cost_cents, result["batch"].price_cents) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("currency", "fields"),
+    [
+        ("UAH", ("cost_uah_cents", "sale_uah_cents")),
+        ("EUR", ("cost_eur_cents", "sale_eur_cents")),
+    ],
+)
+def test_register_receipt_new_card_priced_only_in_warehouse_currency(
+    session, currency, fields
+):
+    wh = _uah_warehouse(session, currency=currency, name=f"Склад {currency}")
+    result, errors = register_receipt(
+        session,
+        code="NEW-CUR",
+        name="Новый",
+        qty_raw="1",
+        cost_raw="10,00",
+        sale_raw="20,00",
+        warehouse_id=wh.id,
+        batch_choice="new",
+    )
+    assert errors == {}
+    card = result["product"]
+    assert (getattr(card, fields[0]), getattr(card, fields[1])) == (1000, 2000)
+    assert card.cost_cents is None
+    assert card.sale_cents is None
+
+
+def test_web_lookup_uah_warehouse_suggests_converted_prices(client, session, product, warehouse):
+    _rub_priced(session, product)
+    uah = _uah_warehouse(session)
+    params = {"code": "TEST-001", "name": "", "cost": "", "sale": ""}
+    response = client.get("/receipts/lookup", params={**params, "warehouse_id": uah.id})
+    assert response.status_code == 200
+    assert 'value="717,00"' in response.text
+    assert 'value="1249,50"' in response.text
+    assert 'data-autofilled="true"' in response.text.split('id="cost-wrap"', 1)[1]
+
+    response = client.get("/receipts/lookup", params={**params, "warehouse_id": warehouse.id})
+    assert 'value="1434,00"' in response.text
+    assert 'value="2499,00"' in response.text
+
+
+def test_web_lookup_catalog_code_uah_ref_cents(client, session):
+    session.add(_catalog_price("42499", consumer=249900, consultant=143400))
+    session.commit()
+    uah = _uah_warehouse(session)
+    response = client.get(
+        "/receipts/lookup",
+        params={"code": "42499", "name": "", "cost": "", "sale": "", "warehouse_id": uah.id},
+    )
+    assert response.status_code == 200
+    assert 'data-ref-cents="71700"' in response.text
+    assert 'data-ref-cents="124950"' in response.text
+
+
+def test_web_receipt_422_rerender_ref_cents_in_uah(client, session):
+    session.add(_catalog_price("42499", consumer=249900, consultant=143400))
+    session.commit()
+    uah = _uah_warehouse(session)
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "42499",
+            "name": "Крем",
+            "qty": "0",
+            "cost": "",
+            "sale": "",
+            "warehouse_id": uah.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 422
+    assert 'data-ref-cents="71700"' in response.text
+    assert 'data-ref-cents="124950"' in response.text
+
+
+def test_web_receipt_form_warehouse_change_reruns_lookup(client, warehouse):
+    response = client.get("/receipts/new")
+    assert response.status_code == 200
+    assert 'hx-trigger="input changed delay:300ms, rewarehouse"' in response.text
+    select_tag = response.text.split('id="warehouse_id"', 1)[1].split("</select>", 1)[0]
+    select_tag = select_tag.split("<option", 1)[0]
+    assert "hx-on:change" in select_tag
+    assert "autofilled" in select_tag
+    assert "htmx.trigger" in select_tag
+    assert "rewarehouse" in select_tag
+
+
+def test_web_receipt_uah_real_case_end_to_end(client, session, product):
+    """Real case (code 42499 on s1): suggest 717,00/1249,50, save into UAH
+    fields, RUB card untouched, next lookup reads the stored UAH prices."""
+    _rub_priced(session, product)
+    uah = _uah_warehouse(session)
+    params = {"code": "TEST-001", "name": "", "cost": "", "sale": "", "warehouse_id": uah.id}
+    response = client.get("/receipts/lookup", params=params)
+    assert 'value="717,00"' in response.text and 'value="1249,50"' in response.text
+
+    response = client.post(
+        "/receipts",
+        data={
+            "code": "TEST-001",
+            "name": "Тестовый товар",
+            "qty": "1",
+            "cost": "717,00",
+            "sale": "1249,50",
+            "warehouse_id": uah.id,
+            "batch_choice": "new",
+        },
+    )
+    assert response.status_code == 200
+    assert "Приход сохранён" in response.text
+
+    session.expire_all()
+    card = session.get(Product, product.id)
+    assert (card.cost_uah_cents, card.sale_uah_cents) == (71700, 124950)
+    assert (card.cost_cents, card.sale_cents) == (143400, 249900)
+
+    card.cost_cents = 300000
+    card.sale_cents = 500000
+    session.commit()
+    response = client.get("/receipts/lookup", params=params)
+    assert 'value="717,00"' in response.text and 'value="1249,50"' in response.text

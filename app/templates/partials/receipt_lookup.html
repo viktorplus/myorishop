@@ -21,7 +21,7 @@
    independently of fill_fields/source (D-08/D-22). #}
 {% set refs = {"cost": ref_cost_cents, "sale": ref_sale_cents} %}
 {% for f in fill_fields %}
-{% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True, ref_cents = refs[f] %}
+{% with field = f, label = labels[f], value = (prices[f] | cents) if prices[f] is not none else "", oob = True, ref_cents = refs[f], autofilled = True %}
 {% include "partials/receipt_price_inputs.html" %}
 {% endwith %}
 {% endfor %}

@@ -8,8 +8,9 @@ unknown code on any line aborts the entire basket (all-or-nothing).
 
 D-10: the entered per-line price is REQUIRED and becomes unit_price_cents
 (overrides the card sale_cents — a pre-fill only). D-11/D-12: unit_cost_cents
-is frozen from Product.cost_cents at write time and may be NULL (a NULL card
-cost never blocks the sale; an empty/invalid PRICE does).
+is frozen from the batch cost, else the card cost IN THE BATCH WAREHOUSE'S
+CURRENCY (quick 260927-k1m, never converted), at write time and may be NULL
+(a NULL card cost never blocks the sale; an empty/invalid PRICE does).
 
 SAL-04/D-08/D-09: after per-line validation and before any write, requested
 quantity is aggregated per PICKED BATCH across the whole basket (Pitfall 8)
@@ -31,7 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import local_today_iso, new_id, to_cents, utcnow_iso
+from app.core import card_price_fields, local_today_iso, new_id, to_cents, utcnow_iso
 from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
@@ -265,15 +266,18 @@ def register_sale(
         # two lines is checked independently on each). is not None (D-06)
         # so an unset minimum never blocks, and strict < (D-10) so a price
         # exactly at the minimum passes silently.
+        # Quick 260927-k1m: the minimum IN THE BASKET CURRENCY — a UAH sale is
+        # never compared against the RUB floor.
+        min_field = card_price_fields(basket_currency)["min_sale"]
         below_minimum = [
             {
                 "product": line["product"],
                 "entered": line["price_cents"],
-                "minimum": line["product"].min_sale_cents,
+                "minimum": getattr(line["product"], min_field),
             }
             for line in resolved
-            if line["product"].min_sale_cents is not None
-            and line["price_cents"] < line["product"].min_sale_cents
+            if getattr(line["product"], min_field) is not None
+            and line["price_cents"] < getattr(line["product"], min_field)
         ]
 
         # Pitfall 2: both checks are computed above BEFORE any return, so a
@@ -324,12 +328,13 @@ def register_sale(
                 product_id=product.id,
                 qty_delta=-qty,
                 # D-11 freeze: batch cost first (CUR-02), else the product
-                # card (may be None) — byte-identical to pre-existing
-                # behavior for every batch whose cost_cents is still NULL.
+                # card cost in the basket currency (quick 260927-k1m; may be
+                # None, NEVER converted). For RUB this is product.cost_cents,
+                # byte-identical to pre-existing behavior.
                 unit_cost_cents=(
                     line["batch"].cost_cents
                     if line["batch"].cost_cents is not None
-                    else product.cost_cents
+                    else getattr(product, card_price_fields(basket_currency)["cost"])
                 ),
                 unit_price_cents=price_cents,  # D-10 entered price
                 sale_id=header.id,

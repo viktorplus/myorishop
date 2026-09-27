@@ -23,9 +23,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import format_ru_date, local_today_iso, new_id
+from app.core import (
+    DEFAULT_CURRENCY,
+    card_price_fields,
+    card_price_suggestion,
+    format_ru_date,
+    local_today_iso,
+    new_id,
+    rub_suggestion,
+)
 from app.models import Batch, Operation, Product
-from app.services.batches import active_warehouses
+from app.services.batches import active_warehouses, warehouse_currency
 from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import parse_op_date, record_operation
@@ -163,6 +171,12 @@ def register_receipt(
     # and stamp its ledger line with the next.
     resolved_business_date = business_date or local_today_iso(settings.display_tz)
 
+    # Quick 260927-k1m: the card price set of the RECEIPT WAREHOUSE's currency
+    # (warehouse_id is validated as active above). Nothing here ever writes
+    # another currency's fields; for RUB the names are the unsuffixed ones, so
+    # a RUB receipt is byte-identical to before.
+    fields = card_price_fields(warehouse_currency(session, warehouse_id))
+
     # Pitfall 5: active-only lookup — a soft-deleted product's code
     # auto-creates a NEW card instead of tripping the IN-01 guard.
     product = session.scalars(
@@ -178,8 +192,8 @@ def register_receipt(
             # D-27: unconditional Python lower — SQLite cannot fold Cyrillic.
             name_lc=name.lower(),
             category=None,
-            cost_cents=cost_cents,
-            sale_cents=sale_cents,
+            # Quick 260927-k1m: priced only in the receipt warehouse's currency.
+            **{fields["cost"]: cost_cents, fields["sale"]: sale_cents},
             quantity=0,
         )
         session.add(product)
@@ -217,14 +231,16 @@ def register_receipt(
         # per CHANGED non-empty field — same payload shape as
         # catalog.update_product. PD-8: None (empty input) never clears a
         # card price. PD-9: the typed name is ignored (no product_edited op).
+        # Quick 260927-k1m: keyed by the warehouse currency's card fields, so
+        # the payload names the exact field (e.g. "cost_uah_cents").
         entered = {
-            "cost_cents": cost_cents,
-            "sale_cents": sale_cents,
+            fields["cost"]: cost_cents,
+            fields["sale"]: sale_cents,
         }
         # PD-8: a receipt has no min_sale input, so this loop iterates the
         # fields a receipt CAN set (not the full app.services.catalog
-        # _PRICE_FIELDS set, which also includes min_sale_cents as of
-        # Phase 7 PRICE-01) — min_sale_cents is untouched by receipts.
+        # _PRICE_FIELDS set, which also includes the min_sale fields) — no
+        # min_sale field of any currency is touched by receipts.
         for field in entered:
             if entered[field] is None or entered[field] == getattr(product, field):
                 continue
@@ -321,8 +337,16 @@ def register_receipt(
     return {"product": product, "operation": op, "batch": batch}, {}
 
 
-def lookup_prefill(session: Session, code: str) -> dict | None:
+def lookup_prefill(
+    session: Session, code: str, currency: str = DEFAULT_CURRENCY
+) -> dict | None:
     """Pre-fill data for the receipt-form lookup (D-03/D-01 / RCP-02/PRICE-04). Read-only.
+
+    Quick 260927-k1m: prices are SUGGESTIONS in `currency` (the receipt
+    warehouse's): the card's own price in that currency, else its RUB price
+    converted (`rub_suggestion`); for a non-RUB currency a card with neither
+    falls back to the RUB catalog price converted. RUB (the default, and every
+    name-only caller) is unchanged.
 
     Active product first: its name plus current card prices (the route
     decides which price fields actually fill — PD-10). Otherwise (D-01):
@@ -339,14 +363,18 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
         select(Product).where(Product.code == code, Product.deleted_at.is_(None))
     ).first()
     if product is not None:
-        return {
-            "source": "product",
-            "name": product.name,
-            "prices": {
-                "cost": product.cost_cents,
-                "sale": product.sale_cents,
-            },
+        prices = {
+            "cost": card_price_suggestion(product, "cost", currency),
+            "sale": card_price_suggestion(product, "sale", currency),
         }
+        if currency != DEFAULT_CURRENCY and None in prices.values():
+            latest = latest_price_for_code(session, code)
+            if latest is not None:
+                catalog = {"cost": latest.consultant_cents, "sale": latest.consumer_cents}
+                for kind in prices:
+                    if prices[kind] is None:
+                        prices[kind] = rub_suggestion(catalog[kind], currency)
+        return {"source": "product", "name": product.name, "prices": prices}
     entry = dictionary_lookup(session, code)
     latest = latest_price_for_code(session, code)
     if entry is not None or latest is not None:
@@ -354,9 +382,13 @@ def lookup_prefill(session: Session, code: str) -> dict | None:
             "source": "catalog",
             "name": entry.name if entry is not None else None,
             "prices": {
-                "cost": latest.consultant_cents if latest is not None else None,
+                "cost": rub_suggestion(
+                    latest.consultant_cents if latest is not None else None, currency
+                ),
                 "catalog": latest.consumer_cents if latest is not None else None,
-                "sale": latest.consumer_cents if latest is not None else None,
+                "sale": rub_suggestion(
+                    latest.consumer_cents if latest is not None else None, currency
+                ),
             },
         }
     return None

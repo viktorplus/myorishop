@@ -181,6 +181,16 @@ class Product(Base):
     # set (NO global-settings fallback, unlike low_stock_threshold/stale_days).
     # Checked with is not None, never a bare "or".
     min_sale_cents: Mapped[int | None] = mapped_column(Integer)
+    # Quick 260927-k1m (migration 0028): the three columns above are the RUB
+    # set; UAH and EUR carry their own set (app.core.CARD_PRICE_FIELDS). An
+    # operation reads/writes only the set of its warehouse's currency. NO
+    # Python default: it would replace an explicit None on merge inserts.
+    cost_uah_cents: Mapped[int | None] = mapped_column(Integer)
+    sale_uah_cents: Mapped[int | None] = mapped_column(Integer)
+    min_sale_uah_cents: Mapped[int | None] = mapped_column(Integer)
+    cost_eur_cents: Mapped[int | None] = mapped_column(Integer)
+    sale_eur_cents: Mapped[int | None] = mapped_column(Integer)
+    min_sale_eur_cents: Mapped[int | None] = mapped_column(Integer)
     # D-04/D-05 (Phase 6): per-product report thresholds; NULL = use
     # settings.{low_stock_threshold,stale_days}.
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer)

@@ -35,7 +35,7 @@
       <input type="text" id="code" name="code" value="{{ form.code or '' }}" required autofocus
              hx-on:input="var n=document.getElementById('name'); if (n && n.dataset.autofilled==='true') { n.value=''; n.removeAttribute('data-autofilled'); }"
              hx-get="/receipts/lookup"
-             hx-trigger="input changed delay:300ms"
+             hx-trigger="input changed delay:300ms, rewarehouse"
              hx-include="[name='name'],[name='cost'],[name='sale'],[name='warehouse_id']"
              hx-target="#name-wrap"
              hx-swap="outerHTML"
@@ -50,14 +50,24 @@
 
     {# D-02: required warehouse select (active only), preselected to the seeded
        default when active else the first active one. A change refreshes the
-       #batch-chooser below (D-01); the code lookup does the same oob. #}
+       #batch-chooser below (D-01); the code lookup does the same oob.
+       Quick 260927-k1m: the warehouse picks the price currency, so a change
+       also clears AUTOFILLED cost/sale (and an autofilled name), drops the
+       stale colour cue from operator-typed prices (never their values), and
+       re-fires the #code lookup via the custom `rewarehouse` event so the
+       prices are re-suggested in the new warehouse's currency. #}
     <div class="field">
       <label for="warehouse_id">Склад</label>
       <select id="warehouse_id" name="warehouse_id" required
               hx-get="/receipts/batches"
               hx-trigger="change"
               hx-include="[name='code']"
-              hx-target="#batch-chooser">
+              hx-target="#batch-chooser"
+              hx-on:change="['cost','sale'].forEach(function (id) { var f=document.getElementById(id); if (!f) return;
+                if (f.dataset.autofilled==='true') { f.value=''; f.removeAttribute('data-autofilled'); }
+                else { delete f.dataset.refCents; f.classList.remove('price-below','price-above'); } });
+                var n=document.getElementById('name'); if (n && n.dataset.autofilled==='true') { n.value=''; n.removeAttribute('data-autofilled'); }
+                htmx.trigger(document.getElementById('code'), 'rewarehouse')">
         {% for w in active_warehouses %}
         <option value="{{ w.id }}"{% if w.id == selected_warehouse_id %} selected{% endif %}>{{ w.name }}</option>
         {% endfor %}

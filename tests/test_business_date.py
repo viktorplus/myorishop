@@ -491,26 +491,30 @@ def _seed_va9_ledger(engine) -> None:
 
     The OPERATIONS go in as raw SQL with an explicit column list, not through the
     ORM: at revision 0026 that table has no `business_date` column and the mapped
-    class would emit it. The PRODUCTS go through the ORM, because `products` is
-    byte-identical between 0026 and head — 0027 touches only the two ledger
-    tables — so the mapped class is exactly right there and hand-listing its
-    NOT NULL columns would only invite drift.
+    class would emit it. The PRODUCTS go in as raw SQL too, for the same reason
+    since migration 0028 (quick 260927-k1m): the mapped class now names the
+    per-currency price columns, which do not exist at 0026.
 
     `batch_id` stays NULL so every row resolves to RUB through
     operation_currency_clause's outer-join fallback, keeping the currency scoping
     out of what this test measures.
     """
     from sqlalchemy import text
-    from sqlalchemy.orm import sessionmaker
 
-    from app.models import Product
-
-    with sessionmaker(bind=engine)() as seed_session:
+    with engine.begin() as connection:
         for key, code in (("A", "VA9-A"), ("B", "VA9-B")):
-            seed_session.add(
-                Product(id=f"va9-product-{key}", code=code, name=f"Товар {key}", quantity=0)
+            connection.execute(
+                text(
+                    "INSERT INTO products (id, code, name, quantity, created_at, updated_at) "
+                    "VALUES (:id, :code, :name, 0, :ts, :ts)"
+                ),
+                {
+                    "id": f"va9-product-{key}",
+                    "code": code,
+                    "name": f"Товар {key}",
+                    "ts": "2026-08-01T00:00:00+00:00",
+                },
             )
-        seed_session.commit()
 
     with engine.begin() as connection:
         placeholders = ", ".join(f":{name}" for name in _OPERATION_COLUMNS_AT_0026)

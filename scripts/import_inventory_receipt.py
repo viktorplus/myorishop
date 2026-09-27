@@ -48,7 +48,12 @@ from sqlalchemy.engine import Engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.core import format_cents  # noqa: E402
+from app.core import (  # noqa: E402
+    CARD_PRICE_FIELDS,
+    DEFAULT_CURRENCY,
+    card_price_fields,
+    format_cents,
+)
 from app.db import SessionLocal, engine  # noqa: E402
 from app.models import Batch, Product, Warehouse  # noqa: E402
 from app.services.batches import active_warehouses  # noqa: E402
@@ -249,7 +254,12 @@ def _month_batches(
 
 
 def resolve_row(
-    session: Session, row: Row, warehouse_id: str, pending: Pending
+    session: Session,
+    row: Row,
+    warehouse_id: str,
+    pending: Pending,
+    *,
+    currency: str = DEFAULT_CURRENCY,
 ) -> Decision:
     """Decide what this row does. READ-ONLY — shared by the dry run and --apply."""
     warnings: list[str] = []
@@ -294,8 +304,11 @@ def resolve_row(
             action = "topup"
 
     # Rule 4: an existing card keeps its own prices — never send catalog ones.
+    # Quick 260927-k1m: catalog prices are RUB; a bulk import has no human
+    # review, so a card created in a non-RUB warehouse stays unpriced (a
+    # converted value is a form suggestion only, never stored unreviewed).
     cost_raw = sale_raw = ""
-    if not product_exists:
+    if not product_exists and card_price_fields(currency) == CARD_PRICE_FIELDS[DEFAULT_CURRENCY]:
         price = latest_price_for_code(session, row.code)
         if price is not None:
             if price.consultant_cents is not None:
@@ -386,7 +399,9 @@ def run_import(
         if row.condition:
             summary["condition_rows"] += 1
 
-        decision = resolve_row(session, row, warehouse.id, pending)
+        decision = resolve_row(
+            session, row, warehouse.id, pending, currency=warehouse.currency
+        )
         summary["warnings"].extend(decision.warnings)
         if not decision.product_exists:
             summary["new_products"] += 1

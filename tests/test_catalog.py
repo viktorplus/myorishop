@@ -19,11 +19,12 @@ from sqlalchemy import select, text
 from alembic import command
 from app.config import settings
 from app.core import new_id, utcnow_iso
-from app.models import OPERATION_TYPES, Operation, User
+from app.models import OPERATION_TYPES, Operation, Product, User
 from app.services.auth import hash_password
 from app.services.catalog import (
     category_options,
     create_product,
+    get_product,
     list_products,
     list_products_view,
     price_history,
@@ -1392,3 +1393,137 @@ def test_web_products_list_row_has_transfer_link(client, product):
     assert page.status_code == 200
     assert f'href="/transfers?code={product.code}"' in page.text
     assert "Переместить" in page.text
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+_CURRENCY_RAW = {
+    "cost_uah_raw": "717,00",
+    "sale_uah_raw": "1249,50",
+    "min_sale_uah_raw": "1000",
+    "cost_eur_raw": "14,34",
+    "sale_eur_raw": "24,99",
+    "min_sale_eur_raw": "20",
+}
+_CURRENCY_CENTS = {
+    "cost_uah_cents": 71700,
+    "sale_uah_cents": 124950,
+    "min_sale_uah_cents": 100000,
+    "cost_eur_cents": 1434,
+    "sale_eur_cents": 2499,
+    "min_sale_eur_cents": 2000,
+}
+
+
+def _base(code="7070"):
+    return {"code": code, "name": "Крем", "category": "", "cost_raw": "", "sale_raw": ""}
+
+
+def test_create_product_accepts_currency_prices(session):
+    product, errors = create_product(session, **_base(), **_CURRENCY_RAW)
+    assert errors == {}
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(product, field) == cents
+
+
+def test_update_product_writes_currency_prices_with_exact_field_ops(session):
+    product, errors = create_product(session, **_base())
+    assert errors == {}
+    updated, errors = update_product(session, product.id, **_base(), **_CURRENCY_RAW)
+    assert errors == {}
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(updated, field) == cents
+    ops = session.scalars(select(Operation).where(Operation.type == "price_change")).all()
+    by_field = {op.payload["field"]: op.payload for op in ops}
+    assert set(by_field) == set(_CURRENCY_CENTS)
+    assert by_field["cost_uah_cents"] == {
+        "field": "cost_uah_cents",
+        "old_cents": None,
+        "new_cents": 71700,
+    }
+
+
+def test_update_product_omitted_currency_prices_stay_unchanged(session):
+    product, errors = create_product(session, **_base(), **_CURRENCY_RAW)
+    assert errors == {}
+    updated, errors = update_product(
+        session, product.id, **{**_base(), "sale_raw": "10"}
+    )
+    assert errors == {}
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(updated, field) == cents
+    ops = session.scalars(select(Operation).where(Operation.type == "price_change")).all()
+    assert [op.payload["field"] for op in ops] == ["sale_cents"]
+
+
+def test_update_product_empty_currency_price_clears_only_that_field(session):
+    product, errors = create_product(session, **_base(), **_CURRENCY_RAW)
+    assert errors == {}
+    updated, errors = update_product(session, product.id, **_base(), cost_uah_raw="")
+    assert errors == {}
+    assert updated.cost_uah_cents is None
+    assert updated.sale_uah_cents == 124950
+    assert updated.cost_eur_cents == 1434
+
+
+def test_update_product_rejects_negative_currency_price(session):
+    product, errors = create_product(session, **_base())
+    assert errors == {}
+    updated, errors = update_product(session, product.id, **_base(), cost_uah_raw="-5")
+    assert updated is None
+    assert "cost_uah" in errors
+
+
+def _web_form(**overrides):
+    data = {
+        "code": "7171",
+        "name": "Крем",
+        "category": "",
+        "cost": "1434",
+        "sale": "2499",
+        "min_sale": "2000",
+        "cost_uah": "717",
+        "sale_uah": "1249,50",
+        "min_sale_uah": "1000",
+        "cost_eur": "14,34",
+        "sale_eur": "24,99",
+        "min_sale_eur": "20",
+    }
+    data.update(overrides)
+    return data
+
+
+def test_web_product_form_edits_all_three_price_sets(client, session):
+    product, errors = create_product(session, **_base("7171"))
+    assert errors == {}
+
+    response = client.post(f"/products/{product.id}", data=_web_form(), follow_redirects=False)
+    assert response.status_code == 303
+    page = client.get(f"/products/{product.id}/edit")
+    assert page.status_code == 200
+    for name, shown in (
+        ("cost", "1434,00"), ("sale", "2499,00"), ("min_sale", "2000,00"),
+        ("cost_uah", "717,00"), ("sale_uah", "1249,50"), ("min_sale_uah", "1000,00"),
+        ("cost_eur", "14,34"), ("sale_eur", "24,99"), ("min_sale_eur", "20,00"),
+    ):
+        tag = page.text.split(f'name="{name}"', 1)[1].split(">", 1)[0]
+        assert f'value="{shown}"' in tag, name
+    assert "Закупочная ₴" in page.text
+
+    rub_only = {
+        k: v for k, v in _web_form(sale="2600").items() if "_uah" not in k and "_eur" not in k
+    }
+    response = client.post(f"/products/{product.id}", data=rub_only, follow_redirects=False)
+    assert response.status_code == 303
+    session.expire_all()
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(get_product(session, product.id), field) == cents
+    assert get_product(session, product.id).sale_cents == 260000
+
+
+def test_web_product_create_stores_currency_prices(client, session):
+    response = client.post("/products", data=_web_form(code="7272"), follow_redirects=False)
+    assert response.status_code == 303
+    created = session.scalars(select(Product).where(Product.code == "7272")).one()
+    for field, cents in _CURRENCY_CENTS.items():
+        assert getattr(created, field) == cents

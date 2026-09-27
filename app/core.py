@@ -55,14 +55,50 @@ def format_cents(cents: int) -> str:
 
 # Per-warehouse currency (CUR-01): a FIXED set — money is stored as integer minor
 # units exactly as before, and the code only says which currency those units are
-# in. There is no conversion and no exchange rate anywhere in the app, so amounts
-# in different currencies are never summed.
+# in. Stored money is never converted and there is no exchange rate, so amounts
+# in different currencies are never summed. The ONE conversion is
+# `rub_suggestion` below, and it feeds form suggestions only (quick 260927-k1m).
 CURRENCIES: dict[str, str] = {
     "RUB": "₽",
     "UAH": "₴",
     "EUR": "€",
 }
 DEFAULT_CURRENCY = "RUB"
+
+# Per-currency product card prices (quick 260927-k1m): the unsuffixed columns
+# are the RUB set; UAH and EUR carry their own. An operation reads/writes only
+# the set of the currency of the warehouse it touches.
+CARD_PRICE_FIELDS: dict[str, dict[str, str]] = {
+    "RUB": {"cost": "cost_cents", "sale": "sale_cents", "min_sale": "min_sale_cents"},
+    "UAH": {"cost": "cost_uah_cents", "sale": "sale_uah_cents", "min_sale": "min_sale_uah_cents"},
+    "EUR": {"cost": "cost_eur_cents", "sale": "sale_eur_cents", "min_sale": "min_sale_eur_cents"},
+}
+_RUB_DIVISOR = {"RUB": 1, "UAH": 2, "EUR": 100}
+
+
+def card_price_fields(currency: str | None) -> dict[str, str]:
+    """Product column names of `currency`'s price set; unknown/empty -> the RUB set."""
+    return CARD_PRICE_FIELDS.get(currency or DEFAULT_CURRENCY, CARD_PRICE_FIELDS[DEFAULT_CURRENCY])
+
+
+def rub_suggestion(rub_cents: int | None, currency: str | None) -> int | None:
+    """A RUB price as a SUGGESTION in `currency` (UAH = /2, EUR = /100, half-up).
+
+    Form suggestions only — never stored unless the operator saves the form.
+    An unknown currency uses divisor 1.
+    """
+    if rub_cents is None:
+        return None
+    divisor = _RUB_DIVISOR.get(currency or DEFAULT_CURRENCY, 1)
+    return int((Decimal(rub_cents) / divisor).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def card_price_suggestion(product, kind: str, currency: str | None) -> int | None:
+    """The card's own `kind` price in `currency`, else its RUB price converted."""
+    own = getattr(product, card_price_fields(currency)[kind])
+    if own is not None:
+        return own
+    return rub_suggestion(getattr(product, CARD_PRICE_FIELDS[DEFAULT_CURRENCY][kind]), currency)
 
 
 def currency_symbol(currency: str | None) -> str:

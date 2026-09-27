@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core import new_id, to_cents, utcnow_iso
+from app.core import CARD_PRICE_FIELDS, new_id, to_cents, utcnow_iso
 from app.models import Operation, Product
 from app.services.ledger import record_operation
 from app.services.pagination import paginate
@@ -76,6 +76,12 @@ def create_product(
     min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
+    cost_uah_raw: str = "",
+    sale_uah_raw: str = "",
+    min_sale_uah_raw: str = "",
+    cost_eur_raw: str = "",
+    sale_eur_raw: str = "",
+    min_sale_eur_raw: str = "",
 ) -> tuple[Product | None, dict[str, str]]:
     """Create a product and its product_created audit op atomically (D-19/D-30).
 
@@ -103,6 +109,20 @@ def create_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
+    # Quick 260927-k1m: the UAH/EUR card price sets, errors keyed like the
+    # form fields ("cost_uah", ...).
+    extra_raw = {
+        "cost_uah_cents": cost_uah_raw,
+        "sale_uah_cents": sale_uah_raw,
+        "min_sale_uah_cents": min_sale_uah_raw,
+        "cost_eur_cents": cost_eur_raw,
+        "sale_eur_cents": sale_eur_raw,
+        "min_sale_eur_cents": min_sale_eur_raw,
+    }
+    extra_prices = {
+        field: parse_optional_cents(raw, errors, field.removesuffix("_cents"))
+        for field, raw in extra_raw.items()
+    }
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
     )
@@ -123,6 +143,7 @@ def create_product(
         # D-01/Pitfall 4 (Phase 18 plan 02): the third (catalog) price is no
         # longer parsed or written here — PROD-05 collapses pricing to ДЦ/ПЦ only.
         min_sale_cents=min_sale_cents,
+        **extra_prices,
         low_stock_threshold=low_stock_threshold,
         stale_days=stale_days,
         quantity=0,
@@ -156,7 +177,13 @@ def get_product(session: Session, product_id: str) -> Product | None:
 # dropped from this tuple — it drives the price-change audit getattr loop
 # below, so leaving a removed field here would AttributeError once plan
 # 18-04 drops the model attribute it names.
-_PRICE_FIELDS = ("cost_cents", "sale_cents", "min_sale_cents")
+# Quick 260927-k1m: all three currency sets, RUB first (so the RUB op order is
+# unchanged), each named exactly as its Product column.
+_PRICE_FIELDS = tuple(
+    CARD_PRICE_FIELDS[currency][kind]
+    for currency in ("RUB", "UAH", "EUR")
+    for kind in ("cost", "sale", "min_sale")
+)
 
 
 def update_product(
@@ -171,8 +198,18 @@ def update_product(
     min_sale_raw: str = "",
     low_stock_threshold_raw: str = "",
     stale_days_raw: str = "",
+    cost_uah_raw: str | None = None,
+    sale_uah_raw: str | None = None,
+    min_sale_uah_raw: str | None = None,
+    cost_eur_raw: str | None = None,
+    sale_eur_raw: str | None = None,
+    min_sale_eur_raw: str | None = None,
 ) -> tuple[Product | None, dict[str, str]]:
     """Update a product; audit every change through the single write path.
+
+    Quick 260927-k1m: the six UAH/EUR `*_raw` kwargs default to None = "not
+    submitted, leave unchanged" (an existing caller or an old cached page never
+    wipes them); "" clears that one field, like the RUB fields.
 
     D-28: one price_change op per changed price field (old snapshotted
     BEFORE mutation — Pitfall 7). D-30: one product_edited op listing the
@@ -211,6 +248,22 @@ def update_product(
     cost_cents = parse_optional_cents(cost_raw, errors, "cost")
     sale_cents = parse_optional_cents(sale_raw, errors, "sale")
     min_sale_cents = parse_optional_cents(min_sale_raw, errors, "min_sale")
+    extra_raw = {
+        "cost_uah_cents": cost_uah_raw,
+        "sale_uah_cents": sale_uah_raw,
+        "min_sale_uah_cents": min_sale_uah_raw,
+        "cost_eur_cents": cost_eur_raw,
+        "sale_eur_cents": sale_eur_raw,
+        "min_sale_eur_cents": min_sale_eur_raw,
+    }
+    extra_prices = {
+        field: (
+            getattr(product, field)
+            if raw is None
+            else parse_optional_cents(raw, errors, field.removesuffix("_cents"))
+        )
+        for field, raw in extra_raw.items()
+    }
     low_stock_threshold = parse_optional_int(
         low_stock_threshold_raw, errors, "low_stock_threshold"
     )
@@ -235,6 +288,7 @@ def update_product(
         "cost_cents": cost_cents,
         "sale_cents": sale_cents,
         "min_sale_cents": min_sale_cents,
+        **extra_prices,
     }
     new_fields = {
         "code": code,
@@ -256,9 +310,8 @@ def update_product(
     # D-27: unconditional Python lower — SQLite cannot fold Cyrillic.
     product.name_lc = name.lower()
     product.category = category or None
-    product.cost_cents = cost_cents
-    product.sale_cents = sale_cents
-    product.min_sale_cents = min_sale_cents
+    for field in _PRICE_FIELDS:
+        setattr(product, field, new_prices[field])
     product.low_stock_threshold = low_stock_threshold
     product.stale_days = stale_days
 

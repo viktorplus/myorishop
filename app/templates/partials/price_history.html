@@ -21,6 +21,12 @@
           {%- elif op.payload.field == "sale_cents" -%}Продажа
           {%- elif op.payload.field == "catalog_cents" -%}Каталог
           {%- elif op.payload.field == "min_sale_cents" -%}Минимальная
+          {%- elif op.payload.field == "cost_uah_cents" -%}Закупочная ₴
+          {%- elif op.payload.field == "sale_uah_cents" -%}Продажа ₴
+          {%- elif op.payload.field == "min_sale_uah_cents" -%}Минимальная ₴
+          {%- elif op.payload.field == "cost_eur_cents" -%}Закупочная €
+          {%- elif op.payload.field == "sale_eur_cents" -%}Продажа €
+          {%- elif op.payload.field == "min_sale_eur_cents" -%}Минимальная €
           {%- else -%}{{ op.payload.field }}
           {%- endif -%}
         </td>

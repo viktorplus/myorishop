@@ -227,11 +227,15 @@ def test_stock_valuation_excludes_deleted_products(session):
 def test_stock_valuation_scopes_by_currency(session):
     """CUR-02: two warehouses of different currencies each report ONLY their
     own batch; the two never sum together. A batch left with cost_cents=None
-    proves the Product.cost_cents fallback still works."""
+    proves the card fallback still works — since quick 260927-k1m it falls
+    back to the card price in the batch warehouse's currency (EUR here)."""
     rub_wh = Warehouse(id=new_id(), name="Склад RUB")
     eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
     session.add_all([rub_wh, eur_wh])
-    product = Product(id=new_id(), code="F", name="Товар F", cost_cents=1000, sale_cents=1500)
+    product = Product(
+        id=new_id(), code="F", name="Товар F", cost_cents=5000, sale_cents=7000,
+        cost_eur_cents=1000, sale_eur_cents=1500,
+    )
     session.add(product)
     session.flush()
     _add_batch(session, product, rub_wh, quantity=2, cost_cents=900, price_cents=1400)
@@ -243,7 +247,7 @@ def test_stock_valuation_scopes_by_currency(session):
     # RUB batch: cost_cents=900 (its own snapshot), price_cents=1400.
     assert rub_result["cost_value_cents"] == 1800
     assert rub_result["sale_value_cents"] == 2800
-    # EUR batch: cost_cents/price_cents NULL -> falls back to the product card.
+    # EUR batch: cost_cents/price_cents NULL -> falls back to the EUR card set.
     assert eur_result["cost_value_cents"] == 3000
     assert eur_result["sale_value_cents"] == 4500
     assert rub_result != eur_result
@@ -882,3 +886,43 @@ def test_cash_flow_and_expense_total_reconcile_over_mixed_rows(session, monkeypa
     assert flow["expense_total_cents"] == total
     assert total == -420  # -100 + -250 (back-dated, last day) + -70 (NULL business_date)
     assert flow["income_total_cents"] == 5000
+
+
+# --- Quick 260927-k1m: per-currency card prices -----------------------------
+
+
+def test_stock_valuation_uah_falls_back_to_uah_card_prices(session):
+    uah_wh = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(uah_wh)
+    product = Product(
+        id=new_id(), code="U", name="Товар U", cost_cents=143400, sale_cents=249900,
+        cost_uah_cents=71700, sale_uah_cents=124950,
+    )
+    session.add(product)
+    session.flush()
+    _add_batch(session, product, uah_wh, quantity=2)
+    session.commit()
+
+    result = stock_valuation(session, "UAH")
+    assert result["cost_value_cents"] == 143400
+    assert result["sale_value_cents"] == 249900
+    assert result["cost_unknown_count"] == 0
+    assert result["sale_unknown_count"] == 0
+
+
+def test_stock_valuation_uah_without_uah_card_prices_is_unknown(session):
+    uah_wh = Warehouse(id=new_id(), name="Запорожье", currency="UAH")
+    session.add(uah_wh)
+    product = Product(
+        id=new_id(), code="U2", name="Товар U2", cost_cents=143400, sale_cents=249900
+    )
+    session.add(product)
+    session.flush()
+    _add_batch(session, product, uah_wh, quantity=2)
+    session.commit()
+
+    result = stock_valuation(session, "UAH")
+    assert result["cost_value_cents"] == 0
+    assert result["sale_value_cents"] == 0
+    assert result["cost_unknown_count"] == 1
+    assert result["sale_unknown_count"] == 1

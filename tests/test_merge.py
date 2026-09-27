@@ -996,3 +996,94 @@ def test_duplicate_reference_uuid_rejected():
     lines = build_ndjson(records=[rec, dict(rec)])
     with pytest.raises(ValueError, match="duplicate"):
         merge.parse_exchange(lines)
+
+
+# --- Per-currency card prices over sync (quick 260927-k1m) -------------------
+
+_CURRENCY_PRICE_KEYS = frozenset(
+    {
+        "cost_uah_cents",
+        "sale_uah_cents",
+        "min_sale_uah_cents",
+        "cost_eur_cents",
+        "sale_eur_cents",
+        "min_sale_eur_cents",
+    }
+)
+
+
+def test_old_schema_push_of_existing_product_keeps_server_currency_prices(session, product):
+    """A pre-0028 client pushing an existing product cannot null UAH/EUR prices."""
+    product.cost_uah_cents = 71700
+    product.sale_eur_cents = 2499
+    session.commit()
+
+    record = _product_rec(product.id, code=product.code, name=product.name)
+    assert not _CURRENCY_PRICE_KEYS & set(record)
+    report = _apply(session, [record])
+    session.commit()
+
+    session.refresh(product)
+    assert product.cost_uah_cents == 71700
+    assert product.sale_eur_cents == 2499
+    assert report.reference_server_wins["product"] == 1
+
+
+def test_old_schema_push_of_new_product_inserts_null_currency_prices(session):
+    report = _apply(session, [_product_rec("p-old-schema", code="OLD-1")])
+    session.commit()
+
+    assert report.reference_inserted["product"] == 1
+    row = session.get(Product, "p-old-schema")
+    for key in _CURRENCY_PRICE_KEYS:
+        assert getattr(row, key) is None
+
+
+def test_new_schema_push_of_new_product_stores_currency_prices(session):
+    record = {
+        **_product_rec("p-new-schema", code="NEW-1"),
+        "cost_uah_cents": 71700,
+        "sale_uah_cents": 124950,
+        "min_sale_eur_cents": 2000,
+    }
+    _apply(session, [record])
+    session.commit()
+
+    row = session.get(Product, "p-new-schema")
+    assert row.cost_uah_cents == 71700
+    assert row.sale_uah_cents == 124950
+    assert row.min_sale_eur_cents == 2000
+    assert row.cost_eur_cents is None
+
+
+def test_old_client_pull_ignores_surplus_currency_keys(session, product, monkeypatch):
+    """A 0027-schema client pulling a 0028 product ignores the six new keys."""
+    from app.services import sync_client
+
+    product.cost_uah_cents = 11100
+    product.sale_eur_cents = 222
+    session.commit()
+    monkeypatch.setitem(
+        merge.KIND_TO_FIELDS,
+        "product",
+        merge.KIND_TO_FIELDS["product"] - _CURRENCY_PRICE_KEYS,
+    )
+    record = {
+        **_product_rec(product.id, code=product.code, name="Новое имя"),
+        "cost_uah_cents": 71700,
+        "sale_uah_cents": 124950,
+        "min_sale_uah_cents": None,
+        "cost_eur_cents": 1434,
+        "sale_eur_cents": 2499,
+        "min_sale_eur_cents": None,
+    }
+    sync_client._apply_pull_page(
+        session, merge.parse_exchange(build_ndjson(records=[record]))
+    )
+    session.commit()
+
+    session.refresh(product)
+    assert product.name == "Новое имя"
+    assert product.cost_uah_cents == 11100
+    assert product.sale_eur_cents == 222
+    assert product.sale_uah_cents is None
