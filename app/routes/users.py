@@ -7,7 +7,7 @@ user service (V5); these routes only wire HTTP → service → template swap
 (warehouses precedent).
 
 Paths: GET /settings/users (page + HX rows), POST /settings/users (create),
-POST /settings/users/{id}/deactivate|reactivate|reset-password.
+POST /settings/users/{id}/deactivate|reactivate|reset-password|warehouses.
 
 CLAUDE.md safety: a raw / new password is hashed in the service and is NEVER
 echoed back into any rendered fragment or logged.
@@ -19,12 +19,15 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.models import User
 from app.routes import templates
+from app.services.batches import active_warehouses
 from app.services.users import (
     create_user,
     deactivate_user,
     list_users,
     reactivate_user,
     reset_password,
+    set_user_warehouses,
+    warehouse_assignments,
 )
 
 router = APIRouter()
@@ -34,11 +37,21 @@ USER_CREATED_NOTICE = "Пользователь создан."
 USER_DEACTIVATED_NOTICE = "Пользователь отключён."
 USER_REACTIVATED_NOTICE = "Пользователь активирован."
 PASSWORD_RESET_NOTICE = "Пароль сброшен."
+WAREHOUSES_SAVED_NOTICE = "Склады пользователя сохранены."
 
 
 def _rows_context(session: Session, **extra) -> dict:
-    """Shared context for the users-table partial (all users + optional flags)."""
-    return {"users": list_users(session), **extra}
+    """Shared context for the users-table partial (all users + optional flags).
+
+    Quick 261026-wha: also every active warehouse and who is assigned which,
+    for the per-operator «Склады» checkboxes.
+    """
+    return {
+        "users": list_users(session),
+        "warehouses": active_warehouses(session),
+        "assigned": warehouse_assignments(session),
+        **extra,
+    }
 
 
 @router.get("/settings/users")
@@ -127,3 +140,21 @@ def user_reset_password(
         )
     context = {"user": user, "reset_done": True}
     return templates.TemplateResponse(request, "partials/user_reset.html", context)
+
+
+@router.post("/settings/users/{user_id}/warehouses")
+def user_warehouses(
+    request: Request,
+    user_id: str,
+    warehouse_id: list[str] = Form([]),
+    session: Session = Depends(get_session),
+):
+    """Quick 261026-wha: replace an operator's warehouses with the ticked ones."""
+    ok, errors = set_user_warehouses(session, user_id, warehouse_id)
+    if not ok:
+        context = _rows_context(session, errors=errors)
+        return templates.TemplateResponse(
+            request, "partials/user_rows.html", context, status_code=422
+        )
+    context = _rows_context(session, notice=WAREHOUSES_SAVED_NOTICE)
+    return templates.TemplateResponse(request, "partials/user_rows.html", context)

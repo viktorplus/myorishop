@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import local_today_iso, new_id, utcnow_iso
 from app.models import OPERATION_TYPES, Batch, Operation, Product
-from app.services.security import author_fields
+from app.services.security import author_fields, warehouse_allowed
 
 # D-12: the stock-affecting operation types. A batch_id is MANDATORY for these
 # (they move stock into/out of a specific lot); the remaining OPERATION_TYPES
@@ -55,6 +55,14 @@ OP_DATE_FLOOR = date(2000, 1, 1)
 # browser's interactive validation never fires at all (hx-post sits on the
 # button and htmx preventDefault()s the click).
 OP_DATE_FLOOR_ISO = OP_DATE_FLOOR.isoformat()
+
+
+class WarehouseAccessError(ValueError):
+    """An operator tried to move stock in a warehouse not assigned to them.
+
+    A ValueError subclass so every existing write-path handler that already
+    turns record_operation's ValueError into an RU message keeps working.
+    """
 
 
 # Home-placement rationale: all nine real `record_operation` call sites already
@@ -193,6 +201,15 @@ def record_operation(
             raise ValueError(f"unknown batch: {batch_id!r}")
         if batch.product_id != product_id:
             raise ValueError("batch does not belong to product")
+        # Quick 261026-wha: an operator moves stock only in their own
+        # warehouses. The ONE exception is the incoming leg of a transfer — an
+        # operator may send goods to any warehouse (the source leg, qty < 0, is
+        # still checked). This is the server-side backstop; the pickers never
+        # offer another warehouse's lot in the first place.
+        if not warehouse_allowed(batch.warehouse_id) and not (
+            type_ == "transfer" and qty_delta > 0
+        ):
+            raise WarehouseAccessError(f"warehouse not allowed: {batch.warehouse_id!r}")
     elif batch_id is not None:
         raise ValueError(f"{type_!r} operations are batch-less")
 

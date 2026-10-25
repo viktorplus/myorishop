@@ -637,6 +637,21 @@ class User(Base):
     updated_at: Mapped[str] = mapped_column(String(32), default=utcnow_iso, onupdate=utcnow_iso)
 
 
+class UserWarehouse(Base):
+    """The warehouses an OPERATOR may work with (quick 261026-wha).
+
+    One row per (operator, warehouse) pair; the administrator assigns them on
+    /settings/users. An administrator is never restricted and has no rows here.
+    An operator with no rows can see and move no stock at all. Rows are plain
+    replace-on-save configuration, not ledger history, and are not synced.
+    """
+
+    __tablename__ = "user_warehouses"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    warehouse_id: Mapped[str] = mapped_column(ForeignKey("warehouses.id"), primary_key=True)
+
+
 class DeviceToken(Base):
     """Per-device sync credential (SYNC-09): prefix lookup + SHA-256 digest.
 

@@ -21,7 +21,7 @@
     <tr>
       <td>{{ row.product.code or "" }}</td>
       <td>{{ row.product.name }}</td>
-      <td class="num">{{ row.product.quantity }}</td>
+      <td class="num">{{ scoped_qty.get(row.product.id, 0) if scoped_qty is not none else row.product.quantity }}</td>
       <td>Мало</td>
     </tr>
     {% endfor %}
@@ -44,7 +44,7 @@
     <tr>
       <td>{{ product.code or "" }}</td>
       <td>{{ product.name }}</td>
-      <td class="num">{{ product.quantity }}</td>
+      <td class="num">{{ scoped_qty.get(product.id, 0) if scoped_qty is not none else product.quantity }}</td>
       <td>{% if product.id in low_stock_ids %}Мало{% endif %}</td>
     </tr>
     {% endfor %}

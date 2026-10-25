@@ -25,7 +25,7 @@ from app.models import (
     SyncState,
 )
 from app.services.ledger import OP_DATE_FLOOR_ISO
-from app.services.security import session_csrf
+from app.services.security import allowed_warehouse_ids, session_csrf
 from app.services.sync_client import (
     SyncResult,
     format_sync_message,
@@ -122,9 +122,12 @@ def _auth_context(request: Request) -> dict:
     csrf_token is the session synchronizer token (empty when no SessionMiddleware
     session exists in scope, e.g. bare mobile_client_factory tests).
     """
+    allowed = allowed_warehouse_ids()
     return {
         "current_user": getattr(request.state, "user", None),
         "csrf_token": session_csrf(request) if "session" in request.scope else "",
+        # Quick 261026-wha: drives the «обратитесь к администратору» notice.
+        "no_warehouses": allowed is not None and not allowed,
     }
 
 

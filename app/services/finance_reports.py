@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core import DEFAULT_CURRENCY, card_price_fields
 from app.models import CASH_BUCKETS, CASH_CATEGORIES, Batch, CashMovement, Product, Warehouse
 from app.services.reports import business_date_expr
+from app.services.security import warehouse_scope
 
 
 def cash_expense_total(
@@ -75,7 +76,14 @@ def stock_valuation(session: Session, currency: str = DEFAULT_CURRENCY) -> dict:
     (D-02b) — always "as of now".
     """
     active = Product.deleted_at.is_(None)
-    scope = (Batch.quantity > 0, active, Warehouse.currency == currency)
+    # Quick 261026-wha: warehouse_scope limits an operator's Главная tile to
+    # their own warehouses (true() for an administrator).
+    scope = (
+        Batch.quantity > 0,
+        active,
+        Warehouse.currency == currency,
+        warehouse_scope(Batch.warehouse_id),
+    )
     fields = card_price_fields(currency)
     cost_expr = func.coalesce(Batch.cost_cents, getattr(Product, fields["cost"]))
     sale_expr = func.coalesce(Batch.price_cents, getattr(Product, fields["sale"]))

@@ -38,6 +38,7 @@ from app.services.catalog import DUPLICATE_CODE_ERROR, parse_optional_cents
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import parse_op_date, record_operation
 from app.services.pricing import latest_price_for_code
+from app.services.security import warehouse_scope
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 # D-02 (Phase 8 D-07 carried forward): zero active warehouses blocks the receipt.
@@ -420,7 +421,9 @@ def recent_receipts(session: Session, limit: int = 10) -> list[dict]:
     rows = session.execute(
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
-        .where(Operation.type == "receipt")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        # Quick 261026-wha: an operator sees only their warehouses' rows.
+        .where(Operation.type == "receipt", warehouse_scope(Batch.warehouse_id))
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()

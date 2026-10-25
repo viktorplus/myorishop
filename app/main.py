@@ -243,15 +243,18 @@ app.include_router(
 app.include_router(receipts.router)
 app.include_router(sales.router)
 app.include_router(customers.router)
-app.include_router(backup.router)
+# Quick 261026-wha: a backup / CSV export / the cash ledger cover EVERY
+# warehouse (cash is per currency, not per warehouse), so they are
+# administrator-only — an operator is limited to their own warehouses.
+app.include_router(backup.router, dependencies=[Depends(require_role("administrator"))])
 app.include_router(writeoffs.router)
 app.include_router(transfers.router)
 app.include_router(returns.router)
 app.include_router(corrections.router)
 app.include_router(history.router)
 app.include_router(reports.router)
-app.include_router(export.router)
-app.include_router(finance.router)
+app.include_router(export.router, dependencies=[Depends(require_role("administrator"))])
+app.include_router(finance.router, dependencies=[Depends(require_role("administrator"))])
 app.include_router(
     settings.router, dependencies=[Depends(require_role("administrator"))]
 )
@@ -292,4 +295,7 @@ app.include_router(mobile_transfers.router)
 app.include_router(mobile_returns.router)
 app.include_router(mobile_history.router)
 app.include_router(mobile_reports.router)
-app.include_router(mobile_finance.router)
+# Quick 261026-wha: mobile Финансы is administrator-only, like the desktop one.
+app.include_router(
+    mobile_finance.router, dependencies=[Depends(require_role("administrator"))]
+)

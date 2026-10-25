@@ -23,6 +23,7 @@ from app.services.active_catalog import get_active_catalog
 from app.services.finance_reports import cash_expense_total, stock_valuation
 from app.services.ledger import STOCK_AFFECTING_TYPES
 from app.services.reports import sales_profit_report
+from app.services.security import allowed_warehouse_ids, warehouse_scope
 
 # Indexed by date.weekday() (Monday=0..Sunday=6) — DASH-01.
 WEEKDAY_LABELS = [
@@ -102,6 +103,15 @@ def period_metrics(
     # it is a signature change and a caller sweep this plan does not do.
     start_iso, end_iso = business_date_bounds(start_day, end_day)
     gross = sales_profit_report(session, start_iso, end_iso, currency=currency)
+    # Quick 261026-wha: cash is per currency, not per warehouse, so an operator
+    # gets no «Расход» and their «Прибыль» is the gross profit of their own
+    # warehouses' sales (expense None -> the tile hides the line).
+    if allowed_warehouse_ids() is not None:
+        return {
+            "revenue_cents": gross["totals"]["revenue_cents"],
+            "profit_cents": gross["totals"]["profit_cents"],
+            "expense_cents": None,
+        }
     expense_cents = cash_expense_total(session, start_iso, end_iso, currency=currency)
     return {
         "revenue_cents": gross["totals"]["revenue_cents"],
@@ -142,6 +152,17 @@ def stock_summary(session: Session, currency: str = DEFAULT_CURRENCY) -> dict:
         .select_from(Product)
         .where(Product.deleted_at.is_(None), Product.quantity > 0)
     )
+    # Quick 261026-wha: an operator counts the codes in stock in their warehouses.
+    if allowed_warehouse_ids() is not None:
+        product_count = session.scalar(
+            select(func.count(func.distinct(Batch.product_id)))
+            .join(Product, Batch.product_id == Product.id)
+            .where(
+                Product.deleted_at.is_(None),
+                Batch.quantity > 0,
+                warehouse_scope(Batch.warehouse_id),
+            )
+        )
     return {**stock_valuation(session, currency), "product_count": product_count}
 
 
@@ -160,7 +181,8 @@ def recent_operations(session: Session, limit: int = 10) -> list[dict]:
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         .outerjoin(Sale, Operation.sale_id == Sale.id)
         .outerjoin(Customer, Sale.customer_id == Customer.id)
-        .where(Operation.type.in_(STOCK_AFFECTING_TYPES))
+        # Quick 261026-wha: an operator's feed shows their warehouses only.
+        .where(Operation.type.in_(STOCK_AFFECTING_TYPES), warehouse_scope(Batch.warehouse_id))
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()

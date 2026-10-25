@@ -25,6 +25,7 @@ from app.services.customers import search_customers
 from app.services.ledger import STOCK_AFFECTING_TYPES
 from app.services.pagination import LIST_PAGE_SIZE
 from app.services.reports import business_date_expr
+from app.services.security import allowed_warehouse_ids, warehouse_scope
 
 # D-06/D-07/T-14-03: fixed sort allow-list — an unknown/tampered `sort` value
 # falls back to the default order via `.get(sort, default)`, never string-
@@ -239,6 +240,15 @@ def history_view(
         .select_from(Operation)
         .join(Product, Operation.product_id == Product.id)
     )
+    # Quick 261026-wha: an operator sees stock rows of their own warehouses
+    # only; batch-less catalog rows (product_created, price_change) stay visible.
+    if allowed_warehouse_ids() is not None:
+        scope = or_(
+            warehouse_scope(Batch.warehouse_id),
+            Operation.type.notin_(STOCK_AFFECTING_TYPES),
+        )
+        stmt = stmt.where(scope)
+        count_stmt = count_stmt.outerjoin(Batch, Operation.batch_id == Batch.id).where(scope)
     if type_filter and type_filter in OPERATION_TYPES:
         stmt = stmt.where(Operation.type == type_filter)
         count_stmt = count_stmt.where(Operation.type == type_filter)

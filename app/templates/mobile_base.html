@@ -40,7 +40,8 @@
     <a href="/m/customers"{% if active_section == "customers" %} class="active"{% endif %}>Покупатели</a>
     <a href="/m/history"{% if active_section == "history" %} class="active"{% endif %}>История</a>
     <a href="/m/reports/expiry"{% if active_section == "reports" %} class="active"{% endif %}>Отчёты</a>
-    <a href="/m/finance"{% if active_section == "finance" %} class="active"{% endif %}>Финансы</a>
+    {# Quick 261026-wha: Финансы is administrator-only (server-side require_role). #}
+    {% if current_user and current_user.role == "administrator" %}<a href="/m/finance"{% if active_section == "finance" %} class="active"{% endif %}>Финансы</a>{% endif %}
   </nav>
   {% endblock %}
   <main class="mobile-shell">
@@ -60,6 +61,8 @@
       {% endif %}
     </div>
     {% block step_indicator %}{% endblock %}
+    {# Quick 261026-wha: an operator with no assigned warehouse sees and moves no stock. #}
+    {% if no_warehouses %}<p class="error">Вам не назначен ни один склад — обратитесь к администратору.</p>{% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

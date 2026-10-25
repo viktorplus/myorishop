@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import business_date_bounds, new_id
-from app.models import CashMovement, Operation, User, Warehouse
+from app.models import CashMovement, Operation, User, UserWarehouse, Warehouse
 from app.services import auth
 from app.services.ledger import next_seq
 from app.services.operations import history_view
@@ -59,6 +59,12 @@ def _seed_warehouse(session, *, name="Склад атрибуции"):
     session.add(warehouse)
     session.commit()
     return warehouse
+
+
+def _grant(session, warehouse, *users):
+    """Quick 261026-wha: an operator works only in assigned warehouses."""
+    session.add_all(UserWarehouse(user_id=u.id, warehouse_id=warehouse.id) for u in users)
+    session.commit()
 
 
 def _csrf_token(client) -> str:
@@ -108,6 +114,7 @@ def test_attribution_receipt_stamps_logged_in_author(anon_client, session, login
     # reaches record_operation via the def-endpoint threadpool.
     user = _seed_user(session, login="anna", display_name="Анна Оператор")
     warehouse = _seed_warehouse(session)
+    _grant(session, warehouse, user)
     assert login(anon_client, "anna", "pw").status_code == 303
 
     _post_receipt(anon_client, session, code="ATTR-001", warehouse_id=warehouse.id)
@@ -122,7 +129,10 @@ def test_attribution_receipt_stamps_logged_in_author(anon_client, session, login
 
 
 def test_attribution_cash_movement_stamps_logged_in_author(anon_client, session, login):
-    user = _seed_user(session, login="boris", display_name="Борис Кассир")
+    # Quick 261026-wha: Финансы is administrator-only.
+    user = _seed_user(
+        session, login="boris", display_name="Борис Кассир", role="administrator"
+    )
     assert login(anon_client, "boris", "pw").status_code == 303
 
     _post_deposit(anon_client)
@@ -139,6 +149,7 @@ def test_attribution_is_per_request_not_global(anon_client, session, login):
     user_a = _seed_user(session, login="anna", display_name="Анна")
     user_b = _seed_user(session, login="boris", display_name="Борис")
     warehouse = _seed_warehouse(session)
+    _grant(session, warehouse, user_a, user_b)
     assert user_a.id != user_b.id
 
     # User A records a receipt.

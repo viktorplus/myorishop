@@ -44,6 +44,7 @@ from app.models import Batch, Customer, Operation, Product, Sale, Warehouse
 from app.services import catalog, finance
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import parse_op_date, record_operation
+from app.services.security import warehouse_allowed, warehouse_scope
 
 PRICE_REQUIRED_ERROR = "Укажите цену продажи."
 EMPTY_BASKET_ERROR = "Добавьте хотя бы одну строку, чтобы оформить продажу."
@@ -203,7 +204,11 @@ def register_sale(
             errors[f"batch-{i}"] = BATCH_REQUIRED_ERROR
         else:
             batch = session.get(Batch, batch_id)
-            if batch is None or (product is not None and batch.product_id != product.id):
+            if (
+                batch is None
+                or (product is not None and batch.product_id != product.id)
+                or not warehouse_allowed(batch.warehouse_id)  # quick 261026-wha
+            ):
                 errors[f"batch-{i}"] = BATCH_REQUIRED_ERROR
                 batch = None
 
@@ -431,7 +436,9 @@ def recent_sales(session: Session, limit: int = 10) -> list[dict]:
         .join(Product, Operation.product_id == Product.id)
         .outerjoin(Sale, Operation.sale_id == Sale.id)
         .outerjoin(Customer, Sale.customer_id == Customer.id)
-        .where(Operation.type == "sale")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        # Quick 261026-wha: an operator sees only their warehouses' sales.
+        .where(Operation.type == "sale", warehouse_scope(Batch.warehouse_id))
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()

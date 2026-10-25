@@ -41,19 +41,19 @@
     <p class="tile-label">Сегодня</p>
     <p class="num">Выручка: <strong>{{ metrics.today.revenue_cents | cents }}</strong></p>
     <p class="num">Прибыль: <strong>{{ metrics.today.profit_cents | cents }}</strong></p>
-    <p class="num">Расход: <strong>{{ metrics.today.expense_cents | cents }}</strong></p>
+    {% if metrics.today.expense_cents is not none %}<p class="num">Расход: <strong>{{ metrics.today.expense_cents | cents }}</strong></p>{% endif %}
   </div>
   <div class="metric-tile">
     <p class="tile-label">Неделя</p>
     <p class="num">Выручка: <strong>{{ metrics.week.revenue_cents | cents }}</strong></p>
     <p class="num">Прибыль: <strong>{{ metrics.week.profit_cents | cents }}</strong></p>
-    <p class="num">Расход: <strong>{{ metrics.week.expense_cents | cents }}</strong></p>
+    {% if metrics.week.expense_cents is not none %}<p class="num">Расход: <strong>{{ metrics.week.expense_cents | cents }}</strong></p>{% endif %}
   </div>
   <div class="metric-tile">
     <p class="tile-label">Месяц</p>
     <p class="num">Выручка: <strong>{{ metrics.month.revenue_cents | cents }}</strong></p>
     <p class="num">Прибыль: <strong>{{ metrics.month.profit_cents | cents }}</strong></p>
-    <p class="num">Расход: <strong>{{ metrics.month.expense_cents | cents }}</strong></p>
+    {% if metrics.month.expense_cents is not none %}<p class="num">Расход: <strong>{{ metrics.month.expense_cents | cents }}</strong></p>{% endif %}
   </div>
   <div class="metric-tile">
     <p class="tile-label">Склад</p>

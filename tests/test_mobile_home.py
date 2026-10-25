@@ -21,8 +21,10 @@ EXPECTED_TABBAR_HREFS = [
     "/m/customers",
     "/m/history",
     "/m/reports/expiry",
-    "/m/finance",
 ]
+# Quick 261026-wha: «Финансы» is administrator-only, so the bare factory client
+# (no logged-in user) renders no /m/finance tab; the admin side is covered in
+# tests/test_warehouse_access.py.
 
 
 def test_mobile_home_renders_tabbar_hrefs_in_order(mobile_client_factory):

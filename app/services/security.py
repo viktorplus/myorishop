@@ -24,11 +24,12 @@ import secrets
 
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_session
-from app.models import DeviceToken, User
+from app.models import DeviceToken, User, UserWarehouse
 from app.services import devices
 from app.services.auth import compare_token
 from app.services.users import count_users, get_active_user
@@ -85,6 +86,49 @@ DEVICE_TOKEN_INVALID_ERROR = "Недействительный токен уст
 # Default None keeps record_operation/record_cash_movement attribution unchanged
 # (settings.operator_name fallback) until Plan 07 wires the guard end-to-end.
 _current_user: contextvars.ContextVar = contextvars.ContextVar("current_user", default=None)
+
+# Quick 261026-wha: the warehouses the request's user may work with, resolved
+# ONCE by auth_guard. None = unrestricted (an administrator, or no user at all:
+# fixtures, scripts, background sync), a frozenset = an operator's assignment
+# (possibly empty — then the operator sees and moves no stock).
+_allowed_warehouses: contextvars.ContextVar = contextvars.ContextVar(
+    "allowed_warehouses", default=None
+)
+
+
+def allowed_warehouse_ids() -> frozenset[str] | None:
+    """The current user's warehouse ids, or None when nothing is restricted."""
+    return _allowed_warehouses.get()
+
+
+def warehouse_scope(column):
+    """SQL predicate limiting `column` (a warehouse id) to the allowed set.
+
+    `true()` when unrestricted, so callers can always add it to `.where()`.
+    A NULL column never matches a restricted set — a batch-less legacy row
+    belongs to no warehouse an operator was given.
+    """
+    allowed = _allowed_warehouses.get()
+    if allowed is None:
+        return true()
+    return column.in_(allowed)
+
+
+def warehouse_allowed(warehouse_id: str | None) -> bool:
+    """Python-side twin of warehouse_scope for one already-loaded id."""
+    allowed = _allowed_warehouses.get()
+    return allowed is None or warehouse_id in allowed
+
+
+def resolve_allowed_warehouses(session: Session, user: User) -> frozenset[str] | None:
+    """None for an administrator, else the operator's assigned warehouse ids."""
+    if user.role == "administrator":
+        return None
+    return frozenset(
+        session.scalars(
+            select(UserWarehouse.warehouse_id).where(UserWarehouse.user_id == user.id)
+        )
+    )
 
 
 class NotAuthenticated(Exception):
@@ -201,6 +245,7 @@ async def auth_guard(request: Request, session: Session = Depends(get_session)) 
     if request.method not in ("GET", "HEAD", "OPTIONS"):  # (6) AUTH-05
         await require_csrf(request)
     _current_user.set(user)  # (7)
+    _allowed_warehouses.set(resolve_allowed_warehouses(session, user))
     request.state.user = user
 
 

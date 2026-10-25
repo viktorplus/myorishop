@@ -45,7 +45,8 @@
       <a href="/customers"{% if active_section == "customers" %} class="active"{% endif %}>Покупатели</a>
       <a href="/history"{% if active_section == "history" %} class="active"{% endif %}>История</a>
       <a href="/reports"{% if active_section == "reports" %} class="active"{% endif %}>Отчёты</a>
-      <a href="/finance"{% if active_section == "finance" %} class="active"{% endif %}>Финансы</a>
+      {# Quick 261026-wha: Финансы is administrator-only (server-side require_role). #}
+      {% if current_user and current_user.role == "administrator" %}<a href="/finance"{% if active_section == "finance" %} class="active"{% endif %}>Финансы</a>{% endif %}
       {# ROLE-03: cosmetic menu-hide only — «Настройки» holds the admin-only
          sections. The server-side require_role("administrator") dependency on
          those routers is the real boundary; this {% if %} just hides the link. #}
@@ -83,6 +84,8 @@
       <a hx-post="/logout" style="cursor:pointer">{{ current_user.display_name }} · Выйти</a>
       {% endif %}
     </nav>
+    {# Quick 261026-wha: an operator with no assigned warehouse sees and moves no stock. #}
+    {% if no_warehouses %}<p class="error">Вам не назначен ни один склад — обратитесь к администратору.</p>{% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

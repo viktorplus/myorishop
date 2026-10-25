@@ -31,6 +31,7 @@ from app.models import Batch, Operation, Product, Warehouse
 from app.services import finance
 from app.services.batches import legacy_batch
 from app.services.ledger import parse_op_date, record_operation
+from app.services.security import warehouse_allowed
 
 # D-14 frozen literals (re-declared, NEVER imported from the migration): the
 # lazy-created legacy batch mirrors migration 0008's seed contract exactly.
@@ -87,6 +88,16 @@ def resolve_return_batch(session: Session, origin: Operation) -> Batch | None:
     return legacy_batch(session, origin.product_id)
 
 
+def origin_allowed(session: Session, origin: Operation) -> bool:
+    """Quick 261026-wha: may the current operator return this sale?
+
+    Only when the warehouse the goods would go back to (the origin's batch, or
+    the legacy batch / default warehouse for a pre-Phase-9 sale) is theirs.
+    """
+    batch = resolve_return_batch(session, origin)
+    return warehouse_allowed(batch.warehouse_id if batch is not None else DEFAULT_WAREHOUSE_ID)
+
+
 def _resolve_or_create_return_batch_id(session: Session, origin: Operation) -> str:
     """The batch id a return WRITE must attribute stock to (D-08).
 
@@ -136,6 +147,9 @@ def register_return(
     # missing/forged/non-sale origin before anything else.
     origin = session.get(Operation, origin_op_id)
     if origin is None or origin.type != "sale" or origin.sale_id is None:
+        return None, {"form": ORIGIN_NOT_FOUND_ERROR}
+    # Quick 261026-wha: another warehouse's sale is «not found» for an operator.
+    if not origin_allowed(session, origin):
         return None, {"form": ORIGIN_NOT_FOUND_ERROR}
 
     # WR-01 analog: isascii()+isdigit() guard before int() (sales.py:92-93) —

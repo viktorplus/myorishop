@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import business_date_bounds, new_id
-from app.models import CONTACT_KINDS, Customer, CustomerContact, Operation, Product, Sale
+from app.models import CONTACT_KINDS, Batch, Customer, CustomerContact, Operation, Product, Sale
 from app.services.catalog import split_match
 from app.services.pagination import paginate
 from app.services.reports import business_date_expr
+from app.services.security import warehouse_scope
 
 NAME_REQUIRED_ERROR = "Укажите имя покупателя."
 NAME_TOO_LONG_ERROR = "Слишком длинное имя."
@@ -349,7 +350,12 @@ def purchase_history(session: Session, customer_id: str) -> list[dict]:
         select(Operation, Product)
         .join(Sale, Operation.sale_id == Sale.id)
         .join(Product, Operation.product_id == Product.id)
-        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .where(
+            Sale.customer_id == customer_id,
+            Operation.type == "sale",
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
+        )
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
     ).all()
     return [{"op": op, "product": product} for op, product in rows]
@@ -416,9 +422,11 @@ def _spend_stmt(customer_id: str, start_day: str, end_day: str):
             )
         )
         .join(Sale, Operation.sale_id == Sale.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
         .where(
             Sale.customer_id == customer_id,
             Operation.type.in_(("sale", "return")),
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
             business_date_expr(Operation) >= start_day,
             business_date_expr(Operation) <= end_day,
         )
@@ -519,7 +527,12 @@ def _favorites_stmt(customer_id: str, limit: int):
         select(Product, freq, qty)
         .join(Operation, Operation.product_id == Product.id)
         .join(Sale, Operation.sale_id == Sale.id)
-        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .where(
+            Sale.customer_id == customer_id,
+            Operation.type == "sale",
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
+        )
         .group_by(Product.id)
         .order_by(freq.desc(), qty.desc(), Product.name)
         .limit(limit)
@@ -565,5 +578,10 @@ def last_order_date(session: Session, customer_id: str) -> str | None:
     return session.scalar(
         select(func.max(business_date_expr(Operation)))
         .join(Sale, Operation.sale_id == Sale.id)
-        .where(Sale.customer_id == customer_id, Operation.type == "sale")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        .where(
+            Sale.customer_id == customer_id,
+            Operation.type == "sale",
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
+        )
     )

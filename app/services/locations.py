@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Batch, Product, Warehouse
 from app.services.pagination import LIST_PAGE_SIZE
+from app.services.security import warehouse_scope
 
 UNKNOWN_PLACE = "Место не указано"
 
@@ -53,7 +54,8 @@ def _open_rows(session: Session) -> list[dict]:
         select(Batch, Product, Warehouse)
         .join(Product, Batch.product_id == Product.id)
         .join(Warehouse, Batch.warehouse_id == Warehouse.id)
-        .where(Batch.quantity > 0)
+        # Quick 261026-wha: an operator sees only their warehouses' lots.
+        .where(Batch.quantity > 0, warehouse_scope(Batch.warehouse_id))
     ).all()
     return [{"batch": b, "product": p, "warehouse": w, "place": batch_place(b)} for b, p, w in rows]
 

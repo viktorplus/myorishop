@@ -27,7 +27,7 @@ def _dest_warehouses(session: Session, source: Batch | None) -> list:
     """Active warehouses, including the source batch's own warehouse (D-09)."""
     if source is None:
         return []
-    return list(active_warehouses(session))
+    return list(active_warehouses(session, scoped=False))
 
 
 def _resolve_transfer_lookup(session: Session, code: str) -> dict | None:

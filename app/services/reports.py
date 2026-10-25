@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import DEFAULT_CURRENCY, local_day_of
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product, Warehouse
+from app.services.security import allowed_warehouse_ids, warehouse_scope
 
 
 def operation_currency_clause(currency: str):
@@ -128,6 +129,8 @@ def sales_profit_report(
             business_date_expr(Operation) >= start_iso,
             business_date_expr(Operation) <= end_iso,
             operation_currency_clause(currency),
+            # Quick 261026-wha: an operator's report covers their warehouses.
+            warehouse_scope(Batch.warehouse_id),
         )
     )
     # RPT-01 (Plan 08): optional operator filter — extra parameterized
@@ -213,10 +216,12 @@ def writeoff_report(session: Session, start_iso: str, end_iso: str) -> dict:
     rows = session.execute(
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
         .where(
             Operation.type == "writeoff",
             business_date_expr(Operation) >= start_iso,
             business_date_expr(Operation) <= end_iso,
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
         )
     ).all()
 
@@ -278,10 +283,12 @@ def top_selling_products(
     stmt = (
         select(Product, units_sold)
         .join(Operation, Operation.product_id == Product.id)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
         .where(
             Operation.type.in_(("sale", "return")),
             business_date_expr(Operation) >= start_iso,
             business_date_expr(Operation) <= end_iso,
+            warehouse_scope(Batch.warehouse_id),  # quick 261026-wha
         )
         .group_by(Product.id)
         .having(units_sold > 0)
@@ -315,13 +322,25 @@ def stale_products(session: Session) -> list[dict]:
     # pre-existing ISO-timestamp-vs-local-date asymmetry that hid the defect is
     # gone with it.
     last_sale = func.max(Operation.created_at).label("last_sale")
+    sale_join = (Operation.product_id == Product.id) & (Operation.type == "sale")
+    product_filter = [Product.deleted_at.is_(None)]
+    # Quick 261026-wha: for an operator, only products in stock in their
+    # warehouses, and «last sale» counts their warehouses' sales only.
+    if allowed_warehouse_ids() is not None:
+        sale_join &= Operation.batch_id.in_(
+            select(Batch.id).where(warehouse_scope(Batch.warehouse_id))
+        )
+        product_filter.append(
+            Product.id.in_(
+                select(Batch.product_id).where(
+                    Batch.quantity > 0, warehouse_scope(Batch.warehouse_id)
+                )
+            )
+        )
     stmt = (
         select(Product, last_sale)
-        .outerjoin(
-            Operation,
-            (Operation.product_id == Product.id) & (Operation.type == "sale"),
-        )
-        .where(Product.deleted_at.is_(None))
+        .outerjoin(Operation, sale_join)
+        .where(*product_filter)
         .group_by(Product.id)
     )
     rows = session.execute(stmt).all()

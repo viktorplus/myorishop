@@ -16,12 +16,13 @@ corrects stock only through Списание/Перемещение.
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import nullslast, select
+from sqlalchemy import func, nullslast, select
 from sqlalchemy.orm import Session
 
 from app.core import DEFAULT_CURRENCY
 from app.models import Batch, Product, Warehouse
 from app.services.catalog import parse_optional_cents
+from app.services.security import allowed_warehouse_ids, warehouse_allowed, warehouse_scope
 
 BATCH_NOT_FOUND_ERROR = "Партия не найдена."
 NAME_TOO_LONG_ERROR = "Название партии слишком длинное — не больше 220 символов."
@@ -47,8 +48,15 @@ def open_batches(
     (created_at). `nullslast` renders portable `NULLS LAST` (verified on
     SQLite 3.50.4, native on PostgreSQL). Sale picker reads all warehouses;
     the receipt chooser passes warehouse_id to narrow to one (D-01).
+
+    Quick 261026-wha: limited to the current operator's warehouses, so every
+    sale/writeoff/correction/transfer/receipt picker shows only their lots.
     """
-    stmt = select(Batch).where(Batch.product_id == product_id, Batch.quantity > 0)
+    stmt = select(Batch).where(
+        Batch.product_id == product_id,
+        Batch.quantity > 0,
+        warehouse_scope(Batch.warehouse_id),
+    )
     if warehouse_id is not None:
         stmt = stmt.where(Batch.warehouse_id == warehouse_id)
     return list(
@@ -68,7 +76,11 @@ def batches_for_products(session: Session, product_ids: list[str]) -> dict[str, 
         return {}
     rows = session.scalars(
         select(Batch)
-        .where(Batch.product_id.in_(product_ids), Batch.quantity > 0)
+        .where(
+            Batch.product_id.in_(product_ids),
+            Batch.quantity > 0,
+            warehouse_scope(Batch.warehouse_id),
+        )
         .order_by(nullslast(Batch.expiry.asc()), Batch.created_at.asc())
     )
     grouped: dict[str, list[Batch]] = defaultdict(list)
@@ -95,25 +107,53 @@ def expiring_batches(session: Session) -> list[dict]:
         select(Batch, Product, Warehouse)
         .join(Product, Batch.product_id == Product.id)
         .join(Warehouse, Batch.warehouse_id == Warehouse.id)
-        .where(Batch.quantity > 0, Batch.expiry.is_not(None))
+        .where(
+            Batch.quantity > 0,
+            Batch.expiry.is_not(None),
+            warehouse_scope(Batch.warehouse_id),
+        )
         .order_by(Batch.expiry.asc(), Batch.created_at.asc())
     ).all()
     return [{"batch": b, "product": p, "warehouse": w} for b, p, w in rows]
 
 
-def active_warehouses(session: Session) -> list[Warehouse]:
+def active_warehouses(session: Session, *, scoped: bool = True) -> list[Warehouse]:
     """Active (deleted_at IS NULL) warehouses, name-ordered.
 
     Unlike warehouses.list_warehouses (which deliberately keeps deleted rows
     for the management page), the receipt form needs active-only options.
+
+    Quick 261026-wha: `scoped` limits the list to the current operator's
+    warehouses. Only a transfer DESTINATION passes scoped=False — an operator
+    may send goods to any warehouse, but take them only from their own.
     """
-    return list(
-        session.scalars(
-            select(Warehouse)
-            .where(Warehouse.deleted_at.is_(None))
-            .order_by(Warehouse.name)
-        )
+    stmt = select(Warehouse).where(Warehouse.deleted_at.is_(None))
+    if scoped:
+        stmt = stmt.where(warehouse_scope(Warehouse.id))
+    return list(session.scalars(stmt.order_by(Warehouse.name)))
+
+
+def scoped_quantities(
+    session: Session, product_ids: list[str] | None = None
+) -> dict[str, int] | None:
+    """Per-product stock in the current operator's warehouses (quick 261026-wha).
+
+    None when the user is unrestricted — the caller then shows the global
+    cached `Product.quantity`. Otherwise {product_id: units} over every lot in
+    those warehouses (a sold-out lot gives 0); a product never stocked there is
+    absent (read as 0). `product_ids=None` covers every product.
+    """
+    if allowed_warehouse_ids() is None:
+        return None
+    if product_ids is not None and not product_ids:
+        return {}
+    stmt = select(Batch.product_id, func.sum(Batch.quantity)).where(
+        warehouse_scope(Batch.warehouse_id)
     )
+    if product_ids is not None:
+        stmt = stmt.where(Batch.product_id.in_(product_ids))
+    rows = session.execute(stmt.group_by(Batch.product_id))
+    return {product_id: int(total or 0) for product_id, total in rows}
 
 
 def warehouse_currency(session: Session, warehouse_id: str | None) -> str:
@@ -151,7 +191,7 @@ def update_batch(
     hook never fires; a real change advances `updated_at`.
     """
     batch = session.get(Batch, batch_id)
-    if batch is None:
+    if batch is None or not warehouse_allowed(batch.warehouse_id):  # quick 261026-wha
         return None, {"batch": BATCH_NOT_FOUND_ERROR}
 
     errors: dict[str, str] = {}

@@ -11,7 +11,7 @@ from app.config import settings
 from app.db import get_session
 from app.models import Product
 from app.routes import templates
-from app.services.batches import batches_for_products
+from app.services.batches import batches_for_products, scoped_quantities
 from app.services.catalog import (
     category_options,
     create_product,
@@ -53,6 +53,7 @@ def _products_context(
     pw = page_window(result["page"], result["total_pages"])
     product_ids = [p.id for p in result["rows"]]
     batches_by_id = batches_for_products(session, product_ids)
+    scoped_qty = scoped_quantities(session, product_ids)  # quick 261026-wha
     qs_parts = {
         k: v
         for k, v in {
@@ -81,6 +82,7 @@ def _products_context(
         "blocked_id": blocked_id,
         "blocked_qty": blocked_qty,
         "batches_by_id": batches_by_id,
+        "scoped_qty": scoped_qty,
     }
 
 

@@ -60,7 +60,7 @@
         <td>{{ product.code }}</td>
         <td>{{ product.name }}</td>
         <td>{% if product.category %}{{ product.category }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="num">{{ product.quantity }}</td>
+        <td class="num">{{ scoped_qty.get(product.id, 0) if scoped_qty is not none else product.quantity }}</td>
         <td class="num">{% if product.cost_cents is not none %}{{ product.cost_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="num">{% if product.sale_cents is not none %}{{ product.sale_cents | cents }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>

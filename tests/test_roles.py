@@ -18,11 +18,24 @@ from app.core import new_id
 from app.models import User
 from app.services import auth
 
-# The four admin-only sections gated by require_role("administrator") in
-# app/main.py (ROLE-03). Every OTHER router stays operator-accessible.
-ADMIN_ROUTES = ("/settings/users", "/warehouses", "/dictionary", "/settings")
+# The admin-only sections gated by require_role("administrator") in
+# app/main.py (ROLE-03). Quick 261026-wha added Финансы, Экспорт, Резервная
+# копия and the offline bundle: they cover every warehouse and the cash, which
+# is per currency, not per warehouse. Every OTHER router stays operator-accessible.
+ADMIN_ROUTES = (
+    "/settings/users",
+    "/warehouses",
+    "/dictionary",
+    "/settings",
+    "/finance",
+    "/m/finance",
+    "/export",
+    "/export/sales.csv",
+    "/backup",
+    "/offline/export",
+)
 # A representative slice of the operator-accessible routers.
-OPERATOR_ROUTES = ("/products", "/history", "/sales/new", "/finance")
+OPERATOR_ROUTES = ("/products", "/history", "/sales/new", "/reports/sales", "/m/")
 
 
 def _seed(session, *, login, password, role):

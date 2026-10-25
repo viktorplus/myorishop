@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import Batch, Product
 from app.services.dictionary import lookup as dictionary_lookup
 from app.services.ledger import parse_op_date, record_operation
+from app.services.security import warehouse_allowed
 
 MODE_ERROR = "Неверный режим."
 CODE_ERROR = "Укажите код товара."
@@ -78,7 +79,8 @@ def register_correction(
     # id is untrusted — reject an empty/unknown id or one that belongs to
     # another product BEFORE any parsing or write.
     batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
-    if batch is None or batch.product_id != product.id:
+    # Quick 261026-wha: only a lot in one of the operator's warehouses.
+    if batch is None or batch.product_id != product.id or not warehouse_allowed(batch.warehouse_id):
         return None, {"batch": BATCH_REQUIRED_ERROR}
 
     errors: dict[str, str] = {}

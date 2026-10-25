@@ -11,11 +11,11 @@ CLAUDE.md safety: a raw password is hashed via `auth.hash_password` before
 store and is never echoed back or logged.
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core import new_id
-from app.models import ROLES, User
+from app.models import ROLES, User, UserWarehouse, Warehouse
 from app.services.auth import hash_password
 
 # RU validation messages (UI-SPEC Copywriting Contract, lines 138-142). HTML-free.
@@ -141,3 +141,41 @@ def reset_password(
     user.password_hash = hash_password(new_password)
     session.commit()
     return user, {}
+
+
+# --- Operator warehouse access (quick 261026-wha) ----------------------------
+
+ADMIN_HAS_ALL_WAREHOUSES_ERROR = "Администратору доступны все склады."
+
+
+def warehouse_assignments(session: Session) -> dict[str, set[str]]:
+    """user_id -> the warehouse ids assigned to that operator (users page)."""
+    assigned: dict[str, set[str]] = {}
+    for user_id, warehouse_id in session.execute(
+        select(UserWarehouse.user_id, UserWarehouse.warehouse_id)
+    ):
+        assigned.setdefault(user_id, set()).add(warehouse_id)
+    return assigned
+
+
+def set_user_warehouses(
+    session: Session, user_id: str, warehouse_ids: list[str]
+) -> tuple[bool, dict[str, str]]:
+    """Replace an operator's warehouses with `warehouse_ids` (one commit).
+
+    The ids are untrusted form values: anything that is not an ACTIVE
+    warehouse is dropped, never stored. An administrator is never restricted,
+    so assigning warehouses to one is refused. An empty list is valid — the
+    operator then sees and moves no stock until warehouses are assigned.
+    """
+    user = session.get(User, user_id)
+    if user is None:
+        return False, {"user": USER_NOT_FOUND_ERROR}
+    if user.role == "administrator":
+        return False, {"user": ADMIN_HAS_ALL_WAREHOUSES_ERROR}
+    active = set(session.scalars(select(Warehouse.id).where(Warehouse.deleted_at.is_(None))))
+    chosen = set(warehouse_ids) & active
+    session.execute(delete(UserWarehouse).where(UserWarehouse.user_id == user_id))
+    session.add_all(UserWarehouse(user_id=user_id, warehouse_id=w) for w in sorted(chosen))
+    session.commit()
+    return True, {}

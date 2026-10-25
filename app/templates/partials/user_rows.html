@@ -17,13 +17,14 @@
         <th>Логин</th>
         <th>Роль</th>
         <th>Статус</th>
+        <th>Склады</th>
         <th>Действия</th>
       </tr>
     </thead>
     <tbody>
       {% if not users %}
       <tr>
-        <td colspan="5" class="empty-state muted">Пользователей пока нет.</td>
+        <td colspan="6" class="empty-state muted">Пользователей пока нет.</td>
       </tr>
       {% else %}
       {% for u in users %}
@@ -32,6 +33,32 @@
         <td>{{ u.login }}</td>
         <td>{{ ROLES.get(u.role, u.role) }}</td>
         <td>{% if u.is_active %}Активен{% else %}<span class="muted">Отключён</span>{% endif %}</td>
+        {# Quick 261026-wha: an operator works only with the ticked warehouses;
+           an administrator always has all of them. #}
+        <td>
+          {% if u.role == "administrator" %}
+          <span class="muted">Все склады</span>
+          {% else %}
+          {% set mine = assigned.get(u.id, []) %}
+          {% set names = warehouses | selectattr("id", "in", mine) | map(attribute="name") | list %}
+          {% if names %}{{ names | join(", ") }}{% else %}<span class="error">Нет складов</span>{% endif %}
+          <details>
+            <summary>Изменить склады</summary>
+            <form hx-post="/settings/users/{{ u.id }}/warehouses"
+                  hx-target="#users-table" hx-swap="outerHTML"
+                  hx-disabled-elt="find button">
+              {% for w in warehouses %}
+              <label>
+                <input type="checkbox" name="warehouse_id" value="{{ w.id }}"{% if w.id in mine %} checked{% endif %}>
+                {{ w.name }}
+              </label>
+              {% endfor %}
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit">Сохранить склады</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
         <td>
           {% if u.is_active %}
           {# Reset password: native <details> reveal (no client JS, no extra

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.models import WRITEOFF_REASONS, Batch, Operation, Product
 from app.services.ledger import parse_op_date, record_operation
+from app.services.security import warehouse_allowed, warehouse_scope
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 REASON_ERROR = "Выберите причину списания."
@@ -97,7 +98,8 @@ def register_writeoff(
     # is untrusted — reject an empty/unknown id or one that belongs to another
     # product (never trust the picker) BEFORE any write.
     batch = session.get(Batch, batch_id.strip()) if batch_id.strip() else None
-    if batch is None or batch.product_id != product.id:
+    # Quick 261026-wha: only a lot in one of the operator's warehouses.
+    if batch is None or batch.product_id != product.id or not warehouse_allowed(batch.warehouse_id):
         return None, {"batch": BATCH_REQUIRED_ERROR}
 
     # D-04/D-09/criterion 4: warn-but-allow over-removal check BEFORE any write,
@@ -137,7 +139,9 @@ def recent_writeoffs(session: Session, limit: int = 10) -> list[dict]:
     rows = session.execute(
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
-        .where(Operation.type == "writeoff")
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        # Quick 261026-wha: an operator sees only their warehouses' rows.
+        .where(Operation.type == "writeoff", warehouse_scope(Batch.warehouse_id))
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()

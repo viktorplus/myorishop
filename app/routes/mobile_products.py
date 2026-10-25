@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.routes import templates
+from app.services.batches import scoped_quantities
 from app.services.catalog import list_products_view
 
 router = APIRouter()
@@ -24,4 +25,6 @@ def mobile_products(
     session: Session = Depends(get_session),
 ):
     context = list_products_view(session, code=code, name=name, page=page)
+    # Quick 261026-wha: an operator sees the stock of their own warehouses.
+    context["scoped_qty"] = scoped_quantities(session, [p.id for p in context["rows"]])
     return templates.TemplateResponse(request, "mobile_pages/products.html", context)

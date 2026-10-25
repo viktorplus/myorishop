@@ -46,6 +46,7 @@ from app.services.merge import (
     serialize_exchange,
 )
 from app.services.rate_limit import check_rate_limit
+from app.services.security import require_role
 from app.services.sync import current_schema_version
 from app.services.sync_client import collect_push_records
 
@@ -83,7 +84,9 @@ def _result(request: Request, state: str, *, status: int = 200, **ctx) -> Respon
     )
 
 
-@router.get("/offline/export")
+# Quick 261026-wha: the bundle carries EVERY warehouse's stock, so it is
+# administrator-only; an operator is limited to their own warehouses.
+@router.get("/offline/export", dependencies=[Depends(require_role("administrator"))])
 def offline_export(
     request: Request,
     session: Session = Depends(get_session),

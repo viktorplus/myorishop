@@ -10,6 +10,7 @@ from app.db import get_session
 from app.models import Operation, Product
 from app.routes import templates
 from app.services.returns import (
+    origin_allowed,
     register_return,
     resolve_return_batch,
     returnable_qty,
@@ -37,9 +38,9 @@ def _resolve_origin(
     if origin_op_id:
         origin = session.get(Operation, origin_op_id)
         if origin is not None and origin.type == "sale" and origin.sale_id is not None:
-            return origin
+            return origin if origin_allowed(session, origin) else None
     if sale_id and product_id:
-        return session.scalars(
+        origin = session.scalars(
             select(Operation)
             .where(
                 Operation.sale_id == sale_id,
@@ -49,6 +50,9 @@ def _resolve_origin(
             .order_by(Operation.created_at.desc(), Operation.seq.desc())
             .limit(1)
         ).first()
+        # Quick 261026-wha: another warehouse's sale is not returnable here.
+        if origin is not None and origin_allowed(session, origin):
+            return origin
     return None
 
 

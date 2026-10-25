@@ -13,6 +13,7 @@ from app.db import get_session
 from app.models import Batch, Product, Warehouse
 from app.routes import templates
 from app.services.batches import update_batch
+from app.services.security import warehouse_allowed
 
 router = APIRouter()
 
@@ -20,7 +21,8 @@ router = APIRouter()
 @router.get("/batches/{batch_id}/edit")
 def batch_edit(request: Request, batch_id: str, session: Session = Depends(get_session)):
     batch = session.get(Batch, batch_id)
-    if batch is None:
+    # Quick 261026-wha: another warehouse's lot does not exist for an operator.
+    if batch is None or not warehouse_allowed(batch.warehouse_id):
         raise HTTPException(status_code=404, detail="unknown batch")
     # Both FKs are guaranteed to resolve — mirrors transfers.py's unguarded
     # session.get(Warehouse, source.warehouse_id) precedent.
@@ -60,7 +62,7 @@ def batch_update(
     )
     if errors:
         existing = session.get(Batch, batch_id)
-        if existing is None:
+        if existing is None or not warehouse_allowed(existing.warehouse_id):
             raise HTTPException(status_code=404, detail="unknown batch")
         product = session.get(Product, existing.product_id)
         warehouse = session.get(Warehouse, existing.warehouse_id)

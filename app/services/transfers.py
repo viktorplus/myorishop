@@ -38,6 +38,7 @@ from app.services.batches import active_warehouses, warehouse_currency
 from app.services.catalog import PRICE_ERROR, parse_optional_cents
 from app.services.ledger import parse_op_date, record_operation
 from app.services.receipts import lookup_prefill
+from app.services.security import warehouse_allowed, warehouse_scope
 
 QTY_ERROR = "Укажите количество — целое число больше нуля."
 BATCH_REQUIRED_ERROR = "Выберите партию."
@@ -130,11 +131,15 @@ def register_transfer(
     source = session.get(Batch, batch_id) if batch_id else None
     if source is None or source.product_id != product.id:
         return None, {"batch": BATCH_REQUIRED_ERROR}
+    # Quick 261026-wha: the SOURCE must be one of the operator's warehouses;
+    # the destination below may be any active warehouse.
+    if not warehouse_allowed(source.warehouse_id):
+        return None, {"batch": BATCH_REQUIRED_ERROR}
 
     # T-09-02 / Pitfall 4: the destination warehouse id is untrusted — it
     # must name an ACTIVE warehouse and must not equal the source warehouse.
     dest_warehouse_id = dest_warehouse_id.strip()
-    active_ids = {w.id for w in active_warehouses(session)}
+    active_ids = {w.id for w in active_warehouses(session, scoped=False)}
     if dest_warehouse_id not in active_ids:
         return None, {"warehouse": WAREHOUSE_ERROR}
 
@@ -306,7 +311,7 @@ def transfer_price_fields(
     """
     cross = False
     batch_id, dest_id = batch_id.strip(), dest_warehouse_id.strip()
-    active_ids = {w.id for w in active_warehouses(session)}
+    active_ids = {w.id for w in active_warehouses(session, scoped=False)}
     dest_currency = warehouse_currency(session, dest_id)
     product = session.scalars(
         select(Product).where(Product.code == code.strip(), Product.deleted_at.is_(None))
@@ -380,7 +385,13 @@ def recent_transfers(session: Session, limit: int = 10) -> list[dict]:
     rows = session.execute(
         select(Operation, Product)
         .join(Product, Operation.product_id == Product.id)
-        .where(Operation.type == "transfer", Operation.qty_delta < 0)
+        .outerjoin(Batch, Operation.batch_id == Batch.id)
+        # Quick 261026-wha: transfers OUT of the operator's own warehouses.
+        .where(
+            Operation.type == "transfer",
+            Operation.qty_delta < 0,
+            warehouse_scope(Batch.warehouse_id),
+        )
         .order_by(Operation.created_at.desc(), Operation.seq.desc())
         .limit(limit)
     ).all()

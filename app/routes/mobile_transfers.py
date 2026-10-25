@@ -39,12 +39,12 @@ def _dest_warehouses(session: Session, source: Batch | None) -> list[Warehouse]:
     gated by D-06's override-required check inside register_transfer."""
     if source is None:
         return []
-    return list(active_warehouses(session))
+    return list(active_warehouses(session, scoped=False))
 
 
 def _warehouse_names(session: Session) -> dict[str, str]:
     """id -> name map so the batch-step card can show its own «Склад:» line."""
-    return {w.id: w.name for w in active_warehouses(session)}
+    return {w.id: w.name for w in active_warehouses(session, scoped=False)}
 
 
 def _find_product(session: Session, code: str) -> Product | None:

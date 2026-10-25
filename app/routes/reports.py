@@ -10,7 +10,7 @@ from app.config import settings
 from app.core import CURRENCIES, DEFAULT_CURRENCY, business_date_bounds
 from app.db import get_session
 from app.routes import templates
-from app.services.batches import expiring_batches
+from app.services.batches import expiring_batches, scoped_quantities
 from app.services.reports import (
     sales_profit_report,
     stale_products,
@@ -171,6 +171,7 @@ def reports_stock_page(request: Request, session: Session = Depends(get_session)
         "low_stock_rows": low_stock_rows,
         "all_products": all_active_products(session),
         "low_stock_ids": {row["product"].id for row in low_stock_rows},
+        "scoped_qty": scoped_quantities(session),  # quick 261026-wha
     }
     return templates.TemplateResponse(request, "pages/reports_stock.html", context)
 

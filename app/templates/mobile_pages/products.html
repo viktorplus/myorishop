@@ -14,7 +14,7 @@
 <a class="mobile-card" href="/m/search/product/{{ product.id }}">
   <p><strong>{{ product.name }}</strong></p>
   <p class="muted">Код: {{ product.code }}{% if product.category %} · {{ product.category }}{% endif %}</p>
-  <p class="num">Кол-во: {{ product.quantity }}</p>
+  <p class="num">Кол-во: {{ scoped_qty.get(product.id, 0) if scoped_qty is not none else product.quantity }}</p>
 </a>
 {% endfor %}
 {% endif %}

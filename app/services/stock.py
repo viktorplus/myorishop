@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Product
+from app.services.batches import scoped_quantities
 
 
 def effective_low_stock_threshold(product: Product) -> int:
@@ -26,19 +27,35 @@ def effective_low_stock_threshold(product: Product) -> int:
 
 
 def low_stock_products(session: Session) -> list[Product]:
-    """Active products at or below their effective threshold, most urgent first."""
+    """Active products at or below their effective threshold, most urgent first.
+
+    Quick 261026-wha: for an operator, only products ever stocked in their
+    warehouses, compared by the stock there (see batches.scoped_quantities).
+    """
     products = list(
         session.scalars(select(Product).where(Product.deleted_at.is_(None))).all()
     )
-    low = [p for p in products if p.quantity <= effective_low_stock_threshold(p)]
-    low.sort(key=lambda p: p.quantity)
+    scoped = scoped_quantities(session)
+    if scoped is None:
+        qty = {p.id: p.quantity for p in products}
+    else:
+        products = [p for p in products if p.id in scoped]
+        qty = scoped
+    low = [p for p in products if qty[p.id] <= effective_low_stock_threshold(p)]
+    low.sort(key=lambda p: qty[p.id])
     return low
 
 
 def all_active_products(session: Session) -> list[Product]:
-    """Every non-deleted product, ordered by name_lc, for the full stock table."""
-    return list(
+    """Every non-deleted product, ordered by name_lc, for the full stock table.
+
+    Quick 261026-wha: for an operator, only products ever stocked in their
+    warehouses.
+    """
+    products = list(
         session.scalars(
             select(Product).where(Product.deleted_at.is_(None)).order_by(Product.name_lc)
         ).all()
     )
+    scoped = scoped_quantities(session)
+    return products if scoped is None else [p for p in products if p.id in scoped]
