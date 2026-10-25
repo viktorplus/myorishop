@@ -83,10 +83,12 @@ def period_metrics(
 
     Mirrors app/routes/finance.py::_metrics_context's single-period shape:
     `expense_cents` is cash_expense_total's raw (already-negative) value —
-    D-07's expense definition (cash-ledger withdrawals + returns, the SAME
-    set Финансы uses, never cost-of-goods-sold) — rendered as-is, never
-    negated here. `profit_cents` is the NET figure: gross + expense, D-08,
-    addition only (never subtraction).
+    D-07's expense definition (cash-ledger withdrawals, the SAME set Финансы
+    uses, never cost-of-goods-sold; quick 261025 took refunds out of it — a
+    return reverses its sale inside sales_profit_report instead) — rendered
+    as-is, never negated here. `revenue_cents` is net of returns.
+    `profit_cents` is the NET figure: gross + expense, D-08, addition only
+    (never subtraction).
 
     CUR-02: `currency` scopes both the sales/profit and expense halves to ONE
     currency, delegating to sales_profit_report's shared operation_currency_clause

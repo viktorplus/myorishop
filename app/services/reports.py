@@ -108,6 +108,15 @@ def sales_profit_report(
     CUR-02: `currency` scopes the report to ONE currency, via the shared
     operation_currency_clause helper (see its docstring for the LOCKED
     legacy-row fallback rule).
+
+    Quick 261025: a `return` op is a REVERSAL of its sale, never an expense. It
+    carries the origin sale's frozen price/cost and a positive qty_delta, so
+    `-qty_delta` makes it a negative quantity and the same arithmetic nets
+    revenue, cost and profit. It is bucketed by ITS OWN business date (a return
+    in October reduces October, the closed September stays as it was) and, under
+    the operator filter, by its own author. `qty`/`revenue_cents`/`cost_cents`/
+    `profit_cents` are NET of returns; `sold`/`returned` and the
+    `sales_revenue_cents`/`returns_cents` totals keep the two halves visible.
     """
     stmt = (
         select(Operation, Product)
@@ -115,7 +124,7 @@ def sales_profit_report(
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
         .where(
-            Operation.type == "sale",
+            Operation.type.in_(("sale", "return")),
             business_date_expr(Operation) >= start_iso,
             business_date_expr(Operation) <= end_iso,
             operation_currency_clause(currency),
@@ -132,12 +141,15 @@ def sales_profit_report(
 
     entries: dict[str, dict] = {}
     cost_unknown_count = 0
+    returns_cents = 0
     for op, product in rows:
-        qty = -op.qty_delta
+        qty = -op.qty_delta  # negative for a return
         entry = entries.setdefault(
             product.id,
             {
                 "product": product,
+                "sold": 0,
+                "returned": 0,
                 "qty": 0,
                 "revenue_cents": 0,
                 "cost_cents": 0,
@@ -147,17 +159,26 @@ def sales_profit_report(
         entry["qty"] += qty
         revenue = (op.unit_price_cents or 0) * qty
         entry["revenue_cents"] += revenue
+        if op.type == "return":
+            entry["returned"] += op.qty_delta
+            returns_cents += revenue
+        else:
+            entry["sold"] += qty
         if op.unit_cost_cents is not None:
             cost = op.unit_cost_cents * qty
             entry["cost_cents"] += cost
             entry["profit_cents"] += revenue - cost
-        else:
+        elif op.type == "sale":
             cost_unknown_count += 1
 
-    by_product = sorted(entries.values(), key=lambda e: e["qty"], reverse=True)
+    by_product = sorted(entries.values(), key=lambda e: (e["qty"], e["sold"]), reverse=True)
 
     totals = {
-        "units_sold": sum(e["qty"] for e in by_product),
+        "units_sold": sum(e["sold"] for e in by_product),
+        "units_returned": sum(e["returned"] for e in by_product),
+        "units_net": sum(e["qty"] for e in by_product),
+        "sales_revenue_cents": sum(e["revenue_cents"] for e in by_product) - returns_cents,
+        "returns_cents": returns_cents,
         "revenue_cents": sum(e["revenue_cents"] for e in by_product),
         "cost_cents": sum(e["cost_cents"] for e in by_product),
         "profit_cents": sum(e["profit_cents"] for e in by_product),
@@ -248,17 +269,22 @@ def top_selling_products(
     RESEARCH Pattern 4: SQL-side aggregation (func.sum/.group_by()/.order_by()
     /.limit()), not a Python accumulator — sales history can be large,
     unlike the small fixed-cardinality write-off grouping in writeoff_report.
+
+    Quick 261025: units are NET of returns booked in the same period (a return
+    has a positive qty_delta, so the same SUM subtracts it), and a product whose
+    net is not positive is not a top seller at all.
     """
     units_sold = func.sum(-Operation.qty_delta).label("units_sold")
     stmt = (
         select(Product, units_sold)
         .join(Operation, Operation.product_id == Product.id)
         .where(
-            Operation.type == "sale",
+            Operation.type.in_(("sale", "return")),
             business_date_expr(Operation) >= start_iso,
             business_date_expr(Operation) <= end_iso,
         )
         .group_by(Product.id)
+        .having(units_sold > 0)
         .order_by(units_sold.desc())
         .limit(limit)
     )

@@ -133,6 +133,10 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
     """Full sale-operation dump, oldest-first (a data dump reads best chronologically —
 
     diverges from the newest-first UI listings elsewhere in this app).
+
+    Quick 261025: returns are rows too, with a NEGATIVE «Кол-во» (`-qty_delta`
+    of a return), so SUM(Кол-во x Цена) over the file is the net revenue the
+    sales report shows. No «Тип» column: D-23 pins «Внесено» as the last one.
     """
     query = (
         select(Operation, Product, Sale, Customer, Warehouse.currency)
@@ -141,7 +145,7 @@ def stream_sales_csv(session: Session) -> StreamingResponse:
         .outerjoin(Customer, Sale.customer_id == Customer.id)
         .outerjoin(Batch, Operation.batch_id == Batch.id)
         .outerjoin(Warehouse, Batch.warehouse_id == Warehouse.id)
-        .where(Operation.type == "sale")
+        .where(Operation.type.in_(("sale", "return")))
         # D-23: column 1 «Когда» carries the BUSINESS date, so the dump must be
         # ordered by it — otherwise it reads as unsorted by its own first column.
         # created_at and seq are deterministic tie-breakers within one day.

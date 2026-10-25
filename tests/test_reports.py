@@ -997,3 +997,116 @@ def test_expiry_report_page_empty_state(client):
     response = client.get("/reports/expiry")
     assert response.status_code == 200
     assert "Партий со сроком годности нет." in response.text
+
+
+# --- Returns are a reversal of the sale, never an expense (quick 261025) ------
+#
+# Live s1 repro (2026-10-25): 2 sales of 1 x 200,00 (cost 100,00), each fully
+# returned. Every report must read 0 sold / 0 revenue / 0 profit for the day;
+# before the fix /reports/sales showed 400/200/200 and Главная showed profit
+# -200 with the refunds booked as an expense.
+
+
+def _sell_and_return(session, product, *, sale_date="", return_date=""):
+    """One 1 x 200,00 sale of `product` at cost 100,00, then its full return."""
+    from app.services.batches import open_batches
+    from app.services.returns import register_return
+    from app.services.sales import register_sale
+
+    batch = open_batches(session, product.id)[0]
+    batch.cost_cents = 10000
+    session.commit()
+    result, errors = register_sale(
+        session,
+        customer_id=None,
+        codes=[product.code],
+        qtys=["1"],
+        prices=["200,00"],
+        batch_ids=[batch.id],
+        op_date=sale_date,
+    )
+    assert errors == {}
+    from app.models import Operation
+
+    sale_op = session.scalars(
+        select(Operation).where(
+            Operation.sale_id == result["header"].id, Operation.type == "sale"
+        )
+    ).one()
+    _, errors = register_return(
+        session, origin_op_id=sale_op.id, qty_raw="1", op_date=return_date
+    )
+    assert errors == {}
+
+
+def test_sold_and_fully_returned_nets_to_zero_in_every_report(session, stocked_product):
+    from app.core import local_today_iso
+    from app.services.dashboard import period_metrics
+    from app.services.finance_reports import cash_expense_total, cash_flow_report
+
+    _sell_and_return(session, stocked_product)
+    _sell_and_return(session, stocked_product)
+
+    today = date.fromisoformat(local_today_iso(settings.display_tz))
+    start_iso, end_iso = business_date_bounds(today, today)
+
+    totals = sales_profit_report(session, start_iso, end_iso)["totals"]
+    assert totals["units_sold"] == 2
+    assert totals["units_returned"] == 2
+    assert totals["units_net"] == 0
+    assert totals["sales_revenue_cents"] == 40000
+    assert totals["returns_cents"] == -40000
+    assert totals["revenue_cents"] == 0
+    assert totals["cost_cents"] == 0
+    assert totals["profit_cents"] == 0
+
+    (row,) = sales_profit_report(session, start_iso, end_iso)["by_product"]
+    assert (row["sold"], row["returned"], row["qty"]) == (2, 2, 0)
+
+    # A fully returned product is not a «top seller».
+    assert top_selling_products(session, start_iso, end_iso) == []
+
+    # The refund is NOT an expense: the expense set is withdrawals only.
+    assert cash_expense_total(session, start_iso, end_iso) == 0
+    metrics = period_metrics(session, today, today, settings.display_tz)
+    assert metrics == {"revenue_cents": 0, "profit_cents": 0, "expense_cents": 0}
+
+    # Cash flow: the refund is a negative income line, so income nets to 0.
+    flow = cash_flow_report(session, start_iso, end_iso)
+    assert [(e["category"], e["total_cents"]) for e in flow["income"]] == [
+        ("sale", 40000),
+        ("return", -40000),
+    ]
+    assert flow["income_total_cents"] == 0
+    assert flow["expense"] == []
+
+
+def test_return_reduces_the_period_of_the_return_not_of_the_sale(session, stocked_product):
+    """Decision 1: a return books on ITS OWN business date, so a closed period
+    (the day of the sale) never changes after the fact."""
+    from app.core import local_today_iso
+
+    today = date.fromisoformat(local_today_iso(settings.display_tz))
+    yesterday = today - timedelta(days=1)
+    _sell_and_return(session, stocked_product, sale_date=yesterday.isoformat())
+
+    sale_day = sales_profit_report(session, *business_date_bounds(yesterday, yesterday))
+    assert sale_day["totals"]["revenue_cents"] == 20000
+    assert sale_day["totals"]["profit_cents"] == 10000
+
+    return_day = sales_profit_report(session, *business_date_bounds(today, today))
+    assert return_day["totals"]["units_sold"] == 0
+    assert return_day["totals"]["units_returned"] == 1
+    assert return_day["totals"]["revenue_cents"] == -20000
+    assert return_day["totals"]["profit_cents"] == -10000
+
+
+def test_web_reports_sales_shows_returns_instead_of_empty_state(client, session, stocked_product):
+    """A day with only sold-and-returned goods is not «продаж не было»: the
+    returned column and the «Возвраты» total line are rendered."""
+    _sell_and_return(session, stocked_product)
+
+    text = client.get("/reports/sales").text
+    assert "За выбранный период продаж не было." not in text
+    assert "Возвращено, шт." in text
+    assert "<td>Возвраты</td>" in text

@@ -70,7 +70,9 @@ def _record_cash_at(
 # --- cash_expense_total (FIN-11 / D-01a) ------------------------------------
 
 
-def test_expense_total_sums_withdrawal_and_return(session, monkeypatch):
+def test_expense_total_sums_withdrawals_but_not_refunds(session, monkeypatch):
+    """Quick 261025: a refund reverses its sale inside sales_profit_report, so
+    it is NOT an expense — counting it here too subtracted it twice."""
     start_iso, end_iso = business_date_bounds(DAY, DAY)
     mid = "2026-07-10T10:00:00+00:00"
     _record_cash_at(
@@ -78,7 +80,7 @@ def test_expense_total_sums_withdrawal_and_return(session, monkeypatch):
     )
     _record_cash_at(session, monkeypatch, mid, category="return", amount_cents=-500)
 
-    assert cash_expense_total(session, start_iso, end_iso) == -1500
+    assert cash_expense_total(session, start_iso, end_iso) == -1000
 
 
 def test_expense_total_excludes_income_categories(session, monkeypatch):
@@ -331,14 +333,16 @@ def test_cash_flow_report_groups_income_and_expense(session, monkeypatch):
     _record_cash_at(session, monkeypatch, mid, category="return", amount_cents=-500)
 
     report = cash_flow_report(session, start_iso, end_iso)
+    # Quick 261025: the refund is a negative INCOME line, not an expense.
     assert report["income"] == [
         {"category": "sale", "total_cents": 3000},
+        {"category": "return", "total_cents": -500},
         {"category": "deposit_opening", "total_cents": 1000},
     ]
-    assert report["income_total_cents"] == 4000
+    assert report["income_total_cents"] == 3500
     expense_cats = {entry["category"] for entry in report["expense"]}
-    assert expense_cats == {"withdrawal_rent", "withdrawal_salary", "return"}
-    assert report["expense_total_cents"] == -2500
+    assert expense_cats == {"withdrawal_rent", "withdrawal_salary"}
+    assert report["expense_total_cents"] == -2000
     assert report["movement_count"] == 5
 
 
@@ -458,7 +462,7 @@ def test_web_finance_net_caveat_present(client):
     response = client.get("/finance")
     assert response.status_code == 200
     assert (
-        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Валовая прибыль (продажи минус возвраты) минус снятия за период. "
         "Это не бухгалтерская прибыль."
     ) in response.text
 
@@ -703,7 +707,7 @@ def test_web_mobile_finance_tiles_net_caveat(client):
     assert "Показатели" in response.text
     assert "metric-tile" in response.text
     assert (
-        "Денежный поток: валовая прибыль минус снятия и возвраты за период. "
+        "Валовая прибыль (продажи минус возвраты) минус снятия за период. "
         "Это не бухгалтерская прибыль."
     ) in response.text
     assert "на текущий момент" in response.text
@@ -859,7 +863,7 @@ def test_cash_flow_and_expense_total_reconcile_over_mixed_rows(session, monkeypa
     session.add(
         CashMovement(
             id=new_id(),
-            category="return",
+            category="withdrawal_other",
             amount_cents=-70,
             currency="RUB",
             device_id=settings.device_id,

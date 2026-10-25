@@ -17,7 +17,7 @@ from app.services.reports import business_date_expr
 def cash_expense_total(
     session: Session, start_iso: str, end_iso: str, currency: str = DEFAULT_CURRENCY
 ) -> int:
-    """Signed SUM of withdrawal+return cash rows in the CLOSED business-date period (FIN-11).
+    """Signed SUM of withdrawal cash rows in the CLOSED business-date period (FIN-11).
 
     DATE-03: date-only bounds from `core.business_date_bounds`, bucketed by
     `business_date_expr(CashMovement)`, inclusive on both ends. This predicate and
@@ -32,8 +32,13 @@ def cash_expense_total(
     Empty period -> 0 (coalesce, never NULL). CUR-02: `currency` scopes the
     sum to ONE currency's rows, defaulting to RUB so every pre-existing call
     site keeps working unchanged.
+
+    Quick 261025: refunds (category "return") are NOT an expense. A return
+    already reverses its sale's revenue AND cost inside sales_profit_report, so
+    also subtracting the refund here counted it twice and understated net
+    profit by the cost of the goods that came back to the shelf.
     """
-    cats = CASH_BUCKETS["withdrawal"] + CASH_BUCKETS["return"]
+    cats = CASH_BUCKETS["withdrawal"]
     return session.scalar(
         select(func.coalesce(func.sum(CashMovement.amount_cents), 0)).where(
             CashMovement.category.in_(cats),
@@ -119,22 +124,24 @@ def cash_flow_report(
     RECONCILIATION below).
 
     Each CASH_CATEGORIES key present in the period becomes exactly one row,
-    placed in income (CASH_BUCKETS["sale"] + CASH_BUCKETS["deposit"]) XOR
-    expense (CASH_BUCKETS["withdrawal"] + CASH_BUCKETS["return"]) via
+    placed in income (CASH_BUCKETS["sale"] + CASH_BUCKETS["return"] +
+    CASH_BUCKETS["deposit"]) XOR expense (CASH_BUCKETS["withdrawal"]) via
     server-side bucket membership — never a hardcoded category-string
     comparison. Rows are emitted in CASH_CATEGORIES key order so the report
     is stable across calls. movement_count counts only rows actually placed
     in a bucket (len(income) + len(expense)), so a category outside both
     bucket sets can never be silently double-dropped-yet-counted. CUR-02:
-    `currency` scopes the whole report to ONE currency's rows.
+    `currency` scopes the whole report to ONE currency's rows. Quick 261025:
+    a refund is a NEGATIVE income line (it gives sale money back), not an
+    expense, so income nets sales against their returns.
 
     RECONCILIATION (D-05, hard invariant): expense_total_cents for a period
     MUST equal cash_expense_total(session, start_iso, end_iso, currency) for
     the same bounds — the cash-flow report and the net-profit tile can never
     disagree.
     """
-    income_cats = CASH_BUCKETS["sale"] + CASH_BUCKETS["deposit"]
-    expense_cats = CASH_BUCKETS["withdrawal"] + CASH_BUCKETS["return"]
+    income_cats = CASH_BUCKETS["sale"] + CASH_BUCKETS["return"] + CASH_BUCKETS["deposit"]
+    expense_cats = CASH_BUCKETS["withdrawal"]
 
     rows = session.execute(
         select(CashMovement.category, func.sum(CashMovement.amount_cents))

@@ -396,6 +396,32 @@ def test_sales_csv_roundtrip(client, session, product):
     assert rows[1][8] == settings.operator_name
 
 
+def test_sales_csv_lists_a_return_as_a_negative_quantity_row(client, session, product):
+    """Quick 261025: a return is a row with a NEGATIVE «Кол-во», so the file's
+    SUM(Кол-во x Цена) equals the sales report's net revenue."""
+    header = Sale(
+        id=new_id(), customer_id=None, created_at=utcnow_iso(), created_by=settings.operator_name
+    )
+    session.add(header)
+    batch_id = _ensure_batch(session, product)
+    for type_, qty_delta in (("sale", -2), ("return", 1)):
+        record_operation(
+            session,
+            type_=type_,
+            product_id=product.id,
+            qty_delta=qty_delta,
+            unit_cost_cents=1000,
+            unit_price_cents=1500,
+            sale_id=header.id,
+            batch_id=batch_id,
+        )
+    session.commit()
+
+    text = client.get("/export/sales.csv").content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text), delimiter=";"))
+    assert [row[3] for row in rows[1:]] == ["2", "-1"]
+
+
 def test_sales_csv_labels_non_default_currency(client, session, product):
     """CUR-02: a sale whose batch lives in a non-RUB warehouse is labelled correctly."""
     eur_wh = Warehouse(id=new_id(), name="Склад EUR", currency="EUR")
